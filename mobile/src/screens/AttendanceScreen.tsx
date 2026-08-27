@@ -42,7 +42,7 @@ interface SessionRowProps {
   isDark: boolean;
   styles: any;
   onUndo: (logId: string) => void;
-  onLog: (subject: any, type: 'class' | 'lab', action: 'attended' | 'missed' | 'cancelled', existingLogId?: string) => void;
+  onLog: (subject: any, type: 'class' | 'lab', action: 'attended' | 'missed' | 'cancelled', existingLogId: string | undefined, sessionIdx: number) => void;
 }
 
 const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
@@ -70,6 +70,8 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
   const isAbsent = localAction === 'missed';
   const isCancelled = localAction === 'cancelled';
 
+  const { idx: sessionIdx } = session;
+
   const handlePressPresent = useCallback(() => {
     if (isPresent) {
       setLocalAction(null);
@@ -79,10 +81,10 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
     } else {
       setLocalAction('attended');
       setTimeout(() => {
-        onLog(subject, type, 'attended', log?.id);
+        onLog(subject, type, 'attended', log?.id, sessionIdx);
       }, 0);
     }
-  }, [isPresent, log?.id, onUndo, onLog, subject, type]);
+  }, [isPresent, log?.id, onUndo, onLog, subject, type, sessionIdx]);
 
   const handlePressAbsent = useCallback(() => {
     if (isAbsent) {
@@ -93,10 +95,10 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
     } else {
       setLocalAction('missed');
       setTimeout(() => {
-        onLog(subject, type, 'missed', log?.id);
+        onLog(subject, type, 'missed', log?.id, sessionIdx);
       }, 0);
     }
-  }, [isAbsent, log?.id, onUndo, onLog, subject, type]);
+  }, [isAbsent, log?.id, onUndo, onLog, subject, type, sessionIdx]);
 
   const handlePressCancelled = useCallback(() => {
     if (isCancelled) {
@@ -107,10 +109,10 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
     } else {
       setLocalAction('cancelled');
       setTimeout(() => {
-        onLog(subject, type, 'cancelled', log?.id);
+        onLog(subject, type, 'cancelled', log?.id, sessionIdx);
       }, 0);
     }
-  }, [isCancelled, log?.id, onUndo, onLog, subject, type]);
+  }, [isCancelled, log?.id, onUndo, onLog, subject, type, sessionIdx]);
 
   return (
     <View style={styles.sessionCard}>
@@ -544,21 +546,26 @@ export default function AttendanceScreen() {
   const renderItem = useCallback(({ item: session }: { item: any }) => {
     const { subject, type, idx } = session;
     const subLogs = (subject.id ? logsBySubjectId[subject.id] : null) || (subject.name ? logsBySubjectId[subject.name] : null) || [];
-    let log = null;
-    let matchIdx = 0;
     const cleanSelDate = (selectedDate || '').slice(0, 10);
 
-    for (let i = 0; i < subLogs.length; i++) {
-      const l = subLogs[i];
-      const cleanLogDate = (l.date || '').slice(0, 10);
-      const isMatchingType = type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type);
+    // Fast path: direct idx match (new logs always carry idx)
+    let log = subLogs.find(l =>
+      (l.date || '').slice(0, 10) === cleanSelDate &&
+      !l.isExtra &&
+      (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)) &&
+      l.idx === idx
+    ) ?? null;
 
-      if (cleanLogDate === cleanSelDate && !l.isExtra && isMatchingType) {
-        if (l.idx !== undefined ? l.idx === idx : matchIdx === idx) {
-          log = l;
-          break;
+    // Legacy fallback: positional match for old logs without idx field
+    if (!log) {
+      let matchIdx = 0;
+      for (let i = 0; i < subLogs.length; i++) {
+        const l = subLogs[i];
+        const isMatchingType = type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type);
+        if ((l.date || '').slice(0, 10) === cleanSelDate && !l.isExtra && isMatchingType && l.idx === undefined) {
+          if (matchIdx === idx) { log = l; break; }
+          matchIdx++;
         }
-        matchIdx++;
       }
     }
 
@@ -911,7 +918,7 @@ export default function AttendanceScreen() {
                   <TouchableOpacity
                     style={[styles.extraActionBtn, styles.extraActionAttended, !extraSubjectId && { opacity: 0.3 }]}
                     disabled={!extraSubjectId}
-                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'attended', undefined, selectedDate, true); setIsExtraOpen(false); }}
+                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'attended', undefined, 0, selectedDate, true); setIsExtraOpen(false); }}
                   >
                     <Ionicons name="checkmark" size={15} color={isDark ? "#5eda9e" : "#059669"} />
                     <Text style={styles.extraActionAttendedText}>Attended</Text>
@@ -919,7 +926,7 @@ export default function AttendanceScreen() {
                   <TouchableOpacity
                     style={[styles.extraActionBtn, styles.extraActionMissed, !extraSubjectId && { opacity: 0.3 }]}
                     disabled={!extraSubjectId}
-                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'missed', undefined, selectedDate, true); setIsExtraOpen(false); }}
+                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'missed', undefined, 0, selectedDate, true); setIsExtraOpen(false); }}
                   >
                     <Ionicons name="close" size={15} color={isDark ? "#ff6961" : "#DC2626"} />
                     <Text style={styles.extraActionMissedText}>Missed</Text>

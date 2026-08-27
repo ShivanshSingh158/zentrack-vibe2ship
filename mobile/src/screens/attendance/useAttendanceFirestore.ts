@@ -61,6 +61,7 @@ export function useAttendanceFirestore({
     type: 'class' | 'lab',
     action: 'attended' | 'missed' | 'cancelled',
     existingLogId?: string,
+    sessionIdx: number = 0,
     logDate = selectedDate,
     isExtra = false,
   ) => {
@@ -71,14 +72,16 @@ export function useAttendanceFirestore({
     const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
     const cleanLogDate = (logDate || selectedDate || '').slice(0, 10);
 
-    // Check if we are updating an existing log (passed by ID or matching subjectId/name + type + date)
+    // Check if we are updating an existing log — first try explicit ID, then match by subject+type+idx+date
     const existingLog = existingLogId
       ? logs.find(l => l.id === existingLogId)
-      : logs.find(l => 
+      : logs.find(l =>
           (l.subjectId === subject.id || l.subjectId === subject.name || l.subjectName === subject.name) &&
           (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)) &&
           (l.date || '').slice(0, 10) === cleanLogDate &&
-          (!isExtra ? !l.isExtra : l.isExtra)
+          (!isExtra ? !l.isExtra : l.isExtra) &&
+          // Exact session slot match — prevents log for session 1 being found when tapping session 0
+          (l.idx === sessionIdx || (l.idx === undefined && sessionIdx === 0))
         );
 
     let newAttended: number;
@@ -139,7 +142,8 @@ export function useAttendanceFirestore({
         const newLog = {
           id: logRef.id,
           userId: user.uid, subjectId: subject.id, subjectName: subject.name,
-          type, action, date: logDate, isExtra, timestamp: Date.now(),
+          type, action, date: cleanLogDate, isExtra, timestamp: Date.now(),
+          idx: sessionIdx, // ← session slot index: ensures exact card binding on every re-render
         };
         
         // Optimistically update UI

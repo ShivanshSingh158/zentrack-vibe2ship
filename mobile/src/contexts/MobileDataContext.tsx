@@ -155,6 +155,7 @@ export interface AttendanceLog {
   id?: string; userId: string; subjectId: string; subjectName: string;
   type: 'class'|'lab'; action: 'attended'|'missed'|'cancelled';
   date: string; isExtra: boolean; timestamp: number;
+  idx?: number; // Session index within the day (0 = first class, 1 = second class, etc.)
 }
 
 export interface Assignment {
