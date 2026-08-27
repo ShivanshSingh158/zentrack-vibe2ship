@@ -166,7 +166,24 @@ export function AcademicProvider({
         if (snap.docs.length === 0 && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => parseAttendanceSubject(d.data(), d.id));
-          setAttendance(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          setAttendance(prev => {
+            if (areItemsEqual(prev, fresh)) return prev;
+            // Merge: for subjects with in-flight optimistic writes (classesTotal differs),
+            // prefer the higher count to prevent the percentage from flickering back
+            const freshMap = new Map(fresh.map(s => [s.id!, s]));
+            const merged = prev.map(ps => {
+              const fs = freshMap.get(ps.id!);
+              if (!fs) return ps; // Subject only in prev: keep it (deleted elsewhere, stale)
+              // If our local counts are higher, we have an in-flight optimistic write — keep local
+              const localTotal = (ps.classesTotal || 0) + (ps.labsTotal || 0);
+              const freshTotal = (fs.classesTotal || 0) + (fs.labsTotal || 0);
+              if (localTotal > freshTotal) return ps;
+              return fs;
+            });
+            // Add any fresh subjects not yet in prev (new subjects added elsewhere)
+            fresh.forEach(fs => { if (!prev.find(ps => ps.id === fs.id)) merged.push(fs); });
+            return areItemsEqual(prev, merged) ? prev : merged;
+          });
           InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendance: fresh }));
         });
       },
@@ -178,7 +195,23 @@ export function AcademicProvider({
         if (snap.docs.length === 0 && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => parseAttendanceLog(d.data(), d.id));
-          setAttendanceLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          setAttendanceLogs(prev => {
+            if (areItemsEqual(prev, fresh)) return prev;
+            // ── Merge strategy: NEVER wipe in-flight optimistic logs ────────────────────
+            // Root cause of the "log disappears when tapping next subject" bug:
+            //   batch_A.commit() resolves first → onSnapshot fires with [aLog]
+            //   but React state already has [aLog, bLog_optimistic]
+            //   areItemsEqual returns false → setAttendanceLogs([aLog]) → bLog wiped!
+            //
+            // Fix: keep any log that is in prev but NOT in fresh — these are in-flight
+            // writes not yet confirmed by Firestore. They will be removed naturally on
+            // the next snapshot once the server confirms (or on undo via optimisticRemove).
+            const freshIds = new Set(fresh.map(l => l.id).filter(Boolean));
+            const inFlight = prev.filter(l => l.id && !freshIds.has(l.id));
+            if (inFlight.length === 0) return fresh; // No in-flight, safe to replace
+            return [...fresh, ...inFlight]; // Keep in-flight logs until Firestore confirms them
+          });
+          // Note: cache always written with server-confirmed data (no optimistic inflation)
           InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendanceLogs: fresh }));
         });
       },
