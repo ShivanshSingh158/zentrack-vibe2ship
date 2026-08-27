@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated,
   TextInput, Modal, KeyboardAvoidingView, Platform,
-  Pressable, ScrollView, Alert, ActivityIndicator, Image
+  Pressable, ScrollView, Alert, ActivityIndicator, Image, InteractionManager
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -471,7 +471,8 @@ export default function NotesScreen() {
   const { user } = useCoreData();
 
   useEffect(() => {
-    ensureSubscribed?.();
+    const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
+    return () => handle.cancel();
   }, [ensureSubscribed]);
 
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);

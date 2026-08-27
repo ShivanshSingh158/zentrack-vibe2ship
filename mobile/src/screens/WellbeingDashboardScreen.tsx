@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, Animated, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -82,7 +82,8 @@ export default function WellbeingDashboardScreen() {
   const { waterLogs, ensureSubscribed } = useWellnessData();
 
   useEffect(() => {
-    ensureSubscribed?.();
+    const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
+    return () => handle.cancel();
   }, [ensureSubscribed]);
 
   // Animation values

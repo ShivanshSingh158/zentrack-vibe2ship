@@ -10,7 +10,7 @@
  * - Stabilized empty array defaults and memoized calculations
  */
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, InteractionManager } from 'react-native';
 import type { CustomEvent } from '../../contexts/MobileDataContext';
 import { usePlannerData } from '../../contexts/domains/PlannerContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
@@ -36,7 +36,8 @@ export function useCalendarData() {
   const { gymLogs, userGymPlan } = useWellnessData();
 
   useEffect(() => {
-    ensureSubscribed?.();
+    const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
+    return () => handle.cancel();
   }, [ensureSubscribed]);
 
   // Stable reference to mount time & single consolidated 60s minute tick

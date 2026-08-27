@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  DeviceEventEmitter, Alert, LayoutAnimation, UIManager, Platform
+  DeviceEventEmitter, Alert, LayoutAnimation, UIManager, Platform, InteractionManager
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -140,7 +140,8 @@ export default function LearningScreen() {
   const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
   useEffect(() => {
-    ensureSubscribed?.();
+    const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
+    return () => handle.cancel();
   }, [ensureSubscribed]);
 
   // ΓöÇΓöÇ Modal state ΓöÇΓöÇ

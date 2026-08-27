@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Alert, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Alert, Dimensions, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -39,7 +39,8 @@ export default function GradesScreen() {
   const { user } = useCoreData();
 
   React.useEffect(() => {
-    ensureSubscribed?.();
+    const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
+    return () => handle.cancel();
   }, [ensureSubscribed]);
 
   const [semModalVisible, setSemModalVisible] = useState(false);

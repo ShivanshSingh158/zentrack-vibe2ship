@@ -9,6 +9,7 @@ import {
   Alert,
   TouchableOpacity,
   Keyboard,
+  InteractionManager,
 } from 'react-native';
 import AnimatedPressable from '../components/AnimatedPressable';
 import BottomSheet from '../components/ui/BottomSheet';
@@ -136,7 +137,8 @@ export default function AssignmentsScreen() {
   const { user } = useCoreData();
 
   React.useEffect(() => {
-    ensureSubscribed?.();
+    const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
+    return () => handle.cancel();
   }, [ensureSubscribed]);
 
   const statusConfig = useMemo(() => getStatusConfig(isDark), [isDark]);

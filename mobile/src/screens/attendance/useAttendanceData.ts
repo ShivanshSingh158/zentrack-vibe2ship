@@ -4,6 +4,7 @@
  * and derived computed values for the Attendance module.
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { InteractionManager } from 'react-native';
 import { collection, query, where, onSnapshot, writeBatch, doc, limit } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
@@ -30,7 +31,13 @@ export function useAttendanceData() {
   const { attendance: subjects, attendanceLogs: logs, ensureSubscribed } = useAcademicData();
 
   useEffect(() => {
-    ensureSubscribed?.();
+    // Defer Firestore subscription until after the tab-switch animation completes.
+    // Opening 5 listeners simultaneously on the JS thread during the transition
+    // causes a 1-2s freeze. InteractionManager releases the animation first, then subscribes.
+    const handle = InteractionManager.runAfterInteractions(() => {
+      ensureSubscribed?.();
+    });
+    return () => handle.cancel();
   }, [ensureSubscribed]);
 
   // ── Core data from Firestore ────────────────────────────────────────────────
