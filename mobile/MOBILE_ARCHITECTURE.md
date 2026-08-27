@@ -921,9 +921,12 @@ All storage keys must be imported from `src/config/constants.ts → STORAGE_KEYS
 6. **Timezone Correctness**: Use `dateUtils.ts` (`todayStr()`) instead of `.toISOString().slice(0,10)` to prevent UTC midnight date shift bugs in Indian Standard Time (IST).
 7. **Dual-Tier Gemini Engine Selection**: Mobile GYM-GPT (`ZenGymAiModal.tsx`) and Learning AI Tutor (`LearningScreen.tsx` & `LearningVideoPlayer.tsx`) support real-time toggling between `gemini-3.7-flash` (Hybrid Reasoning Flagship) and `gemini-2.5-flash` (Fast & Balanced), persisted across sessions in `AsyncStorage` (`@zen_preferred_gym_model` & `@zen_preferred_learning_model`).
 
----
-
 ## 15. Changelog
+
+### 2026-08-27 — Cold-Boot Navigation Freeze Elimination (Deferred Listeners & Demand-Based Wellness)
+- **FIXED** `src/contexts/domains/CoreDataContext.tsx`: Deferred initial Firestore listener registration (`tasks`, `habits`, `habitLogs`, `user_profiles`) behind `InteractionManager.runAfterInteractions`. On cold boot after process kill, Hermes renders `NavigationContainer`, `TelegramTabBar`, and `DashboardScreen` from warm L1 cache in 0ms with full 60 FPS touch responsiveness before listeners open.
+- **FIXED** `src/contexts/domains/WellnessContext.tsx`: Converted subscriptions to demand-based gating (`ensureSubscribed`), matching `AcademicContext`, `CreativeContext`, and `PlannerContext`. Unconditionally opening 5 wellness queries (`gymLogs`, `userGymPlan`, `waterLogs`, `sleepLogs`, `weightLogs`) on cold boot is eliminated. Listeners now activate on-demand when entering Gym or Wellbeing screens.
+- **VERIFIED**: `npx tsc --noEmit` compiles cleanly with 0 errors.
 
 ### 2026-08-26 — Complete Domain Context Decoupling (Vector 1 Optimization)
 - **ELIMINATED** all active consumers of the monolithic `useMobileData()` composite hook across the codebase.

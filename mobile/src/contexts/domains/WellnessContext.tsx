@@ -240,13 +240,13 @@ export function WellnessProvider({
   }, [scheduleListenerRestart]);
 
 
-  // Reset or open on user change.
+  // Reset or open on user change — demand-based subscription matching Academic/Creative/Planner contexts.
   // subscriptionVersion is included so a listener error retry (scheduleListenerRestart)
-  // cleanly re-runs this effect and re-opens all subscriptions.
+  // cleanly re-runs this effect and re-opens all subscriptions if already subscribed.
   useEffect(() => {
-    if (user) {
+    if (user && subscribedRef.current) {
       openSubscriptions(user.uid);
-    } else {
+    } else if (!user) {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
@@ -267,7 +267,7 @@ export function WellnessProvider({
 
   const ensureSubscribed = useCallback(() => {
     if (user && !subscribedRef.current) openSubscriptions(user.uid);
-  }, [user, openSubscriptions]);
+  }, [user?.uid, openSubscriptions]);
 
   const updateMasterPlan = async (dayIndex: number, planDay: GymPlanDay) => {
     if (!user) return;
