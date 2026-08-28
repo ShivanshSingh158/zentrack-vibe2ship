@@ -20,6 +20,7 @@ export default function GymStack() {
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
+        animation: 'none',
         contentStyle: { backgroundColor: colors.background },
       }}
     >

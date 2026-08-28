@@ -53,7 +53,7 @@ const generateDates = (baseDateStr: string) => {
 
 export const TaskDateStrip = React.memo(function TaskDateStrip({ selectedDate, onSelectDate, taskDates, style }: TaskDateStripProps) {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors, isDark);
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const dates = useMemo(() => generateDates(selectedDate), [selectedDate]);
   
   // Extract month and year from the selected date (which is at index 3 in our -3 to +3 array)

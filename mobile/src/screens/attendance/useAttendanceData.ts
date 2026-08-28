@@ -28,22 +28,15 @@ export interface ConfirmConfig {
 
 export function useAttendanceData() {
   const { user } = useCoreData();
-  const { attendance: subjects, attendanceLogs: logs, ensureSubscribed } = useAcademicData();
+  const { attendance: subjects, attendanceLogs: logs, holidays = [], ensureSubscribed } = useAcademicData();
 
   useEffect(() => {
     // Defer Firestore subscription until after the tab-switch animation completes.
-    // Opening 5 listeners simultaneously on the JS thread during the transition
-    // causes a 1-2s freeze. InteractionManager releases the animation first, then subscribes.
     const handle = InteractionManager.runAfterInteractions(() => {
       ensureSubscribed?.();
     });
     return () => handle.cancel();
   }, [ensureSubscribed]);
-
-  // ── Core data from Firestore ────────────────────────────────────────────────
-
-  const [holidays, setHolidays] = useState<string[]>([]);
-
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [selectedDate,        setSelectedDate]        = useState<string>(getLocalDateString(new Date()));
@@ -60,44 +53,39 @@ export function useAttendanceData() {
   const [overrideCounts,      setOverrideCounts]       = useState({ classesAttended: 0, classesTotal: 0, labsAttended: 0, labsTotal: 0 });
   const [confirmConfig,       setConfirmConfig]        = useState<ConfirmConfig>({ visible: false, title: '', message: '', onConfirm: () => {} });
 
-  // ── Schema Migration ────────────────────────────────────────────────────────
+  // ── Schema Migration (Guarded & Deferred) ──────────────────────────────────
+  const hasMigratedRef = useRef(false);
   useEffect(() => {
-    if (!user || subjects.length === 0) return;
-    const batch = writeBatch(db);
-    let needsCommit = false;
-    subjects.forEach(sub => {
-      if ((sub.schemaVersion || 0) < SCHEMA_VERSION) {
-        const updates: any = { schemaVersion: SCHEMA_VERSION };
-        if (!sub.schedule) updates.schedule = defaultSchedule;
-        batch.update(doc(db, COLLECTION.ATTENDANCE, sub.id), updates);
-        needsCommit = true;
-      }
+    if (!user || subjects.length === 0 || hasMigratedRef.current) return;
+    hasMigratedRef.current = true;
+    InteractionManager.runAfterInteractions(() => {
+      const batch = writeBatch(db);
+      let needsCommit = false;
+      subjects.forEach(sub => {
+        if ((sub.schemaVersion || 0) < SCHEMA_VERSION) {
+          const updates: any = { schemaVersion: SCHEMA_VERSION };
+          if (!sub.schedule) updates.schedule = defaultSchedule;
+          batch.update(doc(db, COLLECTION.ATTENDANCE, sub.id), updates);
+          needsCommit = true;
+        }
+      });
+      if (needsCommit) batch.commit().catch(handleSyncError);
     });
-    if (needsCommit) batch.commit().catch(handleSyncError);
   }, [user?.uid, subjects]);
 
-  // ── Load Logs & Holidays ───────────────────────────────────────────────────
-  useEffect(() => {
-    if (!user) return;
-
-
-    const qHol = query(
-      collection(db, COLLECTION.ATTENDANCE_HOLIDAYS),
-      where('userId', '==', user.uid),
-    );
-    const unsubHol = onSnapshot(qHol, snap => {
-      setHolidays(snap.docs.map(d => (d.data() as any).date));
-    });
-
-    return () => { unsubHol(); };
-  }, [user?.uid]);
-
   // ── Derived values ─────────────────────────────────────────────────────────
-  // ── logsBySubjectId — indexed map (indexed by both subjectId & subjectName, sorted newest first) ──
+  // ── logsBySubjectId — indexed map (sorted newest first in a single pass) ──
   const logsBySubjectId = useMemo(() => {
     const map: Record<string, any[]> = {};
-    for (let i = 0; i < logs.length; i++) {
-      const log = logs[i];
+    if (!logs || logs.length === 0) return map;
+
+    // Single upfront sort by timestamp descending (much faster than N individual bucket sorts)
+    const sorted = logs.length > 1
+      ? [...logs].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      : logs;
+
+    for (let i = 0; i < sorted.length; i++) {
+      const log = sorted[i];
       const key1 = log.subjectId;
       const key2 = log.subjectName;
       if (key1) {
@@ -109,16 +97,12 @@ export function useAttendanceData() {
         map[key2].push(log);
       }
     }
-    // Ensure logs within each bucket are sorted with newest timestamp first
-    Object.keys(map).forEach(k => {
-      map[k].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    });
     return map;
   }, [logs]);
 
-  const selectedDayOfWeek = new Date(selectedDate + 'T00:00:00').getDay().toString();
-  const isSelectedHoliday = holidays.includes(selectedDate);
-  const today             = getLocalDateString(new Date());
+  const selectedDayOfWeek = useMemo(() => new Date(selectedDate + 'T00:00:00').getDay().toString(), [selectedDate]);
+  const isSelectedHoliday = useMemo(() => holidays.includes(selectedDate), [holidays, selectedDate]);
+  const today             = useMemo(() => getLocalDateString(new Date()), []);
   const weekDates         = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
 
   const todayScheduledSubjects = useMemo(() => {

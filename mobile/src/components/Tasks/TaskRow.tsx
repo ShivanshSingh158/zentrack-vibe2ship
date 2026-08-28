@@ -99,7 +99,7 @@ const getFormatSubtext = (task: Task, isOverdue: boolean, colors: any) => {
 
 const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart, onReschedule, onPress, onLongPress, isOverdue, isBulkEdit, isSelected, onToggleSelect, onUpdateTask, onAddSubtask }: TaskRowProps) {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors, isDark);
+  const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
   const swipeableRef = useRef<Swipeable>(null);
   const checkScale = useSharedValue(1);

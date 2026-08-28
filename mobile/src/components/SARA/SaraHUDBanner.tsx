@@ -37,37 +37,36 @@ export default function SaraHUDBanner({
   onAction,
 }: SaraHUDBannerProps) {
   const { colors } = useTheme();
-  const translateY = useRef(new Animated.Value(-80)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
+  const heightAnim = useRef(new Animated.Value(visible ? 46 : 0)).current;
+  const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
   const [isHidden, setIsHidden] = React.useState(!visible);
 
   useEffect(() => {
     if (visible) {
       setIsHidden(false);
       Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          tension: 70,
-          friction: 11,
-          useNativeDriver: true,
+        Animated.timing(heightAnim, {
+          toValue: 46,
+          duration: 240,
+          useNativeDriver: false,
         }),
         Animated.timing(opacity, {
           toValue: 1,
           duration: 220,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]).start();
     } else {
       Animated.parallel([
-        Animated.timing(translateY, {
-          toValue: -80,
-          duration: 220,
-          useNativeDriver: true,
+        Animated.timing(heightAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: false,
         }),
         Animated.timing(opacity, {
           toValue: 0,
           duration: 180,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]).start(() => {
         setIsHidden(true);
@@ -95,8 +94,9 @@ export default function SaraHUDBanner({
         {
           backgroundColor: colors.surface,
           borderBottomColor: colors.accentPrimary + '30',
-          transform: [{ translateY }],
+          maxHeight: heightAnim,
           opacity,
+          overflow: 'hidden',
         },
       ]}
     >

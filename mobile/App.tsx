@@ -4,7 +4,6 @@ import React from 'react';
 import { View, ActivityIndicator, LogBox, AppState, AppStateStatus, InteractionManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
-import { PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 import { OfflineIndicator } from './src/components/OfflineIndicator';
@@ -20,6 +19,9 @@ import { enableScreens, enableFreeze } from 'react-native-screens';
 enableFreeze(false);
 
 import { setupNetworkListener } from './src/services/offlineSync';
+import { setupLifecycleHygiene } from './src/services/lifecycleHygiene';
+import { registerDeferredOtaSync } from './src/services/otaUpdateService';
+import { loadBootManifest } from './src/utils/bootManifest';
 import { PortalProvider } from './src/contexts/PortalContext';
 import { registerBackgroundProactiveAgent } from './src/services/backgroundProactiveAgent';
 import { registerWeeklyReviewTask } from './src/services/backgroundTasks';
@@ -102,23 +104,32 @@ function ThemedAppContainer() {
 }
 
 export default function App() {
-  // DEBUG — REMOVE AFTER DIAGNOSIS
-  console.log(`[BOOT-DIAG] App() render at dt=${Date.now() - _BOOT_T0}ms`);
-
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    PlayfairDisplay_600SemiBold,
   });
 
-  // DEBUG — REMOVE AFTER DIAGNOSIS
-  if (fontsLoaded) console.log(`[BOOT-DIAG] Fonts loaded at dt=${Date.now() - _BOOT_T0}ms`);
+  const [manifestReady, setManifestReady] = React.useState(false);
 
-  // PERF: All 4 service registrations deferred behind InteractionManager + 3.5s timeout.
-  // These have zero effect on Frame 0/1 — they only set up background OS tasks.
-  // Deferring frees ~150–250ms of native bridge blocking right when the app opens.
+  React.useEffect(() => {
+    let isMounted = true;
+    // Pre-warm the unified boot manifest with a 150ms hard timeout guard.
+    // The native splash screen remains visible (preventAutoHideAsync) so the user
+    // experiences a 100% seamless transition directly to the ready Dashboard.
+    Promise.race([
+      loadBootManifest(),
+      new Promise<void>(resolve => setTimeout(resolve, 150)),
+    ]).finally(() => {
+      if (isMounted) setManifestReady(true);
+    });
+
+    return () => { isMounted = false; };
+  }, []);
+
+  // PERF: Background service registrations deferred to 6.0s.
+  // These have zero effect on startup frames and setting them late keeps the C++ bridge 100% free.
   React.useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => {
       const timer = setTimeout(() => {
@@ -126,18 +137,24 @@ export default function App() {
         registerBackgroundNotificationFetch();
         registerBackgroundProactiveAgent();
         registerWeeklyReviewTask();
-      }, 3500);
+      }, 6000);
       return () => clearTimeout(timer);
     });
     return () => handle.cancel();
   }, []);
 
 
-  // Drain ALL queued offline writes (tasks, habits, notes, goals, gym logs)
-  // as soon as connectivity is restored, and also on boot if already online.
+
+  // Drain ALL queued offline writes & register deferred background OTA updates
   React.useEffect(() => {
-    const unsubscribe = setupNetworkListener();
-    return () => unsubscribe();
+    const unsubscribeNet = setupNetworkListener();
+    const unsubscribeLifecycle = setupLifecycleHygiene();
+    const unsubscribeOta = registerDeferredOtaSync();
+    return () => {
+      unsubscribeNet();
+      unsubscribeLifecycle();
+      unsubscribeOta();
+    };
   }, []);
 
   // ─── Notification Response Handler ─────────────────────────────────────────
@@ -557,6 +574,11 @@ export default function App() {
 
     return () => sub.remove();
   }, []);
+
+  // Native splash screen stays visible until fonts AND manifest are 100% warm
+  if (!fontsLoaded || !manifestReady) {
+    return null;
+  }
 
   return (
     <ThemeProvider>

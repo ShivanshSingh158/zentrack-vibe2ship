@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, ScrollView,
   Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Animated
@@ -26,7 +26,6 @@ import { FONT_FAMILY, SPACE, RADIUS, SHADOW, FONT_SIZE } from '../theme/tokens';
 import { makeStyles } from './attendance/attendanceStyles';
 import { useAttendanceData } from './attendance/useAttendanceData';
 import { useAttendanceFirestore } from './attendance/useAttendanceFirestore';
-import { useAttendanceExport } from './attendance/useAttendanceExport';
 import { HorizontalWeekStrip } from './attendance/HorizontalWeekStrip';
 import ErrorBoundary from '../components/ErrorBoundary';
 import EmptyState from '../components/ui/EmptyState';
@@ -435,7 +434,7 @@ const AttendanceHistoryRow = React.memo(function AttendanceHistoryRow({
 
 export default function AttendanceScreen() {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors, isDark);
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const insets = useSafeAreaInsets();
 
   // Helper for theme-aware progress colors
@@ -515,10 +514,6 @@ export default function AttendanceScreen() {
     handleApplyOverride, handleResetSemester
   } = firestoreActions;
 
-  // 3. Export Hook
-  const exportActions = useAttendanceExport(logs, holidays, subjects);
-  const { handleExportCSV } = exportActions;
-
   // Memoized & strictly sorted history logs (Today -> Oldest, timestamp secondary)
   const sortedHistoryLogs = React.useMemo(() => {
     if (!selectedHistorySubject) return [];
@@ -581,6 +576,93 @@ export default function AttendanceScreen() {
       />
     );
   }, [logsBySubjectId, selectedDate, colors, isDark, styles, handleUndo, handleLog]);
+
+  const listHeader = useMemo(() => (
+    <>
+      {/* ── Semester Overview ── */}
+      <View style={{ marginBottom: 0 }}>
+        <View style={styles.overviewCard}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={styles.overviewTitle}>Semester overview</Text>
+            <Text style={styles.overviewStats}>{globalAttended}/{globalTotal} classes</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <Text style={[styles.overviewPct, { color: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.error)) : colors.textMuted }]}>
+              {globalPct !== null ? `${Math.round(globalPct)}%` : '--%'}
+            </Text>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: `${Math.min(100, globalPct || 0)}%`, backgroundColor: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.error)) : colors.border }]} />
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* ── Warnings ── */}
+      {warningSubjects.length > 0 && (
+        <View style={styles.warningBanner}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="warning-outline" size={16} color={isDark ? "#f59e0b" : "#D97706"} />
+              <Text style={styles.warningTitle}>Low attendance</Text>
+            </View>
+            <TouchableOpacity onPress={() => setDismissedWarnings(new Set(warningSubjects.map(s => s.id!)))}>
+              <Ionicons name="close" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+          <View style={{ marginTop: 6, gap: 4 }}>
+            {warningSubjects.map(s => {
+              const att = (s.classesAttended || 0) + (s.labsAttended || 0);
+              const tot = (s.classesTotal || 0) + (s.labsTotal || 0);
+              const pct = tot > 0 ? Math.round((att/tot)*100) : 0;
+              const targetPct = s.targetPercentage || 75;
+              const need = Math.max(0, Math.ceil((targetPct * tot - 100 * att) / (100 - targetPct)));
+              return (
+                <Text key={s.id} style={styles.warningText}>
+                  {s.name} at {pct}% — attend {need} more to recover
+                </Text>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
+      {/* ── Swipeable Horizontal Week Strip ── */}
+      <HorizontalWeekStrip
+        selectedDate={selectedDate}
+        onSelectDate={setSelectedDate}
+        holidays={holidays}
+        today={today}
+        logs={logs}
+      />
+
+      {/* ── Daily Schedule ── */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 2, marginTop: 4, marginBottom: 10 }}>
+        <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>TODAY'S CLASSES</Text>
+        <TouchableOpacity onPress={() => setIsExtraOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Text style={{ fontSize: 12, color: colors.accentPrimary || '#38BDF8', fontWeight: '600' }}>Extra class +</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  ), [globalAttended, globalTotal, globalPct, warningSubjects, selectedDate, holidays, today, logs, colors, isDark, styles]);
+
+  const listFooter = useMemo(() => {
+    if (todayScheduledSubjects.length === 0 || isSelectedHoliday) return null;
+    return (
+      <View style={{ marginTop: 20, marginBottom: 56 }}>
+        <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, paddingHorizontal: 2 }}>BY SUBJECT</Text>
+        {todayScheduledSubjects.map(subject => (
+          <SubjectSummaryRow
+            key={subject.id}
+            subject={subject}
+            colors={colors}
+            isDark={isDark}
+            styles={styles}
+            onPress={() => setSelectedHistorySubject(subject)}
+          />
+        ))}
+      </View>
+    );
+  }, [todayScheduledSubjects, isSelectedHoliday, colors, isDark, styles]);
 
   return (
     <View style={styles.root}>
@@ -651,6 +733,10 @@ export default function AttendanceScreen() {
           data={isSelectedHoliday ? [] : todayFlatSessions}
           keyExtractor={item => item.id}
           showsVerticalScrollIndicator={false}
+          removeClippedSubviews={Platform.OS === 'android'}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={5}
           contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 120, paddingTop: insets.top + 54 }}
           onScroll={(e: any) => {
             const y = e?.nativeEvent?.contentOffset?.y ?? 0;
@@ -677,104 +763,22 @@ export default function AttendanceScreen() {
             }
           }}
           scrollEventThrottle={16}
-          ListHeaderComponent={
-          <>
-            {/* ── Semester Overview ── */}
-            <View style={{ marginBottom: 0 }}>
-              <View style={styles.overviewCard}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={styles.overviewTitle}>Semester overview</Text>
-                  <Text style={styles.overviewStats}>{globalAttended}/{globalTotal} classes</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                  <Text style={[styles.overviewPct, { color: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.error)) : colors.textMuted }]}>
-                    {globalPct !== null ? `${Math.round(globalPct)}%` : '--%'}
-                  </Text>
-                  <View style={styles.progressBarBg}>
-                    <View style={[styles.progressBarFill, { width: `${Math.min(100, globalPct || 0)}%`, backgroundColor: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.error)) : colors.border }]} />
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            {/* ── Warnings ── */}
-            {warningSubjects.length > 0 && (
-              <View style={styles.warningBanner}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Ionicons name="warning-outline" size={16} color={isDark ? "#f59e0b" : "#D97706"} />
-                    <Text style={styles.warningTitle}>Low attendance</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => setDismissedWarnings(new Set(warningSubjects.map(s => s.id!)))}>
-                    <Ionicons name="close" size={16} color={colors.textMuted} />
-                  </TouchableOpacity>
-                </View>
-                <View style={{ marginTop: 6, gap: 4 }}>
-                  {warningSubjects.map(s => {
-                    const att = (s.classesAttended || 0) + (s.labsAttended || 0);
-                    const tot = (s.classesTotal || 0) + (s.labsTotal || 0);
-                    const pct = tot > 0 ? Math.round((att/tot)*100) : 0;
-                    const targetPct = s.targetPercentage || 75;
-                    const need = Math.max(0, Math.ceil((targetPct * tot - 100 * att) / (100 - targetPct)));
-                    return (
-                      <Text key={s.id} style={styles.warningText}>
-                        {s.name} at {pct}% — attend {need} more to recover
-                      </Text>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-
-            {/* ── Swipeable Horizontal Week Strip ── */}
-            <HorizontalWeekStrip
-              selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
-              holidays={holidays}
-              today={today}
-              logs={logs}
+          ListHeaderComponent={listHeader}
+          ListEmptyComponent={
+            <EmptyState
+              style={{ marginTop: 0 }}
+              mascot="idle"
+              title={isSelectedHoliday ? "Holiday 🌴" : "All clear!"}
+              subtitle={isSelectedHoliday ? "Enjoy your day off. No classes today." : "No classes scheduled for this day. Relax or catch up on work."}
+              action={subjects.length === 0 ? {
+                label: "Setup Timetable",
+                onPress: () => setIsTimetableOpen(true)
+              } : undefined}
             />
-
-            {/* ── Daily Schedule ── */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 2, marginTop: 4, marginBottom: 10 }}>
-              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>TODAY'S CLASSES</Text>
-              <TouchableOpacity onPress={() => setIsExtraOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={{ fontSize: 12, color: colors.accentPrimary || '#38BDF8', fontWeight: '600' }}>Extra class +</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        }
-        ListEmptyComponent={
-          <EmptyState
-            style={{ marginTop: 0 }}
-            mascot="idle"
-            title={isSelectedHoliday ? "Holiday 🌴" : "All clear!"}
-            subtitle={isSelectedHoliday ? "Enjoy your day off. No classes today." : "No classes scheduled for this day. Relax or catch up on work."}
-            action={subjects.length === 0 ? {
-              label: "Setup Timetable",
-              onPress: () => setIsTimetableOpen(true)
-            } : undefined}
-          />
-        }
-        renderItem={renderItem}
-        ListFooterComponent={
-          todayScheduledSubjects.length > 0 && !isSelectedHoliday ? (
-            <View style={{ marginTop: 20, marginBottom: 56 }}>
-              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, paddingHorizontal: 2 }}>BY SUBJECT</Text>
-              {todayScheduledSubjects.map(subject => (
-                <SubjectSummaryRow
-                  key={subject.id}
-                  subject={subject}
-                  colors={colors}
-                  isDark={isDark}
-                  styles={styles}
-                  onPress={() => setSelectedHistorySubject(subject)}
-                />
-              ))}
-            </View>
-          ) : null
-        }
-      />
+          }
+          renderItem={renderItem}
+          ListFooterComponent={listFooter}
+        />
 
       {/* ── Modals ── */}
 
@@ -788,7 +792,6 @@ export default function AttendanceScreen() {
           setEditSubject={setEditSubject}
           setShowAddModal={setShowAddModal}
           handleDeleteSubject={handleDeleteSubject}
-          handleExportCSV={handleExportCSV}
           handleResetSemester={handleResetSemester}
         />
       )}

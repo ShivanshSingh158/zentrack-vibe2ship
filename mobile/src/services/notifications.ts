@@ -1550,6 +1550,10 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
             } as any,
           });
           scheduledCount++;
+          // Micro-yield every 4 notifications to keep native C++ bridge queue free and fluid (60 FPS)
+          if (scheduledCount % 4 === 0) {
+            await new Promise(r => setTimeout(r, 15));
+          }
         } catch (e) {
           console.warn('[Notifications] Failed to schedule notification:', e);
         }

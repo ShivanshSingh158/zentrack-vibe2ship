@@ -9,7 +9,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AnimatedPressable from '../components/AnimatedPressable';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
@@ -17,6 +17,7 @@ import { triggerLayoutAnimation } from '../theme/animations';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { BlurView } from 'expo-blur';
 import { useTheme } from "../contexts/ThemeContext";
+import { DynamicCalendarIcon } from '../components/ui/DynamicCalendarIcon';
 
 // ─── Module Definitions ───────────────────────────────────────────────────────
 
@@ -24,20 +25,21 @@ type ModuleDef = {
   id: string;
   name: string;
   icon: string;
+  iconSet?: 'ionicons' | 'mci';
   colorDark: string;
   colorLight: string;
 };
 
 const ALL_MODULES_DEF: ModuleDef[] = [
   { id: 'Tasks',       name: 'Tasks',       icon: 'checkmark-circle', colorDark: '#34C759', colorLight: '#059669' },
-  { id: 'Habits',      name: 'Habits',      icon: 'flame',            colorDark: '#FF9500', colorLight: '#D97706' },
-  { id: 'Calendar',    name: 'Calendar',    icon: 'calendar-clear',   colorDark: '#FF3B30', colorLight: '#DC2626' },
-  { id: 'Notes',       name: 'Notes Vault', icon: 'document-text',    colorDark: '#FFD60A', colorLight: '#D97706' },
+  { id: 'Habits',      name: 'Habits',      icon: 'sync',             colorDark: '#FF9500', colorLight: '#D97706' },
+  { id: 'Calendar',    name: 'Calendar',    icon: 'calendar-number',  colorDark: '#FF453A', colorLight: '#DC2626' },
+  { id: 'Notes',       name: 'Notes Vault', icon: 'folder',           colorDark: '#FFD60A', colorLight: '#D97706' },
   { id: 'Attendance',  name: 'Attendance',  icon: 'id-card',          colorDark: '#5856D6', colorLight: '#6C5CE7' },
   { id: 'Assignments', name: 'Assignments', icon: 'clipboard',        colorDark: '#A855F7', colorLight: '#7C3AED' },
   { id: 'Grades',      name: 'Grades',      icon: 'calculator',       colorDark: '#8E8E93', colorLight: '#6C5CE7' },
   { id: 'Learning',    name: 'Learning',    icon: 'library',          colorDark: '#00C7BE', colorLight: '#0284C7' },
-  { id: 'Gym',         name: 'Gym Log',     icon: 'barbell',          colorDark: '#32ADE6', colorLight: '#D97706' },
+  { id: 'Gym',         name: 'Gym Log',     icon: 'arm-flex', iconSet: 'mci', colorDark: '#32ADE6', colorLight: '#0284C7' },
   { id: 'Analytics',   name: 'Analytics',   icon: 'bar-chart',        colorDark: '#007AFF', colorLight: '#0284C7' },
 ];
 
@@ -48,7 +50,7 @@ const DEFAULT_PINNED_MODULES = ['Tasks', 'Gym', 'Calendar', 'Attendance'];
 export default function MoreScreen() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const styles = makeStyles(colors, isDark, insets);
+  const styles = useMemo(() => makeStyles(colors, isDark, insets), [colors, isDark, insets.top, insets.bottom]);
   const navigation = useNavigation<any>();
   const { pinnedModules, setPinnedModules } = useCoreData();
 
@@ -109,6 +111,7 @@ export default function MoreScreen() {
       id: m.id,
       name: m.name,
       icon: m.icon,
+      iconSet: m.iconSet,
       color: isDark ? m.colorDark : m.colorLight,
     }));
   }, [isDark]);
@@ -197,15 +200,26 @@ export default function MoreScreen() {
                     haptic="none"
                     onPress={() => handleModulePress(mod.id)}
                   >
-                    <View style={[
-                      styles.gridIconBox,
-                      isEditing && isSelected && { borderColor: colors.accentPrimary, borderWidth: 2 },
-                    ]}>
-                      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: mod.color, opacity: isDark ? 0.16 : 0.12 }]} />
-                      <Ionicons name={mod.icon as any} size={26} color={mod.color} />
+                    <View style={{ position: 'relative' }}>
+                      <View style={[
+                        styles.gridIconBox,
+                        isEditing && isSelected && { borderColor: colors.accentPrimary, borderWidth: 2 },
+                      ]}>
+                        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: mod.color, opacity: isDark ? 0.16 : 0.12 }]} />
+                        {mod.id === 'Calendar' ? (
+                          <DynamicCalendarIcon size={26} color={mod.color} />
+                        ) : mod.iconSet === 'mci' ? (
+                          <MaterialCommunityIcons name={mod.icon as any} size={26} color={mod.color} />
+                        ) : (
+                          <Ionicons name={mod.icon as any} size={26} color={mod.color} />
+                        )}
+                      </View>
+
                       {isEditing && isSelected && (
                         <View style={styles.selectedBadge}>
-                          <Ionicons name="checkmark" size={12} color={isDark ? '#000000' : '#FFFFFF'} />
+                          <Text style={styles.selectedBadgeText}>
+                            {selected.indexOf(mod.id) + 1}
+                          </Text>
                         </View>
                       )}
                     </View>
@@ -351,15 +365,28 @@ const makeStyles = (colors: any, isDark: boolean = true, insets: any = { bottom:
   },
   selectedBadge: {
     position: 'absolute', 
-    top: -4, 
-    right: -4,
-    width: 20, 
-    height: 20, 
-    borderRadius: 10,
+    top: -5, 
+    right: -5,
+    width: 22, 
+    height: 22, 
+    borderRadius: 11,
     backgroundColor: colors.accentPrimary,
     alignItems: 'center', 
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: isDark ? '#000000' : '#FFFFFF',
+    borderColor: isDark ? '#1C1C1E' : '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 8,
+    zIndex: 20,
+  },
+  selectedBadgeText: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.bold,
+    color: isDark ? '#000000' : '#FFFFFF',
+    textAlign: 'center',
+    includeFontPadding: false,
   },
 });

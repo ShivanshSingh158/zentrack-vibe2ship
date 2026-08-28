@@ -15,7 +15,6 @@ import Svg, { Circle, Path, Defs, LinearGradient as SvgLinearGradient, Stop, Lin
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useNavigation } from '@react-navigation/native';
-import { SCREENS } from '../config/constants';
 import * as Haptics from 'expo-haptics';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { useWellnessData } from '../contexts/domains/WellnessContext';

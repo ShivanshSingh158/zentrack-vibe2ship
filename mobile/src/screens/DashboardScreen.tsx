@@ -26,6 +26,7 @@ import QuickCaptureSheet from '../components/Dashboard/QuickCaptureSheet';
 import DashboardLayoutSheet from '../components/Dashboard/DashboardLayoutSheet';
 import WaterLogSheet from '../components/Dashboard/WaterLogSheet';
 import FlashcardReviewModal from '../components/Learning/FlashcardReviewModal';
+import { ActiveRecallBanner } from '../components/Dashboard/ActiveRecallBanner';
 import { getDueFlashcards, Flashcard } from '../services/flashcardService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useOfflineStatus } from '../hooks/useOfflineStatus';
@@ -33,7 +34,7 @@ import { areItemsEqual } from '../utils/schemaGuards';
 
 export default function DashboardScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { isOffline, queueCount, recentlySynced } = useOfflineStatus();
@@ -47,10 +48,25 @@ export default function DashboardScreen() {
   const [flashcardModalVisible, setFlashcardModalVisible] = useState(false);
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
 
+  // Pre-seed due flashcards on Frame 0 from local storage so the banner doesn't jump the layout at 3.0s
+  useEffect(() => {
+    AsyncStorage.getItem('@zentrack_cache_due_flashcards').then(raw => {
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setDueFlashcards(parsed);
+          }
+        } catch (_) {}
+      }
+    }).catch(() => {});
+  }, []);
+
   const refreshFlashcards = useCallback(async () => {
     if (data.user?.uid) {
       const cards = await getDueFlashcards(data.user.uid);
       setDueFlashcards(prev => areItemsEqual(prev, cards) ? prev : cards);
+      AsyncStorage.setItem('@zentrack_cache_due_flashcards', JSON.stringify(cards)).catch(() => {});
       
       // Check if current cards have been dismissed
       try {
@@ -403,105 +419,14 @@ export default function DashboardScreen() {
           </Animated.View>
 
           {/* ⚡ 3-Minute Active Recall Due Widget */}
-          {dueFlashcards.length > 0 && !isBannerDismissed && (
-            <Animated.View entering={FadeInDown.duration(200)} style={{ marginTop: 12, marginBottom: 6 }}>
-              <View
-                style={{
-                  backgroundColor: colors.surface,
-                  borderRadius: 18,
-                  paddingHorizontal: 14,
-                  paddingVertical: 12,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: isDark ? 0.3 : 0.06,
-                  shadowRadius: 8,
-                  elevation: 4,
-                }}
-              >
-                {/* Left Flash Icon */}
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setFlashcardModalVisible(true);
-                  }}
-                  style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 12,
-                    backgroundColor: colors.accentDim,
-                    borderWidth: 1,
-                    borderColor: colors.accentPrimary + '30',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginRight: 12,
-                  }}
-                >
-                  <Ionicons name="flash" size={18} color={colors.accentPrimary} />
-                </TouchableOpacity>
-
-                {/* Middle Text Column (Generous space, no XP badge overlap) */}
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={{ flex: 1, minWidth: 0, paddingRight: 6 }}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setFlashcardModalVisible(true);
-                  }}
-                >
-                  <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.textPrimary, fontSize: 13.5, letterSpacing: -0.2 }}>
-                    3-Min Active Recall
-                  </Text>
-                  <Text style={{ color: colors.textTertiary, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 2 }} numberOfLines={1}>
-                    {dueFlashcards.length} flashcard{dueFlashcards.length > 1 ? 's' : ''} scheduled
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Right Action Cluster: Review Button + Close (✕) Button */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    style={{
-                      backgroundColor: isDark ? '#FFFFFF' : colors.accentPrimary,
-                      paddingHorizontal: 12,
-                      paddingVertical: 7,
-                      borderRadius: 12,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 3,
-                    }}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setFlashcardModalVisible(true);
-                    }}
-                  >
-                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF', fontFamily: FONT_FAMILY.bold, fontSize: 12 }}>Review</Text>
-                    <Ionicons name="chevron-forward" size={12} color={isDark ? '#000000' : '#FFFFFF'} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-                    style={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: 13,
-                      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                    onPress={handleDismissBanner}
-                  >
-                    <Ionicons name="close" size={14} color={colors.textMuted} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </Animated.View>
-          )}
+          <ActiveRecallBanner
+            dueFlashcards={dueFlashcards}
+            isBannerDismissed={isBannerDismissed}
+            onPressReview={() => setFlashcardModalVisible(true)}
+            onDismiss={handleDismissBanner}
+            colors={colors}
+            isDark={isDark}
+          />
 
           {data.layout.map((layoutItem) => {
             if (layoutItem.hidden) return null;

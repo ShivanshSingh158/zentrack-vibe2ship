@@ -406,7 +406,7 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
           }).catch(console.warn);
         });
       });
-    }, 5000); // 5s debounce window absorbs burst writes and runs strictly off-interaction
+    }, 8000); // 8s debounce window absorbs burst writes and runs strictly off-interaction
     return () => {
       if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
     };

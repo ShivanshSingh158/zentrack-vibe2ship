@@ -9,28 +9,30 @@ import Animated, {
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY } from '../../theme/tokens';
 import { useTabBarBadges } from '../../hooks/useTabBarBadges';
+import { DynamicCalendarIcon } from '../ui/DynamicCalendarIcon';
 
 // ─── Module Icons Configuration ───────────────────────────────────────────────
 export const SPOTIFY_TAB_CONFIG: Record<string, {
   name: string;
-  activeIcon: keyof typeof Ionicons.glyphMap;
-  inactiveIcon: keyof typeof Ionicons.glyphMap;
+  activeIcon: any;
+  inactiveIcon: any;
+  iconSet?: 'ionicons' | 'mci';
 }> = {
   Home:       { name: 'Home',       activeIcon: 'home',             inactiveIcon: 'home-outline' },
   Tasks:      { name: 'Tasks',      activeIcon: 'checkmark-circle', inactiveIcon: 'checkmark-circle-outline' },
-  Gym:        { name: 'Gym',        activeIcon: 'barbell',          inactiveIcon: 'barbell-outline' },
-  Calendar:   { name: 'Calendar',   activeIcon: 'calendar-clear',   inactiveIcon: 'calendar-clear-outline' },
-  Habits:     { name: 'Habits',     activeIcon: 'flame',            inactiveIcon: 'flame-outline' },
+  Gym:        { name: 'Gym',        activeIcon: 'arm-flex',         inactiveIcon: 'arm-flex-outline', iconSet: 'mci' },
+  Calendar:   { name: 'Cal',        activeIcon: 'calendar-number',  inactiveIcon: 'calendar-number-outline' },
+  Habits:     { name: 'Habits',     activeIcon: 'sync',             inactiveIcon: 'sync-outline' },
   Attendance:  { name: 'Attend',     activeIcon: 'id-card',          inactiveIcon: 'id-card-outline' },
   Assignments: { name: 'Assign',     activeIcon: 'clipboard',        inactiveIcon: 'clipboard-outline' },
   Grades:      { name: 'Grades',     activeIcon: 'calculator',       inactiveIcon: 'calculator-outline' },
   Learning:   { name: 'Learn',      activeIcon: 'library',          inactiveIcon: 'library-outline' },
-  Notes:      { name: 'Notes',      activeIcon: 'document-text',    inactiveIcon: 'document-text-outline' },
+  Notes:      { name: 'Notes',      activeIcon: 'folder',           inactiveIcon: 'folder-outline' },
   Analytics:  { name: 'Stats',      activeIcon: 'bar-chart',        inactiveIcon: 'bar-chart-outline' },
   Sara:       { name: 'SARA',       activeIcon: 'planet',           inactiveIcon: 'planet-outline' },
   More:       { name: 'More',       activeIcon: 'apps',             inactiveIcon: 'apps-outline' },
@@ -68,20 +70,17 @@ const TabItem = React.memo(function TabItem({
   };
 
   const scale = useSharedValue(isFocused ? 1.05 : 1);
-  const pressScale = useSharedValue(1);
 
   useEffect(() => {
-    if (isFocused) {
-      scale.value = withSpring(0.92, { damping: 16, stiffness: 350, mass: 0.7 }, () => {
-        scale.value = withSpring(1.05, { damping: 14, stiffness: 280, mass: 0.7 });
-      });
-    } else {
-      scale.value = withSpring(1, { damping: 15, stiffness: 280, mass: 0.7 });
-    }
+    scale.value = withSpring(isFocused ? 1.05 : 1, {
+      damping: 22,
+      stiffness: 480,
+      mass: 0.5,
+    });
   }, [isFocused]);
 
   const animatedIconStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value * pressScale.value }],
+    transform: [{ scale: scale.value }],
   }));
 
   const handlePress = useCallback(() => {
@@ -104,23 +103,32 @@ const TabItem = React.memo(function TabItem({
       accessibilityRole="button"
       accessibilityState={isFocused ? { selected: true } : {}}
       onPress={handlePress}
-      onPressIn={() => {
-        pressScale.value = withTiming(0.92, { duration: 50 });
-      }}
-      onPressOut={() => {
-        pressScale.value = withSpring(1, { damping: 14, stiffness: 320 });
-      }}
+      unstable_pressDelay={0}
       style={styles.tabButton}
       android_ripple={null}
     >
       <View style={styles.tabContent}>
         {/* Perfectly proportioned 24px icon for 6-tab balance */}
         <Animated.View style={[styles.iconBox, animatedIconStyle]}>
-          <Ionicons
-            name={isFocused ? config.activeIcon : config.inactiveIcon}
-            size={24}
-            color={isFocused ? activeColor : inactiveColor}
-          />
+          {route.name === 'Calendar' ? (
+            <DynamicCalendarIcon
+              size={24}
+              color={isFocused ? activeColor : inactiveColor}
+              isFilled={isFocused}
+            />
+          ) : config.iconSet === 'mci' ? (
+            <MaterialCommunityIcons
+              name={isFocused ? (config.activeIcon as any) : (config.inactiveIcon as any)}
+              size={24}
+              color={isFocused ? activeColor : inactiveColor}
+            />
+          ) : (
+            <Ionicons
+              name={isFocused ? config.activeIcon : config.inactiveIcon}
+              size={24}
+              color={isFocused ? activeColor : inactiveColor}
+            />
+          )}
 
           {/* Discrete notification badge */}
           {badge !== undefined && badge > 0 && (
@@ -331,9 +339,10 @@ const styles = StyleSheet.create({
   tabsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     height: 48,
     backgroundColor: 'transparent',
+    paddingHorizontal: 2,
   },
   tabButton: {
     flex: 1,
@@ -342,8 +351,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: '100%',
     backgroundColor: 'transparent',
+    paddingHorizontal: 0,
   },
   tabContent: {
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -354,9 +365,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabLabel: {
-    fontSize: 10.5,
+    fontSize: 10,
     marginTop: 2,
-    letterSpacing: 0.1,
+    letterSpacing: 0,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   badge: {
     position: 'absolute',

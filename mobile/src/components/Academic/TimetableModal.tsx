@@ -14,7 +14,6 @@ interface TimetableModalProps {
   setEditSubject: (subject: Subject) => void;
   setShowAddModal: (show: boolean) => void;
   handleDeleteSubject: (id: string, name: string) => void;
-  handleExportCSV: () => void;
   handleResetSemester: () => void;
 }
 
@@ -26,7 +25,6 @@ export const TimetableModal = React.memo(({
   setEditSubject,
   setShowAddModal,
   handleDeleteSubject,
-  handleExportCSV,
   handleResetSemester,
 }: TimetableModalProps) => {
   const { colors, isDark } = useTheme();
@@ -114,15 +112,6 @@ export const TimetableModal = React.memo(({
           ListFooterComponent={
             subjects.length > 0 ? (
               <View style={styles.footerRow}>
-                <TouchableOpacity
-                  onPress={handleExportCSV}
-                  activeOpacity={0.8}
-                  style={[styles.footerActionBtn, styles.exportBtn]}
-                >
-                  <Ionicons name="download-outline" size={16} color={colors.priorityLow} />
-                  <Text style={styles.exportBtnText}>Export CSV</Text>
-                </TouchableOpacity>
-
                 <TouchableOpacity
                   onPress={handleResetSemester}
                   activeOpacity={0.8}
@@ -292,15 +281,6 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     paddingVertical: 14,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-  },
-  exportBtn: {
-    backgroundColor: isDark ? 'rgba(94,218,158,0.08)' : 'rgba(16,185,129,0.10)',
-    borderColor: isDark ? 'rgba(94,218,158,0.2)' : 'rgba(16,185,129,0.25)',
-  },
-  exportBtnText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 13,
-    color: colors.priorityLow,
   },
   resetBtn: {
     backgroundColor: isDark ? 'rgba(255,105,97,0.08)' : 'rgba(239,68,68,0.10)',

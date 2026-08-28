@@ -146,16 +146,22 @@ export interface StreakMilestone {
   days: number;
   label: string;
   badge: string;
+  badgeIcon?: string;
+  badgeIconSet?: 'ionicons' | 'mci';
   color: string;
+  gradient?: [string, string];
+  desc?: string;
 }
 
 export const STREAK_MILESTONES: StreakMilestone[] = [
-  { days: 3, label: 'Spark', badge: '⚡', color: '#f59e0b' },
-  { days: 7, label: 'Week Warrior', badge: '🔥', color: '#ff9f4d' },
-  { days: 14, label: 'Fortnight Blaze', badge: '🛡️', color: '#a599ff' },
-  { days: 30, label: 'Monthly Inferno', badge: '👑', color: '#ec4899' },
-  { days: 60, label: 'Titan Flame', badge: '🏆', color: '#38bdf8' },
-  { days: 100, label: 'Legendary Cosmos', badge: '🌌', color: '#10b981' },
+  { days: 3,   label: 'Spark',              badge: '⚡', badgeIcon: 'flash',             color: '#F59E0B', gradient: ['#F59E0B', '#F97316'], desc: '3-day spark ignited' },
+  { days: 7,   label: 'Week Warrior',       badge: '🔥', badgeIcon: 'flame',             color: '#FF6B00', gradient: ['#FF8A00', '#FF3B30'], desc: '1 solid week of consistency' },
+  { days: 14,  label: 'Fortnight Blaze',    badge: '🛡️', badgeIcon: 'shield-checkmark', color: '#8B5CF6', gradient: ['#A78BFA', '#7C3AED'], desc: '14-day unbroken momentum' },
+  { days: 30,  label: 'Monthly Inferno',    badge: '👑', badgeIcon: 'crown', badgeIconSet: 'mci', color: '#EC4899', gradient: ['#F472B6', '#DB2777'], desc: '30-day elite focus' },
+  { days: 60,  label: 'Titan Force',        badge: '🏆', badgeIcon: 'trophy',            color: '#06B6D4', gradient: ['#22D3EE', '#0284C7'], desc: '60-day unstoppable titan' },
+  { days: 90,  label: 'Quarter Centurion',  badge: '🎖️', badgeIcon: 'ribbon',            color: '#10B981', gradient: ['#34D399', '#059669'], desc: '90-day quarter master' },
+  { days: 120, label: 'Diamond Will',       badge: '💎', badgeIcon: 'diamond',           color: '#38BDF8', gradient: ['#38BDF8', '#6366F1'], desc: '120-day unbreakable habit' },
+  { days: 150, label: 'Cosmic Grandmaster', badge: '🪐', badgeIcon: 'planet',            color: '#A855F7', gradient: ['#C084FC', '#9333EA'], desc: '150-day legendary cosmos' },
 ];
 
 export function getNextMilestone(currentStreak: number): { current: StreakMilestone; next: StreakMilestone; progress: number; remaining: number } {

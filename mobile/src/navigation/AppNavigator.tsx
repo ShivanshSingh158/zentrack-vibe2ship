@@ -71,9 +71,7 @@ import XPConstellationScreen from '../screens/XPConstellationScreen';
 import StreakDetailScreen from '../screens/StreakDetailScreen';
 import AgentHistoryScreen from '../screens/AgentHistoryScreen';
 import WellbeingDashboardScreen from '../screens/WellbeingDashboardScreen';
-
-// Lazy SARA screen to keep speech recognition background processes isolated until needed
-const SaraScreen = cacheAwareLazy('SaraScreen', () => import('../screens/SaraScreen'));
+import SaraScreen from '../screens/SaraScreen';
 
 // --- Navigators --------------------------------------------------------------
 const Stack = createNativeStackNavigator();
@@ -202,21 +200,53 @@ const TabBarNullButton = () => null;
 //
 // WHATSAPP / INSTAGRAM ARCHITECTURE:
 // Uses useCoreData() for pinnedModules so background domain streaming (wellness/academic/planner)
-// does NOT cause re-renders of the tab bar.
-
 function MainTabNavigator() {
   const { pinnedModules } = useCoreData();
   const { colors } = useTheme();
+
   const effectivePinned = (Array.isArray(pinnedModules) && pinnedModules.length > 0)
     ? pinnedModules
     : ['Tasks', 'Gym', 'Calendar', 'Attendance'];
 
-  // PERF FIX (Issue F): Throttle AsyncStorage saves to once per 10s max.
-  // Previously fired a bridge call on EVERY tab switch (50+ times per session).
-  // The saved route is only read on cold boot to restore the last tab (now always 'Home'),
-  // so frequent saves have zero user-visible benefit.
+  // Ordered module IDs: Pinned modules in their exact selected order first, followed by unpinned modules
+  const orderedModuleIds = useMemo(() => {
+    const pinned = effectivePinned.filter(id => COMPONENT_MAP[id]);
+    const unpinned = Object.keys(COMPONENT_MAP).filter(id => !effectivePinned.includes(id));
+    return [...pinned, ...unpinned];
+  }, [effectivePinned.join(',')]);
+
+  // ⚡ Nav 1 & Nav 2 mount eagerly on Frame 0 at boot.
+  // The remaining pinned tabs (Nav 3 & Nav 4) warm sequentially via background timer.
+  const [warmedTabs, setWarmedTabs] = React.useState<Record<string, boolean>>({});
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const handle = InteractionManager.runAfterInteractions(() => {
+      // Warm remaining pinned tabs (index >= 2) in staggered idle windows
+      effectivePinned.slice(2).forEach((modId, idx) => {
+        const timer = setTimeout(() => {
+          if (!cancelled) {
+            setWarmedTabs(prev => ({ ...prev, [modId]: true }));
+          }
+        }, (idx + 1) * 80);
+        timers.push(timer);
+      });
+    });
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+      handle.cancel();
+    };
+  }, [effectivePinned.join(',')]);
+
+  // PERF FIX: Throttle AsyncStorage saves + Instant Tap Preemption
   const lastTabSaveRef = React.useRef<number>(0);
   const onTabFocus = useCallback((routeName: string) => {
+    // ⚡ INSTANT PRIORITY PREEMPTION: If user taps Nav 3 or 4 before timer,
+    // immediately mount that tab synchronously with top priority in 0.00ms!
+    setWarmedTabs(prev => prev[routeName] ? prev : ({ ...prev, [routeName]: true }));
+
     if (!ALLOWED_SAVE_ROUTES.has(routeName)) return;
     const now = Date.now();
     if (now - lastTabSaveRef.current < 10000) return; // max once per 10s
@@ -236,30 +266,38 @@ function MainTabNavigator() {
       detachInactiveScreens={false}
       screenOptions={{
         headerShown: false,
+        animation: 'none',
         sceneStyle:  { backgroundColor: colors.background },
-        lazy:        true,
         freezeOnBlur: false,
       }}
       backBehavior="history"
     >
       <Tab.Screen name="Home" component={SafeDashboard} options={{ lazy: false }} />
-      {Object.keys(COMPONENT_MAP).map((modId) => {
-        const isPinned = effectivePinned.includes(modId);
+      {orderedModuleIds.map((modId) => {
+        const pinnedIndex = effectivePinned.indexOf(modId);
+        const isPinned = pinnedIndex !== -1;
+        // Nav 1 (index 0) & Nav 2 (index 1) are eager (lazy: false) on Frame 0 at boot
+        // Nav 3 (index 2) & Nav 4 (index 3) warm up via 80ms background timer or instant tap preemption
+        const isEagerCore = isPinned && (pinnedIndex === 0 || pinnedIndex === 1);
+        const isLazy = !isPinned ? true : (!isEagerCore && !warmedTabs[modId]);
+
         return (
           <Tab.Screen
             key={modId}
             name={modId}
             component={COMPONENT_MAP[modId]}
             options={!isPinned ? {
+              lazy:            true,
               tabBarItemStyle: { display: 'none' },
               tabBarButton:    TabBarNullButton,
             } : {
+              lazy:            isLazy,
               tabBarItemStyle: { paddingVertical: 10 },
             }}
           />
         );
       })}
-      <Tab.Screen name="More" component={withErrorBoundary(MoreScreen, 'More')} />
+      <Tab.Screen name="More" component={withErrorBoundary(MoreScreen, 'More')} options={{ lazy: true }} />
     </Tab.Navigator>
   );
 }
@@ -662,22 +700,6 @@ export default function AppNavigator() {
           </Stack.Navigator>
         )}
       </NavigationContainer>
-
-      {/* OVERLAY SPLASH — covers NavigationContainer while auth state is resolving.
-          NavigationContainer stays MOUNTED and WARM underneath.
-          This View disappears (not fades) the instant appReady becomes true.
-          For returning users with a cached optimistic user, appReady=true on Frame 0,
-          so this overlay never renders at all. */}
-      {!appReady && (
-        <View
-          style={{
-            position:        'absolute',
-            top:    0, left: 0, right: 0, bottom: 0,
-            backgroundColor: colors.background,
-            zIndex:          9999,
-          }}
-        />
-      )}
     </View>
   );
 }

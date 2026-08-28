@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState, useMemo, memo, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useMemo, memo, useCallback, Suspense } from 'react';
 import WorkoutTimer from '../../components/Gym/WorkoutTimer';
-import { View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Animated, Image, Modal, LayoutAnimation, Dimensions, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Animated, Image, Modal, LayoutAnimation, Dimensions, ScrollView, InteractionManager } from 'react-native';
 import { BlurView } from 'expo-blur';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
@@ -18,34 +18,61 @@ import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { useGymLog, todayStr, dateStrOffset, planDayIndexForDate, resolvePlanDay } from '../../hooks/useGymLog';
 import { GYM_PLAN_PPL, GYM_PLAN_ARNOLD } from '../../data/gymPlan';
-import type { GymPlanDay } from '../../types/gym.types';
-import { calculateGymStreak } from '../../utils/gymUtils';
+import type { GymPlanDay, GymCardioLog } from '../../types/gym.types';
+import type { MultiDayPlanEntry } from '../../components/Gym/ZenGymAiModal';
 import { clearScheduleCache, scheduleAllNotifications } from '../../services/notifications';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import { COLORS, SPACE, RADIUS, FONT_FAMILY, FONT_SIZE, SHADOW } from '../../theme/tokens';
+import { makeStyles } from './gymHomeStyles';
 
-import { AddExerciseModal } from '../../components/Gym/AddExerciseModal';
-import { AddCardioModal } from '../../components/Gym/AddCardioModal';
-import { ExerciseHistoryDrawer } from '../../components/Gym/ExerciseHistoryDrawer';
-import { ZenGymAiModal, type MultiDayPlanEntry } from '../../components/Gym/ZenGymAiModal';
-import { LogCardioModal } from '../../components/Gym/LogCardioModal';
-import { SwapRoutineModal } from '../../components/Gym/SwapRoutineModal';
-import { GymProfileModal } from '../../components/Gym/GymProfileModal';
-import { GymTemplateModal } from '../../components/Gym/GymTemplateModal';
-import { GymScheduleSettingsModal } from '../../components/Gym/GymScheduleSettingsModal';
-import WeeklyGymReport from '../../components/Gym/WeeklyGymReport';
-import { GymCardioLog } from '../../types/gym.types';
-import BodyMetricsSheet from '../../components/Gym/BodyMetricsSheet';
-import PRHallOfFameSheet from '../../components/Gym/PRHallOfFameSheet';
 import { useGymProfile } from '../../hooks/useGymProfile';
 import { ZenGymAiFab } from '../../components/Gym/ZenGymAiFab';
 import { handleSyncError } from '../../utils/errorUtils';
 import { getOverloadSuggestion } from '../../services/progressiveOverload';
 import { setTabBarVisible } from '../../utils/tabBarScroll';
 import BottomSheet from '../../components/ui/BottomSheet';
+import { GymExerciseOptionsSheet } from '../../components/Gym/GymExerciseOptionsSheet';
 
 import { StatusBar } from 'expo-status-bar';
+
+// ─── Heavy Modals: Lazy-loaded on demand (skips parsing ~9,750 LOC on cold boot) ───
+const AddExerciseModal = React.lazy(() =>
+  import('../../components/Gym/AddExerciseModal').then(m => ({ default: m.AddExerciseModal }))
+);
+const AddCardioModal = React.lazy(() =>
+  import('../../components/Gym/AddCardioModal').then(m => ({ default: m.AddCardioModal }))
+);
+const ExerciseHistoryDrawer = React.lazy(() =>
+  import('../../components/Gym/ExerciseHistoryDrawer').then(m => ({ default: m.ExerciseHistoryDrawer }))
+);
+const ZenGymAiModal = React.lazy(() =>
+  import('../../components/Gym/ZenGymAiModal').then(m => ({ default: m.ZenGymAiModal }))
+);
+const LogCardioModal = React.lazy(() =>
+  import('../../components/Gym/LogCardioModal').then(m => ({ default: m.LogCardioModal }))
+);
+const SwapRoutineModal = React.lazy(() =>
+  import('../../components/Gym/SwapRoutineModal').then(m => ({ default: m.SwapRoutineModal }))
+);
+const GymProfileModal = React.lazy(() =>
+  import('../../components/Gym/GymProfileModal').then(m => ({ default: m.GymProfileModal }))
+);
+const GymTemplateModal = React.lazy(() =>
+  import('../../components/Gym/GymTemplateModal').then(m => ({ default: m.GymTemplateModal }))
+);
+const GymScheduleSettingsModal = React.lazy(() =>
+  import('../../components/Gym/GymScheduleSettingsModal').then(m => ({ default: m.GymScheduleSettingsModal }))
+);
+const WeeklyGymReport = React.lazy(() =>
+  import('../../components/Gym/WeeklyGymReport')
+);
+const BodyMetricsSheet = React.lazy(() =>
+  import('../../components/Gym/BodyMetricsSheet')
+);
+const PRHallOfFameSheet = React.lazy(() =>
+  import('../../components/Gym/PRHallOfFameSheet')
+);
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 
@@ -71,7 +98,16 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
 
   const { gymLogs, waterLogs, sleepLogs, applyMasterTemplate, userGymPlan, updateMasterPlan, updateFullMasterPlan } = useWellnessData();
   const { user } = useCoreData();
-  const currentStreak = useMemo(() => calculateGymStreak(gymLogs, userGymPlan), [gymLogs, userGymPlan]);
+
+  // ⚡ DEFERRED: Compute streak after interaction via on-demand import (skips gymUtils.ts on Frame 0)
+  const [currentStreak, setCurrentStreak] = useState(0);
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(async () => {
+      const { calculateGymStreak } = await import('../../utils/gymUtils');
+      setCurrentStreak(calculateGymStreak(gymLogs, userGymPlan));
+    });
+    return () => handle.cancel();
+  }, [gymLogs, userGymPlan]);
 
   // BUG-3 FIX: Callback passed to GymNotificationModal so gym reminder time
   // changes reschedule immediately (not just on next app open or data change).
@@ -159,44 +195,47 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   const animBanner = useRef(new Animated.Value(1)).current;
   const animList = useRef(new Animated.Value(1)).current;
 
-  // ─── Sub-5-min Abandoned Micro-Log Auto-Purge ──────────────────────────
+  // ─── Sub-5-min Abandoned Micro-Log Auto-Purge (Deferred) ──────────────────────────
   // If a workout was started but abandoned without any completed sets,
   // or has duration < 5 min with 0 sets logged, auto-reset it so junk logs don't clutter history.
   useEffect(() => {
     if (!log) return;
-    const isToday = selectedDate === todayStr();
-    if (!isToday) return;
+    const handle = InteractionManager.runAfterInteractions(() => {
+      const isToday = selectedDate === todayStr();
+      if (!isToday) return;
 
-    const completedSetsCount = (log.exercises || []).reduce(
-      (sum, ex) => sum + (ex.setsLog || []).filter((s: any) => s.completed).length,
-      0
-    );
+      const completedSetsCount = (log.exercises || []).reduce(
+        (sum, ex) => sum + (ex.setsLog || []).filter((s: any) => s.completed).length,
+        0
+      );
 
-    const isAbandonedQuickStart =
-      !(log as any).completed &&
-      completedSetsCount === 0 &&
-      log.workoutDurationMinutes !== undefined &&
-      log.workoutDurationMinutes < 5 &&
-      !log.workoutStartTime;
+      const isAbandonedQuickStart =
+        !(log as any).completed &&
+        completedSetsCount === 0 &&
+        log.workoutDurationMinutes !== undefined &&
+        log.workoutDurationMinutes < 5 &&
+        !log.workoutStartTime;
 
-    const isStaleZeroSession =
-      !(log as any).completed &&
-      completedSetsCount === 0 &&
-      log.workoutStartTime &&
-      Date.now() - log.workoutStartTime > 4 * 60 * 60 * 1000;
+      const isStaleZeroSession =
+        !(log as any).completed &&
+        completedSetsCount === 0 &&
+        log.workoutStartTime &&
+        Date.now() - log.workoutStartTime > 4 * 60 * 60 * 1000;
 
-    if (isAbandonedQuickStart || isStaleZeroSession) {
-      const fixed = {
-        ...log,
-        completed: false,
-        workoutDurationMinutes: undefined,
-        workoutStartTime: undefined,
-        startTime: undefined,
-        endTime: undefined,
-        updatedAt: Date.now(),
-      };
-      saveLog(fixed);
-    }
+      if (isAbandonedQuickStart || isStaleZeroSession) {
+        const fixed = {
+          ...log,
+          completed: false,
+          workoutDurationMinutes: undefined,
+          workoutStartTime: undefined,
+          startTime: undefined,
+          endTime: undefined,
+          updatedAt: Date.now(),
+        };
+        saveLog(fixed);
+      }
+    });
+    return () => handle.cancel();
   }, [log?.id, selectedDate, (log as any)?.completed, log?.workoutStartTime, log?.workoutDurationMinutes]);
 
   // ── Real-time session context for GYM-GPT ─────────────────────────────────
@@ -215,46 +254,49 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     (log?.exercises || []).reduce((sum, ex) => sum + (ex.setsLog || []).length, 0),
   [log?.exercises]);
 
-  // ── Progressive Overload Toast trigger ────────────────────────────────────
+  // ── Progressive Overload Toast trigger (Deferred) ─────────────────────────
   // Fires when an exercise becomes 100% complete (all sets done).
   // Checks if the user has hit targets for 2+ past sessions and surfaces a
-  // weight increase suggestion — the core value of apps like Hevy / Strong.
+  // weight increase suggestion — deferred to avoid stealing UI thread frame budget.
   const prevExercisesDoneRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!log?.exercises || !gymLogs) return;
-    (log.exercises || []).forEach(ex => {
-      if (ex.skipped) return;
-      const allDone = ex.setsLog.length > 0 && ex.setsLog.every((s: any) => s.completed);
-      if (!allDone || prevExercisesDoneRef.current.has(ex.exerciseId)) return;
+    const handle = InteractionManager.runAfterInteractions(() => {
+      (log.exercises || []).forEach(ex => {
+        if (ex.skipped) return;
+        const allDone = ex.setsLog.length > 0 && ex.setsLog.every((s: any) => s.completed);
+        if (!allDone || prevExercisesDoneRef.current.has(ex.exerciseId)) return;
 
-      // Mark as already triggered so we don't re-fire on re-render
-      prevExercisesDoneRef.current.add(ex.exerciseId);
+        // Mark as already triggered so we don't re-fire on re-render
+        prevExercisesDoneRef.current.add(ex.exerciseId);
 
-      const lastCompletedWeight = Math.max(...(ex.setsLog || []).map((s: any) => s.weight || 0));
-      if (lastCompletedWeight <= 0) return;
+        const lastCompletedWeight = Math.max(...(ex.setsLog || []).map((s: any) => s.weight || 0));
+        if (lastCompletedWeight <= 0) return;
 
-      const suggestion = getOverloadSuggestion(
-        { name: ex.name, isCompound: ex.isCompound },
-        lastCompletedWeight,
-        ex.setsLog.length,
-        ex.targetReps || '8',
-        gymLogs
-      );
+        const suggestion = getOverloadSuggestion(
+          { name: ex.name, isCompound: ex.isCompound },
+          lastCompletedWeight,
+          ex.setsLog.length,
+          ex.targetReps || '8',
+          gymLogs
+        );
 
-      if (suggestion?.type === 'increase') {
-        // Clear any existing toast timer
-        if (overloadToastTimer.current) clearTimeout(overloadToastTimer.current);
-        setOverloadToast({
-          exerciseName: ex.name,
-          suggestedWeight: suggestion.recommended,
-          currentWeight: lastCompletedWeight,
-          step: suggestion.weightDelta,
-        });
-        // Auto-dismiss after 6 seconds
-        overloadToastTimer.current = setTimeout(() => setOverloadToast(null), 6000);
-      }
+        if (suggestion?.type === 'increase') {
+          // Clear any existing toast timer
+          if (overloadToastTimer.current) clearTimeout(overloadToastTimer.current);
+          setOverloadToast({
+            exerciseName: ex.name,
+            suggestedWeight: suggestion.recommended,
+            currentWeight: lastCompletedWeight,
+            step: suggestion.weightDelta,
+          });
+          // Auto-dismiss after 6 seconds
+          overloadToastTimer.current = setTimeout(() => setOverloadToast(null), 6000);
+        }
+      });
     });
+    return () => handle.cancel();
   }, [log?.exercises, gymLogs]);
 
   // Reset done-set tracker when date/log changes
@@ -415,7 +457,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   };
 
   // Renderers
-  const renderWorkoutBanner = () => {
+  const renderWorkoutBanner = useCallback(() => {
     const isCompleted = Boolean(
       (log as any)?.completed ||
       (log?.workoutDurationMinutes !== undefined && !log?.workoutStartTime)
@@ -489,9 +531,9 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </TouchableOpacity>
       </Animated.View>
     );
-  };
+  }, [log, s, currentStreak, selectedDate, animBanner, handleStartWorkout, handleResumeWorkout, endWorkout, resumeWorkout, navigation]);
 
-  const renderCardio = () => {
+  const renderCardio = useCallback(() => {
     const cardioItems = log?.cardio || [];
     return (
       <View style={s.section}>
@@ -524,7 +566,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
                     {c.pace ? ` • ${c.pace} min/km` : ''}
                   </Text>
                 </View>
-                {/* Ellipsis menu ΓÇö matches exercise row pattern */}
+                {/* Ellipsis menu — matches exercise row pattern */}
                 <View style={s.rowActions}>
                   <TouchableOpacity
                     style={s.actionBtn}
@@ -552,7 +594,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </TouchableOpacity>
       </View>
     );
-  };
+  }, [log?.cardio, s, animList]);
 
 
   const activeExercisesData = useMemo(() => {
@@ -704,7 +746,33 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     );
   }, [log?.exercises, s, handleResumeWorkout]);
 
-  const renderHeader = () => (
+  const sortedMuscles = useMemo(() => {
+    if (!activeExercisesData || activeExercisesData.length === 0) return [];
+    const muscleCounts: Record<string, number> = {};
+    activeExercisesData.forEach(ex => {
+      const m = ex.muscle || 'Mixed';
+      muscleCounts[m] = (muscleCounts[m] || 0) + 1;
+    });
+    const getMuscleWeight = (m: string) => {
+      const ml = m.toLowerCase();
+      if (ml.includes('chest') || ml.includes('pec')) return 1;
+      if (ml.includes('delt') || ml.includes('shoulder')) return 2;
+      if (ml.includes('back') || ml.includes('lat') || ml.includes('trap')) return 3;
+      if (ml.includes('bicep') || ml.includes('tricep') || ml.includes('brach') || ml.includes('forearm')) return 4;
+      if (ml.includes('abs') || ml.includes('oblique') || ml.includes('core')) return 5;
+      if (ml.includes('quad') || ml.includes('glute') || ml.includes('ham') || ml.includes('calf') || ml.includes('soleus')) return 6;
+      return 7;
+    };
+
+    return Object.entries(muscleCounts).sort((a, b) => {
+      const wA = getMuscleWeight(a[0]);
+      const wB = getMuscleWeight(b[0]);
+      if (wA !== wB) return wA - wB;
+      return b[1] - a[1];
+    });
+  }, [activeExercisesData]);
+
+  const renderHeader = useCallback(() => (
     <>
       {/* Week Strip */}
       <Animated.View style={[s.weekStrip, { opacity: Animated.multiply(headerFade, animWeek), transform: [{ translateY: animWeek.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
@@ -774,9 +842,9 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </>
       )}
     </>
-  );
+  ), [s, headerFade, animWeek, weekDates, selectedDate, planDay?.isRest, gymLogs, userGymPlan, sleepLogs, triggerDeload, renderWorkoutBanner, activeExercisesData.length]);
 
-  const renderFooter = () => {
+  const renderFooter = useCallback(() => {
     return (
       <View style={{ paddingBottom: 0 }}>
         {!planDay?.isRest && (
@@ -785,53 +853,28 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
           </View>
         )}
         
-        {activeExercisesData.length > 0 && (() => {
-          const muscleCounts: Record<string, number> = {};
-          activeExercisesData.forEach(ex => {
-            const m = ex.muscle || 'Mixed';
-            muscleCounts[m] = (muscleCounts[m] || 0) + 1;
-          });
-          const getMuscleWeight = (m: string) => {
-            const ml = m.toLowerCase();
-            if (ml.includes('chest') || ml.includes('pec')) return 1;
-            if (ml.includes('delt') || ml.includes('shoulder')) return 2;
-            if (ml.includes('back') || ml.includes('lat') || ml.includes('trap')) return 3;
-            if (ml.includes('bicep') || ml.includes('tricep') || ml.includes('brach') || ml.includes('forearm')) return 4;
-            if (ml.includes('abs') || ml.includes('oblique') || ml.includes('core')) return 5;
-            if (ml.includes('quad') || ml.includes('glute') || ml.includes('ham') || ml.includes('calf') || ml.includes('soleus')) return 6;
-            return 7;
-          };
-
-          const sortedMuscles = Object.entries(muscleCounts).sort((a, b) => {
-            const wA = getMuscleWeight(a[0]);
-            const wB = getMuscleWeight(b[0]);
-            if (wA !== wB) return wA - wB;
-            return b[1] - a[1];
-          });
-
-          return (
-            <View style={{ paddingHorizontal: 24, paddingTop: 16 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16, opacity: 0.8 }}>
-                <Ionicons name="analytics-outline" size={16} color={COLORS.textTertiary} />
-                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: COLORS.textTertiary, letterSpacing: 0.5, textTransform: 'uppercase' }}>Session Muscle Target</Text>
-              </View>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' }}>
-                {sortedMuscles.map(([muscle, count]) => (
-                  <View key={muscle} style={{ 
-                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.03)', 
-                    paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
-                  }}>
-                    <Text style={{ fontSize: 10, color: COLORS.textMuted, fontFamily: FONT_FAMILY.medium, flexShrink: 1 }} numberOfLines={1}>{muscle}</Text>
-                    <Text style={{ fontSize: 10, color: COLORS.textTertiary, fontFamily: FONT_FAMILY.bold, marginLeft: 4 }}>×{count}</Text>
-                  </View>
-                ))}
-              </View>
+        {sortedMuscles.length > 0 && (
+          <View style={{ paddingHorizontal: 24, paddingTop: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16, opacity: 0.8 }}>
+              <Ionicons name="analytics-outline" size={16} color={COLORS.textTertiary} />
+              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: COLORS.textTertiary, letterSpacing: 0.5, textTransform: 'uppercase' }}>Session Muscle Target</Text>
             </View>
-          );
-        })()}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' }}>
+              {sortedMuscles.map(([muscle, count]) => (
+                <View key={muscle} style={{ 
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.03)', 
+                  paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+                }}>
+                  <Text style={{ fontSize: 10, color: COLORS.textMuted, fontFamily: FONT_FAMILY.medium, flexShrink: 1 }} numberOfLines={1}>{muscle}</Text>
+                  <Text style={{ fontSize: 10, color: COLORS.textTertiary, fontFamily: FONT_FAMILY.bold, marginLeft: 4 }}>×{count}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
       </View>
     );
-  };
+  }, [planDay?.isRest, renderCardio, sortedMuscles]);
 
 
   return (
@@ -965,415 +1008,167 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
           scrollEventThrottle={16}
         />
 
-        {/* Modals and Overlays */}
-        {showAddModal && (
-          <AddExerciseModal
-            visible={showAddModal}
-            onClose={() => setShowAddModal(false)}
-            onAdd={addExercise}
-            planDay={planDay}
-            existingExerciseIds={log?.exercises.map(e => e.exerciseId) || []}
-          />
-        )}
-        {showCardioModal && (
-          <AddCardioModal visible={showCardioModal} onClose={() => setShowCardioModal(false)} onAdd={addCardio} />
-        )}
-        {!!historyFor && (
-          <ExerciseHistoryDrawer 
-            visible={!!historyFor} 
-            exerciseId={historyFor?.id || null}
-            exerciseName={historyFor?.name || null}
-            onClose={() => setHistoryFor(null)} 
-          />
-        )}
-        {!!logCardioFor && (
-          <LogCardioModal
-            visible={!!logCardioFor}
-            cardio={logCardioFor}
-            onClose={() => setLogCardioFor(null)}
-            onSave={(updates) => log?.cardio && updateCardio(logCardioFor!.id, updates)}
-          />
-        )}
-        
-        {showAiModal && (
-          <ZenGymAiModal 
-            visible={showAiModal} 
-            onClose={() => setShowAiModal(false)}
-            workoutData={{ activeMuscles: activeMuscles.map(m => m.muscle).join(', '), doneSets, totalSets }}
-            onAddExercise={handleAiAddExercise}
-            onDeleteExercise={deleteExercise}
-            onLogSet={handleAiLogSet}
-            onGenerateWorkoutPlan={handleAiGenerateWorkoutPlan}
-            onImportMultiDayPlan={handleAiImportMultiDayPlan}
-            onAddExerciseToPlanDay={handleAiAddExerciseToPlanDay}
-            onAutoregulateDeload={triggerDeload}
-            userGymPlan={userGymPlan}
-            currentPlanDay={planDay}
-          />
-        )}
+        {/* Modals and Overlays (Wrapped in Suspense for 0ms Lazy Evaluation) */}
+        <Suspense fallback={null}>
+          {showAddModal && (
+            <AddExerciseModal
+              visible={showAddModal}
+              onClose={() => setShowAddModal(false)}
+              onAdd={addExercise}
+              planDay={planDay}
+              existingExerciseIds={log?.exercises.map(e => e.exerciseId) || []}
+            />
+          )}
+          {showCardioModal && (
+            <AddCardioModal visible={showCardioModal} onClose={() => setShowCardioModal(false)} onAdd={addCardio} />
+          )}
+          {!!historyFor && (
+            <ExerciseHistoryDrawer 
+              visible={!!historyFor} 
+              exerciseId={historyFor?.id || null}
+              exerciseName={historyFor?.name || null}
+              onClose={() => setHistoryFor(null)} 
+            />
+          )}
+          {!!logCardioFor && (
+            <LogCardioModal
+              visible={!!logCardioFor}
+              cardio={logCardioFor}
+              onClose={() => setLogCardioFor(null)}
+              onSave={(updates) => log?.cardio && updateCardio(logCardioFor!.id, updates)}
+            />
+          )}
+          
+          {showAiModal && (
+            <ZenGymAiModal 
+              visible={showAiModal} 
+              onClose={() => setShowAiModal(false)}
+              workoutData={{ activeMuscles: activeMuscles.map(m => m.muscle).join(', '), doneSets, totalSets }}
+              onAddExercise={handleAiAddExercise}
+              onDeleteExercise={deleteExercise}
+              onLogSet={handleAiLogSet}
+              onGenerateWorkoutPlan={handleAiGenerateWorkoutPlan}
+              onImportMultiDayPlan={handleAiImportMultiDayPlan}
+              onAddExerciseToPlanDay={handleAiAddExerciseToPlanDay}
+              onAutoregulateDeload={triggerDeload}
+              userGymPlan={userGymPlan}
+              currentPlanDay={planDay}
+            />
+          )}
 
-        {showScheduleSettingsModal && (
-          <GymScheduleSettingsModal
-            visible={showScheduleSettingsModal}
-            onClose={() => setShowScheduleSettingsModal(false)}
-            userGymPlan={userGymPlan}
-            onSaveWeekly={updateFullMasterPlan}
-            currentStartTime={log?.startTime}
-            currentEndTime={log?.endTime}
-            onSaveOverride={(start, end) => {
-              saveLog({
-                ...(log || {
-                  id: `gym_${selectedDate}`,
-                  userId: user?.uid || 'temp',
-                  dayPlanIndex: planDayIndexForDate(selectedDate),
-                  date: selectedDate,
-                  exercises: [],
-                  cardio: [],
-                  createdAt: Date.now(),
+          {showScheduleSettingsModal && (
+            <GymScheduleSettingsModal
+              visible={showScheduleSettingsModal}
+              onClose={() => setShowScheduleSettingsModal(false)}
+              userGymPlan={userGymPlan}
+              onSaveWeekly={updateFullMasterPlan}
+              currentStartTime={log?.startTime}
+              currentEndTime={log?.endTime}
+              onSaveOverride={(start, end) => {
+                saveLog({
+                  ...(log || {
+                    id: `gym_${selectedDate}`,
+                    userId: user?.uid || 'temp',
+                    dayPlanIndex: planDayIndexForDate(selectedDate),
+                    date: selectedDate,
+                    exercises: [],
+                    cardio: [],
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                    completed: false,
+                  }),
+                  startTime: start,
+                  endTime: end,
                   updatedAt: Date.now(),
-                  completed: false,
-                }),
-                startTime: start,
-                endTime: end,
-                updatedAt: Date.now(),
-              } as any);
-            }}
-            onNotifSaved={handleGymNotifSaved}
-          />
-        )}
-        
-        {showSwapRoutineModal && (
-          <SwapRoutineModal
-            visible={showSwapRoutineModal}
-            selectedDate={selectedDate}
-            currentPlanDayIndex={log?.dayPlanIndex || planDay?.dayIndex}
-            onClose={() => setShowSwapRoutineModal(false)}
-            onSelectDay={(targetDayIdx) => swapDayRoutine(targetDayIdx)}
-          />
-        )}
+                } as any);
+              }}
+              onNotifSaved={handleGymNotifSaved}
+            />
+          )}
+          
+          {showSwapRoutineModal && (
+            <SwapRoutineModal
+              visible={showSwapRoutineModal}
+              selectedDate={selectedDate}
+              currentPlanDayIndex={log?.dayPlanIndex || planDay?.dayIndex}
+              onClose={() => setShowSwapRoutineModal(false)}
+              onSelectDay={(targetDayIdx) => swapDayRoutine(targetDayIdx)}
+            />
+          )}
 
-        {showProfileModal && (
-          <GymProfileModal
-            visible={showProfileModal}
-            onClose={() => setShowProfileModal(false)}
-          />
-        )}
-        
-        {showTemplateModal && (
-          <GymTemplateModal
-            visible={showTemplateModal}
-            onClose={() => setShowTemplateModal(false)}
-            onApply={async (templateId, schedulePattern) => {
-              const newCustomDays = await applyMasterTemplate(templateId, schedulePattern);
-              
-              // If today's log hasn't started, overwrite it instantly with the new template's layout.
-              if (!log?.workoutStartTime && newCustomDays) {
-                forceOverrideTodayPlan(newCustomDays);
-                setWeekOffset(prev => prev); // trigger minor re-render
-              }
-            }}
-          />
-        )}
+          {showProfileModal && (
+            <GymProfileModal
+              visible={showProfileModal}
+              onClose={() => setShowProfileModal(false)}
+            />
+          )}
+          
+          {showTemplateModal && (
+            <GymTemplateModal
+              visible={showTemplateModal}
+              onClose={() => setShowTemplateModal(false)}
+              onApply={async (templateId, schedulePattern) => {
+                const newCustomDays = await applyMasterTemplate(templateId, schedulePattern);
+                
+                // If today's log hasn't started, overwrite it instantly with the new template's layout.
+                if (!log?.workoutStartTime && newCustomDays) {
+                  forceOverrideTodayPlan(newCustomDays);
+                  setWeekOffset(prev => prev); // trigger minor re-render
+                }
+              }}
+            />
+          )}
 
-        {/* Body Metrics & PR Hall */}
-        {showBodyMetrics && <BodyMetricsSheet visible={showBodyMetrics} onClose={() => setShowBodyMetrics(false)} />}
-        {showPRHallOfFame && <PRHallOfFameSheet visible={showPRHallOfFame} onClose={() => setShowPRHallOfFame(false)} />}
+          {/* Body Metrics & PR Hall */}
+          {showBodyMetrics && <BodyMetricsSheet visible={showBodyMetrics} onClose={() => setShowBodyMetrics(false)} />}
+          {showPRHallOfFame && <PRHallOfFameSheet visible={showPRHallOfFame} onClose={() => setShowPRHallOfFame(false)} />}
 
-        {/* ─── Weekly Recap Modal (accessible any day via Recap button) ──────── */}
-        {showWeeklyRecap && (
-          <Modal
-            visible={showWeeklyRecap}
-            animationType="slide"
-            transparent={false}
-            onRequestClose={() => setShowWeeklyRecap(false)}
-            statusBarTranslucent
-          >
-            <SafeAreaView style={{ flex: 1, backgroundColor: '#000000' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' }}>
-                <Text style={{ fontSize: 17, fontFamily: FONT_FAMILY.bold, color: '#FFFFFF' }}>Weekly Recap</Text>
-                <TouchableOpacity onPress={() => { hapticLight(); setShowWeeklyRecap(false); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                  <Ionicons name="close" size={22} color={COLORS.textMuted} />
-                </TouchableOpacity>
-              </View>
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-                <WeeklyGymReport gymLogs={gymLogs} weekAnchorDate={selectedDate} userGymPlan={userGymPlan} />
-              </ScrollView>
-            </SafeAreaView>
-          </Modal>
-        )}
-
-        {/* ─── Themed Exercise Options Bottom Sheet ──────────────────────────────── */}
-        {!!exerciseMenuFor && (
-          <BottomSheet
-            visible={!!exerciseMenuFor}
-            onClose={() => setExerciseMenuFor(null)}
-          >
-            <View style={{ gap: 8, paddingBottom: 16 }}>
-              <Text style={{ fontSize: 18, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
-                {exerciseMenuFor?.name || 'Exercise Options'}
-              </Text>
-              <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 8, fontFamily: FONT_FAMILY.medium }}>
-                {exerciseMenuFor?.muscle ? `${exerciseMenuFor.muscle} • ` : ''}{exerciseMenuFor?.setsLog?.length || exerciseMenuFor?.targetSets || 3} sets, {exerciseMenuFor?.targetReps || '8–12'} reps
-              </Text>
-
-              {/* Option 1: Exercise Details & Guide */}
-              <TouchableOpacity
-                style={s.menuActionRow}
-                activeOpacity={0.7}
-                onPress={() => {
-                  const ex = exerciseMenuFor;
-                  setExerciseMenuFor(null);
-                  navigation.navigate('ExerciseDetail', { exerciseId: ex.exerciseId, date: log?.date ?? selectedDate });
-                }}
-              >
-                <View style={[s.menuActionIcon, { backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)' }]}>
-                  <Ionicons name="book-outline" size={18} color={colors.accentPrimary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.menuActionTitle}>Exercise Details & Guide</Text>
-                  <Text style={s.menuActionSub}>Instructions, muscle anatomy & video</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
-
-              {/* Option 2: Swap Exercise */}
-              <TouchableOpacity
-                style={s.menuActionRow}
-                activeOpacity={0.7}
-                onPress={() => {
-                  const ex = exerciseMenuFor;
-                  setExerciseMenuFor(null);
-                  navigation.navigate('ExerciseSwap', { originalExerciseId: ex.exerciseId, date: log?.date ?? selectedDate });
-                }}
-              >
-                <View style={[s.menuActionIcon, { backgroundColor: isDark ? 'rgba(56,189,248,0.12)' : 'rgba(2,132,199,0.08)' }]}>
-                  <Ionicons name="swap-horizontal" size={18} color={isDark ? '#38bdf8' : '#0284C7'} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.menuActionTitle}>Swap Exercise...</Text>
-                  <Text style={s.menuActionSub}>Choose alternative target movements</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
-
-              {/* Option 3: Link/Unlink Superset */}
-              {exerciseMenuFor?.supersetGroup ? (
-                <TouchableOpacity
-                  style={s.menuActionRow}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    const ex = exerciseMenuFor;
-                    setExerciseMenuFor(null);
-                    const updated = log!.exercises.map(e => e.exerciseId === ex.exerciseId ? { ...e, supersetGroup: undefined } : e);
-                    reorderExercisesFull(updated);
-                  }}
-                >
-                  <View style={[s.menuActionIcon, { backgroundColor: 'rgba(255,105,97,0.12)' }]}>
-                    <Ionicons name="link-outline" size={18} color="#ff6961" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.menuActionTitle, { color: '#ff6961' }]}>Remove from Superset ({exerciseMenuFor.supersetGroup})</Text>
-                    <Text style={s.menuActionSub}>Unlink from paired exercise</Text>
-                  </View>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={s.menuActionRow}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    const ex = exerciseMenuFor;
-                    setExerciseMenuFor(null);
-                    const availablePartners = (log?.exercises || []).filter(e => !e.skipped && e.exerciseId !== ex.exerciseId);
-                    if (availablePartners.length === 0) {
-                      Alert.alert('Superset', 'Add at least 2 exercises to create a superset.', [{ text: 'OK' }]);
-                      return;
-                    }
-                    setSupersetPickerFor(ex);
-                  }}
-                >
-                  <View style={[s.menuActionIcon, { backgroundColor: isDark ? 'rgba(255,159,77,0.12)' : 'rgba(217,119,6,0.08)' }]}>
-                    <Ionicons name="link-outline" size={18} color={isDark ? '#ff9f4d' : '#D97706'} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.menuActionTitle}>Link as Superset...</Text>
-                    <Text style={s.menuActionSub}>Pair with another movement for back-to-back sets</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-              )}
-
-              {/* Option 4: Delete Exercise */}
-              <TouchableOpacity
-                style={s.menuActionRow}
-                activeOpacity={0.7}
-                onPress={() => {
-                  const ex = exerciseMenuFor;
-                  setExerciseMenuFor(null);
-                  hapticMedium();
-                  Alert.alert(
-                    'Delete Exercise',
-                    `Remove "${ex?.name}" from your workout?`,
-                    [
-                      {
-                        text: 'Today Only',
-                        style: 'destructive',
-                        onPress: () => {
-                          deleteExercise(ex.exerciseId);
-                        },
-                      },
-                      {
-                        text: 'Remove from Plan',
-                        style: 'destructive',
-                        onPress: async () => {
-                          // Remove from today's log
-                          deleteExercise(ex.exerciseId);
-                          // Also remove from the recurring master plan day
-                          const planIdx = log?.dayPlanIndex ?? planDayIndexForDate(selectedDate);
-                          const existing = resolvePlanDay(userGymPlan, planIdx);
-                          if (existing && !existing.isRest) {
-                            const updatedExercises = (existing.exercises || []).filter(
-                              (e: any) => e.id !== ex.exerciseId && e.name !== ex.name
-                            );
-                            await updateMasterPlan(planIdx, { ...existing, exercises: updatedExercises });
-                          }
-                        },
-                      },
-                      { text: 'Cancel', style: 'cancel' },
-                    ]
-                  );
-                }}
-              >
-                <View style={[s.menuActionIcon, { backgroundColor: 'rgba(255,105,97,0.12)' }]}>
-                  <Ionicons name="trash-outline" size={18} color="#ff6961" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.menuActionTitle, { color: '#ff6961' }]}>Delete Exercise</Text>
-                  <Text style={s.menuActionSub}>Remove from today or from plan</Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Cancel / Go Back Button */}
-              <TouchableOpacity
-                style={s.menuCancelBtn}
-                activeOpacity={0.7}
-                onPress={() => setExerciseMenuFor(null)}
-              >
-                <Text style={s.menuCancelText}>Go Back</Text>
-              </TouchableOpacity>
-            </View>
-          </BottomSheet>
-        )}
-
-        {/* ─── Themed Superset Partner Picker Bottom Sheet ──────────────────── */}
-        {!!supersetPickerFor && (
-          <BottomSheet
-            visible={!!supersetPickerFor}
-            onClose={() => setSupersetPickerFor(null)}
-          >
-            <View style={{ gap: 8, paddingBottom: 16 }}>
-              <Text style={{ fontSize: 18, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
-                Select Superset Partner
-              </Text>
-              <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 8, fontFamily: FONT_FAMILY.medium }}>
-                Pair "{supersetPickerFor?.name}" with:
-              </Text>
-              {(log?.exercises || [])
-                .filter(e => !e.skipped && e.exerciseId !== supersetPickerFor?.exerciseId)
-                .map(partner => (
-                  <TouchableOpacity
-                    key={partner.exerciseId}
-                    style={s.menuActionRow}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      const ex = supersetPickerFor;
-                      setSupersetPickerFor(null);
-                      const groupLetter = partner.supersetGroup || String.fromCharCode(65 + Math.floor(Math.random() * 26));
-                      const updated = (log?.exercises || []).map(e => {
-                        if (e.exerciseId === ex.exerciseId || e.exerciseId === partner.exerciseId) {
-                          return { ...e, supersetGroup: groupLetter };
-                        }
-                        return e;
-                      });
-                      reorderExercisesFull(updated);
-                    }}
-                  >
-                    <View style={[s.menuActionIcon, { backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)' }]}>
-                      <Ionicons name="barbell-outline" size={18} color={colors.accentPrimary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.menuActionTitle}>{partner.name}</Text>
-                      <Text style={s.menuActionSub}>{partner.muscle || 'Exercise'}</Text>
-                    </View>
-                    <Ionicons name="checkmark-circle-outline" size={18} color={colors.accentPrimary} />
+          {/* ─── Weekly Recap Modal (accessible any day via Recap button) ──────── */}
+          {showWeeklyRecap && (
+            <Modal
+              visible={showWeeklyRecap}
+              animationType="slide"
+              transparent={false}
+              onRequestClose={() => setShowWeeklyRecap(false)}
+              statusBarTranslucent
+            >
+              <SafeAreaView style={{ flex: 1, backgroundColor: '#000000' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' }}>
+                  <Text style={{ fontSize: 17, fontFamily: FONT_FAMILY.bold, color: '#FFFFFF' }}>Weekly Recap</Text>
+                  <TouchableOpacity onPress={() => { hapticLight(); setShowWeeklyRecap(false); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                    <Ionicons name="close" size={22} color={COLORS.textMuted} />
                   </TouchableOpacity>
-                ))}
-              <TouchableOpacity
-                style={s.menuCancelBtn}
-                activeOpacity={0.7}
-                onPress={() => setSupersetPickerFor(null)}
-              >
-                <Text style={s.menuCancelText}>Go Back</Text>
-              </TouchableOpacity>
-            </View>
-          </BottomSheet>
-        )}
+                </View>
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+                  <WeeklyGymReport gymLogs={gymLogs} weekAnchorDate={selectedDate} userGymPlan={userGymPlan} />
+                </ScrollView>
+              </SafeAreaView>
+            </Modal>
+          )}
+        </Suspense>
 
-        {/* ─── Themed Cardio Options Bottom Sheet ───────────────────────────── */}
-        {!!cardioMenuFor && (
-          <BottomSheet
-            visible={!!cardioMenuFor}
-            onClose={() => setCardioMenuFor(null)}
-          >
-            <View style={{ gap: 8, paddingBottom: 16 }}>
-              <Text style={{ fontSize: 18, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
-                {cardioMenuFor?.type || 'Cardio Options'}
-              </Text>
-              <TouchableOpacity
-                style={s.menuActionRow}
-                activeOpacity={0.7}
-                onPress={() => {
-                  const c = cardioMenuFor;
-                  setCardioMenuFor(null);
-                  if (c) setLogCardioFor(c);
-                }}
-              >
-                <View style={[s.menuActionIcon, { backgroundColor: isDark ? 'rgba(56,189,248,0.12)' : 'rgba(2,132,199,0.08)' }]}>
-                  <Ionicons name="create-outline" size={18} color={isDark ? '#38bdf8' : '#0284C7'} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.menuActionTitle}>Log / Edit Cardio</Text>
-                  <Text style={s.menuActionSub}>Update duration, distance, speed & pace</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={s.menuActionRow}
-                activeOpacity={0.7}
-                onPress={() => {
-                  const c = cardioMenuFor;
-                  setCardioMenuFor(null);
-                  if (c) deleteCardio(c.id);
-                }}
-              >
-                <View style={[s.menuActionIcon, { backgroundColor: 'rgba(255,105,97,0.12)' }]}>
-                  <Ionicons name="trash-outline" size={18} color="#ff6961" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.menuActionTitle, { color: '#ff6961' }]}>Delete Cardio</Text>
-                  <Text style={s.menuActionSub}>Remove from today's workout</Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={s.menuCancelBtn}
-                activeOpacity={0.7}
-                onPress={() => setCardioMenuFor(null)}
-              >
-                <Text style={s.menuCancelText}>Go Back</Text>
-              </TouchableOpacity>
-            </View>
-          </BottomSheet>
+        {/* ─── Decomposed & Lazy Exercise, Superset & Cardio Bottom Sheets ───── */}
+        {(!!exerciseMenuFor || !!supersetPickerFor || !!cardioMenuFor) && (
+          <GymExerciseOptionsSheet
+            exerciseMenuFor={exerciseMenuFor}
+            setExerciseMenuFor={setExerciseMenuFor}
+            supersetPickerFor={supersetPickerFor}
+            setSupersetPickerFor={setSupersetPickerFor}
+            cardioMenuFor={cardioMenuFor}
+            setCardioMenuFor={setCardioMenuFor}
+            setLogCardioFor={setLogCardioFor}
+            deleteCardio={deleteCardio}
+            deleteExercise={deleteExercise}
+            reorderExercisesFull={reorderExercisesFull}
+            log={log}
+            selectedDate={selectedDate}
+            userGymPlan={userGymPlan}
+            updateMasterPlan={updateMasterPlan}
+            navigation={navigation}
+            colors={colors}
+            isDark={isDark}
+            s={s}
+          />
         )}
 
       </KeyboardAvoidingView>
@@ -1425,300 +1220,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
       <ZenGymAiFab onPress={() => setShowAiModal(true)} />
     </View>
   );
-});
-
-const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
-  root: { flex: 1, backgroundColor: isDark ? '#000000' : colors.background },
-  scrollContent: { paddingBottom: 95, paddingTop: 48 },
-  
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: isDark ? '#000000' : (colors.surfaceRaised || colors.surface), borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, borderWidth: 1, borderColor: isDark ? '#1c1c20' : colors.border },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  modalTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
-  moveActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : colors.accentDim, borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.25)' : colors.border, paddingVertical: 10, borderRadius: 14 },
-  moveActionText: { fontSize: 13, fontWeight: '700', color: isDark ? '#a599ff' : colors.accentPrimary },
-  posRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: isDark ? '#0c0c0f' : (colors.surface2 || colors.surface), marginBottom: 6, borderWidth: 1, borderColor: isDark ? '#1c1c20' : colors.border },
-  posRowActive: { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary },
-  posNum: { fontSize: 12, fontWeight: '700', color: colors.textMuted, width: 30 },
-  posName: { flex: 1, fontSize: 13, color: colors.textPrimary, marginRight: 8 },
-
-  weekStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 4, marginBottom: 2 },
-  weekDaysContainer: { flexDirection: 'row', flex: 1, justifyContent: 'space-evenly', alignItems: 'center' },
-  weekNavBtn: { paddingVertical: 12, paddingHorizontal: 4, justifyContent: 'center', alignItems: 'center', opacity: 0.7 },
-  dayCol: { alignItems: 'center', gap: 2 },
-  dayLetter: { fontSize: 10.5, color: colors.textTertiary, fontFamily: 'Inter-Medium', marginBottom: 1 },
-  dayLetterActive: { color: colors.textPrimary },
-  dayPill: { width: 36, height: 36, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
-  dayPillActive: { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary, borderRadius: 18, overflow: 'hidden' },
-  dayNum: { fontSize: 13, color: colors.textTertiary, fontFamily: 'Inter-Regular' },
-  dayNumActive: { color: isDark ? '#000000' : '#ffffff', fontWeight: '700' },
-
-  muscleSection: { paddingHorizontal: 8, marginBottom: 16 },
-  muscleDiagramWrapper: { alignItems: 'center', paddingVertical: 8 },
-  muscleLegend: { flexDirection: 'row', gap: 12, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' },
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  legendDot: { width: 10, height: 10, borderRadius: 5 },
-  legendText: { fontSize: 10, color: colors.textTertiary, fontFamily: 'Inter-Regular' },
-
-  workoutSection: { paddingHorizontal: 8, marginBottom: 8 },
-  startBtn: {
-    backgroundColor: isDark ? '#1C1C1E' : colors.accentGreen,
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.accentGreen,
-  },
-  startBtnText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-
-  completedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: isDark ? 'rgba(94,218,158,0.12)' : 'rgba(16,185,129,0.10)',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: isDark ? 'transparent' : 'rgba(16,185,129,0.25)',
-  },
-  completedBannerLeft: { gap: 2 },
-  completedBannerTitle: { fontSize: 15, fontWeight: '700', color: isDark ? '#5eda9e' : '#059669' },
-  completedBannerSub: { fontSize: 13, color: colors.textMuted },
-  streakBadgeInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 14,
-    backgroundColor: isDark ? 'rgba(255,159,77,0.1)' : 'rgba(249,115,22,0.12)',
-  },
-  streakBadgeInlineText: { fontSize: 12, fontWeight: '700', color: isDark ? '#ff9f4d' : '#EA580C' },
-  
-  readinessBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1 },
-
-  activeBanner: {
-    backgroundColor: isDark ? '#1a140b' : '#FFFBEB',
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: isDark ? '#4d3b20' : '#FDE68A',
-  },
-  activeBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  activeIndicator: { width: 8, height: 8, borderRadius: 4, backgroundColor: isDark ? '#eab308' : '#D97706' },
-  activeBannerTitle: { fontSize: 10, fontWeight: '700', color: isDark ? '#eab308' : '#B45309', letterSpacing: 1 },
-  activeBannerResume: { fontSize: 14, fontWeight: '600', color: isDark ? '#ffffff' : '#B45309' },
-
-  section: { paddingHorizontal: 8, marginBottom: 12 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: colors.textTertiary, marginBottom: 12, marginLeft: 4, letterSpacing: 2 },
-  
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: isDark ? '#1C1C1E' : colors.surface,
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
-  },
-  cardioSquare: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    backgroundColor: isDark ? '#2C2C2E' : 'rgba(14,165,233,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-    borderWidth: isDark ? 0 : 1,
-    borderColor: isDark ? 'transparent' : '#0284C7',
-  },
-  checkboxCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: isDark ? '#2c2c2e' : '#D1D1D6',
-    backgroundColor: isDark ? 'transparent' : '#F4F3F8',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  checkboxCircleDone: {
-    backgroundColor: isDark ? '#5eda9e' : '#059669',
-    borderColor: isDark ? '#5eda9e' : '#059669',
-  },
-  rowTextCol: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
-  rowSubtitle: { fontSize: 12, color: colors.textMuted },
-  textStrikethrough: { textDecorationLine: 'line-through', color: colors.textTertiary },
-  rowActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionBtn: { padding: 8, marginHorizontal: -4 },
-
-  fabAi: { position: 'absolute', bottom: 84, right: 16, borderRadius: 24, elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 8 },
-  fabGradient: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#a599ff' : colors.accentPrimary },
-
-  restTimerOverlay: {
-    position: 'absolute',
-    bottom: 110,
-    alignSelf: 'center',
-    backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(52, 199, 89, 0.5)' : 'rgba(16, 185, 129, 0.40)',
-    borderRadius: 30,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    elevation: 10,
-    zIndex: 9999,
-  },
-  restTimerLabel: { fontSize: 12, fontWeight: '700', color: colors.textTertiary, letterSpacing: 1 },
-  restTimerText: { fontFamily: 'Courier', fontSize: 24, color: isDark ? '#34C759' : '#059669', fontWeight: 'bold' },
-  restTimerClose: { marginLeft: 8 },
-  routineHeaderBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 12,
-    backgroundColor: isDark ? '#1C1C1E' : colors.surface,
-    marginHorizontal: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
-  },
-  routineInfoCol: { flex: 1, paddingRight: 8 },
-  routineLabelText: { fontSize: 10, fontWeight: '700', color: colors.textTertiary, letterSpacing: 1.5, marginBottom: 2 },
-  routineNameText: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
-  smallSwapIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : colors.accentDim,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(165,153,255,0.25)' : colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // ── Single Morphing Sticky Header Styles ─────────────────────────────────
-  topHeaderWrapper: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    backgroundColor: 'transparent',
-  },
-  headerInner: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingTop: 4,
-    paddingBottom: 4,
-    backgroundColor: 'transparent',
-  },
-  headerTitle: {
-    fontSize: 21,
-    fontWeight: '700',
-    fontFamily: 'Inter-Bold',
-    color: colors.textPrimary,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  morphBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 35,
-  },
-  morphBtnIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  morphBtnPill: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 16,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.09)' : colors.surface,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.14)' : colors.border,
-  },
-  morphBtnPillAccent: {
-    backgroundColor: isDark ? 'rgba(165,153,255,0.16)' : colors.accentDim,
-    borderColor: isDark ? 'rgba(165,153,255,0.32)' : colors.accentPrimary,
-  },
-  headerBtnText: {
-    fontSize: 8.5,
-    color: colors.textTertiary,
-    fontFamily: 'Inter-Medium',
-    marginTop: 1,
-    textAlign: 'center',
-  },
-
-  // ── Themed Action Sheet Menu Styles ──────────────────────────────────────
-  menuActionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA',
-    marginBottom: 6,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
-  },
-  menuActionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  menuActionTitle: {
-    fontSize: 14,
-    fontFamily: FONT_FAMILY.bold,
-    color: colors.textPrimary,
-  },
-  menuActionSub: {
-    fontSize: 12,
-    fontFamily: FONT_FAMILY.body,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  menuCancelBtn: {
-    marginTop: 8,
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E1EA',
-  },
-  menuCancelText: {
-    fontSize: 14,
-    fontFamily: FONT_FAMILY.bold,
-    color: colors.textPrimary,
-  },
 });
 
 export default GymHomeScreen;

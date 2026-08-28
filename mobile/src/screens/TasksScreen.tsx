@@ -329,8 +329,13 @@ export default function TasksScreen() {
         />
       )}
 
-      <EditTaskModal visible={!!editingTask} onClose={() => setEditingTask(null)} task={editingTask} />
-      {user && <NewTaskModal visible={isNewTaskOpen} onClose={() => setIsNewTaskOpen(false)} userId={user.uid} selectedDate={selectedDate} listCount={selectedDateTasks.length} />}
+      {/* Edit & New Task Modals — strictly conditional (0 lines executed on mount) */}
+      {!!editingTask && (
+        <EditTaskModal visible={!!editingTask} onClose={() => setEditingTask(null)} task={editingTask} />
+      )}
+      {isNewTaskOpen && !!user && (
+        <NewTaskModal visible={isNewTaskOpen} onClose={() => setIsNewTaskOpen(false)} userId={user.uid} selectedDate={selectedDate} listCount={selectedDateTasks.length} />
+      )}
 
       {/* VIEWS */}
       {viewMode === 'timeline' ? (
@@ -407,128 +412,134 @@ export default function TasksScreen() {
         </AnimatedPressable>
       </View>
 
-      {/* OVERDUE MODAL */}
-      <BottomSheet visible={isOverdueModalOpen} onClose={() => setIsOverdueModalOpen(false)}>
-        <View style={{ flexShrink: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, paddingHorizontal: 8, paddingTop: 10 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="warning" size={24} color={colors.error} style={{ marginRight: 12 }} />
-              <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: colors.textPrimary }}>Overdue Tasks</Text>
+      {/* OVERDUE MODAL — strictly conditional to avoid running overdueTasks.map on mount */}
+      {isOverdueModalOpen && (
+        <BottomSheet visible={isOverdueModalOpen} onClose={() => setIsOverdueModalOpen(false)}>
+          <View style={{ flexShrink: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, paddingHorizontal: 8, paddingTop: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="warning" size={24} color={colors.error} style={{ marginRight: 12 }} />
+                <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: colors.textPrimary }}>Overdue Tasks</Text>
+              </View>
+              {overdueTasks.length > 0 && (
+                <Pressable onPress={() => {
+                  Alert.alert(
+                    "Clear Overdue Tasks",
+                    "Are you sure you want to completely delete all overdue tasks? This cannot be undone.",
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      { 
+                        text: "Clear All", 
+                        style: "destructive", 
+                        onPress: () => {
+                          overdueTasks.forEach(t => optimisticDeleteTask(t.id!));
+                          bulkDelete(new Set(overdueTasks.map(t => t.id!)));
+                          setIsOverdueModalOpen(false);
+                        } 
+                      }
+                    ]
+                  );
+                }}>
+                  <Text style={{ color: colors.error, fontSize: 14, fontFamily: 'Inter_600SemiBold', padding: 8 }}>Clear All</Text>
+                </Pressable>
+              )}
             </View>
-            {overdueTasks.length > 0 && (
-              <Pressable onPress={() => {
-                Alert.alert(
-                  "Clear Overdue Tasks",
-                  "Are you sure you want to completely delete all overdue tasks? This cannot be undone.",
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    { 
-                      text: "Clear All", 
-                      style: "destructive", 
-                      onPress: () => {
-                        overdueTasks.forEach(t => optimisticDeleteTask(t.id!));
-                        bulkDelete(new Set(overdueTasks.map(t => t.id!)));
-                        setIsOverdueModalOpen(false);
-                      } 
-                    }
-                  ]
-                );
-              }}>
-                <Text style={{ color: colors.error, fontSize: 14, fontFamily: 'Inter_600SemiBold', padding: 8 }}>Clear All</Text>
-              </Pressable>
-            )}
-          </View>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
-            {overdueTasks.map(t => (
-              <TaskRow
-                key={t.id}
-                task={t}
-                isOverdue={true}
-                onComplete={() => completeTask(t)}
-                onReschedule={() => {
-                  setIsOverdueModalOpen(false);
-                  setSelectedTaskIds(new Set([t.id!]));
-                  setBulkRescheduleModal(true);
-                }}
-                onPress={() => { setIsOverdueModalOpen(false); setEditingTask(t); }}
-                onLongPress={() => { setIsOverdueModalOpen(false); setEditingTask(t); }}
-                onUpdateTask={(id, updates) => updateTask(id, updates)}
-                onAddSubtask={() => {
-                  setIsOverdueModalOpen(false);
-                  setEditingTask(t);
-                }}
-              />
-            ))}
-          </ScrollView>
-        </View>
-      </BottomSheet>
-
-      {/* INBOX MODAL */}
-      <BottomSheet visible={isInboxModalOpen} onClose={() => setIsInboxModalOpen(false)}>
-        <View style={{ flexShrink: 1, maxHeight: 600 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingHorizontal: 8, paddingTop: 20 }}>
-            <Ionicons name="file-tray" size={24} color={colors.accentPrimary} style={{ marginRight: 12 }} />
-            <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: colors.textPrimary }}>Inbox</Text>
-          </View>
-          {inboxTasks.length === 0 ? (
-            <Text style={{ color: colors.textTertiary, fontFamily: 'Inter_500Medium', textAlign: 'center', marginTop: 20, paddingBottom: 40 }}>No tasks in your inbox.</Text>
-          ) : (
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-              {inboxTasks.map(t => (
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
+              {overdueTasks.map(t => (
                 <TaskRow
                   key={t.id}
                   task={t}
-                  isOverdue={false}
+                  isOverdue={true}
                   onComplete={() => completeTask(t)}
                   onReschedule={() => {
-                    setIsInboxModalOpen(false);
+                    setIsOverdueModalOpen(false);
                     setSelectedTaskIds(new Set([t.id!]));
                     setBulkRescheduleModal(true);
                   }}
-                  onPress={() => { setIsInboxModalOpen(false); setEditingTask(t); }}
-                  onLongPress={() => { setIsInboxModalOpen(false); setEditingTask(t); }}
-                  isBulkEdit={isBulkEdit}
-                  isSelected={selectedTaskIds.has(t.id!)}
-                  onToggleSelect={() => toggleTaskSelection(t.id!)}
+                  onPress={() => { setIsOverdueModalOpen(false); setEditingTask(t); }}
+                  onLongPress={() => { setIsOverdueModalOpen(false); setEditingTask(t); }}
                   onUpdateTask={(id, updates) => updateTask(id, updates)}
                   onAddSubtask={() => {
-                    setIsInboxModalOpen(false);
+                    setIsOverdueModalOpen(false);
                     setEditingTask(t);
                   }}
                 />
               ))}
             </ScrollView>
-          )}
-        </View>
-      </BottomSheet>
-
-      {/* OVERFLOW MENU MODAL */}
-      <Modal visible={isMenuOpen} transparent animationType="fade" onRequestClose={() => setIsMenuOpen(false)}>
-        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setIsMenuOpen(false)}>
-          <View style={styles.menuContainer}>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setSortBy('priority'); setIsMenuOpen(false); }}>
-              <Ionicons name="filter" size={18} color={colors.textPrimary} style={{ marginRight: 12 }} />
-              <Text style={styles.menuItemText}>Sort by Priority</Text>
-              {sortBy === 'priority' && <Ionicons name="checkmark" size={16} color={colors.accentPrimary} style={{ marginLeft: 'auto' }} />}
-            </TouchableOpacity>
-            <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setIsTemplatesSheetOpen(true); setIsMenuOpen(false); }}>
-              <Ionicons name="copy-outline" size={18} color={colors.textPrimary} style={{ marginRight: 12 }} />
-              <Text style={styles.menuItemText}>Task Templates</Text>
-            </TouchableOpacity>
-            <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setIsBulkEdit(true); setIsMenuOpen(false); }}>
-              <Ionicons name="checkbox-outline" size={18} color={colors.textPrimary} style={{ marginRight: 12 }} />
-              <Text style={styles.menuItemText}>Select Multiple</Text>
-            </TouchableOpacity>
-            <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuItem} onPress={() => { clearCompletedTasks(tasks); setIsMenuOpen(false); }}>
-              <Ionicons name="trash-bin-outline" size={18} color={colors.error} style={{ marginRight: 12 }} />
-              <Text style={[styles.menuItemText, { color: colors.error }]}>Clear Completed</Text>
-            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
-      </Modal>
+        </BottomSheet>
+      )}
+
+      {/* INBOX MODAL — strictly conditional to avoid running inboxTasks.map on mount */}
+      {isInboxModalOpen && (
+        <BottomSheet visible={isInboxModalOpen} onClose={() => setIsInboxModalOpen(false)}>
+          <View style={{ flexShrink: 1, maxHeight: 600 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingHorizontal: 8, paddingTop: 20 }}>
+              <Ionicons name="file-tray" size={24} color={colors.accentPrimary} style={{ marginRight: 12 }} />
+              <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: colors.textPrimary }}>Inbox</Text>
+            </View>
+            {inboxTasks.length === 0 ? (
+              <Text style={{ color: colors.textTertiary, fontFamily: 'Inter_500Medium', textAlign: 'center', marginTop: 20, paddingBottom: 40 }}>No tasks in your inbox.</Text>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+                {inboxTasks.map(t => (
+                  <TaskRow
+                    key={t.id}
+                    task={t}
+                    isOverdue={false}
+                    onComplete={() => completeTask(t)}
+                    onReschedule={() => {
+                      setIsInboxModalOpen(false);
+                      setSelectedTaskIds(new Set([t.id!]));
+                      setBulkRescheduleModal(true);
+                    }}
+                    onPress={() => { setIsInboxModalOpen(false); setEditingTask(t); }}
+                    onLongPress={() => { setIsInboxModalOpen(false); setEditingTask(t); }}
+                    isBulkEdit={isBulkEdit}
+                    isSelected={selectedTaskIds.has(t.id!)}
+                    onToggleSelect={() => toggleTaskSelection(t.id!)}
+                    onUpdateTask={(id, updates) => updateTask(id, updates)}
+                    onAddSubtask={() => {
+                      setIsInboxModalOpen(false);
+                      setEditingTask(t);
+                    }}
+                  />
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </BottomSheet>
+      )}
+
+      {/* OVERFLOW MENU MODAL — strictly conditional */}
+      {isMenuOpen && (
+        <Modal visible={isMenuOpen} transparent animationType="fade" onRequestClose={() => setIsMenuOpen(false)}>
+          <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setIsMenuOpen(false)}>
+            <View style={styles.menuContainer}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setSortBy('priority'); setIsMenuOpen(false); }}>
+                <Ionicons name="filter" size={18} color={colors.textPrimary} style={{ marginRight: 12 }} />
+                <Text style={styles.menuItemText}>Sort by Priority</Text>
+                {sortBy === 'priority' && <Ionicons name="checkmark" size={16} color={colors.accentPrimary} style={{ marginLeft: 'auto' }} />}
+              </TouchableOpacity>
+              <View style={styles.menuDivider} />
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsTemplatesSheetOpen(true); setIsMenuOpen(false); }}>
+                <Ionicons name="copy-outline" size={18} color={colors.textPrimary} style={{ marginRight: 12 }} />
+                <Text style={styles.menuItemText}>Task Templates</Text>
+              </TouchableOpacity>
+              <View style={styles.menuDivider} />
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsBulkEdit(true); setIsMenuOpen(false); }}>
+                <Ionicons name="checkbox-outline" size={18} color={colors.textPrimary} style={{ marginRight: 12 }} />
+                <Text style={styles.menuItemText}>Select Multiple</Text>
+              </TouchableOpacity>
+              <View style={styles.menuDivider} />
+              <TouchableOpacity style={styles.menuItem} onPress={() => { clearCompletedTasks(tasks); setIsMenuOpen(false); }}>
+                <Ionicons name="trash-bin-outline" size={18} color={colors.error} style={{ marginRight: 12 }} />
+                <Text style={[styles.menuItemText, { color: colors.error }]}>Clear Completed</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
 
       {/* BULK ACTION BAR */}
       {isBulkEdit && (

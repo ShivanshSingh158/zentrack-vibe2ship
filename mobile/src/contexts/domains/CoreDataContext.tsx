@@ -9,7 +9,7 @@
  */
 import React, { createContext, useContext, useEffect, useState, useMemo, useRef, useCallback } from "react";
 import * as Notifications from "expo-notifications";
-import { collection, query, where, onSnapshot, doc, setDoc, getDoc, getDocs, QuerySnapshot, QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
+import { collection, query, where, doc, setDoc, getDoc, getDocs } from "firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates } from 'react-native';
@@ -280,156 +280,107 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [user?.uid]);
 
-  // ── Listener auto-restart on error ───────────────────────────────────────
-  // Firebase ID tokens expire every 60 min. If a network blip coincides with
-  // token expiry, onSnapshot fires its error callback and the listener dies
-  // permanently. This counter, when incremented, causes the effect below to
-  // re-run (after cleanup), reopening all three listeners fresh.
-  const [subscriptionVersion, setSubscriptionVersion] = useState(0);
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // useCallback: stable function reference across renders.
-  // Previously a plain arrow function — recreated on every render causing
-  // stale closures in Firestore subscription effects.
-  const scheduleListenerRestart = useCallback((context: string) => (err: Error) => {
-    console.warn(`[CoreData] ${context} listener error — restarting in 5s`, err.message);
-    // Only schedule one retry at a time
-    if (retryTimerRef.current) return;
-    retryTimerRef.current = setTimeout(() => {
-      retryTimerRef.current = null;
-      setSubscriptionVersion(v => v + 1);
-    }, 5000);
-  }, []);
-
-  // ── Foreground reconnect: restart listeners after long background ─────────
-  // AppNavigator emits 'firestore_force_reconnect' on every AppState: active
-  // event (after refreshing the ID token). This bumps subscriptionVersion,
-  // which tears down any silently-dead listeners and reopens them fresh.
-  // Silent listener death (no onError callback) is the root cause of the
-  // "data not showing after 6+ hours" bug.
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('firestore_force_reconnect', () => {
-      if (user) {
-        console.log('[CoreData] foreground reconnect — restarting Firestore listeners');
-        setSubscriptionVersion(v => v + 1);
-      }
-    });
-    return () => sub.remove();
-  }, [user?.uid]);
-
-  // Critical-path Firestore subscriptions.
-  // PERF: Deferred behind InteractionManager.runAfterInteractions so that on cold boot,
-  // the initial React Navigation mount and Dashboard paint complete with 100% fluid
-  // 60 FPS touch responsiveness using warm L1 cache (getBootManifestSync).
-  // Once the UI is interactive and idle, listeners open and sync live data in the background.
-  useEffect(() => {
-    if (!user) return;
-    const uid = user.uid;
-    let isCancelled = false;
-    const unsubs: (() => void)[] = [];
-
-    const handle = InteractionManager.runAfterInteractions(() => {
-      if (isCancelled) return;
-
-      unsubs.push(onSnapshot(
-        query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
-        { includeMetadataChanges: false }, // Only fire on server-confirmed data changes
-        (snap: QuerySnapshot<DocumentData>) => {
-          // Guard 1: If we have cached data and Firestore returns 0 docs from its LOCAL SDK
-          // cache (before the server responds), skip — prevents "All clear!" flash on cold boot.
-          if (snap.docs.length === 0 && hasCachedDataRef.current) return;
-          unstable_batchedUpdates(() => {
-            const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseTask(d.data(), d.id));
-            setTasks(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-            setFirestoreReady(prev => prev ? prev : true);
-            InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ tasks: fresh }, false));
-          });
-        },
-        scheduleListenerRestart("tasks")
-      ));
-
-      unsubs.push(onSnapshot(
-        query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
-        (snap: QuerySnapshot<DocumentData>) => {
-          if (snap.docs.length === 0 && hasCachedDataRef.current) return;
-          unstable_batchedUpdates(() => {
-            const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseHabit(d.data(), d.id));
-            if (!isHabitLocked.current) {
-              setHabits(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-              InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ habits: fresh }, false));
-            }
-          });
-        },
-        scheduleListenerRestart("habits")
-      ));
-
-      unsubs.push(onSnapshot(
-        query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
-        (snap: QuerySnapshot<DocumentData>) => {
-          if (snap.docs.length === 0 && hasCachedDataRef.current) return;
-          unstable_batchedUpdates(() => {
-            const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseHabitLog(d.data(), d.id));
-            if (!isHabitLogLocked.current) {
-              setHabitLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-              InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ habitLogs: fresh }, false));
-            }
-          });
-        },
-        scheduleListenerRestart("habitLogs")
-      ));
-
-      // Cloud Database XP Sync
-      unsubs.push(onSnapshot(
-        doc(db, COLLECTION.USER_PROFILES, uid),
-        snap => {
-          if (snap.exists()) {
-            const data = snap.data();
-            if (typeof data?.xp === 'number') {
-              syncXPWithFirestore(data.xp);
-            }
-          }
-        },
-        scheduleListenerRestart("user_profiles")
-      ));
-    });
-
-    return () => {
-      isCancelled = true;
-      handle.cancel();
-      unsubs.forEach(u => u());
-    };
-  }, [user?.uid, subscriptionVersion]);
-
-  // Manual pull-to-refresh helper: forces a live sync and updates sync metadata
-  const refreshCoreData = useCallback(async () => {
-    if (!user) return;
-    const uid = user.uid;
+  // ── 1-Read Delta Synchronization Engine ─────────────────────────────────
+  // Reads only user_sync_meta/{uid} on app launch (1 read total).
+  // If server lastModifiedAt <= localSyncTimestamp: 0 collection queries executed.
+  // If server lastModifiedAt > localSyncTimestamp (or cache empty): fetches deltas & updates cache.
+  const performDeltaSync = useCallback(async (uid: string, forceFetchAll = false) => {
     try {
-      const [tasksSnap, habitsSnap, logsSnap, metaSnap] = await Promise.all([
+      const [localTs, serverMeta] = await Promise.all([
+        getLocalSyncTimestamp(),
+        fetchServerSyncMeta(uid),
+      ]);
+
+      const hasLocalData = (tasks.length > 0 || habits.length > 0 || habitLogs.length > 0) || hasCachedDataRef.current;
+      const isUpToDate = !forceFetchAll &&
+        hasLocalData &&
+        serverMeta !== null &&
+        typeof serverMeta.lastModifiedAt === 'number' &&
+        serverMeta.lastModifiedAt <= localTs;
+
+      if (isUpToDate) {
+        console.log(`[CoreData] 1-Read Delta Sync: Local cache is up-to-date (Server: ${serverMeta.lastModifiedAt} <= Local: ${localTs}). 0 collection reads executed. ⚡`);
+        setFirestoreReady(true);
+        return;
+      }
+
+      // Delta detected, initial boot, or forced pull-to-refresh: fetch fresh data
+      console.log(`[CoreData] 1-Read Delta Sync: Delta detected or cache refresh needed (Server: ${serverMeta?.lastModifiedAt ?? 'new'} > Local: ${localTs}). Fetching collections... 📡`);
+
+      const [tasksSnap, habitsSnap, logsSnap, profileSnap] = await Promise.all([
         getDocs(query(collection(db, COLLECTION.TASKS), where("userId", "==", uid))),
         getDocs(query(collection(db, COLLECTION.HABITS), where("userId", "==", uid))),
         getDocs(query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid))),
-        fetchServerSyncMeta(uid),
+        getDoc(doc(db, COLLECTION.USER_PROFILES, uid)).catch(() => null),
       ]);
 
       const freshTasks = tasksSnap.docs.map(d => parseTask(d.data(), d.id));
       const freshHabits = habitsSnap.docs.map(d => parseHabit(d.data(), d.id));
       const freshLogs = logsSnap.docs.map(d => parseHabitLog(d.data(), d.id));
 
+      if (profileSnap && profileSnap.exists()) {
+        const data = profileSnap.data();
+        if (typeof data?.xp === 'number') {
+          syncXPWithFirestore(data.xp);
+        }
+      }
+
       unstable_batchedUpdates(() => {
         setTasks(prev => areItemsEqual(prev, freshTasks) ? prev : freshTasks);
-        setHabits(prev => areItemsEqual(prev, freshHabits) ? prev : freshHabits);
-        setHabitLogs(prev => areItemsEqual(prev, freshLogs) ? prev : freshLogs);
+        if (!isHabitLocked.current) {
+          setHabits(prev => areItemsEqual(prev, freshHabits) ? prev : freshHabits);
+        }
+        if (!isHabitLogLocked.current) {
+          setHabitLogs(prev => areItemsEqual(prev, freshLogs) ? prev : freshLogs);
+        }
         setFirestoreReady(true);
+        hasCachedDataRef.current = true;
         writeCoreCacheMulti({ tasks: freshTasks, habits: freshHabits, habitLogs: freshLogs }, true);
       });
 
-      const now = metaSnap?.lastModifiedAt || Date.now();
-      await setLocalSyncTimestamp(now);
+      const newTs = serverMeta?.lastModifiedAt || Date.now();
+      await setLocalSyncTimestamp(newTs);
     } catch (err) {
-      console.warn('[CoreData] refreshCoreData error:', err);
+      console.warn('[CoreData] performDeltaSync error:', err);
+      // Fallback: mark ready if we already have cached data populated
+      setFirestoreReady(true);
     }
-  }, [user?.uid]);
+  }, [tasks.length, habits.length, habitLogs.length]);
+
+  // ── Foreground reconnect: check 1-read sync metadata on app resume ─────────
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('firestore_force_reconnect', () => {
+      if (user) {
+        console.log('[CoreData] foreground reconnect — checking 1-read sync meta');
+        performDeltaSync(user.uid);
+      }
+    });
+    return () => sub.remove();
+  }, [user?.uid, performDeltaSync]);
+
+  // ── App Launch / Mount Sync ───────────────────────────────────────────────
+  // Runs strictly off-interaction to ensure Frame 0 instant paint from L1 cache.
+  useEffect(() => {
+    if (!user) return;
+    const uid = user.uid;
+    let isCancelled = false;
+
+    const handle = InteractionManager.runAfterInteractions(() => {
+      if (isCancelled) return;
+      performDeltaSync(uid);
+    });
+
+    return () => {
+      isCancelled = true;
+      handle.cancel();
+    };
+  }, [user?.uid, performDeltaSync]);
+
+  // Manual pull-to-refresh helper: forces a live sync and updates sync metadata
+  const refreshCoreData = useCallback(async () => {
+    if (!user) return;
+    await performDeltaSync(user.uid, true);
+  }, [user?.uid, performDeltaSync]);
 
   // loading is TRUE only when: user is authenticated, Firestore hasn't responded yet,
   // AND we have no cached data to show. Never true when cache is populated.

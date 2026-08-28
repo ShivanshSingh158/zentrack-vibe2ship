@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import React, { useMemo, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Calendar } from 'react-native-calendars';
@@ -12,7 +12,7 @@ import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { FONT_FAMILY, SPACE } from '../theme/tokens';
+import { FONT_FAMILY, SPACE, RADIUS } from '../theme/tokens';
 import AnimatedPressable from '../components/AnimatedPressable';
 import {
   calculateAppStreak,
@@ -21,6 +21,7 @@ import {
   calculateConsistencyRate,
   getNextMilestone,
   STREAK_MILESTONES,
+  StreakMilestone,
 } from '../utils/streakUtils';
 
 const getLocalDateString = (d: Date): string => {
@@ -44,13 +45,11 @@ const formatDisplayDate = (dateStr: string): string => {
   }
 };
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
 export default function StreakDetailScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { colors, isDark } = useTheme();
-  const s = makeStyles(colors, isDark);
+  const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
   const { habitId } = route.params || {};
   const { allHabits, habitLogs, tasks } = useCoreData();
@@ -59,10 +58,11 @@ export default function StreakDetailScreen() {
 
   const habit = useMemo(() => allHabits?.find((h) => h.id === habitId), [allHabits, habitId]);
   const isAppStreak = !habitId;
-  const activeColor = habit ? (habit.color || colors.accentPrimary) : (isDark ? '#ff9f4d' : colors.accentAmber);
+  const activeColor = habit ? (habit.color || colors.accentPrimary) : (isDark ? '#FF9500' : colors.accentAmber);
 
   const todayStr = useMemo(() => getLocalDateString(new Date()), []);
   const [inspectedDate, setInspectedDate] = useState<string>(todayStr);
+  const [selectedMilestone, setSelectedMilestone] = useState<StreakMilestone | null>(null);
 
   // ── Stats Calculations ────────────────────────────────────────────────────────
   const currentStreak = useMemo(() => {
@@ -91,7 +91,28 @@ export default function StreakDetailScreen() {
     return Math.round((past30HabitLogs.length / 30) * 100);
   }, [isAppStreak, tasks, gymLogs, habitLogs, habitId]);
 
-  const milestoneInfo = useMemo(() => getNextMilestone(currentStreak), [currentStreak]);
+  const milestoneInfo = useMemo(() => {
+    let current = STREAK_MILESTONES[0];
+    let next = STREAK_MILESTONES[1];
+
+    for (let i = 0; i < STREAK_MILESTONES.length; i++) {
+      if (currentStreak >= STREAK_MILESTONES[i].days) {
+        current = STREAK_MILESTONES[i];
+        next = STREAK_MILESTONES[Math.min(i + 1, STREAK_MILESTONES.length - 1)];
+      } else {
+        next = STREAK_MILESTONES[i];
+        current = i > 0 ? STREAK_MILESTONES[i - 1] : { days: 0, label: 'Initiate', badge: '🌱', badgeIcon: 'flame', color: '#A855F7', gradient: ['#A855F7', '#6366F1'], desc: 'Start your streak' };
+        break;
+      }
+    }
+
+    const span = next.days - current.days;
+    const earned = Math.max(0, currentStreak - current.days);
+    const progress = span > 0 ? Math.min(1, earned / span) : 1;
+    const remaining = Math.max(0, next.days - currentStreak);
+
+    return { current, next, progress, remaining };
+  }, [currentStreak]);
 
   // ── Pillar Counts ─────────────────────────────────────────────────────────────
   const gymSessionsCount = useMemo(() => (gymLogs || []).length, [gymLogs]);
@@ -126,8 +147,8 @@ export default function StreakDetailScreen() {
   const markedDates = useMemo(() => {
     const marks: any = {};
     const successStyle = {
-      container: { backgroundColor: activeColor, borderRadius: 8 },
-      text: { color: isDark ? '#000000' : '#FFFFFF', fontFamily: FONT_FAMILY.bold, fontWeight: '700' as const },
+      container: { backgroundColor: isDark ? 'rgba(255,149,0,0.22)' : 'rgba(217,119,6,0.18)', borderRadius: 8, borderWidth: 1, borderColor: isDark ? '#FF9500' : '#D97706' },
+      text: { color: isDark ? '#FFA500' : '#B45309', fontFamily: FONT_FAMILY.bold, fontWeight: '700' as const },
     };
 
     if (habitId) {
@@ -155,10 +176,11 @@ export default function StreakDetailScreen() {
           customStyles: {
             container: {
               ...existing.customStyles.container,
+              backgroundColor: isDark ? '#FF9500' : colors.accentAmber,
+              borderColor: '#FFFFFF',
               borderWidth: 2,
-              borderColor: isDark ? '#ffffff' : colors.textPrimary,
             },
-            text: existing.customStyles.text,
+            text: { color: isDark ? '#000000' : '#FFFFFF', fontFamily: FONT_FAMILY.bold, fontWeight: '700' as const },
           },
         };
       } else {
@@ -176,12 +198,18 @@ export default function StreakDetailScreen() {
     }
 
     return marks;
-  }, [habitId, habitLogs, tasks, gymLogs, activeColor, inspectedDate, colors.accentPrimary, isDark, colors.textPrimary]);
+  }, [habitId, habitLogs, tasks, gymLogs, inspectedDate, colors.accentPrimary, colors.accentAmber, isDark]);
+
+  const handleMilestonePress = useCallback((m: StreakMilestone) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectedMilestone(prev => prev?.days === m.days ? null : m);
+  }, []);
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'bottom']}>
       <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
-      {/* ── iOS Minimal Top Navigation Bar ── */}
+
+      {/* ── Top Navigation Bar ── */}
       <View style={s.navBar}>
         <AnimatedPressable
           onPress={() => {
@@ -190,12 +218,12 @@ export default function StreakDetailScreen() {
           }}
           style={s.backBtn}
         >
-          <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
+          <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
           <Text style={s.backText}>Back</Text>
         </AnimatedPressable>
 
         <View style={s.liveStatusPill}>
-          <View style={[s.liveDot, { backgroundColor: currentStreak > 0 ? (isDark ? '#ff9f4d' : colors.accentAmber) : colors.textMuted }]} />
+          <View style={[s.liveDot, { backgroundColor: currentStreak > 0 ? '#22C55E' : colors.textMuted }]} />
           <Text style={s.liveStatusText}>
             {currentStreak > 0 ? 'Active Streak' : 'Resting'}
           </Text>
@@ -203,30 +231,46 @@ export default function StreakDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-        {/* ── Apple Fitness Style Hero Section ── */}
-        <View style={s.heroSection}>
-          <View style={s.flameOrb}>
+        {/* ── Hero Glowing Streak Card ── */}
+        <View style={s.heroCard}>
+          <LinearGradient
+            colors={isDark ? ['rgba(255,149,0,0.12)', 'rgba(255,59,48,0.04)', 'transparent'] : ['rgba(255,149,0,0.08)', 'rgba(255,59,48,0.02)', 'transparent']}
+            style={StyleSheet.absoluteFillObject}
+          />
+
+          {/* Radiant Flame Orb */}
+          <View style={s.flameOrbOuter}>
             <LinearGradient
-              colors={isDark ? ['rgba(255,159,77,0.25)', 'rgba(255,159,77,0.05)'] : ['rgba(217,119,6,0.18)', 'rgba(217,119,6,0.04)']}
-              style={s.flameOrbGlow}
-            />
-            <Ionicons name="flame" size={36} color={isDark ? '#ff9f4d' : colors.accentAmber} />
+              colors={['#FF9500', '#FF3B30']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={s.flameOrbInner}
+            >
+              <Ionicons name="flame" size={32} color="#FFFFFF" />
+            </LinearGradient>
           </View>
 
+          {/* Large Streak Metric */}
           <View style={s.streakCountRow}>
             <Text style={s.streakLargeNumber}>{currentStreak}</Text>
-            <Text style={s.streakUnitLabel}>DAYS</Text>
+            <View style={s.streakBadgeBox}>
+              <Text style={s.streakBadgeText}>DAYS</Text>
+            </View>
           </View>
 
-          <Text style={s.heroTierTitle}>
-            {milestoneInfo.current.badge} {milestoneInfo.current.label}
-          </Text>
+          {/* Current Tier Pill */}
+          <View style={s.tierPill}>
+            <Ionicons name="sparkles" size={13} color="#FF9500" style={{ marginRight: 4 }} />
+            <Text style={s.heroTierTitle}>
+              {milestoneInfo.current.label}
+            </Text>
+          </View>
 
-          {/* Minimalist Progress Track */}
+          {/* Milestone Progress Bar */}
           <View style={s.heroProgressWrapper}>
             <View style={s.heroProgressBarTrack}>
               <LinearGradient
-                colors={isDark ? ['#ff9f4d', '#a599ff'] : [colors.accentAmber, colors.accentPrimary]}
+                colors={['#FF9500', '#FF3B30', '#A855F7']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={[s.heroProgressBarFill, { width: `${Math.min(100, Math.max(6, milestoneInfo.progress * 100))}%` }]}
@@ -234,44 +278,66 @@ export default function StreakDetailScreen() {
             </View>
             <Text style={s.heroProgressSubtext}>
               {milestoneInfo.remaining > 0
-                ? `${milestoneInfo.remaining} day${milestoneInfo.remaining > 1 ? 's' : ''} to ${milestoneInfo.next.label}`
-                : 'Highest milestone unlocked!'}
+                ? `${milestoneInfo.remaining} days to ${milestoneInfo.next.label}`
+                : 'Maximum tier unlocked!'}
             </Text>
           </View>
         </View>
 
-        {/* ── Section: Overview Matrix (Apple Inset Card) ── */}
-        <Text style={s.sectionHeader}>Overview</Text>
-        <View style={s.insetCard}>
-          <View style={s.matrixRow}>
-            <View style={s.matrixCell}>
-              <Text style={s.matrixLabel}>CURRENT STREAK</Text>
-              <Text style={s.matrixNumber}>{currentStreak} <Text style={s.matrixUnit}>days</Text></Text>
+        {/* ── Section: Overview Matrix (2x2 Grid) ── */}
+        <Text style={s.sectionHeader}>Streak Analytics</Text>
+        <View style={s.matrixGrid}>
+          {/* Card 1: Current Streak */}
+          <View style={s.matrixCard}>
+            <View style={s.matrixIconRow}>
+              <View style={[s.matrixIconBox, { backgroundColor: 'rgba(255,149,0,0.14)' }]}>
+                <Ionicons name="flame" size={16} color="#FF9500" />
+              </View>
+              <Text style={s.matrixLabel}>CURRENT</Text>
             </View>
-            <View style={s.matrixDividerV} />
-            <View style={s.matrixCell}>
-              <Text style={s.matrixLabel}>ALL-TIME BEST</Text>
-              <Text style={s.matrixNumber}>{longestStreak} <Text style={s.matrixUnit}>days</Text></Text>
-            </View>
+            <Text style={s.matrixValue}>{currentStreak} <Text style={s.matrixUnit}>days</Text></Text>
           </View>
 
-          <View style={s.matrixDividerH} />
+          {/* Card 2: Longest Streak */}
+          <View style={s.matrixCard}>
+            <View style={s.matrixIconRow}>
+              <View style={[s.matrixIconBox, { backgroundColor: 'rgba(56,189,248,0.14)' }]}>
+                <Ionicons name="trophy" size={15} color="#38BDF8" />
+              </View>
+              <Text style={s.matrixLabel}>BEST EVER</Text>
+            </View>
+            <Text style={s.matrixValue}>{longestStreak} <Text style={s.matrixUnit}>days</Text></Text>
+          </View>
 
-          <View style={s.matrixRow}>
-            <View style={s.matrixCell}>
-              <Text style={s.matrixLabel}>TOTAL ACTIVE</Text>
-              <Text style={s.matrixNumber}>{totalActiveDays} <Text style={s.matrixUnit}>days</Text></Text>
+          {/* Card 3: Total Active */}
+          <View style={s.matrixCard}>
+            <View style={s.matrixIconRow}>
+              <View style={[s.matrixIconBox, { backgroundColor: 'rgba(168,85,247,0.14)' }]}>
+                <Ionicons name="calendar" size={15} color="#A855F7" />
+              </View>
+              <Text style={s.matrixLabel}>TOTAL DAYS</Text>
             </View>
-            <View style={s.matrixDividerV} />
-            <View style={s.matrixCell}>
+            <Text style={s.matrixValue}>{totalActiveDays} <Text style={s.matrixUnit}>active</Text></Text>
+          </View>
+
+          {/* Card 4: 30-Day Rate */}
+          <View style={s.matrixCard}>
+            <View style={s.matrixIconRow}>
+              <View style={[s.matrixIconBox, { backgroundColor: 'rgba(34,197,94,0.14)' }]}>
+                <Ionicons name="trending-up" size={16} color="#22C55E" />
+              </View>
               <Text style={s.matrixLabel}>30-DAY RATE</Text>
-              <Text style={s.matrixNumber}>{consistencyRate}%</Text>
             </View>
+            <Text style={s.matrixValue}>{consistencyRate}%</Text>
           </View>
         </View>
 
-        {/* ── Section: Achievement Awards (Apple Watch Style) ── */}
-        <Text style={s.sectionHeader}>Milestone Awards</Text>
+        {/* ── Section: Milestone Awards (Redesigned Medallions) ── */}
+        <View style={s.sectionHeaderRow}>
+          <Text style={s.sectionHeader}>Milestone Awards</Text>
+          <Text style={s.sectionSubtitle}>Tap for details</Text>
+        </View>
+
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -279,65 +345,143 @@ export default function StreakDetailScreen() {
         >
           {STREAK_MILESTONES.map((m) => {
             const isUnlocked = currentStreak >= m.days;
+            const isSelected = selectedMilestone?.days === m.days;
+
             return (
-              <View key={m.days} style={s.awardItem}>
-                <View style={[s.awardRing, isUnlocked ? s.awardRingUnlocked : s.awardRingLocked]}>
-                  <Text style={[s.awardEmoji, !isUnlocked && { opacity: 0.3 }]}>{m.badge}</Text>
+              <TouchableOpacity
+                key={m.days}
+                activeOpacity={0.8}
+                onPress={() => handleMilestonePress(m)}
+                style={[
+                  s.awardItem,
+                  isSelected && s.awardItemSelected,
+                ]}
+              >
+                {/* Medallion Circle */}
+                <View style={[
+                  s.awardMedallion,
+                  isUnlocked ? { borderColor: m.color, shadowColor: m.color } : s.awardMedallionLocked,
+                ]}>
+                  {isUnlocked ? (
+                    <LinearGradient
+                      colors={m.gradient || [m.color, m.color]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={s.awardMedallionFill}
+                    >
+                      {m.badgeIconSet === 'mci' ? (
+                        <MaterialCommunityIcons name={m.badgeIcon as any} size={22} color="#FFFFFF" />
+                      ) : (
+                        <Ionicons name={m.badgeIcon as any} size={22} color="#FFFFFF" />
+                      )}
+                    </LinearGradient>
+                  ) : (
+                    <View style={s.awardMedallionFillLocked}>
+                      <Ionicons name="lock-closed" size={18} color={isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)'} />
+                    </View>
+                  )}
+
+                  {/* Micro Checkmark Tag if Unlocked */}
+                  {isUnlocked && (
+                    <View style={s.awardCheckTag}>
+                      <Ionicons name="checkmark" size={9} color="#FFFFFF" />
+                    </View>
+                  )}
                 </View>
-                <Text style={[s.awardDays, isUnlocked && { color: m.color }]}>{m.days}d</Text>
-                <Text style={s.awardLabel} numberOfLines={1}>{m.label}</Text>
-              </View>
+
+                {/* Day Threshold */}
+                <Text style={[s.awardDays, isUnlocked && { color: m.color }]}>
+                  {m.days}d
+                </Text>
+
+                {/* Milestone Title */}
+                <Text style={[s.awardLabel, isUnlocked && { color: colors.textPrimary }]} numberOfLines={1}>
+                  {m.label}
+                </Text>
+              </TouchableOpacity>
             );
           })}
         </ScrollView>
 
-        {/* ── Section: Activity Breakdown (iOS Inset Grouped Table) ── */}
+        {/* Selected Milestone Tooltip Banner */}
+        {selectedMilestone && (
+          <View style={[s.milestoneDetailCard, { borderColor: selectedMilestone.color + '40' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={[s.milestoneDetailDot, { backgroundColor: selectedMilestone.color }]} />
+              <Text style={s.milestoneDetailTitle}>{selectedMilestone.label} ({selectedMilestone.days} Days)</Text>
+            </View>
+            <Text style={s.milestoneDetailDesc}>{selectedMilestone.desc}</Text>
+            <Text style={[s.milestoneDetailStatus, { color: currentStreak >= selectedMilestone.days ? '#22C55E' : colors.accentAmber }]}>
+              {currentStreak >= selectedMilestone.days
+                ? '✓ Milestone Unlocked & Mastered'
+                : `⏳ ${selectedMilestone.days - currentStreak} days remaining to unlock`}
+            </Text>
+          </View>
+        )}
+
+        {/* ── Section: Activity Breakdown ── */}
         {isAppStreak && (
           <>
-            <Text style={s.sectionHeader}>Activity Breakdown</Text>
+            <Text style={s.sectionHeader}>Activity Contribution</Text>
             <View style={s.insetCard}>
+              {/* Gym */}
               <View style={s.tableRow}>
-                <View style={[s.tableIconSquircle, { backgroundColor: colors.accentAmberDim }]}>
-                  <Ionicons name="barbell" size={16} color={isDark ? "#ff9f4d" : colors.accentAmber} />
+                <View style={[s.tableIconSquircle, { backgroundColor: 'rgba(56,189,248,0.14)' }]}>
+                  <MaterialCommunityIcons name="arm-flex" size={17} color="#38BDF8" />
                 </View>
-                <Text style={s.tableTitle}>Fitness & Gym</Text>
-                <Text style={s.tableValue}>{gymSessionsCount} <Text style={s.tableValueUnit}>sessions</Text></Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.tableTitle}>Fitness & Gym Workouts</Text>
+                  <Text style={s.tableSubtitle}>Weight training and cardio logs</Text>
+                </View>
+                <Text style={s.tableValue}>{gymSessionsCount} <Text style={s.tableValueUnit}>logs</Text></Text>
               </View>
 
               <View style={s.tableDivider} />
 
+              {/* Attendance */}
               <View style={s.tableRow}>
-                <View style={[s.tableIconSquircle, { backgroundColor: colors.accentBlueDim }]}>
-                  <Ionicons name="school" size={16} color={isDark ? "#38bdf8" : colors.accentBlue} />
+                <View style={[s.tableIconSquircle, { backgroundColor: 'rgba(168,85,247,0.14)' }]}>
+                  <Ionicons name="id-card" size={16} color="#A855F7" />
                 </View>
-                <Text style={s.tableTitle}>Academic Attendance</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.tableTitle}>Academic Attendance</Text>
+                  <Text style={s.tableSubtitle}>Classes and lectures attended</Text>
+                </View>
                 <Text style={s.tableValue}>{classesAttendedCount} <Text style={s.tableValueUnit}>classes</Text></Text>
               </View>
 
               <View style={s.tableDivider} />
 
+              {/* Habits */}
               <View style={s.tableRow}>
-                <View style={[s.tableIconSquircle, { backgroundColor: colors.accentGreenDim }]}>
-                  <Ionicons name="leaf" size={16} color={isDark ? "#5eda9e" : colors.accentGreen} />
+                <View style={[s.tableIconSquircle, { backgroundColor: 'rgba(255,149,0,0.14)' }]}>
+                  <Ionicons name="sync" size={16} color="#FF9500" />
                 </View>
-                <Text style={s.tableTitle}>Daily Habits</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.tableTitle}>Daily Habits & Rituals</Text>
+                  <Text style={s.tableSubtitle}>Habit completions checked</Text>
+                </View>
                 <Text style={s.tableValue}>{habitCompletionsCount} <Text style={s.tableValueUnit}>checked</Text></Text>
               </View>
 
               <View style={s.tableDivider} />
 
+              {/* Tasks */}
               <View style={s.tableRow}>
-                <View style={[s.tableIconSquircle, { backgroundColor: colors.accentDim }]}>
-                  <Ionicons name="checkmark-circle" size={16} color={colors.accentPrimary} />
+                <View style={[s.tableIconSquircle, { backgroundColor: 'rgba(34,197,94,0.14)' }]}>
+                  <Ionicons name="checkmark-circle" size={16} color="#22C55E" />
                 </View>
-                <Text style={s.tableTitle}>Tasks Completed</Text>
-                <Text style={s.tableValue}>{tasksCompletedCount} <Text style={s.tableValueUnit}>finished</Text></Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.tableTitle}>Completed Tasks</Text>
+                  <Text style={s.tableSubtitle}>Daily agenda items resolved</Text>
+                </View>
+                <Text style={s.tableValue}>{tasksCompletedCount} <Text style={s.tableValueUnit}>tasks</Text></Text>
               </View>
             </View>
           </>
         )}
 
-        {/* ── Section: Activity History (Apple Health Minimal Calendar) ── */}
+        {/* ── Section: Activity History Calendar ── */}
         <Text style={s.sectionHeader}>Activity History</Text>
         <View style={s.insetCard}>
           <Calendar
@@ -352,8 +496,8 @@ export default function StreakDetailScreen() {
               calendarBackground: 'transparent',
               textSectionTitleColor: colors.textTertiary,
               selectedDayBackgroundColor: activeColor,
-              selectedDayTextColor: isDark ? '#000000' : '#FFFFFF',
-              todayTextColor: activeColor,
+              selectedDayTextColor: '#FFFFFF',
+              todayTextColor: '#FF9500',
               dayTextColor: colors.textPrimary,
               textDisabledColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
               monthTextColor: colors.textPrimary,
@@ -372,7 +516,7 @@ export default function StreakDetailScreen() {
               <Text style={s.inspectionDateText}>
                 {inspectedDate === todayStr ? 'Today’s Summary' : formatDisplayDate(inspectedDate)}
               </Text>
-              <View style={[s.statusDot, { backgroundColor: inspectedData.hasActivity ? colors.accentGreen : colors.textMuted }]} />
+              <View style={[s.statusDot, { backgroundColor: inspectedData.hasActivity ? '#22C55E' : colors.textMuted }]} />
             </View>
 
             {inspectedData.hasActivity ? (
@@ -427,22 +571,22 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
     backBtn: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 2,
+      gap: 3,
     },
     backText: {
-      fontFamily: FONT_FAMILY.medium,
-      fontSize: 16,
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 15,
       color: colors.textPrimary,
     },
     liveStatusPill: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      backgroundColor: isDark ? '#1c1c1e' : colors.surface,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: 14,
-      borderWidth: 0.5,
+      backgroundColor: isDark ? '#1C1C1E' : colors.surface,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+      borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border,
     },
     liveDot: {
@@ -451,74 +595,104 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       borderRadius: 3,
     },
     liveStatusText: {
-      fontFamily: FONT_FAMILY.medium,
+      fontFamily: FONT_FAMILY.bold,
       fontSize: 11,
-      color: colors.textTertiary,
+      color: colors.textPrimary,
+      letterSpacing: 0.2,
     },
     scroll: {
       paddingHorizontal: 16,
       paddingBottom: 100,
-      paddingTop: 6,
+      paddingTop: 4,
     },
 
-    // Apple Fitness Hero
-    heroSection: {
+    // ── Hero Section ──
+    heroCard: {
+      backgroundColor: isDark ? '#141416' : colors.surface,
+      borderRadius: RADIUS.xl,
+      paddingVertical: 24,
+      paddingHorizontal: 18,
       alignItems: 'center',
-      paddingVertical: 20,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,149,0,0.22)' : 'rgba(217,119,6,0.18)',
       marginBottom: 16,
-    },
-    flameOrb: {
-      width: 68,
-      height: 68,
-      borderRadius: 34,
-      backgroundColor: isDark ? '#1c1c1e' : colors.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: 12,
-      borderWidth: 0.5,
-      borderColor: isDark ? 'rgba(255,159,77,0.3)' : 'rgba(217,119,6,0.3)',
+      overflow: 'hidden',
       position: 'relative',
     },
-    flameOrbGlow: {
-      position: 'absolute',
+    flameOrbOuter: {
       width: 68,
       height: 68,
       borderRadius: 34,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 10,
+      shadowColor: '#FF6B00',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: isDark ? 0.45 : 0.25,
+      shadowRadius: 16,
+      elevation: 12,
+    },
+    flameOrbInner: {
+      width: 68,
+      height: 68,
+      borderRadius: 34,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     streakCountRow: {
       flexDirection: 'row',
-      alignItems: 'baseline',
-      gap: 6,
+      alignItems: 'center',
+      gap: 8,
+      marginVertical: 4,
     },
     streakLargeNumber: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 60,
+      fontSize: 56,
       color: colors.textPrimary,
-      lineHeight: 68,
-      letterSpacing: -1,
+      lineHeight: 62,
+      letterSpacing: -1.5,
     },
-    streakUnitLabel: {
+    streakBadgeBox: {
+      backgroundColor: isDark ? 'rgba(255,149,0,0.18)' : 'rgba(217,119,6,0.12)',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,149,0,0.3)' : 'rgba(217,119,6,0.2)',
+    },
+    streakBadgeText: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 14,
-      color: isDark ? '#ff9f4d' : colors.accentAmber,
-      letterSpacing: 1.5,
+      fontSize: 11,
+      color: '#FF9500',
+      letterSpacing: 1,
+    },
+    tierPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? '#1C1C1E' : colors.surface2,
+      paddingHorizontal: 12,
+      paddingVertical: 5,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+      marginTop: 4,
     },
     heroTierTitle: {
-      fontFamily: FONT_FAMILY.medium,
-      fontSize: 14,
-      color: colors.textTertiary,
-      marginTop: 2,
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 13,
+      color: colors.textPrimary,
+      letterSpacing: 0.2,
     },
     heroProgressWrapper: {
       width: '100%',
-      maxWidth: 260,
+      maxWidth: 280,
       alignItems: 'center',
-      marginTop: 14,
+      marginTop: 16,
     },
     heroProgressBarTrack: {
       width: '100%',
       height: 6,
-      backgroundColor: isDark ? '#2c2c2e' : '#E2E1EA',
+      backgroundColor: isDark ? '#26262A' : '#E2E1EA',
       borderRadius: 3,
       overflow: 'hidden',
       marginBottom: 8,
@@ -533,85 +707,111 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       color: colors.textTertiary,
     },
 
-    // iOS Inset Card Architecture
+    // ── Section Headers ──
     sectionHeader: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 12,
       color: colors.textTertiary,
       textTransform: 'uppercase',
       letterSpacing: 0.8,
-      marginLeft: 12,
-      marginBottom: 8,
-      marginTop: 10,
+      marginLeft: 4,
+      marginBottom: 10,
+      marginTop: 6,
     },
-    insetCard: {
-      backgroundColor: isDark ? '#1c1c1e' : colors.surface,
-      borderRadius: 16,
-      overflow: 'hidden',
-      borderWidth: 0.5,
-      borderColor: isDark ? '#2c2c2e' : colors.border,
-      marginBottom: 16,
-    },
-
-    // Matrix
-    matrixRow: {
+    sectionHeaderRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 4,
+      marginBottom: 10,
+      marginTop: 6,
     },
-    matrixCell: {
-      flex: 1,
-      paddingVertical: 14,
-      paddingHorizontal: 16,
+    sectionSubtitle: {
+      fontFamily: FONT_FAMILY.medium,
+      fontSize: 11,
+      color: colors.textTertiary,
+    },
+
+    // ── 2x2 Matrix Grid ──
+    matrixGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginBottom: 16,
+    },
+    matrixCard: {
+      width: (Dimensions.get('window').width - 42) / 2,
+      backgroundColor: isDark ? '#18181B' : colors.surface,
+      borderRadius: RADIUS.lg,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+    },
+    matrixIconRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 10,
+    },
+    matrixIconBox: {
+      width: 28,
+      height: 28,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     matrixLabel: {
-      fontFamily: FONT_FAMILY.medium,
+      fontFamily: FONT_FAMILY.bold,
       fontSize: 10,
       color: colors.textTertiary,
-      letterSpacing: 0.5,
-      marginBottom: 4,
+      letterSpacing: 0.6,
     },
-    matrixNumber: {
+    matrixValue: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 20,
       color: colors.textPrimary,
+      letterSpacing: -0.3,
     },
     matrixUnit: {
       fontFamily: FONT_FAMILY.medium,
       fontSize: 12,
       color: colors.textTertiary,
-      fontWeight: '400',
-    },
-    matrixDividerV: {
-      width: 0.5,
-      height: '70%',
-      backgroundColor: isDark ? '#2c2c2e' : colors.border,
-    },
-    matrixDividerH: {
-      height: 0.5,
-      width: '100%',
-      backgroundColor: isDark ? '#2c2c2e' : colors.border,
     },
 
-    // Table
+    // ── Inset Table Cards ──
+    insetCard: {
+      backgroundColor: isDark ? '#18181B' : colors.surface,
+      borderRadius: RADIUS.xl,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+      marginBottom: 16,
+    },
     tableRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: 12,
+      paddingVertical: 13,
       paddingHorizontal: 16,
     },
     tableIconSquircle: {
-      width: 30,
-      height: 30,
-      borderRadius: 8,
+      width: 34,
+      height: 34,
+      borderRadius: 10,
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: 12,
     },
     tableTitle: {
-      fontFamily: FONT_FAMILY.medium,
-      fontSize: 14,
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 13.5,
       color: colors.textPrimary,
-      flex: 1,
+      letterSpacing: -0.1,
+    },
+    tableSubtitle: {
+      fontFamily: FONT_FAMILY.medium,
+      fontSize: 11,
+      color: colors.textTertiary,
+      marginTop: 1,
     },
     tableValue: {
       fontFamily: FONT_FAMILY.bold,
@@ -620,61 +820,121 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
     },
     tableValueUnit: {
       fontFamily: FONT_FAMILY.medium,
-      fontSize: 12,
+      fontSize: 11.5,
       color: colors.textTertiary,
-      fontWeight: '400',
     },
     tableDivider: {
-      height: 0.5,
-      marginLeft: 58,
-      backgroundColor: isDark ? '#2c2c2e' : colors.border,
+      height: 1,
+      marginLeft: 62,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : colors.border,
     },
 
-    // Awards
+    // ── Milestone Awards (Medallions) ──
     awardsRow: {
-      paddingHorizontal: 4,
-      paddingBottom: 8,
+      paddingHorizontal: 2,
+      paddingBottom: 6,
       gap: 12,
-      marginBottom: 16,
+      marginBottom: 12,
     },
     awardItem: {
       alignItems: 'center',
-      width: 68,
+      width: 74,
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+      borderRadius: 14,
     },
-    awardRing: {
-      width: 52,
-      height: 52,
-      borderRadius: 26,
+    awardItemSelected: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    },
+    awardMedallion: {
+      width: 54,
+      height: 54,
+      borderRadius: 27,
+      borderWidth: 2,
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: 6,
+      position: 'relative',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: isDark ? 0.4 : 0.2,
+      shadowRadius: 10,
+      elevation: 6,
+    },
+    awardMedallionFill: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    awardMedallionLocked: {
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+      backgroundColor: isDark ? '#1C1C1E' : '#E2E1EA',
+    },
+    awardMedallionFillLocked: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? '#141416' : '#F0EFF7',
+    },
+    awardCheckTag: {
+      position: 'absolute',
+      bottom: -2,
+      right: -2,
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: '#22C55E',
+      alignItems: 'center',
+      justifyContent: 'center',
       borderWidth: 1.5,
-    },
-    awardRingUnlocked: {
-      backgroundColor: isDark ? 'rgba(255,159,77,0.12)' : 'rgba(217,119,6,0.12)',
-      borderColor: isDark ? '#ff9f4d' : colors.accentAmber,
-    },
-    awardRingLocked: {
-      backgroundColor: isDark ? '#1c1c1e' : colors.surface2,
-      borderColor: isDark ? '#2c2c2e' : colors.border,
-    },
-    awardEmoji: {
-      fontSize: 20,
+      borderColor: isDark ? '#141416' : '#FFFFFF',
     },
     awardDays: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 11,
+      fontSize: 11.5,
       color: colors.textTertiary,
     },
     awardLabel: {
       fontFamily: FONT_FAMILY.medium,
-      fontSize: 9,
+      fontSize: 9.5,
       color: colors.textTertiary,
-      marginTop: 1,
+      marginTop: 2,
       textAlign: 'center',
     },
+    milestoneDetailCard: {
+      backgroundColor: isDark ? '#1C1C1E' : colors.surface,
+      borderRadius: RADIUS.lg,
+      padding: 14,
+      borderWidth: 1,
+      marginBottom: 16,
+      gap: 4,
+    },
+    milestoneDetailDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    milestoneDetailTitle: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 13.5,
+      color: colors.textPrimary,
+    },
+    milestoneDetailDesc: {
+      fontFamily: FONT_FAMILY.body,
+      fontSize: 12,
+      color: colors.textSecondary,
+      lineHeight: 16,
+    },
+    milestoneDetailStatus: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 11.5,
+      marginTop: 2,
+    },
 
-    // Inspection
+    // ── Inspection Summary ──
     inspectionSection: {
       padding: 16,
     },
@@ -686,7 +946,7 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
     },
     inspectionDateText: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 13,
+      fontSize: 13.5,
       color: colors.textPrimary,
     },
     statusDot: {

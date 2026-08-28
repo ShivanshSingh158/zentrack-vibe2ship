@@ -21,7 +21,6 @@ import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { uploadFileToCloudinary } from '../services/cloudinary';
 import * as DocumentPicker from 'expo-document-picker';
 import Markdown from 'react-native-markdown-display';
-import { WebView } from 'react-native-webview';
 import { callGeminiProxy } from '../services/geminiProxy';
 import Svg, { Circle } from 'react-native-svg';
 import * as Print from 'expo-print';

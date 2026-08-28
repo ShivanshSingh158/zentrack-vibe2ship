@@ -13,8 +13,8 @@ import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../contexts/ThemeContext';
 import { DAY_SHORT, getLocalDateString } from './attendanceConstants';
 
-const TOTAL_WEEKS = 21;
-const INITIAL_PAGE = 10; // offset = 0
+const TOTAL_WEEKS = 11;
+const INITIAL_PAGE = 5; // offset = 0
 
 interface HorizontalWeekStripProps {
   selectedDate: string;
@@ -35,7 +35,7 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
   const { width: windowWidth } = useWindowDimensions();
   // AttendanceScreen has paddingHorizontal: 5 on both sides (total 10px)
   const initialWidth = windowWidth - 10;
-  const [pageWidth, setPageWidth] = useState(initialWidth);
+  const [pageWidth] = useState(initialWidth);
   const [currentPage, setCurrentPage] = useState(INITIAL_PAGE);
   const isInternalScroll = useRef(false);
 
@@ -77,17 +77,6 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
     } catch (_) {}
   }, [selectedDate, anchorSunday, currentPage]);
 
-  // Frame 0 alignment guarantee
-  useEffect(() => {
-    const t = requestAnimationFrame(() => {
-      flatListRef.current?.scrollToOffset({
-        offset: currentPage * pageWidth,
-        animated: false,
-      });
-    });
-    return () => cancelAnimationFrame(t);
-  }, [pageWidth, currentPage]);
-
   const handleMomentumScrollEnd = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offsetX = e.nativeEvent.contentOffset.x;
@@ -118,25 +107,24 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
   const renderWeek = useCallback(
     ({ item: offset }: { item: number }) => {
       const baseMs = anchorSunday.getTime() + offset * 7 * 86400000;
-      const dates = Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(baseMs + i * 86400000);
-        return getLocalDateString(d);
-      });
 
       return (
         <View style={[styles.weekRow, { width: pageWidth }]}>
-          {dates.map((date, i) => {
-            const isHol = holidays.includes(date);
-            const isSel = date === selectedDate;
-            const isToday = date === today;
-            const dayNum = date.split('-')[2];
+          {Array.from({ length: 7 }, (_, i) => {
+            const dayMs = baseMs + i * 86400000;
+            const d = new Date(dayMs);
+            const dateStr = getLocalDateString(d);
+            const dayNum = d.getDate();
+            const isSel = selectedDate === dateStr;
+            const isToday = today === dateStr;
+            const isHol = holidays.includes(dateStr);
 
             return (
               <TouchableOpacity
-                key={date}
+                key={dateStr}
                 onPress={() => {
-                  Haptics.selectionAsync();
-                  onSelectDate(date);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  onSelectDate(dateStr);
                 }}
                 style={[
                   styles.dayCol,
@@ -171,19 +159,7 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
   );
 
   return (
-    <View
-      style={styles.container}
-      onLayout={(e) => {
-        const w = e.nativeEvent.layout.width;
-        if (w > 0 && Math.abs(w - pageWidth) > 0.5) {
-          setPageWidth(w);
-          flatListRef.current?.scrollToOffset({
-            offset: currentPage * w,
-            animated: false,
-          });
-        }
-      }}
-    >
+    <View style={styles.container}>
       <FlatList
         ref={flatListRef}
         data={pages}
@@ -193,7 +169,9 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         initialScrollIndex={INITIAL_PAGE}
-        initialNumToRender={TOTAL_WEEKS}
+        initialNumToRender={1}
+        maxToRenderPerBatch={2}
+        windowSize={3}
         getItemLayout={(_, index) => ({
           length: pageWidth,
           offset: pageWidth * index,
