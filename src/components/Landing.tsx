@@ -282,7 +282,7 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
           
           <div style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.2)', margin: '0 0.5rem' }}></div>
 
-          <motion.a href="https://drive.google.com/file/d/1inQH0PL4EbVjw89r6s8r9BB9wwDJeHxO/view?usp=sharing" target="_blank" rel="noopener noreferrer"
+          <motion.a href="/ZenTrack.apk" download="ZenTrack.apk"
             whileHover={{ scale: 1.05, color: 'rgba(235, 224, 204, 1)' }} whileTap={{ scale: 0.97 }}
             style={{ 
               display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(235, 224, 204, 0.05)', 
@@ -394,7 +394,7 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
               Join thousands building calmer, more intentional, fully automated lives — powered by an AI that actually works for you.
             </p>
             {isMobile ? (
-              <motion.a href="https://drive.google.com/file/d/1inQH0PL4EbVjw89r6s8r9BB9wwDJeHxO/view?usp=sharing" target="_blank" rel="noopener noreferrer" className="hero-cta-btn premium-matte-card premium-glow"
+              <motion.a href="/ZenTrack.apk" download="ZenTrack.apk" className="hero-cta-btn premium-matte-card premium-glow"
                 whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
                 style={{ marginTop: 0, padding: '1.1rem 3.5rem', fontSize: '1rem', textDecoration: 'none', display: 'inline-block' }}>
                 Download the app for best experience

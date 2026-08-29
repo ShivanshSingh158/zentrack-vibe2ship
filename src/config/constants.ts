@@ -8,7 +8,8 @@
 // ── App Metadata ──────────────────────────────────────────────────────────────
 export const APP_NAME = 'ZenTrack';
 export const APP_VERSION = '1.0.0';
-export const APP_URL = import.meta.env.VITE_APP_URL || 'https://myzentrack.vercel.app';
+export const APP_URL = import.meta.env.VITE_APP_URL || 'https://zentrackworld.vercel.app';
+export const APK_DOWNLOAD_URL = '/ZenTrack.apk';
 
 // ── API Endpoints ─────────────────────────────────────────────────────────────
 export const GEMINI_PROXY_URL = `${APP_URL}/api/gemini-proxy`;
