@@ -1,36 +1,55 @@
+/**
+ * GymScheduleSettingsModal • ZenTrack Mobile
+ *
+ * Custom 7-day schedule pattern editor (e.g. Tue–Sun with Mon Rest),
+ * today's workout time override, and daily reminder notifications.
+ * Modularized for fast rendering and immutable schedule updates.
+ */
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Platform, SafeAreaView, Switch, Alert } from 'react-native';
+import {
+  View, Text, Modal, TouchableOpacity, ScrollView,
+  Platform, SafeAreaView, Alert,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
-import { hapticMedium, hapticLight, hapticSelection } from '../../utils/haptics';
-import { useTheme } from "../../contexts/ThemeContext";
+
+import { FONT_SIZE } from '../../theme/tokens';
+import { hapticMedium, hapticLight } from '../../utils/haptics';
+import { useTheme } from '../../contexts/ThemeContext';
 import { UserGymPlanDoc, GymPlanDay } from '../../types/gym.types';
 import { GYM_PLAN } from '../../data/gymPlan';
+
+// Extracted Subcomponents & Styles
+import { makeGymScheduleStyles } from './gymScheduleStyles';
+import GymScheduleDayCard from './GymScheduleDayCard';
+import GymScheduleReminderTab from './GymScheduleReminderTab';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
-  // Weekly Plan
   userGymPlan: UserGymPlanDoc | null;
   onSaveWeekly: (newCustomDays: Record<number, GymPlanDay>) => Promise<void>;
-  // Today's Override
   currentStartTime?: string;
   currentEndTime?: string;
   onSaveOverride: (start: string, end: string) => void;
-  // Notifications
   onNotifSaved?: () => void;
 }
 
-export function GymScheduleSettingsModal({ 
-  visible, onClose, 
-  userGymPlan, onSaveWeekly,
-  currentStartTime, currentEndTime, onSaveOverride,
-  onNotifSaved 
+const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+export function GymScheduleSettingsModal({
+  visible,
+  onClose,
+  userGymPlan,
+  onSaveWeekly,
+  currentStartTime,
+  currentEndTime,
+  onSaveOverride,
+  onNotifSaved,
 }: Props) {
   const { colors, isDark } = useTheme();
-  const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const s = useMemo(() => makeGymScheduleStyles(colors, isDark), [colors, isDark]);
 
   const [activeTab, setActiveTab] = useState<'weekly' | 'today' | 'reminders'>('weekly');
 
@@ -53,16 +72,16 @@ export function GymScheduleSettingsModal({
 
   useEffect(() => {
     if (visible) {
-      // 1. Init Weekly
+      // 1. Init Weekly (immutable shallow copy)
       const initDays: Record<number, GymPlanDay> = {};
       for (let i = 1; i <= 7; i++) {
         const customDay = userGymPlan?.customDays?.[i];
         if (customDay) {
-          initDays[i] = JSON.parse(JSON.stringify(customDay));
+          initDays[i] = { ...customDay, exercises: [...(customDay.exercises || [])] };
         } else {
           const templateDay = GYM_PLAN.find(d => d.dayIndex === i);
           if (templateDay) {
-            initDays[i] = JSON.parse(JSON.stringify(templateDay));
+            initDays[i] = { ...templateDay, exercises: [...(templateDay.exercises || [])] };
           }
         }
       }
@@ -101,9 +120,7 @@ export function GymScheduleSettingsModal({
     const d = new Date();
     if (timeStr) {
       const [h, m] = timeStr.split(':').map(Number);
-      if (!isNaN(h) && !isNaN(m)) {
-        d.setHours(h, m, 0, 0);
-      }
+      if (!isNaN(h) && !isNaN(m)) d.setHours(h, m, 0, 0);
     } else {
       d.setHours(18, 0, 0, 0);
     }
@@ -156,11 +173,11 @@ export function GymScheduleSettingsModal({
     const endStr = `${tempEndTimeWeekly.getHours().toString().padStart(2, '0')}:${tempEndTimeWeekly.getMinutes().toString().padStart(2, '0')}`;
     setLocalDays(prev => ({
       ...prev,
-      [editingDayIdx]: { ...prev[editingDayIdx], startTime: startStr, endTime: endStr }
+      [editingDayIdx]: { ...prev[editingDayIdx], startTime: startStr, endTime: endStr },
     }));
     setEditingDayIdx(null);
   };
-  
+
   const clearEditedDayWeekly = () => {
     if (editingDayIdx === null) return;
     hapticLight();
@@ -179,7 +196,7 @@ export function GymScheduleSettingsModal({
     const startStr = `${overrideStart.getHours().toString().padStart(2, '0')}:${overrideStart.getMinutes().toString().padStart(2, '0')}`;
     const endStr = `${overrideEnd.getHours().toString().padStart(2, '0')}:${overrideEnd.getMinutes().toString().padStart(2, '0')}`;
     onSaveOverride(startStr, endStr);
-    Alert.alert('Saved', 'Today\'s override applied.');
+    Alert.alert('Saved', "Today's override applied.");
   };
 
   // --- HELPERS ---
@@ -199,14 +216,11 @@ export function GymScheduleSettingsModal({
     return `${h}:${m.toString().padStart(2, '0')} ${ampm}`;
   };
 
-  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={s.overlay}>
         <View style={s.card}>
           <SafeAreaView style={{ flex: 1 }}>
-            
             {/* Header */}
             <View style={s.header}>
               <Text style={s.title}>Gym Settings</Text>
@@ -239,43 +253,22 @@ export function GymScheduleSettingsModal({
                   <Text style={s.description}>
                     Set your regular workout times for each day of the week. These will automatically block out time in your calendar.
                   </Text>
-                  {dayNames.map((dayName, idx) => {
+                  {DAY_NAMES.map((dayName, idx) => {
                     const dayIndex = idx + 1;
                     const planDay = localDays[dayIndex];
                     if (!planDay) return null;
-                    const isRest = planDay.isRest;
 
                     return (
-                      <TouchableOpacity 
-                        key={dayIndex} 
-                        style={[s.dayRow, isRest && s.dayRowRest]}
-                        onPress={() => handleDayPressWeekly(dayIndex)}
-                        activeOpacity={0.7}
-                      >
-                        <View style={s.dayInfo}>
-                          <Text style={[s.dayName, isRest && s.dayNameRest]}>{dayName}</Text>
-                          <Text style={[s.planFocus, isRest && s.planFocusRest]}>
-                            {isRest ? '🧘 Rest Day (Weekly Recap)' : planDay.name || planDay.focus || 'Workout'}
-                          </Text>
-                        </View>
-                        {isRest ? (
-                          <View style={{ backgroundColor: 'rgba(255,159,77,0.12)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,159,77,0.25)' }}>
-                            <Text style={{ fontSize: 11, fontWeight: '700', color: '#ff9f4d' }}>REST</Text>
-                          </View>
-                        ) : (
-                          <View style={s.timeBlock}>
-                            {planDay.startTime ? (
-                              <View>
-                                <Text style={s.timeText}>{formatTime(planDay.startTime)}</Text>
-                                <Text style={s.timeSubText}>to {formatTime(planDay.endTime)}</Text>
-                              </View>
-                            ) : (
-                              <Text style={s.notSetText}>Tap to set time</Text>
-                            )}
-                            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} style={{ marginLeft: 8 }} />
-                          </View>
-                        )}
-                      </TouchableOpacity>
+                      <GymScheduleDayCard
+                        key={dayIndex}
+                        dayName={dayName}
+                        dayIndex={dayIndex}
+                        planDay={planDay}
+                        onPress={handleDayPressWeekly}
+                        formatTime={formatTime}
+                        styles={s}
+                        colors={colors}
+                      />
                     );
                   })}
                   <View style={{ height: 20 }} />
@@ -292,45 +285,43 @@ export function GymScheduleSettingsModal({
                     <TouchableOpacity onPress={() => setEditingDayIdx(null)} style={s.closeBtn}>
                       <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
                     </TouchableOpacity>
-                    <Text style={[s.title, { fontSize: FONT_SIZE.lg }]}>{dayNames[editingDayIdx - 1]}</Text>
+                    <Text style={[s.title, { fontSize: FONT_SIZE.lg }]}>{DAY_NAMES[editingDayIdx - 1]}</Text>
                     <View style={{ width: 24 }} />
                   </View>
 
                   {/* Day Type Toggle: Workout vs Rest */}
                   <View style={{ flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12, padding: 4, marginBottom: 16 }}>
-                      <TouchableOpacity
-                        style={{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8, backgroundColor: !localDays[editingDayIdx]?.isRest ? colors.accentPrimary : 'transparent' }}
-                        onPress={() => {
-                          hapticLight();
-                          setLocalDays(prev => {
-                            const currentDay = prev[editingDayIdx];
-                            let defaultExercises = currentDay?.exercises || [];
-                            if (!defaultExercises || defaultExercises.length === 0) {
-                              const templateDay = GYM_PLAN.find(d => d.dayIndex === editingDayIdx);
-                              if (templateDay && !templateDay.isRest && templateDay.exercises?.length > 0) {
-                                defaultExercises = JSON.parse(JSON.stringify(templateDay.exercises));
-                              } else {
-                                const sampleDay = GYM_PLAN.find(d => !d.isRest && d.exercises?.length > 0);
-                                if (sampleDay) {
-                                  defaultExercises = JSON.parse(JSON.stringify(sampleDay.exercises));
-                                }
-                              }
+                    <TouchableOpacity
+                      style={{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8, backgroundColor: !localDays[editingDayIdx]?.isRest ? colors.accentPrimary : 'transparent' }}
+                      onPress={() => {
+                        hapticLight();
+                        setLocalDays(prev => {
+                          const currentDay = prev[editingDayIdx];
+                          let defaultExercises = currentDay?.exercises || [];
+                          if (!defaultExercises || defaultExercises.length === 0) {
+                            const templateDay = GYM_PLAN.find(d => d.dayIndex === editingDayIdx);
+                            if (templateDay && !templateDay.isRest && templateDay.exercises?.length > 0) {
+                              defaultExercises = [...templateDay.exercises];
+                            } else {
+                              const sampleDay = GYM_PLAN.find(d => !d.isRest && d.exercises?.length > 0);
+                              if (sampleDay) defaultExercises = [...sampleDay.exercises];
                             }
-                            return {
-                              ...prev,
-                              [editingDayIdx]: {
-                                ...currentDay,
-                                isRest: false,
-                                name: (!currentDay?.name || currentDay?.name === 'Rest & Recovery' || currentDay?.name === 'Rest Day') ? 'Workout' : currentDay.name,
-                                focus: (!currentDay?.focus || currentDay?.focus === 'Rest & Recovery' || currentDay?.focus.includes('recovery')) ? 'Chest & Back' : currentDay.focus,
-                                exercises: defaultExercises,
-                              }
-                            };
-                          });
-                        }}
-                      >
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: !localDays[editingDayIdx]?.isRest ? '#000000' : colors.textSecondary }}>🏋️ Workout Day</Text>
-                      </TouchableOpacity>
+                          }
+                          return {
+                            ...prev,
+                            [editingDayIdx]: {
+                              ...currentDay,
+                              isRest: false,
+                              name: (!currentDay?.name || currentDay?.name === 'Rest & Recovery' || currentDay?.name === 'Rest Day') ? 'Workout' : currentDay.name,
+                              focus: (!currentDay?.focus || currentDay?.focus === 'Rest & Recovery' || currentDay?.focus.includes('recovery')) ? 'Chest & Back' : currentDay.focus,
+                              exercises: defaultExercises,
+                            },
+                          };
+                        });
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: !localDays[editingDayIdx]?.isRest ? '#000000' : colors.textSecondary }}>🏋️ Workout Day</Text>
+                    </TouchableOpacity>
 
                     <TouchableOpacity
                       style={{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8, backgroundColor: localDays[editingDayIdx]?.isRest ? '#ff9f4d' : 'transparent' }}
@@ -343,8 +334,8 @@ export function GymScheduleSettingsModal({
                             isRest: true,
                             name: 'Rest & Recovery',
                             focus: 'Rest & Recovery',
-                            exercises: []
-                          }
+                            exercises: [],
+                          },
                         }));
                       }}
                     >
@@ -352,198 +343,120 @@ export function GymScheduleSettingsModal({
                     </TouchableOpacity>
                   </View>
 
-                  {localDays[editingDayIdx]?.isRest ? (
-                    <View style={{ backgroundColor: 'rgba(255,159,77,0.08)', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(255,159,77,0.2)', marginBottom: 24 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#ff9f4d', marginBottom: 4 }}>Rest Day Configured</Text>
-                      <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 18 }}>
-                        This day will automatically show your Weekly Gym Recap and Performance Report instead of an exercise list.
-                      </Text>
-                    </View>
-                  ) : (
+                  {!localDays[editingDayIdx]?.isRest && (
                     <>
-                      <Text style={s.editSubtitle}>{localDays[editingDayIdx]?.name || localDays[editingDayIdx]?.focus}</Text>
-                      
-                      <View style={s.timeRow}>
-                        <Text style={s.timeRowTitle}>Start Time</Text>
-                        <TouchableOpacity style={s.timeBtn} onPress={() => setShowPickerWeekly('start')}>
-                          <Text style={s.timeBtnText}>{formatTime(tempStartTimeWeekly)}</Text>
+                      <View style={s.settingRow}>
+                        <Text style={s.settingLabel}>Start Time</Text>
+                        <TouchableOpacity onPress={() => setShowPickerWeekly('start')} style={{ backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                          <Text style={{ color: colors.accentPrimary, fontWeight: '700' }}>{formatTime(tempStartTimeWeekly)}</Text>
                         </TouchableOpacity>
                       </View>
-                      {showPickerWeekly === 'start' && (
-                        <View style={s.pickerWrapper}>
-                          <DateTimePicker
-                            value={tempStartTimeWeekly} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                            onChange={(_, date) => {
-                              if (Platform.OS === 'android') setShowPickerWeekly(null);
-                              if (date) {
-                                setTempStartTimeWeekly(date);
-                                const newEnd = new Date(date); newEnd.setHours(date.getHours() + 1); setTempEndTimeWeekly(newEnd);
-                              }
-                            }}
-                            textColor={colors.textPrimary}
-                          />
-                          {Platform.OS === 'ios' && (
-                            <TouchableOpacity style={s.pickerDoneBtn} onPress={() => setShowPickerWeekly(null)}>
-                              <Text style={s.pickerDoneText}>Done</Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      )}
 
-                      <View style={s.timeRow}>
-                        <Text style={s.timeRowTitle}>End Time</Text>
-                        <TouchableOpacity style={s.timeBtn} onPress={() => setShowPickerWeekly('end')}>
-                          <Text style={s.timeBtnText}>{formatTime(tempEndTimeWeekly)}</Text>
+                      <View style={s.settingRow}>
+                        <Text style={s.settingLabel}>End Time</Text>
+                        <TouchableOpacity onPress={() => setShowPickerWeekly('end')} style={{ backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                          <Text style={{ color: colors.accentPrimary, fontWeight: '700' }}>{formatTime(tempEndTimeWeekly)}</Text>
                         </TouchableOpacity>
                       </View>
-                      {showPickerWeekly === 'end' && (
-                        <View style={s.pickerWrapper}>
-                          <DateTimePicker
-                            value={tempEndTimeWeekly} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                            onChange={(_, date) => {
-                              if (Platform.OS === 'android') setShowPickerWeekly(null);
-                              if (date) setTempEndTimeWeekly(date);
-                            }}
-                            textColor={colors.textPrimary}
-                          />
-                          {Platform.OS === 'ios' && (
-                            <TouchableOpacity style={s.pickerDoneBtn} onPress={() => setShowPickerWeekly(null)}>
-                              <Text style={s.pickerDoneText}>Done</Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
+
+                      {showPickerWeekly && (
+                        <DateTimePicker
+                          value={showPickerWeekly === 'start' ? tempStartTimeWeekly : tempEndTimeWeekly}
+                          mode="time"
+                          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                          onChange={(event, selectedDate) => {
+                            setShowPickerWeekly(null);
+                            if (selectedDate) {
+                              if (showPickerWeekly === 'start') {
+                                setTempStartTimeWeekly(selectedDate);
+                                const newEnd = new Date(selectedDate);
+                                newEnd.setHours(newEnd.getHours() + 1);
+                                setTempEndTimeWeekly(newEnd);
+                              } else {
+                                setTempEndTimeWeekly(selectedDate);
+                              }
+                            }
+                          }}
+                        />
                       )}
                     </>
                   )}
 
-                  <View style={{ height: 30 }} />
-                  <TouchableOpacity style={[s.saveBtn, { backgroundColor: 'transparent', borderColor: colors.border, borderWidth: 1, marginBottom: SPACE.md }]} onPress={clearEditedDayWeekly}>
-                    <Text style={[s.saveBtnText, { color: colors.textPrimary }]}>Clear Time</Text>
-                  </TouchableOpacity>
+                  <View style={{ height: 20 }} />
                   <TouchableOpacity style={s.saveBtn} onPress={saveEditedDayWeekly}>
-                    <Text style={s.saveBtnText}>Save {dayNames[editingDayIdx - 1]}</Text>
+                    <Text style={s.saveBtnText}>Save Time For This Day</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={[s.saveBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border, marginTop: 10 }]} onPress={clearEditedDayWeekly}>
+                    <Text style={[s.saveBtnText, { color: colors.textSecondary }]}>Clear Time</Text>
                   </TouchableOpacity>
                 </View>
               )}
 
-              {/* --- TODAY TAB --- */}
+              {/* --- TODAY OVERRIDE TAB --- */}
               {activeTab === 'today' && (
                 <>
                   <Text style={s.description}>
-                    Override your workout time for today only. This won't affect your weekly routine.
+                    Override your scheduled workout time just for today without changing your weekly routine.
                   </Text>
-                  <View style={s.timeRow}>
-                    <Text style={s.timeRowTitle}>Start Time</Text>
-                    <TouchableOpacity style={s.timeBtn} onPress={() => setShowPickerToday('start')}>
-                      <Text style={s.timeBtnText}>{formatTime(overrideStart)}</Text>
+
+                  <View style={s.settingRow}>
+                    <Text style={s.settingLabel}>Today's Start Time</Text>
+                    <TouchableOpacity onPress={() => setShowPickerToday('start')} style={{ backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                      <Text style={{ color: colors.accentPrimary, fontWeight: '700' }}>{formatTime(overrideStart)}</Text>
                     </TouchableOpacity>
                   </View>
-                  {showPickerToday === 'start' && (
-                    <View style={s.pickerWrapper}>
-                      <DateTimePicker
-                        value={overrideStart} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        onChange={(_, date) => {
-                          if (Platform.OS === 'android') setShowPickerToday(null);
-                          if (date) {
-                            setOverrideStart(date);
-                            const newEnd = new Date(date); newEnd.setHours(date.getHours() + 1); setOverrideEnd(newEnd);
+
+                  <View style={s.settingRow}>
+                    <Text style={s.settingLabel}>Today's End Time</Text>
+                    <TouchableOpacity onPress={() => setShowPickerToday('end')} style={{ backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                      <Text style={{ color: colors.accentPrimary, fontWeight: '700' }}>{formatTime(overrideEnd)}</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {showPickerToday && (
+                    <DateTimePicker
+                      value={showPickerToday === 'start' ? overrideStart : overrideEnd}
+                      mode="time"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(event, selectedDate) => {
+                        setShowPickerToday(null);
+                        if (selectedDate) {
+                          if (showPickerToday === 'start') {
+                            setOverrideStart(selectedDate);
+                            const newEnd = new Date(selectedDate);
+                            newEnd.setHours(newEnd.getHours() + 1);
+                            setOverrideEnd(newEnd);
+                          } else {
+                            setOverrideEnd(selectedDate);
                           }
-                        }}
-                        textColor={colors.textPrimary}
-                      />
-                      {Platform.OS === 'ios' && (
-                        <TouchableOpacity style={s.pickerDoneBtn} onPress={() => setShowPickerToday(null)}>
-                          <Text style={s.pickerDoneText}>Done</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
+                        }
+                      }}
+                    />
                   )}
 
-                  <View style={s.timeRow}>
-                    <Text style={s.timeRowTitle}>End Time</Text>
-                    <TouchableOpacity style={s.timeBtn} onPress={() => setShowPickerToday('end')}>
-                      <Text style={s.timeBtnText}>{formatTime(overrideEnd)}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {showPickerToday === 'end' && (
-                    <View style={s.pickerWrapper}>
-                      <DateTimePicker
-                        value={overrideEnd} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        onChange={(_, date) => {
-                          if (Platform.OS === 'android') setShowPickerToday(null);
-                          if (date) setOverrideEnd(date);
-                        }}
-                        textColor={colors.textPrimary}
-                      />
-                      {Platform.OS === 'ios' && (
-                        <TouchableOpacity style={s.pickerDoneBtn} onPress={() => setShowPickerToday(null)}>
-                          <Text style={s.pickerDoneText}>Done</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  )}
-                  
-                  <View style={{ height: 40 }} />
+                  <View style={{ height: 20 }} />
                   <TouchableOpacity style={s.saveBtn} onPress={handleSaveToday}>
-                    <Text style={s.saveBtnText}>Apply Override</Text>
+                    <Text style={s.saveBtnText}>Apply Today's Override</Text>
                   </TouchableOpacity>
                 </>
               )}
 
               {/* --- REMINDERS TAB --- */}
               {activeTab === 'reminders' && (
-                <>
-                  <Text style={s.description}>
-                    Get a gentle push notification to work out on your scheduled gym days.
-                  </Text>
-                  <View style={s.timeRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.timeRowTitle}>Enable Reminders</Text>
-                    </View>
-                    <Switch
-                      value={notifEnabled}
-                      onValueChange={(val) => { hapticSelection(); setNotifEnabled(val); }}
-                      trackColor={{ false: colors.border, true: colors.accentPrimary }}
-                      thumbColor={Platform.OS === 'android' ? '#FFFFFF' : undefined}
-                    />
-                  </View>
-
-                  {notifEnabled && (
-                    <>
-                      <View style={s.timeRow}>
-                        <Text style={s.timeRowTitle}>Reminder Time</Text>
-                        <TouchableOpacity style={s.timeBtn} onPress={() => setShowPickerNotif(true)}>
-                          <Text style={s.timeBtnText}>{formatTime(notifTime)}</Text>
-                        </TouchableOpacity>
-                      </View>
-                      {showPickerNotif && (
-                        <View style={s.pickerWrapper}>
-                          <DateTimePicker
-                            value={notifTime} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                            onChange={(_, date) => {
-                              if (Platform.OS === 'android') setShowPickerNotif(false);
-                              if (date) setNotifTime(date);
-                            }}
-                            textColor={colors.textPrimary}
-                          />
-                          {Platform.OS === 'ios' && (
-                            <TouchableOpacity style={s.pickerDoneBtn} onPress={() => setShowPickerNotif(false)}>
-                              <Text style={s.pickerDoneText}>Done</Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      )}
-                    </>
-                  )}
-
-                  <View style={{ height: 40 }} />
-                  <TouchableOpacity style={s.saveBtn} onPress={handleSaveNotif}>
-                    <Text style={s.saveBtnText}>Save Notification Settings</Text>
-                  </TouchableOpacity>
-                </>
+                <GymScheduleReminderTab
+                  notifEnabled={notifEnabled}
+                  setNotifEnabled={setNotifEnabled}
+                  notifTime={notifTime}
+                  setNotifTime={setNotifTime}
+                  showPickerNotif={showPickerNotif}
+                  setShowPickerNotif={setShowPickerNotif}
+                  onSave={handleSaveNotif}
+                  formatTime={formatTime}
+                  styles={s}
+                  colors={colors}
+                />
               )}
-              
-              <View style={{ height: 100 }} />
             </ScrollView>
           </SafeAreaView>
         </View>
@@ -552,194 +465,4 @@ export function GymScheduleSettingsModal({
   );
 }
 
-const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    justifyContent: 'flex-end',
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
-    height: '90%',
-    padding: SPACE.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACE.sm,
-  },
-  title: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.xl,
-    color: colors.textPrimary,
-  },
-  description: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: FONT_SIZE.sm,
-    color: colors.textSecondary,
-    marginBottom: SPACE.lg,
-    lineHeight: 20,
-  },
-  closeBtn: {
-    padding: SPACE.xs,
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    backgroundColor: colors.surfaceHighlight,
-    borderRadius: RADIUS.lg,
-    padding: 4,
-    marginBottom: SPACE.lg,
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: RADIUS.md,
-  },
-  tabBtnActive: {
-    backgroundColor: colors.surface,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  tabText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: FONT_SIZE.sm,
-    color: colors.textSecondary,
-  },
-  tabTextActive: {
-    fontFamily: FONT_FAMILY.bold,
-    color: colors.textPrimary,
-  },
-  contentContainer: {
-    flex: 1,
-  },
-  dayRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACE.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  dayRowRest: {
-    opacity: 0.5,
-  },
-  dayInfo: {
-    flex: 1,
-  },
-  dayName: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.md,
-    color: colors.textPrimary,
-    marginBottom: 4,
-  },
-  dayNameRest: {
-    color: colors.textMuted,
-  },
-  planFocus: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: FONT_SIZE.xs,
-    color: colors.accentPrimary,
-  },
-  planFocusRest: {
-    color: colors.textMuted,
-  },
-  timeBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  timeText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.md,
-    color: colors.textPrimary,
-    textAlign: 'right',
-  },
-  timeSubText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: FONT_SIZE.xs,
-    color: colors.textSecondary,
-    textAlign: 'right',
-    marginTop: 2,
-  },
-  notSetText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: FONT_SIZE.sm,
-    color: colors.textMuted,
-  },
-  saveBtn: {
-    backgroundColor: isDark ? '#FFFFFF' : colors.accentPrimary,
-    paddingVertical: SPACE.md,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-  },
-  saveBtnText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.md,
-    color: isDark ? '#000000' : '#FFFFFF',
-  },
-  editContainer: {
-    paddingTop: SPACE.sm,
-  },
-  editHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACE.md,
-  },
-  editSubtitle: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: FONT_SIZE.md,
-    color: colors.accentPrimary,
-    marginBottom: SPACE.xl,
-    marginLeft: SPACE.sm,
-  },
-  timeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACE.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    marginBottom: SPACE.md,
-  },
-  timeRowTitle: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: FONT_SIZE.md,
-    color: colors.textPrimary,
-  },
-  timeBtn: {
-    backgroundColor: colors.surfaceHighlight,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: RADIUS.md,
-  },
-  timeBtnText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.lg,
-    color: colors.textPrimary,
-  },
-  pickerWrapper: {
-    alignItems: 'center',
-    paddingVertical: SPACE.sm,
-    backgroundColor: colors.surfaceHighlight,
-    borderRadius: RADIUS.md,
-    marginBottom: SPACE.lg,
-  },
-  pickerDoneBtn: {
-    alignSelf: 'flex-end',
-    padding: SPACE.md,
-  },
-  pickerDoneText: {
-    color: colors.accentPrimary,
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.md,
-  },
-});
+export default GymScheduleSettingsModal;

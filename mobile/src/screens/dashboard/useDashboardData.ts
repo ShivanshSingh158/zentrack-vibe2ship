@@ -192,7 +192,7 @@ export function useDashboardData() {
     // PERF FIX (P3): Cache quote by date. Quote only changes once per day.
     // Previously called on every tab focus → getFingerprint + getDailyQuote async
     // on every Dashboard visit. Now skipped if already fetched today.
-    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayKey = formatLocalDateStr(new Date());
     if (quoteCacheRef.current?.date === todayKey) {
       setQuote(quoteCacheRef.current.quote);
       return;

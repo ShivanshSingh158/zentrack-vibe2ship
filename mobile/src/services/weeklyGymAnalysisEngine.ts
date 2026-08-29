@@ -14,6 +14,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { callProxy, parseProxyResponse } from './geminiProxy';
 import { canonicalizeMuscle, isValidWorkoutSession } from '../utils/gymUtils';
+import { formatLocalDateStr } from '../utils/dateUtils';
 
 
 export interface WeeklyGymAnalysis {
@@ -186,17 +187,16 @@ export async function getOrGenerateWeeklyGymAnalysis(
 
   const makeRange = (startMonday: Date): string[] =>
     Array.from({ length: 7 }, (_, i) => {
-      const dt = new Date(startMonday);
-      dt.setDate(startMonday.getDate() + i);
-      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      const dt = new Date(startMonday.getFullYear(), startMonday.getMonth(), startMonday.getDate() + i);
+      return formatLocalDateStr(dt);
     });
 
   const weekDates     = makeRange(monday);
-  const prevMonday    = new Date(monday); prevMonday.setDate(monday.getDate() - 7);
+  const prevMonday    = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7);
   const prevWeekDates = makeRange(prevMonday);
 
-  const thirtyDaysAgo = new Date(monday); thirtyDaysAgo.setDate(monday.getDate() - 30);
-  const thirtyDaysAgoStr = `${thirtyDaysAgo.getFullYear()}-${String(thirtyDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(thirtyDaysAgo.getDate()).padStart(2, '0')}`;
+  const thirtyDaysAgo = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 30);
+  const thirtyDaysAgoStr = formatLocalDateStr(thirtyDaysAgo);
 
   const weekLogs      = gymLogs.filter(l => weekDates.includes(l.date));
   const prevLogs      = gymLogs.filter(l => prevWeekDates.includes(l.date));

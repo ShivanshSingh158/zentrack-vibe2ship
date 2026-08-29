@@ -43,46 +43,33 @@ export default function DashboardScreen() {
   const paddingBottom = insets.bottom + 80;
   const levelInfo = getLevel(data.xp);
 
-  // ── Flashcards State ──
+  // ── Flashcards State (checks on app load, only displays if cards are actually due) ──
   const [dueFlashcards, setDueFlashcards] = useState<Flashcard[]>([]);
   const [flashcardModalVisible, setFlashcardModalVisible] = useState(false);
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
 
-  // Pre-seed due flashcards on Frame 0 from local storage so the banner doesn't jump the layout at 3.0s
-  useEffect(() => {
-    AsyncStorage.getItem('@zentrack_cache_due_flashcards').then(raw => {
-      if (raw) {
+  const refreshFlashcards = useCallback(async () => {
+    if (!data.user?.uid) return;
+    try {
+      const cards = await getDueFlashcards(data.user.uid);
+      
+      // Check if current cards have been dismissed
+      let allDismissed = false;
+      if (cards.length > 0) {
         try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setDueFlashcards(parsed);
+          const savedDismissed = await AsyncStorage.getItem('@flashcard_banner_dismissed_ids');
+          if (savedDismissed) {
+            const dismissedIds: string[] = JSON.parse(savedDismissed);
+            const currentIds = cards.map(c => c.id || c.question);
+            allDismissed = currentIds.every(id => dismissedIds.includes(id));
           }
         } catch (_) {}
       }
-    }).catch(() => {});
-  }, []);
 
-  const refreshFlashcards = useCallback(async () => {
-    if (data.user?.uid) {
-      const cards = await getDueFlashcards(data.user.uid);
+      setIsBannerDismissed(allDismissed);
       setDueFlashcards(prev => areItemsEqual(prev, cards) ? prev : cards);
-      AsyncStorage.setItem('@zentrack_cache_due_flashcards', JSON.stringify(cards)).catch(() => {});
-      
-      // Check if current cards have been dismissed
-      try {
-        const savedDismissed = await AsyncStorage.getItem('@flashcard_banner_dismissed_ids');
-        if (savedDismissed && cards.length > 0) {
-          const dismissedIds: string[] = JSON.parse(savedDismissed);
-          const currentIds = cards.map(c => c.id || c.question);
-          // If all current cards are already in dismissedIds, hide the banner
-          const allDismissed = currentIds.every(id => dismissedIds.includes(id));
-          setIsBannerDismissed(prev => prev === allDismissed ? prev : allDismissed);
-        } else {
-          setIsBannerDismissed(prev => prev === false ? prev : false);
-        }
-      } catch {
-        setIsBannerDismissed(prev => prev === false ? prev : false);
-      }
+    } catch (err) {
+      console.warn('[DashboardScreen] refreshFlashcards error:', err);
     }
   }, [data.user?.uid]);
 
@@ -95,17 +82,15 @@ export default function DashboardScreen() {
     } catch (_) {}
   }, [dueFlashcards]);
 
-  // PERF: Deferred behind InteractionManager + 3s timer — removes a live Firestore getDocs()
-  // call from Frame 1 where it competed with auth and initial tab switching.
+  // Check for due flashcards when authenticated user is loaded
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      const timer = setTimeout(() => {
+    if (data.user?.uid) {
+      const handle = InteractionManager.runAfterInteractions(() => {
         refreshFlashcards();
-      }, 3000);
-      return () => clearTimeout(timer);
-    });
-    return () => handle.cancel();
-  }, [refreshFlashcards]);
+      });
+      return () => handle.cancel();
+    }
+  }, [data.user?.uid, refreshFlashcards]);
 
   const { todayTasksCount, doneTasksCount, habitsCompleted, waterCompleted } = useMemo(() => {
     let todayCount = 0;

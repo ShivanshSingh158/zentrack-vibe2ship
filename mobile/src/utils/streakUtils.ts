@@ -7,6 +7,23 @@ export function calculateAppStreak(
   habitLogs?: any[],
   learningTopics?: LearningTopic[]
 ): number {
+  // Pre-index all active dates in O(N) single pass for O(1) day-by-day evaluation
+  const activeDates = new Set<string>();
+  tasks?.forEach(t => {
+    if (t.status === 'completed' && t.date) activeDates.add(t.date);
+  });
+  gymLogs?.forEach(g => {
+    if (g.date) activeDates.add(g.date);
+  });
+  habitLogs?.forEach(h => {
+    if (h.date) activeDates.add(h.date);
+  });
+  learningTopics?.forEach(t => {
+    t.subTasks?.forEach(s => {
+      if (s.isCompleted && s.completedDate) activeDates.add(s.completedDate);
+    });
+  });
+
   let current = 0;
   for (let i = 0; i < 365; i++) {
     const d = new Date();
@@ -15,17 +32,7 @@ export function calculateAppStreak(
     const dayOfWeek = d.getDay();
     const isSunday = dayOfWeek === 0;
 
-    const dayTasks = tasks?.filter((t) => t.date === dStr) || [];
-    const completedTasks = dayTasks.filter((t) => t.status === 'completed');
-    const dayGym = gymLogs?.find((g) => g.date === dStr);
-    const dayHabits = habitLogs?.filter((l) => l.date === dStr) || [];
-
-    // Check if any learning topic has completed subtasks on this day
-    const hasLearningActivity = (learningTopics || []).some(t =>
-      (t.subTasks || []).some(s => s.isCompleted && s.completedDate === dStr)
-    );
-
-    const hadAnyActivity = completedTasks.length > 0 || !!dayGym || dayHabits.length > 0 || hasLearningActivity;
+    const hadAnyActivity = activeDates.has(dStr);
 
     if (hadAnyActivity) {
       current++;
@@ -122,20 +129,29 @@ export function calculateConsistencyRate(
   windowDays = 30,
   learningTopics?: LearningTopic[]
 ): number {
+  const activeDates = new Set<string>();
+  tasks?.forEach(t => {
+    if (t.status === 'completed' && t.date) activeDates.add(t.date);
+  });
+  gymLogs?.forEach(g => {
+    if (g.date) activeDates.add(g.date);
+  });
+  habitLogs?.forEach(h => {
+    if (h.date) activeDates.add(h.date);
+  });
+  learningTopics?.forEach(t => {
+    t.subTasks?.forEach(s => {
+      if (s.isCompleted && s.completedDate) activeDates.add(s.completedDate);
+    });
+  });
+
   let activeDays = 0;
   for (let i = 0; i < windowDays; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const dStr = formatLocalDateStr(d);
 
-    const hasTask = (tasks || []).some(t => t.date === dStr && t.status === 'completed');
-    const hasGym = (gymLogs || []).some(g => g.date === dStr);
-    const hasHabit = (habitLogs || []).some(h => h.date === dStr);
-    const hasLearning = (learningTopics || []).some(t =>
-      (t.subTasks || []).some(s => s.isCompleted && s.completedDate === dStr)
-    );
-
-    if (hasTask || hasGym || hasHabit || hasLearning) {
+    if (activeDates.has(dStr)) {
       activeDays++;
     }
   }

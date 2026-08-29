@@ -1,17 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Animated,
-  PanResponder,
-  InteractionManager,
+  View, Text, TouchableOpacity, Animated, PanResponder, InteractionManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
 import { useTheme } from "../../contexts/ThemeContext";
-import { FONT_FAMILY } from '../../theme/tokens';
+
+// Extracted Styles
+import { makeAnimatedRestTimerStyles } from './animatedRestTimerStyles';
 
 interface AnimatedRestTimerProps {
   startTime: number;
@@ -29,7 +25,7 @@ export default function AnimatedRestTimer({
   onSkip,
 }: AnimatedRestTimerProps) {
   const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const styles = useMemo(() => makeAnimatedRestTimerStyles(colors, isDark), [colors, isDark]);
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Draggable position state (PanResponder)
@@ -72,8 +68,6 @@ export default function AnimatedRestTimer({
 
       if (rem <= 0) {
         skipped = true;
-        // Defer the skip to prevent layout crashes if the timer finishes exactly
-        // as the app is waking up from the background and re-rendering.
         setTimeout(() => {
           InteractionManager.runAfterInteractions(() => {
             onSkip();
@@ -110,7 +104,6 @@ export default function AnimatedRestTimer({
       ]}
     >
       {!isExpanded ? (
-        /* Collapsed State: Sleek circular/pill badge */
         <TouchableOpacity
           onPress={toggleExpand}
           activeOpacity={0.8}
@@ -120,14 +113,11 @@ export default function AnimatedRestTimer({
           <Text style={styles.collapsedTimeText}>{timeDisplay}</Text>
         </TouchableOpacity>
       ) : (
-        /* Expanded State: Horizontal control capsule = - timer + | Skip */
         <View style={styles.expandedCapsule}>
-          {/* Drag handle / collapse icon */}
-          <TouchableOpacity onPress={toggleExpand} style={styles.dragGrip} activeOpacity={0.7}>
-            <Ionicons name="reorder-two" size={16} color={colors.textMuted} />
-          </TouchableOpacity>
+          <View style={styles.dragGrip}>
+            <Ionicons name="reorder-two-outline" size={16} color={colors.textTertiary} />
+          </View>
 
-          {/* Minus 30s */}
           <TouchableOpacity
             onPress={() => {
               hapticLight();
@@ -137,20 +127,17 @@ export default function AnimatedRestTimer({
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="remove-circle-outline" size={18} color={colors.textMuted} />
+            <Ionicons name="remove-circle-outline" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
 
-          {/* Timer Display button (tap to collapse) */}
           <TouchableOpacity
             onPress={toggleExpand}
             style={styles.timeContainer}
             activeOpacity={0.8}
           >
-            <Ionicons name="timer-outline" size={13} color={colors.accentPrimary} style={{ marginRight: 4 }} />
             <Text style={styles.timeText}>{timeDisplay}</Text>
           </TouchableOpacity>
 
-          {/* Plus 30s */}
           <TouchableOpacity
             onPress={() => {
               hapticLight();
@@ -165,7 +152,6 @@ export default function AnimatedRestTimer({
 
           <View style={styles.divider} />
 
-          {/* Skip button */}
           <TouchableOpacity
             onPress={() => {
               hapticMedium();
@@ -182,91 +168,3 @@ export default function AnimatedRestTimer({
     </Animated.View>
   );
 }
-
-const makeStyles = (colors: any, isDark: boolean = true) =>
-  StyleSheet.create({
-    wrapper: {
-      zIndex: 9999,
-      alignSelf: 'center',
-    },
-    collapsedBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.surface,
-      borderRadius: 20,
-      borderWidth: 1.5,
-      borderColor: isDark ? 'rgba(165,153,255,0.35)' : 'rgba(108,92,231,0.3)',
-      paddingHorizontal: 13,
-      paddingVertical: 7,
-      shadowColor: '#000000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: isDark ? 0.4 : 0.12,
-      shadowRadius: 10,
-      elevation: 10,
-    },
-    collapsedTimeText: {
-      fontFamily: FONT_FAMILY.bold,
-      fontSize: 14,
-      color: colors.accentPrimary,
-      letterSpacing: 0.5,
-    },
-    expandedCapsule: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colors.surface,
-      borderRadius: 24,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: 10,
-      paddingVertical: 7,
-      gap: 6,
-      shadowColor: '#000000',
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: isDark ? 0.5 : 0.15,
-      shadowRadius: 12,
-      elevation: 12,
-    },
-    dragGrip: {
-      paddingRight: 2,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    actionBtn: {
-      padding: 2,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    timeContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.08)',
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.15)',
-    },
-    timeText: {
-      fontFamily: FONT_FAMILY.bold,
-      fontSize: 14,
-      color: colors.accentPrimary,
-      letterSpacing: 0.5,
-    },
-    divider: {
-      width: 1,
-      height: 16,
-      backgroundColor: colors.border,
-      marginHorizontal: 2,
-    },
-    skipBtn: {
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 10,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
-    },
-    skipText: {
-      fontFamily: FONT_FAMILY.bold,
-      fontSize: 11,
-      color: colors.textMuted,
-    },
-  });

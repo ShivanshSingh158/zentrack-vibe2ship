@@ -3,7 +3,7 @@
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { formatDateShort, formatDateWithDay } from '../utils/dateUtils';
+import { formatDateShort, formatDateWithDay, formatLocalDateStr } from '../utils/dateUtils';
 import {
   View, Text, StyleSheet, Animated, ScrollView,
   TouchableOpacity, Dimensions,
@@ -44,7 +44,7 @@ function smoothPath(pts: { x: number; y: number }[]): string {
 function daysAgoStr(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return formatLocalDateStr(d);
 }
 
 function daysRange(start: number, end: number): string[] {
@@ -393,7 +393,7 @@ const ActivityHeatmap = React.memo(function ActivityHeatmap({ tasks, gymLogs, ha
   // Compute 5 aligned calendar weeks (Monday to Sunday)
   const { weeks, activeDaysCount, totalDays } = useMemo(() => {
     const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
+    const todayStr = formatLocalDateStr(today);
     
     const dayOfWeek = (today.getDay() + 6) % 7; 
     const currentMonday = new Date(today);
@@ -421,7 +421,7 @@ const ActivityHeatmap = React.memo(function ActivityHeatmap({ tasks, gymLogs, ha
       for (let d = 0; d < 7; d++) {
         const cellDate = new Date(startMonday);
         cellDate.setDate(startMonday.getDate() + (w * 7 + d));
-        const dateStr = cellDate.toISOString().slice(0, 10);
+        const dateStr = formatLocalDateStr(cellDate);
         const isToday = dateStr === todayStr;
         const isFuture = dateStr > todayStr;
 

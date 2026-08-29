@@ -641,20 +641,60 @@ export default function HabitsScreen() {
     animateFadeInUp(headerFade, headerSlide, 0).start();
   }, []);
 
-  const todayLogs = React.useMemo(
+  const habitMap = useMemo(() => {
+    const map = new Map<string, Habit>();
+    for (const h of allHabits) {
+      map.set(h.id, h);
+    }
+    return map;
+  }, [allHabits]);
+
+  const activeHabits = useMemo(() => allHabits.filter(h => !h.archived), [allHabits]);
+  const positiveHabits = useMemo(() => activeHabits.filter(h => h.type !== 'negative'), [activeHabits]);
+  const negativeHabits = useMemo(() => activeHabits.filter(h => h.type === 'negative'), [activeHabits]);
+
+  const todayLogs = useMemo(
     () => habitLogs.filter(l => l.date === today),
-    [habitLogs]
+    [habitLogs, today]
   );
+
+  const todayLogsByHabitId = useMemo(() => {
+    const map = new Map<string, HabitLog>();
+    for (const l of todayLogs) {
+      map.set(l.habitId, l);
+    }
+    return map;
+  }, [todayLogs]);
+
+  const logsByHabitId = useMemo(() => {
+    const map = new Map<string, HabitLog[]>();
+    for (const l of habitLogs) {
+      const existing = map.get(l.habitId);
+      if (existing) {
+        existing.push(l);
+      } else {
+        map.set(l.habitId, [l]);
+      }
+    }
+    return map;
+  }, [habitLogs]);
   
   // Calculate completed count for the badge (positives only). For quantitative, count >= targetCount
-  const completedCount = todayLogs.filter(l => {
-    const h = allHabits.find(hx => hx.id === l.habitId);
-    if (!h || h.type === 'negative') return false;
-    if (h.targetCount && h.targetCount > 0) return (l.count || 1) >= h.targetCount;
-    return true;
-  }).length;
+  const completedCount = useMemo(() => {
+    let count = 0;
+    for (const l of todayLogs) {
+      const h = habitMap.get(l.habitId);
+      if (!h || h.type === 'negative') continue;
+      if (h.targetCount && h.targetCount > 0) {
+        if ((l.count || 1) >= h.targetCount) count++;
+      } else {
+        count++;
+      }
+    }
+    return count;
+  }, [todayLogs, habitMap]);
   
-  const handleQuantitativeUndo = (habit: Habit, existingLog: HabitLog) => {
+  const handleQuantitativeUndo = useCallback((habit: Habit, existingLog: HabitLog) => {
     const newCount = (existingLog.count || 1) - 1;
     const wasComplete = (existingLog.count || 1) >= habit.targetCount!;
 
@@ -688,9 +728,9 @@ export default function HabitsScreen() {
         }
       } catch (e) { console.error('[Habits] Undo quantitative error', e); }
     })();
-  };
+  }, [today, user, optimisticRemoveHabitLog, optimisticUpdateHabitLog, optimisticUpdateHabit]);
 
-  const toggleHabit = (habit: Habit, x?: number, y?: number) => {
+  const toggleHabit = useCallback((habit: Habit, x?: number, y?: number) => {
     if (!user) return;
     const now = Date.now();
     const lastTap = inFlightHabitLocks.current.get(habit.id) || 0;
@@ -703,7 +743,7 @@ export default function HabitsScreen() {
     }
     inFlightHabitLocks.current.set(habit.id, now);
 
-    const existingLog = todayLogs.find(l => l.habitId === habit.id);
+    const existingLog = todayLogsByHabitId.get(habit.id);
 
     if (isQuantitative) {
        const currentCount = existingLog ? (existingLog.count || 1) : 0;
@@ -765,15 +805,19 @@ export default function HabitsScreen() {
              const perfectDayKey = `zentrack_perfect_day_${today}`;
              const alreadyClaimed = await AsyncStorage.getItem(perfectDayKey);
              if (!alreadyClaimed) {
-               const positiveHabits = allHabits.filter(h => h.type !== 'negative' && !h.archived);
-               const updatedLogs = [...todayLogs, { habitId: habit.id, date: today, count: newCount }];
-               const allDone = positiveHabits.every(h => {
-                 const log = updatedLogs.find(l => l.habitId === h.id);
+               const posHabits = allHabits.filter(h => h.type !== 'negative' && !h.archived);
+               const updatedLogsMap = new Map<string, HabitLog | { habitId: string; date: string; count?: number }>();
+               for (const l of todayLogs) {
+                 updatedLogsMap.set(l.habitId, l);
+               }
+               updatedLogsMap.set(habit.id, { habitId: habit.id, date: today, count: newCount });
+               const allDone = posHabits.every(h => {
+                 const log = updatedLogsMap.get(h.id);
                  if (!log) return false;
                  if (h.targetCount && h.targetCount > 0) return (log.count || 1) >= h.targetCount;
                  return true;
                });
-               if (allDone && positiveHabits.length > 0) {
+               if (allDone && posHabits.length > 0) {
                  await AsyncStorage.setItem(perfectDayKey, '1');
                  await awardXP('PERFECT_DAY');
                  import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
@@ -843,13 +887,19 @@ export default function HabitsScreen() {
           const perfectDayKey = `zentrack_perfect_day_${today}`;
           const alreadyClaimed = await AsyncStorage.getItem(perfectDayKey);
           if (!alreadyClaimed) {
-            const positiveHabits = allHabits.filter(h => h.type !== 'negative' && !h.archived);
-            const updatedLogs = [...todayLogs, { habitId: habit.id, date: today, count: 1 }];
-            const allDone = positiveHabits.every(h => {
-              const log = updatedLogs.find(l => l.habitId === h.id);
-              return !!log;
+            const posHabits = allHabits.filter(h => h.type !== 'negative' && !h.archived);
+            const updatedLogsMap = new Map<string, HabitLog | { habitId: string; date: string; count?: number }>();
+            for (const l of todayLogs) {
+              updatedLogsMap.set(l.habitId, l);
+            }
+            updatedLogsMap.set(habit.id, { habitId: habit.id, date: today, count: 1 });
+            const allDone = posHabits.every(h => {
+              const log = updatedLogsMap.get(h.id);
+              if (!log) return false;
+              if (h.targetCount && h.targetCount > 0) return (log.count || 1) >= h.targetCount;
+              return true;
             });
-            if (allDone && positiveHabits.length > 0) {
+            if (allDone && posHabits.length > 0) {
               await AsyncStorage.setItem(perfectDayKey, '1');
               await awardXP('PERFECT_DAY');
               import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
@@ -861,31 +911,69 @@ export default function HabitsScreen() {
         console.error('[HabitsScreen] Error toggling habit', e);
       }
     })();
-  };
+  }, [user, today, todayLogs, todayLogsByHabitId, handleQuantitativeUndo, optimisticUpdateHabitLog, optimisticAddHabitLog, optimisticUpdateHabit, optimisticRemoveHabitLog, allHabits]);
 
-  const handleArchive = async (habitId: string) => {
+  const handleArchive = useCallback(async (habitId: string) => {
     try {
       await updateDoc(doc(db, COLLECTION.HABITS, habitId), { archived: true });
     } catch (e) {
       console.error('Error archiving habit', e);
     }
-  };
+  }, []);
 
-  const handleDelete = async (habitId: string) => {
+  const handleDelete = useCallback(async (habitId: string) => {
     try {
       await deleteDoc(doc(db, COLLECTION.HABITS, habitId));
     } catch (e) {
       console.error('Error deleting habit', e);
     }
-  };
+  }, []);
 
-  const activeHabits = allHabits.filter(h => !h.archived);
-  const positiveHabits = activeHabits.filter(h => h.type !== 'negative');
-  const negativeHabits = activeHabits.filter(h => h.type === 'negative');
+  const handleFireConfetti = useCallback((x: number, y: number, color: string) => {
+    setConfettiOpts({ x, y, color });
+  }, []);
+
+  const listData = useMemo(() => {
+    if (positiveHabits.length === 0 && negativeHabits.length === 0) return [];
+    return [{ type: 'header' }, ...positiveHabits, { type: 'divider' }, ...negativeHabits];
+  }, [positiveHabits, negativeHabits]);
+
+  const keyExtractor = useCallback((item: any, i: number) => item.id || `type-${i}`, []);
+
+  const renderItem = useCallback(({ item, index }: { item: any; index: number }) => {
+    if (item.type === 'header' && positiveHabits.length > 0) {
+      return <Text style={styles.sectionHeader}>Building</Text>;
+    }
+    if (item.type === 'divider' && negativeHabits.length > 0) {
+      return <Text style={[styles.sectionHeader, { marginTop: SPACE.xl }]}>Avoiding</Text>;
+    }
+    if (item.type === 'header' || item.type === 'divider') return null;
+
+    const h = item as Habit;
+    const todayLog = todayLogsByHabitId.get(h.id);
+    const isCompleted = h.targetCount && h.targetCount > 0 ? (todayLog?.count || 0) >= h.targetCount : !!todayLog;
+    const logsForHabit = logsByHabitId.get(h.id) || [];
+
+    return (
+      <Reanimated.View entering={FadeInDown.delay(index * 40).springify()}>
+        <HabitCard
+          habit={h}
+          isCompleted={isCompleted}
+          todayLog={todayLog}
+          habitLogs={logsForHabit}
+          onToggle={(x, y) => toggleHabit(h, x, y)}
+          onArchive={() => handleArchive(h.id)}
+          onDelete={() => handleDelete(h.id)}
+          onFireConfetti={handleFireConfetti}
+          freezesLeft={freezes}
+        />
+      </Reanimated.View>
+    );
+  }, [positiveHabits.length, negativeHabits.length, styles.sectionHeader, todayLogsByHabitId, logsByHabitId, toggleHabit, handleArchive, handleDelete, handleFireConfetti, freezes]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
-      {/* ΓöÇΓöÇ Header ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+      {/* ── Header ──────────────────────────────────────────────────────── */}
       <Animated.View style={[styles.header, { opacity: headerFade, transform: [{ translateY: headerSlide }] }]}>
         <View>
           <Text style={styles.eyebrow}>Today's Progress</Text>
@@ -903,40 +991,9 @@ export default function HabitsScreen() {
 
       {/* —————————————————————————————————————————————————————————————————————— */}
       <FlashList
-        data={positiveHabits.length === 0 && negativeHabits.length === 0 
-          ? [] 
-          : [{ type: 'header' }, ...positiveHabits, { type: 'divider' }, ...negativeHabits]}
-        keyExtractor={(item: any, i) => item.id || `type-${i}`}
-        renderItem={({ item, index }: any) => {
-          if (item.type === 'header' && positiveHabits.length > 0) {
-            return <Text style={styles.sectionHeader}>Building</Text>;
-          }
-          if (item.type === 'divider' && negativeHabits.length > 0) {
-            return <Text style={[styles.sectionHeader, { marginTop: SPACE.xl }]}>Avoiding</Text>;
-          }
-          if (item.type === 'header' || item.type === 'divider') return null;
-
-          const h = item as Habit;
-          const todayLog = todayLogs.find(l => l.habitId === h.id);
-          const isCompleted = h.targetCount && h.targetCount > 0 ? (todayLog?.count || 0) >= h.targetCount : !!todayLog;
-          const logsForHabit = habitLogs.filter(l => l.habitId === h.id);
-
-          return (
-            <Reanimated.View entering={FadeInDown.delay(index * 40).springify()}>
-              <HabitCard
-                habit={h}
-                isCompleted={isCompleted}
-                todayLog={todayLog}
-                habitLogs={logsForHabit}
-                onToggle={(x, y) => toggleHabit(h, x, y)}
-                onArchive={() => handleArchive(h.id)}
-                onDelete={() => handleDelete(h.id)}
-                onFireConfetti={(x, y, color) => setConfettiOpts({ x, y, color })}
-                freezesLeft={freezes} // Pass to habit card
-              />
-            </Reanimated.View>
-          );
-        }}
+        data={listData}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <EmptyState

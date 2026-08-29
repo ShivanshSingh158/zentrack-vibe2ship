@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AiChatPanel.tsx - Extracted AI Chat Panel for LearningVideoPlayer
  *
  * Only mounted when aiChatVisible === true. Fully unmounts when closed,
@@ -124,7 +124,7 @@ export default function AiChatPanel({
             {onToggleModel && (
               <TouchableOpacity onPress={onToggleModel} style={{ marginLeft: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}>
                 <Text style={{ fontSize: 10, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
-                  {selectedModel === 'gemini-3.7-flash' ? '👑 3.7' : '⚡ 2.5'}
+                  {selectedModel === 'gemini-3.6-flash' ? '👑 3.6' : '⚡ 2.5'}
                 </Text>
               </TouchableOpacity>
             )}

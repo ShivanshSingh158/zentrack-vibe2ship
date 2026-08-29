@@ -20,13 +20,13 @@ export const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta
 
 // ── Gemini Models ─────────────────────────────────────────────────────────────
 export const AVAILABLE_GEMINI_MODELS = [
-  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash', tag: 'Hybrid Thinking', icon: '👑' },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', tag: 'Fast & Balanced', icon: '⚡' },
+  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', tag: 'Hybrid Thinking', icon: '👑' },
+  { id: 'gemini-2.5-flash', label: 'Fast & Balanced', tag: 'Fast & Balanced', icon: '⚡' },
 ] as const;
 export type GeminiModelId = typeof AVAILABLE_GEMINI_MODELS[number]['id'];
 
-export const GEMINI_MODEL_DEFAULT = 'gemini-3.7-flash';
-export const GEMINI_MODEL_TRANSCRIPTION = 'gemini-3.7-flash';
+export const GEMINI_MODEL_DEFAULT = 'gemini-3.6-flash';
+export const GEMINI_MODEL_TRANSCRIPTION = 'gemini-3.6-flash';
 
 // ── Voice & TTS ───────────────────────────────────────────────────────────────
 /** Maximum characters per Sarvam TTS chunk (API hard limit) */

@@ -9,7 +9,7 @@ import Svg, { Circle } from 'react-native-svg';
 
 import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { formatDateWithDay } from '../utils/dateUtils';
+import { formatDateWithDay, formatLocalDateStr } from '../utils/dateUtils';
 import { triggerLayoutAnimation } from '../theme/animations';
 import { setTabBarVisible } from '../utils/tabBarScroll';
 import { today } from './tasks/taskConstants';
@@ -63,13 +63,13 @@ const PROGRESS_CIRCUM = PROGRESS_RADIUS * 2 * Math.PI;
 
 export default function TasksScreen() {
   const { colors, isDark } = useTheme();
-  const styles = makeTasksStyles(colors, isDark);
+  const styles = useMemo(() => makeTasksStyles(colors, isDark), [colors, isDark]);
   const insets = useSafeAreaInsets();
   // Guaranteed synchronous status bar clearance on Frame 0 — prevents upward jump under Android status bar
   const topInset = Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0);
   
   const { tasks, user, habits, habitLogs, tasksReady, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
-  const todayDateStr = React.useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const todayDateStr = useMemo(() => formatLocalDateStr(new Date()), []);
 
   // 1. Recurring Spawn Logic (Deferred background run)
   useRecurringSpawn(tasks, user?.uid, optimisticAddTask);

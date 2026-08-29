@@ -1,73 +1,77 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { FONT_FAMILY, SPACE, RADIUS } from '../../theme/tokens';
-import { useGymLog, todayStr } from '../../hooks/useGymLog';
-import { GymNavigationParamList } from '../../types/gym.types';
-import { hapticMedium, hapticSuccess } from '../../utils/haptics';
-import { useTheme } from "../../contexts/ThemeContext";
 import { StatusBar } from 'expo-status-bar';
 
+import { useGymLog, todayStr } from '../../hooks/useGymLog';
+import { GymNavigationParamList } from '../../types/gym.types';
+import { hapticSuccess } from '../../utils/haptics';
+import { useTheme } from '../../contexts/ThemeContext';
+import { makeCardioLogStyles } from './cardioLogStyles';
+
+const parseNum = (val: string, isFloat = false): number | undefined => {
+  if (!val || !val.trim()) return undefined;
+  const num = isFloat ? parseFloat(val) : parseInt(val, 10);
+  return isNaN(num) ? undefined : num;
+};
+
 export default function CardioLogScreen() {
-    const { colors, isDark } = useTheme();
-    const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeCardioLogStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
   const route = useRoute<RouteProp<GymNavigationParamList, 'CardioLog'>>();
   const cardioId = route.params?.cardioId;
   const date = route.params?.date || todayStr();
 
   const { log, updateCardio } = useGymLog(date);
-  
   const cardioItem = log?.cardio?.find(c => c.id === cardioId);
 
-  const [duration, setDuration] = useState('');
-  const [distance, setDistance] = useState('');
-  const [speed, setSpeed] = useState('');
-  const [incline, setIncline] = useState('');
-  const [calories, setCalories] = useState('');
+  const [form, setForm] = useState({
+    duration: '',
+    distance: '',
+    speed: '',
+    incline: '',
+    calories: '',
+  });
+
+  const updateField = (field: keyof typeof form, val: string) => {
+    setForm(prev => ({ ...prev, [field]: val }));
+  };
 
   useEffect(() => {
     if (cardioItem) {
-      setDuration(cardioItem.durationMinutes ? String(cardioItem.durationMinutes) : '');
-      setDistance(cardioItem.distanceKm ? String(cardioItem.distanceKm) : '');
-      setSpeed(cardioItem.speedKmh ? String(cardioItem.speedKmh) : '');
-      setIncline(cardioItem.incline ? String(cardioItem.incline) : '');
-      setCalories(cardioItem.calories ? String(cardioItem.calories) : '');
+      setForm({
+        duration: cardioItem.durationMinutes ? String(cardioItem.durationMinutes) : '',
+        distance: cardioItem.distanceKm ? String(cardioItem.distanceKm) : '',
+        speed: cardioItem.speedKmh ? String(cardioItem.speedKmh) : '',
+        incline: cardioItem.incline ? String(cardioItem.incline) : '',
+        calories: cardioItem.calories ? String(cardioItem.calories) : '',
+      });
     }
   }, [cardioItem]);
 
-  const handleSave = () => {
-    if (!cardioItem || !log) return;
-    
+  const handleSave = useCallback(() => {
+    if (!cardioItem || !log || !cardioId) return;
+
     hapticSuccess();
-    
-    const parsedDuration = parseInt(duration, 10);
-    const parsedDistance = parseFloat(distance);
-    const parsedSpeed = parseFloat(speed);
-    const parsedIncline = parseFloat(incline);
-    const parsedCalories = parseInt(calories, 10);
-    
+
     const updated = {
       ...cardioItem,
-      durationMinutes: isNaN(parsedDuration) ? undefined : parsedDuration,
-      distanceKm: isNaN(parsedDistance) ? undefined : parsedDistance,
-      speedKmh: isNaN(parsedSpeed) ? undefined : parsedSpeed,
-      incline: isNaN(parsedIncline) ? undefined : parsedIncline,
-      calories: isNaN(parsedCalories) ? undefined : parsedCalories,
+      durationMinutes: parseNum(form.duration),
+      distanceKm: parseNum(form.distance, true),
+      speedKmh: parseNum(form.speed, true),
+      incline: parseNum(form.incline, true),
+      calories: parseNum(form.calories),
       completed: true,
     };
-    
-    const index = log.cardio?.findIndex(c => c.id === cardioId) ?? -1;
-    if (index >= 0 && cardioId) {
-      updateCardio(cardioId, updated as any);
-    }
-    
+
+    updateCardio(cardioId, updated as any);
     navigation.goBack();
-  };
+  }, [cardioItem, log, cardioId, form, updateCardio, navigation]);
 
   if (!cardioItem) return null;
 
@@ -84,7 +88,6 @@ export default function CardioLogScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.content}>
-          
           <View style={styles.iconContainer}>
             <LinearGradient
               colors={['#FF6B6B', '#FF8787']}
@@ -102,8 +105,8 @@ export default function CardioLogScreen() {
               <Text style={styles.label}>Duration (minutes) *</Text>
               <TextInput
                 style={styles.input}
-                value={duration}
-                onChangeText={setDuration}
+                value={form.duration}
+                onChangeText={v => updateField('duration', v)}
                 keyboardType="numeric"
                 placeholder="e.g. 30"
                 placeholderTextColor={colors.textMuted}
@@ -116,8 +119,8 @@ export default function CardioLogScreen() {
                 <Text style={styles.label}>Distance (km)</Text>
                 <TextInput
                   style={styles.input}
-                  value={distance}
-                  onChangeText={setDistance}
+                  value={form.distance}
+                  onChangeText={v => updateField('distance', v)}
                   keyboardType="numeric"
                   placeholder="e.g. 5.0"
                   placeholderTextColor={colors.textMuted}
@@ -128,8 +131,8 @@ export default function CardioLogScreen() {
                 <Text style={styles.label}>Speed (km/h)</Text>
                 <TextInput
                   style={styles.input}
-                  value={speed}
-                  onChangeText={setSpeed}
+                  value={form.speed}
+                  onChangeText={v => updateField('speed', v)}
                   keyboardType="numeric"
                   placeholder="e.g. 10.5"
                   placeholderTextColor={colors.textMuted}
@@ -141,8 +144,8 @@ export default function CardioLogScreen() {
               <Text style={styles.label}>Incline (%)</Text>
               <TextInput
                 style={styles.input}
-                value={incline}
-                onChangeText={setIncline}
+                value={form.incline}
+                onChangeText={v => updateField('incline', v)}
                 keyboardType="numeric"
                 placeholder="e.g. 2.0"
                 placeholderTextColor={colors.textMuted}
@@ -153,17 +156,17 @@ export default function CardioLogScreen() {
               <Text style={styles.label}>Calories Burned (kcal)</Text>
               <TextInput
                 style={styles.input}
-                value={calories}
-                onChangeText={setCalories}
+                value={form.calories}
+                onChangeText={v => updateField('calories', v)}
                 keyboardType="numeric"
                 placeholder="e.g. 250"
                 placeholderTextColor={colors.textMuted}
               />
             </View>
 
-            <TouchableOpacity 
-              style={[styles.saveBtnWrapper, !duration.trim() && { opacity: 0.5 }]}
-              disabled={!duration.trim()}
+            <TouchableOpacity
+              style={[styles.saveBtnWrapper, !form.duration.trim() && { opacity: 0.5 }]}
+              disabled={!form.duration.trim()}
               onPress={handleSave}
             >
               <LinearGradient
@@ -176,51 +179,8 @@ export default function CardioLogScreen() {
               </LinearGradient>
             </TouchableOpacity>
           </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
-
-const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
-      root: { flex: 1, backgroundColor: colors.background },
-      header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: SPACE.xl,
-        paddingTop: Platform.OS === 'ios' ? 10 : 20,
-        paddingBottom: SPACE.md,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-      },
-      backBtn: { padding: SPACE.xs },
-      headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textMuted, letterSpacing: 1 },
-      
-      content: { padding: SPACE.xl, alignItems: 'center' },
-      
-      iconContainer: { alignItems: 'center', marginBottom: SPACE.xl * 1.5 },
-      iconCircle: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginBottom: SPACE.md },
-      title: { fontFamily: FONT_FAMILY.bold, fontSize: 24, color: colors.textPrimary },
-      
-      form: { width: '100%', gap: SPACE.lg },
-      row: { flexDirection: 'row', gap: SPACE.md },
-      inputGroup: { gap: SPACE.xs },
-      label: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 },
-      input: {
-        backgroundColor: colors.surface,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: RADIUS.md,
-        paddingHorizontal: SPACE.md,
-        height: 50,
-        fontFamily: FONT_FAMILY.bold,
-        fontSize: 18,
-        color: colors.textPrimary,
-      },
-      
-      saveBtnWrapper: { marginTop: SPACE.lg, borderRadius: RADIUS.lg, overflow: 'hidden' },
-      saveBtn: { paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
-      saveBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: '#ffffff' },
-    });

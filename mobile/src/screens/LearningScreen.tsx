@@ -176,7 +176,7 @@ export default function LearningScreen() {
   const [aiHistory, setAiHistory] = useState<{ role: string; text: string }[]>([]);
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.7-flash');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.6-flash');
 
   useEffect(() => {
     AsyncStorage.getItem('zen_preferred_learning_model').then(m => {
@@ -186,7 +186,7 @@ export default function LearningScreen() {
 
   const toggleModel = () => {
     Haptics.selectionAsync().catch(() => {});
-    const nextModel = selectedModel === 'gemini-3.7-flash' ? 'gemini-2.5-flash' : 'gemini-3.7-flash';
+    const nextModel = selectedModel === 'gemini-3.6-flash' ? 'gemini-2.5-flash' : 'gemini-3.6-flash';
     setSelectedModel(nextModel);
     AsyncStorage.setItem('zen_preferred_learning_model', nextModel).catch(console.error);
   };

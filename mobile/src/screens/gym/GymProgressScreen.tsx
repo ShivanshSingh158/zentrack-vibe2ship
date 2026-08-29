@@ -1,50 +1,63 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Platform, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Dimensions, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient, Stop, Path, G } from 'react-native-svg';
-import { FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
-import { useWellnessData } from '../../contexts/domains/WellnessContext';
-import { GymNavigationParamList } from '../../types/gym.types';
-import { useTheme } from "../../contexts/ThemeContext";
 import { StatusBar } from 'expo-status-bar';
 
-const { width } = Dimensions.get('window');
+import { SPACE } from '../../theme/tokens';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
+import { GymNavigationParamList } from '../../types/gym.types';
+import { useTheme } from '../../contexts/ThemeContext';
 
+// Extracted Sub-Components & Styles
+import { makeGymProgressStyles } from './gymProgressStyles';
+import GymProgressDonut from '../../components/Gym/GymProgressDonut';
+import GymProgressCardio from '../../components/Gym/GymProgressCardio';
+
+const { width } = Dimensions.get('window');
 type TimeRange = '7d' | '30d' | '90d';
 
 const CHART_HEIGHT = 180;
 const CHART_WIDTH = width - 48;
 const PADDING = 20;
 
+// ─── Pure Helper: Cubic Bezier Smoothing for SVG Path ─────────────────────────
+function generateSmoothSvgPath(coords: Array<{ x: number; y: number }>): string {
+  if (coords.length === 0) return '';
+  let path = `M ${coords[0].x},${coords[0].y}`;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const xMid = (coords[i].x + coords[i + 1].x) / 2;
+    path += ` C ${xMid},${coords[i].y} ${xMid},${coords[i + 1].y} ${coords[i + 1].x},${coords[i + 1].y}`;
+  }
+  return path;
+}
+
 export default function GymProgressScreen() {
   const { colors, isDark } = useTheme();
-  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const styles = useMemo(() => makeGymProgressStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
   const { gymLogs } = useWellnessData();
 
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
-  
-  // Animations
-  const animHeader = useRef(new Animated.Value(0)).current;
+
+  // Staggered Entrance Animations
   const animCards = useRef(new Animated.Value(0)).current;
   const animChart = useRef(new Animated.Value(0)).current;
   const animDonut = useRef(new Animated.Value(0)).current;
   const animCardio = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    animHeader.setValue(0);
     animCards.setValue(0);
     animChart.setValue(0);
     animDonut.setValue(0);
     animCardio.setValue(0);
 
-    Animated.stagger(100, [
-      Animated.timing(animHeader, { toValue: 1, duration: 350, useNativeDriver: true }),
+    Animated.stagger(90, [
       Animated.spring(animCards, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
       Animated.spring(animChart, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
       Animated.spring(animDonut, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
@@ -52,7 +65,7 @@ export default function GymProgressScreen() {
     ]).start();
   }, [timeRange]);
 
-  // --- Data Processing ---
+  // Data Processing
   const { filteredLogs, kpi, lineChartData, donutData, cardioMetrics } = useMemo(() => {
     const today = new Date();
     const daysToSubtract = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
@@ -65,16 +78,14 @@ export default function GymProgressScreen() {
     let totalWorkouts = 0;
     let totalVolumeKg = 0;
     let totalCardioMins = 0;
+    let cardioDistance = 0;
+    let cardioCalories = 0;
 
     const dailyDurationMap = new Map<string, number>();
     const volumeByMuscle: Record<string, number> = {
       Chest: 0, Back: 0, Legs: 0, Shoulders: 0, Arms: 0, Core: 0
     };
 
-    let cardioDistance = 0;
-    let cardioCalories = 0;
-
-    // Generate all dates in range for line chart
     const allDatesInRange: string[] = [];
     for (let i = daysToSubtract - 1; i >= 0; i--) {
       const d = new Date(today);
@@ -86,14 +97,12 @@ export default function GymProgressScreen() {
 
     fLogs.forEach(log => {
       let isWorkout = false;
-      
-      // Calculate Daily Duration
+
       if (log.workoutDurationMinutes) {
         dailyDurationMap.set(log.date, (dailyDurationMap.get(log.date) || 0) + log.workoutDurationMinutes);
         isWorkout = true;
       }
 
-      // Calculate Volume & Muscle Group
       log.exercises?.forEach(ex => {
         let vol = 0;
         ex.setsLog?.forEach((s: any) => {
@@ -122,7 +131,6 @@ export default function GymProgressScreen() {
         }
       });
 
-      // Calculate Cardio
       log.cardio?.forEach(c => {
         if (c.completed) {
           if (c.durationMinutes) {
@@ -138,14 +146,12 @@ export default function GymProgressScreen() {
       if (isWorkout) totalWorkouts++;
     });
 
-    // Format Line Chart Data
     const lData = allDatesInRange.map(dateStr => {
       const parts = dateStr.split('-');
-      const shortDate = `${parts[1]}/${parts[2]}`; // MM/DD
+      const shortDate = `${parts[1]}/${parts[2]}`;
       return { dateStr, shortDate, duration: dailyDurationMap.get(dateStr) || 0 };
     });
 
-    // Format Donut Chart Data
     const MUSCLE_COLORS: Record<string, string> = {
       Chest: '#a599ff', Back: '#5eda9e', Legs: '#ff9f4d',
       Shoulders: '#89dceb', Arms: '#ff6b9d', Core: '#ffd93d',
@@ -154,7 +160,7 @@ export default function GymProgressScreen() {
       .map(([muscle, volume]) => ({ muscle, volume, color: MUSCLE_COLORS[muscle] }))
       .filter(m => m.volume > 0)
       .sort((a, b) => b.volume - a.volume);
-    
+
     const maxVol = dData.reduce((sum, item) => sum + item.volume, 0);
     const donutFinal = dData.map(d => ({ ...d, percent: maxVol > 0 ? Math.round((d.volume / maxVol) * 100) : 0 }));
 
@@ -167,11 +173,11 @@ export default function GymProgressScreen() {
     };
   }, [gymLogs, timeRange]);
 
-  // --- Chart Line Calculation ---
+  // Duration line coordinates
   const { lineCoords, maxDuration } = useMemo(() => {
     if (lineChartData.length === 0) return { lineCoords: [], maxDuration: 0 };
-    const maxDur = Math.max(...lineChartData.map(d => d.duration), 60); // min ceiling of 60 mins
-    
+    const maxDur = Math.max(...lineChartData.map(d => d.duration), 60);
+
     const coords = lineChartData.map((d, i) => {
       const x = PADDING + (i / (lineChartData.length - 1)) * (CHART_WIDTH - PADDING * 2);
       const y = CHART_HEIGHT - PADDING - (d.duration / maxDur) * (CHART_HEIGHT - PADDING * 2);
@@ -180,21 +186,13 @@ export default function GymProgressScreen() {
     return { lineCoords: coords, maxDuration: maxDur };
   }, [lineChartData]);
 
-  const smoothPath = useMemo(() => {
-    if (lineCoords.length === 0) return '';
-    let path = `M ${lineCoords[0].x},${lineCoords[0].y}`;
-    for (let i = 0; i < lineCoords.length - 1; i++) {
-      const xMid = (lineCoords[i].x + lineCoords[i + 1].x) / 2;
-      path += ` C ${xMid},${lineCoords[i].y} ${xMid},${lineCoords[i + 1].y} ${lineCoords[i + 1].x},${lineCoords[i + 1].y}`;
-    }
-    return path;
-  }, [lineCoords]);
+  const smoothPath = useMemo(() => generateSmoothSvgPath(lineCoords), [lineCoords]);
 
-  // --- Specific Exercise Line Chart Data ---
+  // Exercise selection progression
   const { availableMuscles, availableExercises } = useMemo(() => {
     const muscles = new Set<string>();
     const exercises = new Set<string>();
-    
+
     filteredLogs.forEach(log => {
       log.exercises?.forEach((ex: any) => {
         if (ex.muscle) muscles.add(ex.muscle);
@@ -203,7 +201,7 @@ export default function GymProgressScreen() {
         }
       });
     });
-    
+
     return {
       availableMuscles: Array.from(muscles).sort(),
       availableExercises: Array.from(exercises).sort()
@@ -226,9 +224,9 @@ export default function GymProgressScreen() {
 
   const exerciseLineData = useMemo(() => {
     if (!selectedExercise) return [];
-    const dataPoints: { shortDate: string, maxWeight: number }[] = [];
+    const dataPoints: { shortDate: string; maxWeight: number }[] = [];
     const sortedLogs = [...filteredLogs].sort((a, b) => a.date.localeCompare(b.date));
-    
+
     sortedLogs.forEach(log => {
       let maxW = 0;
       let performed = false;
@@ -251,27 +249,19 @@ export default function GymProgressScreen() {
     return dataPoints;
   }, [filteredLogs, selectedExercise]);
 
-  const { exLineCoords, maxExWeight } = useMemo(() => {
-    if (exerciseLineData.length === 0) return { exLineCoords: [], maxExWeight: 0 };
+  const { exLineCoords } = useMemo(() => {
+    if (exerciseLineData.length === 0) return { exLineCoords: [] };
     const maxW = Math.max(...exerciseLineData.map(d => d.maxWeight), 10);
-    
+
     const coords = exerciseLineData.map((d, i) => {
       const x = PADDING + (i / Math.max(1, exerciseLineData.length - 1)) * (CHART_WIDTH - PADDING * 2);
       const y = CHART_HEIGHT - PADDING - (d.maxWeight / maxW) * (CHART_HEIGHT - PADDING * 2);
       return { x, y, data: d };
     });
-    return { exLineCoords: coords, maxExWeight: maxW };
+    return { exLineCoords: coords };
   }, [exerciseLineData]);
 
-  const exSmoothPath = useMemo(() => {
-    if (exLineCoords.length === 0) return '';
-    let path = `M ${exLineCoords[0].x},${exLineCoords[0].y}`;
-    for (let i = 0; i < exLineCoords.length - 1; i++) {
-      const xMid = (exLineCoords[i].x + exLineCoords[i + 1].x) / 2;
-      path += ` C ${xMid},${exLineCoords[i].y} ${xMid},${exLineCoords[i + 1].y} ${exLineCoords[i + 1].x},${exLineCoords[i + 1].y}`;
-    }
-    return path;
-  }, [exLineCoords]);
+  const exSmoothPath = useMemo(() => generateSmoothSvgPath(exLineCoords), [exLineCoords]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
@@ -295,8 +285,7 @@ export default function GymProgressScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        
-        {/* KPI CARDS */}
+        {/* KPI Cards */}
         <Animated.View style={[styles.kpiRow, { opacity: animCards, transform: [{ translateY: animCards.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
           <View style={styles.kpiCard}>
             <View style={[styles.kpiIconBox, { backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.1)' }]}>
@@ -309,7 +298,7 @@ export default function GymProgressScreen() {
             <View style={[styles.kpiIconBox, { backgroundColor: isDark ? 'rgba(94,218,158,0.1)' : 'rgba(5,150,105,0.1)' }]}>
               <Ionicons name="barbell-outline" size={16} color={colors.accentGreen} />
             </View>
-            <Text style={styles.kpiValue}>{kpi.totalVolumeKg >= 1000 ? `${(kpi.totalVolumeKg/1000).toFixed(1)}k` : kpi.totalVolumeKg}</Text>
+            <Text style={styles.kpiValue}>{kpi.totalVolumeKg >= 1000 ? `${(kpi.totalVolumeKg / 1000).toFixed(1)}k` : kpi.totalVolumeKg}</Text>
             <Text style={styles.kpiLabel}>Volume (kg)</Text>
           </View>
           <View style={styles.kpiCard}>
@@ -321,16 +310,16 @@ export default function GymProgressScreen() {
           </View>
         </Animated.View>
 
-        {/* LINE CHART: WORKOUT DURATION */}
+        {/* Workout Duration Line Chart */}
         <Animated.View style={[styles.glassCard, { opacity: animChart, transform: [{ translateY: animChart.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
           <View style={styles.cardHeaderRow}>
-             <View>
-               <Text style={styles.cardTitle}>Workout Duration</Text>
-               <Text style={styles.cardSubtitle}>Minutes spent training per day</Text>
-             </View>
-             <View style={styles.cardHeaderBadge}>
-               <Text style={styles.cardHeaderBadgeText}>MAX {maxDuration}m</Text>
-             </View>
+            <View>
+              <Text style={styles.cardTitle}>Workout Duration</Text>
+              <Text style={styles.cardSubtitle}>Minutes spent training per day</Text>
+            </View>
+            <View style={styles.cardHeaderBadge}>
+              <Text style={styles.cardHeaderBadgeText}>MAX {maxDuration}m</Text>
+            </View>
           </View>
 
           <View style={styles.svgWrapper}>
@@ -342,28 +331,25 @@ export default function GymProgressScreen() {
                 </LinearGradient>
               </Defs>
 
-              {/* Grid Lines */}
               <Path d={`M 0 ${PADDING} L ${CHART_WIDTH} ${PADDING}`} stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} strokeWidth="1" strokeDasharray="4 4" />
               <Path d={`M 0 ${CHART_HEIGHT / 2} L ${CHART_WIDTH} ${CHART_HEIGHT / 2}`} stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} strokeWidth="1" strokeDasharray="4 4" />
               <Path d={`M 0 ${CHART_HEIGHT - PADDING} L ${CHART_WIDTH} ${CHART_HEIGHT - PADDING}`} stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} strokeWidth="1" strokeDasharray="4 4" />
 
               {lineCoords.length > 1 && (
                 <>
-                  <Path d={`${smoothPath} L ${lineCoords[lineCoords.length-1].x},${CHART_HEIGHT - PADDING} L ${lineCoords[0].x},${CHART_HEIGHT - PADDING} Z`} fill="url(#lineGrad)" />
+                  <Path d={`${smoothPath} L ${lineCoords[lineCoords.length - 1].x},${CHART_HEIGHT - PADDING} L ${lineCoords[0].x},${CHART_HEIGHT - PADDING} Z`} fill="url(#lineGrad)" />
                   <Path d={smoothPath} fill="none" stroke={colors.accentPrimary} strokeWidth="8" strokeOpacity="0.15" strokeLinecap="round" strokeLinejoin="round" />
                   <Path d={smoothPath} fill="none" stroke={colors.accentPrimary} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                 </>
               )}
 
-              {/* Data Points */}
               {timeRange !== '90d' && lineCoords.map((pt, idx) => (
                 <G key={idx}>
                   <Circle cx={pt.x} cy={pt.y} r={3} fill={colors.surface} stroke={colors.accentPrimary} strokeWidth={1.5} />
                 </G>
               ))}
             </Svg>
-            
-            {/* Axis labels */}
+
             <View style={styles.chartDateAxis}>
               <Text style={styles.axisDateText}>{lineChartData[0]?.shortDate}</Text>
               <Text style={styles.axisDateText}>{lineChartData[Math.floor(lineChartData.length / 2)]?.shortDate}</Text>
@@ -372,90 +358,27 @@ export default function GymProgressScreen() {
           </View>
         </Animated.View>
 
-        {/* DONUT CHART: MUSCLE DISTRIBUTION */}
+        {/* Muscle Distribution Donut */}
         <Animated.View style={[styles.glassCard, { opacity: animDonut, transform: [{ translateY: animDonut.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
-           <Text style={styles.cardTitle}>Muscle Group Distribution</Text>
-           <Text style={styles.cardSubtitle}>Volume percentage by muscle</Text>
-           
-           {donutData.length > 0 ? (
-             <View style={styles.donutContainer}>
-               <View style={styles.donutSvgWrapper}>
-                 <Svg width={150} height={150} viewBox="0 0 150 150">
-                   {(() => {
-                     const CIRCUMFERENCE = 2 * Math.PI * 52;
-                     let cumulativePercent = 0;
-                     return donutData.map((item, i) => {
-                       const strokeDasharray = `${(item.percent / 100) * CIRCUMFERENCE} ${CIRCUMFERENCE}`;
-                       const strokeDashoffset = -((cumulativePercent / 100) * CIRCUMFERENCE);
-                       cumulativePercent += item.percent;
-                       return (
-                         <Circle key={i} cx={75} cy={75} r={52} stroke={item.color} strokeWidth={16} strokeDasharray={strokeDasharray} strokeDashoffset={strokeDashoffset} fill="none" strokeLinecap="round" />
-                       );
-                     });
-                   })()}
-                 </Svg>
-                 <View style={styles.donutCenterLabel}>
-                   <Text style={styles.donutCenterValue}>{kpi.totalVolumeKg >= 1000 ? `${(kpi.totalVolumeKg/1000).toFixed(1)}k` : kpi.totalVolumeKg}</Text>
-                   <Text style={styles.donutCenterSub}>kg Total</Text>
-                 </View>
-               </View>
-               <View style={styles.donutLegend}>
-                 {donutData.map((item, idx) => (
-                   <View key={idx} style={styles.donutLegendRow}>
-                     <View style={[styles.donutDot, { backgroundColor: item.color }]} />
-                     <Text style={styles.donutLegendName} numberOfLines={1}>{item.muscle}</Text>
-                     <Text style={styles.donutLegendPercent}>{item.percent}%</Text>
-                   </View>
-                 ))}
-               </View>
-             </View>
-           ) : (
-             <View style={styles.emptyBox}>
-               <Ionicons name="pie-chart-outline" size={24} color="rgba(255,255,255,0.2)" />
-               <Text style={styles.emptyText}>No muscle data logged in this period.</Text>
-             </View>
-           )}
+          <Text style={styles.cardTitle}>Muscle Group Distribution</Text>
+          <Text style={styles.cardSubtitle}>Volume percentage by muscle</Text>
+          <GymProgressDonut donutData={donutData} totalVolumeKg={kpi.totalVolumeKg} styles={styles} />
         </Animated.View>
 
-        {/* CARDIO SECTION */}
+        {/* Cardio Metrics */}
         <Animated.View style={[styles.glassCard, { opacity: animCardio, transform: [{ translateY: animCardio.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
           <Text style={styles.cardTitle}>Cardio Performance</Text>
           <Text style={styles.cardSubtitle}>Aggregated cardio metrics</Text>
-
-          {kpi.totalCardioMins > 0 ? (
-            <View style={styles.cardioMetricsGrid}>
-               <View style={styles.cardioMetricBox}>
-                 <Ionicons name="time-outline" size={20} color="#ff9f4d" />
-                 <Text style={styles.cardioMetricValue}>{kpi.totalCardioMins}</Text>
-                 <Text style={styles.cardioMetricLabel}>Minutes</Text>
-               </View>
-               <View style={styles.cardioMetricBox}>
-                 <Ionicons name="flame-outline" size={20} color="#ff6b9d" />
-                 <Text style={styles.cardioMetricValue}>{Math.round(cardioMetrics.calories)}</Text>
-                 <Text style={styles.cardioMetricLabel}>Calories</Text>
-               </View>
-               <View style={styles.cardioMetricBox}>
-                 <Ionicons name="location-outline" size={20} color="#89dceb" />
-                 <Text style={styles.cardioMetricValue}>{cardioMetrics.distance.toFixed(1)}</Text>
-                 <Text style={styles.cardioMetricLabel}>Distance (km)</Text>
-               </View>
-            </View>
-          ) : (
-            <View style={styles.emptyBox}>
-               <Ionicons name="walk-outline" size={24} color="rgba(255,255,255,0.2)" />
-               <Text style={styles.emptyText}>No cardio logged in this period.</Text>
-             </View>
-          )}
+          <GymProgressCardio totalCardioMins={kpi.totalCardioMins} calories={cardioMetrics.calories} distance={cardioMetrics.distance} styles={styles} />
         </Animated.View>
 
-        {/* EXERCISE PROGRESSION */}
+        {/* Exercise Progression */}
         <Animated.View style={[styles.glassCard, { opacity: animCards }]}>
           <Text style={styles.cardTitle}>Exercise Progression</Text>
           <Text style={styles.cardSubtitle}>Max weight over time</Text>
 
           {availableMuscles.length > 0 ? (
             <View style={{ marginTop: SPACE.lg }}>
-              {/* Muscle selector */}
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipScroll}>
                 {availableMuscles.map(m => (
                   <TouchableOpacity key={m} style={[styles.chip, selectedMuscle === m && styles.chipActive]} onPress={() => setSelectedMuscle(m)}>
@@ -464,7 +387,6 @@ export default function GymProgressScreen() {
                 ))}
               </ScrollView>
 
-              {/* Exercise selector */}
               {availableExercises.length > 0 && (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillScroll}>
                   {availableExercises.map(ex => (
@@ -475,7 +397,6 @@ export default function GymProgressScreen() {
                 </ScrollView>
               )}
 
-              {/* Chart */}
               {exerciseLineData.length > 1 ? (
                 <View style={styles.svgWrapper}>
                   <Svg width={CHART_WIDTH} height={CHART_HEIGHT}>
@@ -490,16 +411,15 @@ export default function GymProgressScreen() {
                     <Path d={`M 0 ${CHART_HEIGHT / 2} L ${CHART_WIDTH} ${CHART_HEIGHT / 2}`} stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="4 4" />
                     <Path d={`M 0 ${CHART_HEIGHT - PADDING} L ${CHART_WIDTH} ${CHART_HEIGHT - PADDING}`} stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="4 4" />
 
-                    <Path d={`${exSmoothPath} L ${exLineCoords[exLineCoords.length-1].x},${CHART_HEIGHT - PADDING} L ${exLineCoords[0].x},${CHART_HEIGHT - PADDING} Z`} fill="url(#exLineGrad)" />
+                    <Path d={`${exSmoothPath} L ${exLineCoords[exLineCoords.length - 1].x},${CHART_HEIGHT - PADDING} L ${exLineCoords[0].x},${CHART_HEIGHT - PADDING} Z`} fill="url(#exLineGrad)" />
                     <Path d={exSmoothPath} fill="none" stroke="#5eda9e" strokeWidth="8" strokeOpacity="0.15" strokeLinecap="round" strokeLinejoin="round" />
                     <Path d={exSmoothPath} fill="none" stroke="#5eda9e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                    
+
                     {exLineCoords.map((c, i) => (
                       <Circle key={i} cx={c.x} cy={c.y} r={4} fill="#5eda9e" stroke="#000" strokeWidth={2} />
                     ))}
                   </Svg>
-                  
-                  {/* Axis labels */}
+
                   <View style={styles.chartDateAxis}>
                     <Text style={styles.axisDateText}>{exerciseLineData[0]?.shortDate}</Text>
                     {exerciseLineData.length > 2 && (
@@ -522,61 +442,7 @@ export default function GymProgressScreen() {
             </View>
           )}
         </Animated.View>
-
       </ScrollView>
     </SafeAreaView>
   );
 }
-
-const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
-  root: { flex: 1, backgroundColor: isDark ? '#000000' : colors.background },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingTop: Platform.OS === 'ios' ? 8 : 16, paddingBottom: SPACE.md },
-  backBtn: { padding: 4 },
-  headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary },
-  filterTabs: { flexDirection: 'row', paddingHorizontal: SPACE.md, gap: 8, marginBottom: SPACE.md },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: RADIUS.full, backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
-  tabActive: { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)', borderColor: colors.accentPrimary },
-  tabText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textMuted },
-  tabTextActive: { color: colors.accentPrimary },
-  content: { paddingHorizontal: SPACE.md, paddingBottom: 120 },
-  kpiRow: { flexDirection: 'row', gap: SPACE.sm, marginBottom: SPACE.lg },
-  kpiCard: { flex: 1, backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderRadius: RADIUS.lg, padding: SPACE.sm, alignItems: 'center', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border, ...SHADOW.sm },
-  kpiIconBox: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  kpiValue: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary },
-  kpiLabel: { fontFamily: FONT_FAMILY.medium, fontSize: 10, color: colors.textMuted, marginTop: 2 },
-  glassCard: { backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderRadius: RADIUS.xl, padding: SPACE.lg, marginBottom: SPACE.lg, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border, ...SHADOW.sm },
-  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACE.md },
-  cardTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
-  cardSubtitle: { fontFamily: FONT_FAMILY.medium, fontSize: 12, color: colors.textMuted, marginTop: 2 },
-  cardHeaderBadge: { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  cardHeaderBadgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 9, color: colors.textPrimary, letterSpacing: 0.5 },
-  svgWrapper: { alignItems: 'center', marginTop: SPACE.xs },
-  chartDateAxis: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 6, paddingHorizontal: 4 },
-  axisDateText: { fontFamily: FONT_FAMILY.mono, fontSize: 10, color: colors.textMuted },
-  donutContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACE.md, gap: SPACE.md },
-  donutSvgWrapper: { width: 150, height: 150, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  donutCenterLabel: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
-  donutCenterValue: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary },
-  donutCenterSub: { fontFamily: FONT_FAMILY.medium, fontSize: 11, color: colors.textMuted },
-  donutLegend: { flex: 1, gap: 8 },
-  donutLegendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  donutDot: { width: 10, height: 10, borderRadius: 5 },
-  donutLegendName: { flex: 1, fontFamily: FONT_FAMILY.medium, fontSize: 13, color: colors.textPrimary },
-  donutLegendPercent: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textMuted },
-  cardioMetricsGrid: { flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.lg },
-  cardioMetricBox: { flex: 1, backgroundColor: isDark ? '#2C2C2E' : colors.surface2, borderRadius: RADIUS.md, padding: SPACE.sm, alignItems: 'center', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
-  cardioMetricValue: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary, marginTop: 8 },
-  cardioMetricLabel: { fontFamily: FONT_FAMILY.medium, fontSize: 10, color: colors.textMuted, marginTop: 2 },
-  chipScroll: { gap: 6, marginBottom: SPACE.md },
-  chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full, backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
-  chipActive: { borderColor: colors.accentPrimary, backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.1)' },
-  chipText: { fontFamily: FONT_FAMILY.medium, fontSize: 12, color: colors.textMuted },
-  chipTextActive: { color: colors.accentPrimary },
-  pillScroll: { gap: 8, paddingVertical: 4, marginBottom: SPACE.sm },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.lg, backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
-  pillActive: { backgroundColor: colors.accentGreen, borderColor: colors.accentGreen },
-  pillText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textMuted },
-  pillTextActive: { color: '#ffffff' },
-  emptyBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACE.xl, gap: 8 },
-  emptyText: { fontFamily: FONT_FAMILY.medium, fontSize: 12, color: colors.textMuted, textAlign: 'center' },
-});

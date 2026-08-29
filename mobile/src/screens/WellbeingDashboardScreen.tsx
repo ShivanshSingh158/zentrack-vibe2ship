@@ -13,6 +13,8 @@ import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
 import * as Haptics from 'expo-haptics';
 import { callProxy } from '../services/geminiProxy';
 
+import { formatLocalDateStr } from '../utils/dateUtils';
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PAD = 16;
 const CHART_W = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD * 2;
@@ -35,7 +37,7 @@ function smoothPath(pts: { x: number; y: number }[]): string {
 function daysAgoStr(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return formatLocalDateStr(d);
 }
 
 function getPast7Days(): string[] {
@@ -43,7 +45,7 @@ function getPast7Days(): string[] {
 }
 
 function getDayLabel(dateStr: string): string {
-  const d = new Date(dateStr);
+  const d = new Date(dateStr + 'T00:00:00');
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   return days[d.getDay()];
 }
@@ -77,7 +79,7 @@ function GlassCard({ children, style, isDark, colors }: { children?: React.React
 
 export default function WellbeingDashboardScreen() {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors, isDark);
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
   const { waterLogs, ensureSubscribed } = useWellnessData();
 

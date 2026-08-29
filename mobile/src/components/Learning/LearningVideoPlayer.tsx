@@ -71,7 +71,7 @@ export default function LearningVideoPlayer({
   notesVisible, setNotesVisible, aiHistory, aiInput, setAiInput,
   aiLoading, sendAiMessage, generateQuiz, currentNotes, setCurrentNotes,
   saveNotes, closeVideo, resetChatHistory, onSelectLecture,
-  selectedModel = 'gemini-3.7-flash', onToggleModel,
+  selectedModel = 'gemini-3.6-flash', onToggleModel,
 }: LearningVideoPlayerProps) {
   const { colors, isDark } = useTheme();
   const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
@@ -342,7 +342,7 @@ export default function LearningVideoPlayer({
             </TouchableOpacity>
             {aiChatVisible && onToggleModel && (
               <TouchableOpacity style={[s.controlBtn, { paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', gap: 3 }]} onPress={onToggleModel} accessibilityLabel="Toggle Gemini Model">
-                <Text style={{ fontSize: 10, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>{selectedModel === 'gemini-3.7-flash' ? '👑 3.7' : '⚡ 2.5'}</Text>
+                <Text style={{ fontSize: 10, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>{selectedModel === 'gemini-3.6-flash' ? '👑 3.6' : '⚡ 2.5'}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={[s.controlBtn, notesVisible && { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary }]}

@@ -73,18 +73,20 @@ function rangesOverlap(a: { startMin: number; endMin: number }, b: { startMin: n
 
 // ── Main Export ───────────────────────────────────────────────────────────────
 
+import { formatLocalDateStr } from '../utils/dateUtils';
+
 export const detectConflicts = (appContext: any): DetectedConflict[] => {
   const conflicts: DetectedConflict[] = [];
   const { tasks = [], gymLogs = [], attendance = [], assignments = [], customEvents = [] } = appContext;
 
   const now            = new Date();
-  const today          = now.toISOString().split('T')[0];
+  const today          = formatLocalDateStr(now);
   const todayDayOfWeek = now.getDay().toString(); // "0"–"6"
 
   const todayTasks = tasks.filter((t: any) => t.date === today && t.status !== 'completed');
 
   // ── 1. Task vs Task time-slot overlap ──────────────────────────────────────
-  // Only fires when two tasks genuinely collide on the timeline.
+  // Checks all overlapping intervals on the timeline.
   const timedTasks = todayTasks
     .filter((t: any) => t.timeSlot)
     .map((t: any) => ({ task: t, range: parseTimeSlotToRange(t.timeSlot) }))
@@ -92,18 +94,23 @@ export const detectConflicts = (appContext: any): DetectedConflict[] => {
 
   timedTasks.sort((a, b) => a.range.startMin - b.range.startMin);
 
-  for (let i = 0; i < timedTasks.length - 1; i++) {
+  for (let i = 0; i < timedTasks.length; i++) {
     const a = timedTasks[i];
-    const b = timedTasks[i + 1];
-    if (rangesOverlap(a.range, b.range)) {
-      conflicts.push({
-        id: `task_task_overlap_${a.task.id}_${b.task.id}`,
-        type: 'task_task_overlap',
-        severity: 'critical',
-        message: `"${a.task.title}" and "${b.task.title}" overlap on the timeline.`,
-        suggestion: `Drag one task to a free time slot to resolve the conflict.`,
-        modules: ['tasks'],
-      });
+    for (let j = i + 1; j < timedTasks.length; j++) {
+      const b = timedTasks[j];
+      if (b.range.startMin >= a.range.endMin) {
+        break; // Subsequent tasks start after 'a' ends
+      }
+      if (rangesOverlap(a.range, b.range)) {
+        conflicts.push({
+          id: `task_task_overlap_${a.task.id}_${b.task.id}`,
+          type: 'task_task_overlap',
+          severity: 'critical',
+          message: `"${a.task.title}" and "${b.task.title}" overlap on the timeline.`,
+          suggestion: `Drag one task to a free time slot to resolve the conflict.`,
+          modules: ['tasks'],
+        });
+      }
     }
   }
 
@@ -182,7 +189,7 @@ export const detectConflicts = (appContext: any): DetectedConflict[] => {
   });
 
   // ── 5. Assignment overload (3+ due in 7 days) ──────────────────────────────
-  const sevenDaysLater    = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const sevenDaysLater    = formatLocalDateStr(new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000));
   const urgentAssignments = assignments.filter(
     (a: any) => a.dueDate >= today && a.dueDate <= sevenDaysLater && a.status !== 'submitted' && a.status !== 'graded'
   );

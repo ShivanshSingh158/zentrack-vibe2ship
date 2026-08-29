@@ -1,23 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  TouchableOpacity,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  Animated,
-  ScrollView,
-  Dimensions,
-  Keyboard,
+  View, Text, Modal, TouchableOpacity, TextInput,
+  Platform, Animated, ScrollView, Keyboard, StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FONT_FAMILY, SPACE, RADIUS, FONT_SIZE } from '../../theme/tokens';
 import { GymCardioLog } from '../../types/gym.types';
 import { useTheme } from '../../contexts/ThemeContext';
 import * as Haptics from 'expo-haptics';
+
+// Extracted Styles
+import { makeCardioModalStyles } from './cardioModalStyles';
 
 interface Props {
   visible: boolean;
@@ -26,7 +18,6 @@ interface Props {
   onSave: (updates: Partial<GymCardioLog>) => void;
 }
 
-// ── Per-type field matrix ────────────────────────────────────────────────────
 type FieldKey =
   | 'durationMinutes'
   | 'distanceKm'
@@ -64,26 +55,25 @@ const ALL_FIELDS: Record<FieldKey, FieldConfig> = {
 };
 
 const TYPE_FIELDS: Record<string, FieldKey[]> = {
-  'Treadmill':    ['durationMinutes', 'distanceKm', 'speedKmh', 'incline'],
-  'Cycling':      ['durationMinutes', 'distanceKm', 'speedKmh', 'calories'],
-  'Rowing':       ['durationMinutes', 'distanceKm', 'spm', 'calories'],
-  'Stairmaster':  ['durationMinutes', 'floors', 'level', 'calories'],
-  'Elliptical':   ['durationMinutes', 'distanceKm', 'level', 'calories'],
-  'Outdoor Run':  ['durationMinutes', 'distanceKm', 'pace', 'calories'],
-  'Jump Rope':    ['durationMinutes', 'rounds', 'calories'],
-  'Swimming':     ['durationMinutes', 'laps', 'distanceKm', 'calories'],
-  'Other':        ['durationMinutes', 'calories'],
+  'Treadmill':   ['durationMinutes', 'distanceKm', 'speedKmh', 'incline'],
+  'Cycling':     ['durationMinutes', 'distanceKm', 'speedKmh', 'calories'],
+  'Rowing':      ['durationMinutes', 'distanceKm', 'spm', 'calories'],
+  'Stairmaster': ['durationMinutes', 'floors', 'level', 'calories'],
+  'Elliptical':  ['durationMinutes', 'distanceKm', 'level', 'calories'],
+  'Outdoor Run': ['durationMinutes', 'distanceKm', 'pace', 'calories'],
+  'Jump Rope':   ['durationMinutes', 'rounds', 'calories'],
+  'Swimming':    ['durationMinutes', 'laps', 'distanceKm', 'calories'],
+  'Other':       ['durationMinutes', 'calories'],
 };
 
 const DEFAULT_FIELDS: FieldKey[] = ['durationMinutes', 'distanceKm', 'calories'];
 
 export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
   const { colors, isDark } = useTheme();
-  const s = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const s = useMemo(() => makeCardioModalStyles(colors, isDark), [colors, isDark]);
   const slideAnim = useRef(new Animated.Value(500)).current;
   const keyboardOffset = useRef(new Animated.Value(0)).current;
 
-  // Dynamic field values stored as string map
   const [values, setValues] = useState<Record<string, string>>({});
 
   const fields: FieldConfig[] = cardio
@@ -102,10 +92,10 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
       }).start();
     });
 
-    const hideSub = Keyboard.addListener(hideEvt, (e) => {
+    const hideSub = Keyboard.addListener(hideEvt, () => {
       Animated.timing(keyboardOffset, {
         toValue: 0,
-        duration: Platform.OS === 'ios' ? e.duration : 160,
+        duration: Platform.OS === 'ios' ? 200 : 160,
         useNativeDriver: true,
       }).start();
     });
@@ -118,7 +108,6 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
 
   useEffect(() => {
     if (visible && cardio) {
-      // Pre-fill from existing cardio log
       const init: Record<string, string> = {};
       (TYPE_FIELDS[cardio.type] || DEFAULT_FIELDS).forEach(key => {
         const v = (cardio as any)[key];
@@ -169,13 +158,11 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
 
   const canSave = !!values['durationMinutes']?.trim();
 
-  // Layout: group fields into pairs for side-by-side display
   const fieldPairs: FieldConfig[][] = [];
   for (let i = 0; i < fields.length; i += 2) {
     fieldPairs.push(fields.slice(i, i + 2));
   }
 
-  // Combine slide anim and keyboard offset into a single native-driven translateY
   const combinedTranslateY = Animated.add(
     slideAnim,
     Animated.multiply(keyboardOffset, -1)
@@ -189,15 +176,11 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
         <Animated.View
           style={[
             s.sheet,
-            {
-              transform: [{ translateY: combinedTranslateY }],
-            },
+            { transform: [{ translateY: combinedTranslateY }] },
           ]}
         >
-          {/* Handle */}
           <View style={s.handle} />
 
-          {/* Header */}
           <View style={s.header}>
             <View style={s.headerLeft}>
               <Text style={s.title}>Log {cardio.type}</Text>
@@ -212,7 +195,6 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
             </TouchableOpacity>
           </View>
 
-          {/* Scrollable Fields */}
           <ScrollView
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
@@ -239,7 +221,7 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
                     <TextInput
                       style={s.input}
                       value={values[field.key] || ''}
-                      onChangeText={(t) => setValues(prev => ({ ...prev, [field.key]: t }))}
+                      onChangeText={t => setValues(prev => ({ ...prev, [field.key]: t }))}
                       placeholder="—"
                       placeholderTextColor={colors.textMuted}
                       keyboardType={field.decimal ? 'decimal-pad' : 'number-pad'}
@@ -250,7 +232,6 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
               </View>
             ))}
 
-            {/* Save CTA */}
             <TouchableOpacity
               style={[s.saveBtn, !canSave && s.saveBtnDisabled]}
               onPress={handleSave}
@@ -268,128 +249,4 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
   );
 }
 
-const { height: SCREEN_H } = Dimensions.get('window');
-
-const makeStyles = (colors: any, isDark: boolean = true) =>
-  StyleSheet.create({
-    backdrop: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.65)',
-      justifyContent: 'flex-end',
-    },
-    sheet: {
-      backgroundColor: colors.surface,
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      paddingHorizontal: 16,
-      paddingTop: 8,
-      paddingBottom: Platform.OS === 'ios' ? 36 : 20,
-      borderTopWidth: 1,
-      borderColor: colors.border,
-      maxHeight: SCREEN_H * 0.72,
-    },
-    handle: {
-      width: 36,
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.15)',
-      alignSelf: 'center',
-      marginBottom: 14,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
-      marginBottom: 14,
-    },
-    headerLeft: { flex: 1 },
-    title: {
-      fontFamily: FONT_FAMILY.bold,
-      fontSize: 20,
-      color: colors.textPrimary,
-      marginBottom: 1,
-    },
-    subtitle: {
-      fontFamily: FONT_FAMILY.medium,
-      fontSize: 11,
-      color: colors.textTertiary,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-    },
-    closeBtn: {
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-      backgroundColor: isDark ? '#1C1C1E' : '#E2E1EA',
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    row: {
-      flexDirection: 'row',
-      marginBottom: 10,
-    },
-    fieldBox: {
-      flex: 1,
-      backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA',
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      padding: 12,
-    },
-    fieldHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 5,
-      marginBottom: 8,
-    },
-    fieldIconBox: {
-      width: 20,
-      height: 20,
-      borderRadius: 5,
-      backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.15)',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    fieldLabel: {
-      fontFamily: FONT_FAMILY.bold,
-      fontSize: 10,
-      color: colors.textTertiary,
-      flex: 1,
-      textTransform: 'uppercase',
-      letterSpacing: 0.4,
-    },
-    fieldUnit: {
-      fontFamily: FONT_FAMILY.medium,
-      fontSize: 9,
-      color: colors.textMuted,
-    },
-    input: {
-      fontFamily: FONT_FAMILY.bold,
-      fontSize: 20,
-      color: colors.textPrimary,
-      padding: 0,
-      height: 28,
-    },
-    saveBtn: {
-      backgroundColor: isDark ? '#a599ff' : colors.accentPrimary,
-      borderRadius: 12,
-      paddingVertical: 14,
-      alignItems: 'center',
-      marginTop: 10,
-    },
-    saveBtnDisabled: {
-      backgroundColor: isDark ? '#1C1C1E' : '#E2E1EA',
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    saveBtnText: {
-      fontFamily: FONT_FAMILY.bold,
-      fontSize: 14,
-      color: isDark ? '#000000' : '#FFFFFF',
-    },
-    saveBtnTextDisabled: {
-      color: colors.textMuted,
-    },
-  });
+export default LogCardioModal;

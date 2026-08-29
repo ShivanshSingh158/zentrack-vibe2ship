@@ -1,26 +1,15 @@
 /**
  * gymHomeStyles.ts — ZenTrack Gym Module
  *
- * Extracted stylesheet factory for GymHomeScreen.
- * Cleanly separated to minimize component bundle execution overhead on initial mount.
+ * Cleaned stylesheet factory for GymHomeScreen.
+ * Pruned legacy unused style tokens to optimize mount performance and bundle size.
  */
 import { StyleSheet } from 'react-native';
-import { COLORS, FONT_FAMILY } from '../../theme/tokens';
+import { FONT_FAMILY } from '../../theme/tokens';
 
 export const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   root: { flex: 1, backgroundColor: isDark ? '#000000' : colors.background },
   scrollContent: { paddingBottom: 95, paddingTop: 48 },
-  
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: isDark ? '#000000' : (colors.surfaceRaised || colors.surface), borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, borderWidth: 1, borderColor: isDark ? '#1c1c20' : colors.border },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  modalTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
-  moveActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : colors.accentDim, borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.25)' : colors.border, paddingVertical: 10, borderRadius: 14 },
-  moveActionText: { fontSize: 13, fontWeight: '700', color: isDark ? '#a599ff' : colors.accentPrimary },
-  posRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: isDark ? '#0c0c0f' : (colors.surface2 || colors.surface), marginBottom: 6, borderWidth: 1, borderColor: isDark ? '#1c1c20' : colors.border },
-  posRowActive: { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary },
-  posNum: { fontSize: 12, fontWeight: '700', color: colors.textMuted, width: 30 },
-  posName: { flex: 1, fontSize: 13, color: colors.textPrimary, marginRight: 8 },
 
   weekStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 4, marginBottom: 2 },
   weekDaysContainer: { flexDirection: 'row', flex: 1, justifyContent: 'space-evenly', alignItems: 'center' },
@@ -32,13 +21,6 @@ export const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.cr
   dayPillActive: { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary, borderRadius: 18, overflow: 'hidden' },
   dayNum: { fontSize: 13, color: colors.textTertiary, fontFamily: 'Inter-Regular' },
   dayNumActive: { color: isDark ? '#000000' : '#ffffff', fontWeight: '700' },
-
-  muscleSection: { paddingHorizontal: 8, marginBottom: 16 },
-  muscleDiagramWrapper: { alignItems: 'center', paddingVertical: 8 },
-  muscleLegend: { flexDirection: 'row', gap: 12, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' },
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  legendDot: { width: 10, height: 10, borderRadius: 5 },
-  legendText: { fontSize: 10, color: colors.textTertiary, fontFamily: 'Inter-Regular' },
 
   workoutSection: { paddingHorizontal: 8, marginBottom: 8 },
   startBtn: {
@@ -80,7 +62,7 @@ export const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.cr
     backgroundColor: isDark ? 'rgba(255,159,77,0.1)' : 'rgba(249,115,22,0.12)',
   },
   streakBadgeInlineText: { fontSize: 12, fontWeight: '700', color: isDark ? '#ff9f4d' : '#EA580C' },
-  
+
   readinessBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1 },
 
   activeBanner: {
@@ -100,7 +82,7 @@ export const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.cr
 
   section: { paddingHorizontal: 8, marginBottom: 12 },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: colors.textTertiary, marginBottom: 12, marginLeft: 4, letterSpacing: 2 },
-  
+
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -143,56 +125,6 @@ export const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.cr
   textStrikethrough: { textDecorationLine: 'line-through', color: colors.textTertiary },
   rowActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   actionBtn: { padding: 8, marginHorizontal: -4 },
-
-  fabAi: { position: 'absolute', bottom: 84, right: 16, borderRadius: 24, elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 8 },
-  fabGradient: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#a599ff' : colors.accentPrimary },
-
-  restTimerOverlay: {
-    position: 'absolute',
-    bottom: 110,
-    alignSelf: 'center',
-    backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(52, 199, 89, 0.5)' : 'rgba(16, 185, 129, 0.40)',
-    borderRadius: 30,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    elevation: 10,
-    zIndex: 9999,
-  },
-  restTimerLabel: { fontSize: 12, fontWeight: '700', color: colors.textTertiary, letterSpacing: 1 },
-  restTimerText: { fontFamily: 'Courier', fontSize: 24, color: isDark ? '#34C759' : '#059669', fontWeight: 'bold' },
-  restTimerClose: { marginLeft: 8 },
-  routineHeaderBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 12,
-    backgroundColor: isDark ? '#1C1C1E' : colors.surface,
-    marginHorizontal: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
-  },
-  routineInfoCol: { flex: 1, paddingRight: 8 },
-  routineLabelText: { fontSize: 10, fontWeight: '700', color: colors.textTertiary, letterSpacing: 1.5, marginBottom: 2 },
-  routineNameText: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
-  smallSwapIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : colors.accentDim,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(165,153,255,0.25)' : colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   // ── Single Morphing Sticky Header Styles ─────────────────────────────────
   topHeaderWrapper: {

@@ -14,6 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppContext } from '../agent/intentClassifier';
 import { STORAGE_KEYS } from '../config/constants';
+import { formatLocalDateStr } from '../utils/dateUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ function evaluateLocalSurfaceInsight(
   screenName: string,
   ctx: AppContext
 ): { message: string; action: string | null } | null {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatLocalDateStr(new Date());
 
   switch (screenName) {
     case 'AttendanceScreen': {
