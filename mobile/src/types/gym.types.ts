@@ -3,6 +3,10 @@ export interface GymSet {
   reps: number | null;
   weight: number | null;
   completed: boolean;
+  isWarmup?: boolean;
+  warmupLabel?: string;
+  rir?: number;
+  rpe?: number;
 }
 
 export interface GymExerciseLog {

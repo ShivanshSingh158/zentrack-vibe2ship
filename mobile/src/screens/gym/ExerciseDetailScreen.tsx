@@ -23,6 +23,7 @@ import { autoResolveExerciseVideoId } from '../../services/exerciseVideoResolver
 // Extracted Sub-Components & Styles
 import { makeExerciseDetailStyles } from './exerciseDetailStyles';
 import ExercisePastSessions from '../../components/Gym/ExercisePastSessions';
+import ExerciseAnimationCard from '../../components/Gym/ExerciseAnimationCard';
 
 const extractVideoId = (urlOrId: string) => {
   if (!urlOrId) return '';
@@ -376,6 +377,14 @@ export default function ExerciseDetailScreen() {
               )}
             </View>
           </View>
+
+          {/* Instant Looping Form Animation & Execution Cues */}
+          {name ? (
+            <ExerciseAnimationCard
+              exerciseName={name}
+              showInstructions={true}
+            />
+          ) : null}
 
           {showVideo && extractVideoId(videoLink) && (
             <View style={styles.videoContainer}>

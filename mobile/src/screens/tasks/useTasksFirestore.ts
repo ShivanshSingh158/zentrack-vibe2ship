@@ -22,11 +22,13 @@ import { COLLECTION } from '../../config/constants';
 import { Task } from '../../contexts/MobileDataContext';
 import { awardXP } from '../../services/xpSystem';
 import { handleSyncError } from '../../utils/errorUtils';
-import { safeUpdate, safeAdd } from '../../utils/safeWrite';
+import { safeUpdate, safeWrite } from '../../utils/safeWrite';
+import { setDoc } from 'firebase/firestore';
 
 interface UseTasksFirestoreProps {
   optimisticUpdateTask: (id: string, updates: Partial<Task>) => void;
   optimisticDeleteTask: (id: string) => void;
+  optimisticAddTask?: (task: Task) => void;
   setTimeLogTask: (task: Task | null) => void;
   setIsBulkEdit: (v: boolean) => void;
   setSelectedTaskIds: (v: Set<string>) => void;
@@ -41,6 +43,7 @@ interface UseTasksFirestoreProps {
 export function useTasksFirestore({
   optimisticUpdateTask,
   optimisticDeleteTask,
+  optimisticAddTask,
   setTimeLogTask,
   setIsBulkEdit,
   setSelectedTaskIds,
@@ -221,15 +224,41 @@ export function useTasksFirestore({
     selectedDate: string,
     tasksCount: number,
   ) => {
-    await addDoc(collection(db, COLLECTION.TASKS), {
+    const docRef = doc(collection(db, COLLECTION.TASKS));
+    const taskId = docRef.id;
+    const taskObj: Task = {
+      id: taskId,
+      userId,
+      title: template.title,
+      status: 'pending',
+      priority: template.priority || 'medium',
+      date: selectedDate,
+      timeSlot: template.timeSlot || undefined,
+      estimatedMinutes: template.estimatedMinutes || undefined,
+      isRecurring: template.isRecurring || false,
+      recurrenceRule: template.recurringDays ? { type: 'weekly', interval: 1, daysOfWeek: template.recurringDays } : undefined,
+      order: tasksCount,
+      subtasks: template.subtasks || [],
+    };
+    if (optimisticAddTask) {
+      optimisticAddTask(taskObj);
+    }
+    const firestorePayload = {
       userId, title: template.title, text: template.title, status: 'pending',
       priority: template.priority || 'medium', date: selectedDate,
       timeSlot: template.timeSlot || null, estimatedMinutes: template.estimatedMinutes || null,
       isRecurring: template.isRecurring || false, recurringDays: template.recurringDays || null,
       subject: null, createdAt: serverTimestamp(), order: tasksCount,
       subtasks: template.subtasks || [],
-    });
-  }, []);
+    };
+    await safeWrite(
+      () => setDoc(docRef, firestorePayload),
+      COLLECTION.TASKS,
+      'set',
+      firestorePayload,
+      taskId,
+    );
+  }, [optimisticAddTask]);
 
   const saveTimeLog = useCallback((
     taskId: string,

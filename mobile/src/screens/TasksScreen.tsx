@@ -35,8 +35,8 @@ import TaskRow from '../components/Tasks/TaskRow';
 import EmptyState from '../components/ui/EmptyState';
 import BulkRescheduleSheet from '../components/Tasks/BulkRescheduleSheet';
 import TaskTimeLogSheet from '../components/Tasks/TaskTimeLogSheet';
-import PomodoroSheet from '../components/Tasks/PomodoroSheet';
 import TaskTemplatesSheet from '../components/Tasks/TaskTemplatesSheet';
+import { usePomodoro } from '../contexts/PomodoroContext';
 import EditTaskModal from './tasks/EditTaskModal';
 import NewTaskModal from './tasks/NewTaskModal';
 
@@ -69,6 +69,7 @@ export default function TasksScreen() {
   const topInset = Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0);
   
   const { tasks, user, habits, habitLogs, tasksReady, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
+  const { openPomodoro } = usePomodoro();
   const todayDateStr = useMemo(() => formatLocalDateStr(new Date()), []);
 
   // 1. Recurring Spawn Logic (Deferred background run)
@@ -103,6 +104,7 @@ export default function TasksScreen() {
   } = useTasksFirestore({
     optimisticUpdateTask,
     optimisticDeleteTask,
+    optimisticAddTask,
     setTimeLogTask,
     setIsBulkEdit,
     setSelectedTaskIds,
@@ -241,8 +243,8 @@ export default function TasksScreen() {
                 ) : null}
                 <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>Inbox</Text>
               </AnimatedPressable>
-              {/* Time Spent button */}
-              <AnimatedPressable style={styles.iconBtn} onPress={() => setIsTimeSpentOpen(true)}>
+              {/* Pomodoro Timer button */}
+              <AnimatedPressable style={styles.iconBtn} onPress={() => openPomodoro()}>
                 <Ionicons name="timer-outline" size={20} color={colors.textPrimary} />
                 <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>Timer</Text>
               </AnimatedPressable>
@@ -381,7 +383,7 @@ export default function TasksScreen() {
             if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
           }}
           sections={[
-            ...(selectedDateTasks.length > 0 || isNewTaskOpen ? [{ title: selectedDate === today ? 'TODAY' : formatDateWithDay(selectedDate).toUpperCase(), data: selectedDateTasks, isSelectedDate: true }] : []),
+            ...(selectedDateTasks.length > 0 ? [{ title: selectedDate === today ? 'TODAY' : formatDateWithDay(selectedDate).toUpperCase(), data: selectedDateTasks, isSelectedDate: true }] : []),
           ] as any}
           keyExtractor={(item: any) => item.id}
           ListEmptyComponent={
@@ -559,7 +561,6 @@ export default function TasksScreen() {
       {/* SHEETS */}
       {isTemplatesSheetOpen && <TaskTemplatesSheet visible={isTemplatesSheetOpen} onClose={() => setIsTemplatesSheetOpen(false)} userId={user?.uid!} onApplyTemplate={(template) => addTaskFromTemplate(user?.uid!, template, selectedDate, tasks.length)} />}
       {!!timeLogTask && <TaskTimeLogSheet task={timeLogTask} visible={!!timeLogTask} onSkip={() => skipTimeLog(timeLogTask?.id!, optimisticUpdateTask)} onSave={(taskId, actualMinutes, actualStartTime) => saveTimeLog(taskId, actualMinutes, actualStartTime, optimisticUpdateTask)} />}
-      {isTimeSpentOpen && <PomodoroSheet visible={isTimeSpentOpen} onClose={() => setIsTimeSpentOpen(false)} tasks={tasks} selectedDate={selectedDate} />}
 
     </View>
   );

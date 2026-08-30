@@ -90,6 +90,7 @@ export const XP_SOURCES = {
   QUIZ_PERFECT:     { base: 50, range: 0 },     // +50 XP for scoring 3/3 on lecture quiz
   FLASHCARD_REVIEW: { base: 10, range: 0 },     // +10 XP for daily flashcard review session
   STEP_GOAL_HIT:    { base: 100, range: 50 },   // +100-150 XP for reaching daily step goal
+  POMODORO_SESSION: { base: 60, range: 40 },    // +60-100 XP for completed Pomodoro focus session
 };
 
 

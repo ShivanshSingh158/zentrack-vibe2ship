@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback, memo } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { resolveMuscleColor } from '../../utils/gymUtils';
 import { AIExerciseInfo } from '../../services/geminiProxy';
+import { FONT_FAMILY } from '../../theme/tokens';
 
 export interface ExerciseCatalogEntry {
   id: string;
@@ -13,6 +14,7 @@ export interface ExerciseCatalogEntry {
   aliases?: string[];
   restTimeSecs: number;
   videoId: string;
+  tier?: 'S Tier' | 'A+ Tier' | 'A Tier' | 'B Tier' | 'C Tier';
 }
 
 export interface ExerciseSearchDropdownProps {
@@ -26,6 +28,89 @@ export interface ExerciseSearchDropdownProps {
   styles: any;
 }
 
+const TIER_PILL_CONFIG: Record<string, { bg: string; text: string; border: string }> = {
+  'S Tier': { bg: 'rgba(255, 215, 0, 0.14)', text: '#FFD700', border: 'rgba(255, 215, 0, 0.35)' },
+  'A+ Tier': { bg: 'rgba(0, 229, 255, 0.14)', text: '#00E5FF', border: 'rgba(0, 229, 255, 0.35)' },
+  'A Tier': { bg: 'rgba(94, 218, 158, 0.14)', text: '#5eda9e', border: 'rgba(94, 218, 158, 0.35)' },
+  'B Tier': { bg: 'rgba(137, 220, 235, 0.14)', text: '#89dceb', border: 'rgba(137, 220, 235, 0.35)' },
+  'C Tier': { bg: 'rgba(142, 142, 147, 0.12)', text: '#8e8e93', border: 'rgba(142, 142, 147, 0.25)' },
+};
+
+// Memoized single row for 0ms rendering & maximum frame rate
+const SuggestionRow = memo(({
+  item,
+  index,
+  onPress,
+  colors,
+  styles,
+}: {
+  item: ExerciseCatalogEntry;
+  index: number;
+  onPress: (item: ExerciseCatalogEntry) => void;
+  colors: any;
+  styles: any;
+}) => {
+  const muscleColor =
+    item.muscle && item.muscle !== 'None'
+      ? resolveMuscleColor(item.muscle)
+      : colors.textTertiary;
+  const tierTheme = item.tier && TIER_PILL_CONFIG[item.tier] ? TIER_PILL_CONFIG[item.tier] : null;
+
+  return (
+    <TouchableOpacity
+      style={[
+        styles.suggestionRow,
+        index !== 0 && styles.suggestionBorder,
+        { paddingVertical: 10 },
+      ]}
+      onPress={() => onPress(item)}
+      activeOpacity={0.7}
+    >
+      <View style={{ flex: 1, paddingRight: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <Text style={styles.suggestionName} numberOfLines={1}>
+            {item.name}
+          </Text>
+
+          {tierTheme && (
+            <View
+              style={{
+                backgroundColor: tierTheme.bg,
+                borderColor: tierTheme.border,
+                borderWidth: 1,
+                borderRadius: 6,
+                paddingHorizontal: 5,
+                paddingVertical: 1.5,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: FONT_FAMILY.bold,
+                  fontSize: 9.5,
+                  color: tierTheme.text,
+                }}
+              >
+                {item.tier}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <Text style={[styles.suggestionMeta, { color: muscleColor, marginTop: 3 }]}>
+          {item.muscle}
+        </Text>
+      </View>
+
+      <View style={styles.suggestionRight}>
+        <Text style={styles.suggestionSets}>
+          {item.targetSets}x {item.targetReps}
+        </Text>
+        <Ionicons name="return-down-back-outline" size={14} color={colors.textTertiary} />
+      </View>
+    </TouchableOpacity>
+  );
+});
+
 export const ExerciseSearchDropdown: React.FC<ExerciseSearchDropdownProps> = React.memo(({
   showDropdown,
   suggestions,
@@ -36,49 +121,50 @@ export const ExerciseSearchDropdown: React.FC<ExerciseSearchDropdownProps> = Rea
   colors,
   styles,
 }) => {
+  const [displayCount, setDisplayCount] = useState(14);
+
+  // Reset to initial chunk whenever suggestions change (e.g. chip click or search input)
+  useEffect(() => {
+    setDisplayCount(14);
+  }, [suggestions]);
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 100;
+    if (isCloseToBottom && displayCount < suggestions.length) {
+      setDisplayCount(prev => Math.min(prev + 14, suggestions.length));
+    }
+  }, [displayCount, suggestions.length]);
+
   if (!showDropdown || (suggestions.length === 0 && !aiLoading && !aiSuggestion)) {
     return null;
   }
 
+  const visibleItems = suggestions.slice(0, displayCount);
+
   return (
     <View style={styles.dropdown}>
-      {/* Catalogue suggestions */}
+      {/* Catalogue suggestions: Progressive windowed ScrollView for instant 0ms mount */}
       {suggestions.length > 0 && (
-        <View style={{ maxHeight: 240 }}>
-          {suggestions.slice(0, 8).map((item, index) => {
-            const muscleColor =
-              item.muscle && item.muscle !== 'None'
-                ? resolveMuscleColor(item.muscle)
-                : colors.textTertiary;
-
-            return (
-              <TouchableOpacity
-                key={item.id}
-                style={[
-                  styles.suggestionRow,
-                  index !== 0 && styles.suggestionBorder,
-                ]}
-                onPress={() => onSelectSuggestion(item)}
-                activeOpacity={0.7}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.suggestionName} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  <Text style={[styles.suggestionMeta, { color: muscleColor }]}>
-                    {item.muscle}
-                  </Text>
-                </View>
-                <View style={styles.suggestionRight}>
-                  <Text style={styles.suggestionSets}>
-                    {item.targetSets}x {item.targetReps}
-                  </Text>
-                  <Ionicons name="return-down-back-outline" size={14} color={colors.textTertiary} />
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <ScrollView
+          style={{ maxHeight: 310 }}
+          nestedScrollEnabled={true}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={true}
+          onScroll={handleScroll}
+          scrollEventThrottle={32}
+        >
+          {visibleItems.map((item, index) => (
+            <SuggestionRow
+              key={`${item.id || item.name}_${index}`}
+              item={item}
+              index={index}
+              onPress={onSelectSuggestion}
+              colors={colors}
+              styles={styles}
+            />
+          ))}
+        </ScrollView>
       )}
 
       {/* AI loading shimmer */}

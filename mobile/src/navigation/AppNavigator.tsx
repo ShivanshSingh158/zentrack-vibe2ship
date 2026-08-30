@@ -72,6 +72,9 @@ import StreakDetailScreen from '../screens/StreakDetailScreen';
 import AgentHistoryScreen from '../screens/AgentHistoryScreen';
 import WellbeingDashboardScreen from '../screens/WellbeingDashboardScreen';
 import SaraScreen from '../screens/SaraScreen';
+import { usePomodoro } from '../contexts/PomodoroContext';
+import PomodoroFloatingPill from '../components/Tasks/PomodoroFloatingPill';
+import PomodoroSheet from '../components/Tasks/PomodoroSheet';
 
 // --- Navigators --------------------------------------------------------------
 const Stack = createNativeStackNavigator();
@@ -330,9 +333,10 @@ function NestedScreens() {
   );
 }
 
-// --- Root authenticated navigator + global SARA FAB --------------------------
+// --- Root authenticated navigator + global SARA FAB + Pomodoro --------------------------
 function RootNavigatorWithSara() {
   const { colors } = useTheme();
+  const { isSheetOpen, setIsSheetOpen } = usePomodoro();
   const [saraVisible, setSaraVisible] = useState(false);
 
   const [showSara, setShowSara] = useState(SARA_VISIBLE_ROUTES.has('Home'));
@@ -352,6 +356,14 @@ function RootNavigatorWithSara() {
           <Stack.Screen name="MoreStack" component={NestedScreens} />
         </Stack.Group>
       </Stack.Navigator>
+
+      {/* Global Pomodoro Floating Pill (Active countdown when sheet minimized) */}
+      <PomodoroFloatingPill />
+
+      {/* Global Pomodoro Sheet (Auto-surfaces on boot when running, or on user tap) */}
+      {isSheetOpen && (
+        <PomodoroSheet visible={isSheetOpen} onClose={() => setIsSheetOpen(false)} />
+      )}
 
       {showSara && (
         <AnimatedPressable

@@ -15,9 +15,9 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  collection, addDoc, serverTimestamp, writeBatch, doc,
+  collection, setDoc, serverTimestamp, writeBatch, doc,
 } from 'firebase/firestore';
-import { safeAdd } from '../../utils/safeWrite';
+import { safeWrite } from '../../utils/safeWrite';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -286,7 +286,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       }
     }
 
-    // Do instant optimistic update first
+    // Do instant optimistic update first with deterministic Firestore IDs upfront
     if (finalRecurrence && startRecurrenceDate) {
       let current = new Date(startRecurrenceDate.getTime());
       const end = finalRecurrence.endDate
@@ -295,91 +295,94 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       let count = 0;
       const MAX_INSTANCES = 90;
       const sourceId = `rec_${Date.now()}`;
+      const batch = writeBatch(db);
+
       while (current <= end && count < MAX_INSTANCES) {
+        const docRef = doc(collection(db, COLLECTION.TASKS));
+        const taskId = docRef.id;
+        const dateStr = toYMD(current);
+
         optimisticAddTask({
-          id: `temp_${Date.now()}_${count}`,
+          id: taskId,
           userId, title: finalTitle, status: 'pending',
-          priority: finalPriority, date: toYMD(current), timeSlot: ts || undefined,
+          priority: finalPriority, date: dateStr, timeSlot: ts || undefined,
           estimatedMinutes: est, isRecurring: true, recurrenceRule: finalRecurrence || undefined,
           recurringSourceId: sourceId || undefined, subject: undefined, order: listCount, subtasks: subtaskObjects,
         });
+
+        batch.set(docRef, {
+          userId, title: finalTitle, text: finalTitle, status: 'pending',
+          priority: finalPriority, date: dateStr, timeSlot: ts || null,
+          estimatedMinutes: est, isRecurring: true, recurrenceRule: finalRecurrence,
+          recurringSourceId: sourceId, subject: null, createdAt: serverTimestamp(),
+          order: listCount, subtasks: subtaskObjects,
+        });
+
         count++;
-        if (finalRecurrence.type === 'daily' || finalRecurrence.type === 'custom') { current.setDate(current.getDate() + (finalRecurrence.interval || 1)); }
-        else if (finalRecurrence.type === 'weekly') {
-          if (finalRecurrence.daysOfWeek?.length > 0) { do { current.setDate(current.getDate() + 1); } while (current <= end && !finalRecurrence.daysOfWeek.includes(current.getDay())); }
-          else { current.setDate(current.getDate() + 7 * (finalRecurrence.interval || 1)); }
-        } else if (finalRecurrence.type === 'monthly') { current.setMonth(current.getMonth() + (finalRecurrence.interval || 1)); }
-        else break;
+        if (finalRecurrence.type === 'daily' || finalRecurrence.type === 'custom') {
+          current.setDate(current.getDate() + (finalRecurrence.interval || 1));
+        } else if (finalRecurrence.type === 'weekly') {
+          if (finalRecurrence.daysOfWeek?.length > 0) {
+            do { current.setDate(current.getDate() + 1); }
+            while (current <= end && !finalRecurrence.daysOfWeek.includes(current.getDay()));
+          } else {
+            current.setDate(current.getDate() + 7 * (finalRecurrence.interval || 1));
+          }
+        } else if (finalRecurrence.type === 'monthly') {
+          current.setMonth(current.getMonth() + (finalRecurrence.interval || 1));
+        } else {
+          break;
+        }
       }
+
+      resetAndClose();
+
+      (async () => {
+        try {
+          await batch.commit();
+        } catch (e) {
+          console.error('Error committing recurring tasks batch:', e);
+        }
+      })();
     } else {
+      const newDocRef = doc(collection(db, COLLECTION.TASKS));
+      const taskId = newDocRef.id;
+
       optimisticAddTask({
-        id: `temp_${Date.now()}`,
+        id: taskId,
         userId, title: finalTitle, status: 'pending',
         priority: finalPriority, date: finalDate, timeSlot: ts || undefined,
         estimatedMinutes: est, isRecurring: false, recurrenceRule: undefined,
         recurringSourceId: undefined, subject: undefined, tags: selectedTags,
         order: listCount, subtasks: subtaskObjects,
       });
-    }
 
-    resetAndClose();
+      resetAndClose();
 
-    // Fire Firestore write immediately (optimistic UI already shown above)
-    (async () => {
-      try {
-        if (finalRecurrence && startRecurrenceDate) {
-          const batch = writeBatch(db);
-          let current = new Date(startRecurrenceDate.getTime());
-          const end = finalRecurrence.endDate
-            ? parseLocalDate(finalRecurrence.endDate)
-            : new Date(current.getTime() + 90 * 24 * 60 * 60 * 1000);
-          let count = 0;
-          const MAX_INSTANCES = 90;
-          const sourceId = `rec_${Date.now()}`;
-          while (current <= end && count < MAX_INSTANCES) {
-            const dateStr = toYMD(current);
-            const docRef = doc(collection(db, COLLECTION.TASKS));
-            batch.set(docRef, {
-              userId, title: finalTitle, text: finalTitle, status: 'pending',
-              priority: finalPriority, date: dateStr, timeSlot: ts,
-              estimatedMinutes: est, isRecurring: true, recurrenceRule: finalRecurrence,
-              recurringSourceId: sourceId, subject: null, createdAt: serverTimestamp(),
-              order: listCount, subtasks: subtaskObjects,
-            });
-            count++;
-            if (finalRecurrence.type === 'daily' || finalRecurrence.type === 'custom') {
-              current.setDate(current.getDate() + (finalRecurrence.interval || 1));
-            } else if (finalRecurrence.type === 'weekly') {
-              if (finalRecurrence.daysOfWeek?.length > 0) {
-                do { current.setDate(current.getDate() + 1); }
-                while (current <= end && !finalRecurrence.daysOfWeek.includes(current.getDay()));
-              } else {
-                current.setDate(current.getDate() + 7 * (finalRecurrence.interval || 1));
-              }
-            } else if (finalRecurrence.type === 'monthly') {
-              current.setMonth(current.getMonth() + (finalRecurrence.interval || 1));
-            } else { break; }
-          }
-          await batch.commit();
-        } else {
-          const taskData = {
+      // Fire Firestore write immediately with matching taskId
+      (async () => {
+        try {
+          const firestorePayload = {
             userId, title: finalTitle, text: finalTitle, status: 'pending',
-            priority: finalPriority, date: finalDate, timeSlot: ts,
+            priority: finalPriority, date: finalDate, timeSlot: ts || null,
             estimatedMinutes: est, isRecurring: false, recurrenceRule: null,
             recurringSourceId: null, subject: null, tags: selectedTags,
             order: listCount, subtasks: subtaskObjects,
+            createdAt: serverTimestamp(),
           };
-          // safeAdd: online → Firestore addDoc; offline → AsyncStorage queue (survives kill)
-          await safeAdd(
+
+          await safeWrite(
+            () => setDoc(newDocRef, firestorePayload),
             COLLECTION.TASKS,
-            taskData,
-            () => addDoc(collection(db, COLLECTION.TASKS), { ...taskData, createdAt: serverTimestamp() }),
+            'set',
+            firestorePayload,
+            taskId,
           );
+        } catch (e) {
+          console.error('Error creating task:', e);
         }
-      } catch (e) {
-        console.error('Error creating task(s):', e);
-      }
-    })();
+      })();
+    }
   };
 
   return (

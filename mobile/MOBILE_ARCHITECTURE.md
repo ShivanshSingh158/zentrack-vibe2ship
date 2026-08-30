@@ -308,6 +308,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | | `useCreativeData` | `() => CreativeContextType` | Hook returning `storageNodes`, `notes`, `learningTopics`, `jobs`, `contentLogs`, `ensureSubscribed`. |
 | [`src/contexts/domains/PlannerContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/PlannerContext.tsx) | `PlannerProvider` | `React.FC<{ children: React.ReactNode, user: any }>` | Subscriptions for `calendar_events`, `goals`, `weekly_reviews`. |
 | | `usePlannerData` | `() => PlannerContextType` | Hook returning `customEvents`, `goals`, `weeklyReviews`, `optimisticAddEvent`, `optimisticUpdateEvent`, `optimisticAddGoal`. |
+| [`src/contexts/PomodoroContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/PomodoroContext.tsx) | `PomodoroProvider`, `usePomodoro` | `React.FC<{ children: React.ReactNode }>` | Database-backed persistent Pomodoro engine with monotonic timestamp countdown, AsyncStorage + Firestore sync, and instant boot auto-pop. |
 
 ### 4.5. Services & Backend Engines (`src/services/`)
 | File Path | Function / Export | Signature / Type | Description & Purpose |
@@ -354,6 +355,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/services/flashcardService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/flashcardService.ts) | `calculateSM2` | `(card: Flashcard, grade: 0\|1\|2\|3\|4\|5) => Flashcard` | SuperMemo SM-2 algorithm: updates ease factor, interval days, and repetition counts. |
 | | `generateFlashcardsFromNote` | `(noteContent: string) => Promise<Flashcard[]>` | Prompts Gemini to parse markdown notes and output structured Q&A flashcard pairs. |
 | [`src/services/exerciseVideoResolver.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/exerciseVideoResolver.ts) | `autoResolveExerciseVideoId` | `(exerciseName: string, forceRefresh?: boolean) => Promise<string \| null>` | 5-tier YouTube video resolver with `exerciseVideoDatabase`, AsyncStorage cache, and SARA AI live fallback. |
+| [`src/services/exerciseMediaService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/exerciseMediaService.ts) | `resolveExercise`, `searchExercises`, `getExerciseMediaUri`, `preCacheExercises` | Functions | 1,324 exercises offline dataset search & disk-caching engine using `expo-file-system/legacy` for 100% offline animated GIF form demonstrations. |
 | [`src/services/progressiveOverload.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/progressiveOverload.ts) | `calculateNextTarget` | `(exerciseId: string, history: GymSet[]) => OverloadRecommendation` | Computes recommended weight & reps for next session based on RPE and completion rates. |
 | | `recommendWeight` | `(current1RM: number, targetReps: number, rpe: number) => number` | Formulates lifting weight target using Brzycki formula and RPE exertion curve. |
 | [`src/services/weeklyGymAnalysisEngine.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/weeklyGymAnalysisEngine.ts) | `generateWeeklyGymSummary` | `(gymLogs: GymLog[], userGymPlan: UserGymPlanDoc) => WeeklyGymReportData` | Aggregates 7-day volume totals, muscle group set distributions, and week-over-week deltas. |
@@ -924,6 +926,59 @@ All storage keys must be imported from `src/config/constants.ts → STORAGE_KEYS
 7. **Dual-Tier Gemini Engine Selection**: Mobile GYM-GPT (`ZenGymAiModal.tsx`) and Learning AI Tutor (`LearningScreen.tsx` & `LearningVideoPlayer.tsx`) support real-time toggling between `gemini-3.7-flash` (Hybrid Reasoning Flagship) and `gemini-2.5-flash` (Fast & Balanced), persisted across sessions in `AsyncStorage` (`@zen_preferred_gym_model` & `@zen_preferred_learning_model`).
 
 ## 15. Changelog
+
+### 2026-08-29 — 1,324 Exercise Dataset Integration, Looping GIF Engine & Offline Pre-Caching (100% OTA Compatible)
+- **NEW** [`src/data/exercises.json`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/data/exercises.json): Bundled 1,324 comprehensive exercise records (MIT + GymVisual metadata) with standardized equipment, target muscles, secondary synergists, English & Hindi execution cues, and animated media identifiers.
+- **NEW** [`src/services/exerciseMediaService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/exerciseMediaService.ts):
+  - In-memory index and fuzzy search across 1,324 exercises.
+  - Native disk-caching engine using `expo-file-system/legacy` (`FileSystem.cacheDirectory + 'exercise_gifs/'`).
+  - Seamlessly resolves local cached file URIs or CDN URLs with fallback.
+- **NEW** [`src/hooks/useGymPlanPreCache.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useGymPlanPreCache.ts):
+  - Background hook that automatically scans the user's active Gym Plan (PPL, Arnold, or Custom) and pre-downloads the required exercise GIFs for 100% offline gym basement workouts.
+- **NEW & UPDATED COMPONENTS**:
+  - [`src/components/Gym/ExerciseAnimationCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ExerciseAnimationCard.tsx): Displays instant 0-buffering looping form animations, muscle badges, offline status indicator, multi-lingual cues (EN/HI), and YouTube fallback guide.
+  - [`src/components/Gym/ExerciseDetailModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ExerciseDetailModal.tsx): Standalone inspection modal for exercises.
+  - [`src/components/Gym/ActiveExerciseVideo.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ActiveExerciseVideo.tsx) & [`AddExerciseModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/AddExerciseModal.tsx) & [`ExerciseDetailScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/ExerciseDetailScreen.tsx): Upgraded with instant animated GIF form demonstrations and 1,324 exercise search auto-fill.
+- **OTA VERIFICATION**: 100% pure TypeScript + React Native + native Expo FileSystem (already bundled in binary). **No new APK rebuild required** — can be deployed instantly over OTA (EAS Update).
+- **VERIFIED**: `npx tsc --noEmit` passes with 0 errors.
+
+### 2026-08-29 — Subtle Pomodoro Timer Redesign, Database-Backed Persistence & Instant Boot Auto-Pop
+- **NEW** [`src/contexts/PomodoroContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/PomodoroContext.tsx):
+  - Built dedicated `PomodoroProvider` utilizing monotonic timestamp math (`targetEndTime = now + duration`).
+  - **Database & Local Persistence**: Active sessions are saved continuously to `AsyncStorage` (`@zentrack_active_pomodoro_v2`) and Firestore (`user_pomodoro_state/{uid}`) via `safeWrite`. If the app is closed, killed, or backgrounded, the countdown continues seamlessly and accurately without losing time.
+  - **Auto-Pop on App Boot**: If a Pomodoro timer was left running when the app was closed or backgrounded, the app automatically surfaces the Pomodoro screen immediately after home screen boot.
+  - **Session Completion While Closed**: If the timer expires while the app was closed, the completion handler records the session to `pomodoro_sessions`, awards XP, updates `completedToday`, and advances to break mode.
+- **NEW** [`src/components/Tasks/PomodoroFloatingPill.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/PomodoroFloatingPill.tsx):
+  - Floating Dynamic Island / Mini-Timer capsule anchored above the bottom navigation bar when a timer is running in the background. 1-tap instant expand.
+- **REDESIGNED** [`src/components/Tasks/PomodoroSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/PomodoroSheet.tsx) & [`pomodoroStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/pomodoroStyles.ts):
+  - **Subtle Visuals**: Preserves deep OLED black (`#000000`/`#08080b`) and mode accents (`#a599ff`, `#5eda9e`, `#89dceb`).
+  - **90 FPS Breathing Ambient Aura**: Dual-layer breathing aura behind the ring with gentle sine-wave pulsing opacity when running.
+  - **Tabular Digits Layout**: Monospace tabular typography (`fontVariant: ['tabular-nums']`, `-2` optical kerning) to eliminate digit jitter during countdowns.
+  - **Micro-Spring Controls**: Tactile spring bounce on central Play/Pause button, frosted glass secondary buttons, and refined 4-session progress capsules.
+- **UPDATED** [`App.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/App.tsx), [`AppNavigator.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/navigation/AppNavigator.tsx), [`TasksScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/TasksScreen.tsx):
+  - Integrated `PomodoroProvider` into root tree.
+  - Global `PomodoroSheet` and `PomodoroFloatingPill` rendered at `RootNavigatorWithSara` level for seamless cross-screen accessibility.
+- **VERIFIED**: `npx tsc --noEmit` passes cleanly with 0 errors.
+
+### 2026-08-29 — Task Creation Double-Animation Flicker Elimination (Deterministic Upfront ID Pattern)
+- **ROOT CAUSE**: When a user created a task via [`NewTaskModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/NewTaskModal.tsx) or [`QuickCaptureSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/QuickCaptureSheet.tsx), `optimisticAddTask` gave the task a temporary ID (`temp_${Date.now()}`). `TaskRow` mounted with `key="temp_..."` and ran its entry animation (`FadeInDown`). Moments later, when Firestore confirmed the write, the task received a real auto-generated Firestore ID. Because the ID/key changed, React completely unmounted the temporary `TaskRow` and mounted a brand new `TaskRow`, triggering the `FadeInDown` animation a second time (producing the visible flicker).
+- **FIXED** [`NewTaskModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/NewTaskModal.tsx), [`QuickCaptureSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/QuickCaptureSheet.tsx), [`useTasksFirestore.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/useTasksFirestore.ts):
+  - Adopted deterministic upfront doc generation (`doc(collection(db, COLLECTION.TASKS)).id`). Both the optimistic local state and the Firestore `safeWrite`/`setDoc` payload now use the exact same stable Firestore ID from frame 0.
+  - When Firestore completes and syncs, the ID matches perfectly (`areItemsEqual` returns `true`), preserving the existing React Native component tree with 0 remounts and 0 secondary animation flickers.
+- **VERIFIED**: `npx tsc --noEmit` passes with 0 errors.
+
+### 2026-08-29 — Gym Module Intermittent Blank Screen Root Cause Fix
+- **FIXED** [`mobile/src/screens/gym/GymHomeScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/GymHomeScreen.tsx):
+  1. Removed harmful outer `<KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>` wrapping `<DraggableFlatList>` which on Android was collapsing container height to 0px whenever soft input calculations ran across screen/tab transitions. Replaced with `<View style={{ flex: 1 }}>`.
+  2. Directly imported `WeeklyGymReport` instead of lazy-loading without a `<Suspense>` boundary in `renderHeader` (which was causing React to suspend and blank out the entire list whenever `planDay?.isRest` was evaluated on rest days or schedule swaps).
+  3. Cleaned up dead `Animated.multiply` native nodes in `weekStrip` and added robust fallback key extraction `(item.exerciseId || item.id || item.name || 'ex') + '-' + index` to `DraggableFlatList`.
+- **FIXED** [`mobile/src/contexts/domains/WellnessContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/WellnessContext.tsx), [`AcademicContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/AcademicContext.tsx), [`CreativeContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/CreativeContext.tsx), [`PlannerContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/PlannerContext.tsx):
+  - Added `wasSubscribedRef` persistent flag to retain demand subscription state across listener restarts (`subscriptionVersion`), preventing Firestore listeners from being permanently disconnected if an error retry fires.
+- **VERIFIED**: `npx tsc --noEmit` passes with 0 errors.
+
+### 2026-08-29 — GYM-GPT Modal Keyboard Lift Animation & Input Visibility Fix
+- **FIXED** [`mobile/src/components/Gym/ZenGymAiModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ZenGymAiModal.tsx): Replaced the non-functional inner `KeyboardAvoidingView` with a dynamic `keyboardOffsetAnim` listener (`Keyboard.addListener` for `keyboardDidShow`/`keyboardWillShow` & `keyboardDidHide`/`keyboardWillHide`). The modal container now smoothly elevates its bottom padding by the exact software keyboard height on Android and iOS, keeping the text input box, send button, and quick chips fully visible above the keyboard with `keyboardDismissMode="on-drag"`.
+- **VERIFIED**: `npx tsc --noEmit` passes cleanly with 0 errors.
 
 ### 2026-08-27 — Hydration Logging & Optimistic Water State Overhaul
 - **FIXED** `src/contexts/domains/WellnessContext.tsx` & `src/contexts/MobileDataContext.tsx`: Added `optimisticAddWaterLog` handler with instant in-memory and `@zentrack_cache_water_logs` cache updates (0ms latency).

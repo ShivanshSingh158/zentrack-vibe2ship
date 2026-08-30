@@ -59,52 +59,18 @@ export default defineConfig({
       ],
       output: {
         manualChunks(id) {
-          // ── Framer Motion ── large animation library, not needed until first route render
-          if (id.includes('node_modules/framer-motion')) {
-            return 'framer-motion';
-          }
-          // ── Recharts ── only loaded on /analytics
-          if (id.includes('node_modules/recharts') ||
-              id.includes('node_modules/d3') ||
-              id.includes('node_modules/victory')) {
-            return 'recharts';
-          }
-          // ── Firebase ── large SDK, split into one chunk
-          if (id.includes('node_modules/firebase') ||
-              id.includes('node_modules/@firebase')) {
-            return 'firebase';
-          }
-          // ── Lottie ── heavy animation player, rarely used
-          if (id.includes('node_modules/lottie-react') ||
-              id.includes('node_modules/lottie-web')) {
-            return 'lottie';
-          }
-          // ── PDF / Document parsing ── only used in tools/learning
-          if (id.includes('node_modules/pdfjs-dist') ||
-              id.includes('node_modules/mammoth')) {
-            return 'doc-parsers';
-          }
-          // ── Markdown + Math rendering stack ── only used in agent/learning
-          if (id.includes('node_modules/react-markdown') ||
-              id.includes('node_modules/remark') ||
-              id.includes('node_modules/rehype') ||
-              id.includes('node_modules/remark-gfm') ||
-              id.includes('node_modules/remark-math') ||
-              id.includes('node_modules/rehype-katex') ||
-              id.includes('node_modules/katex') ||
-              id.includes('node_modules/unified') ||
-              id.includes('node_modules/micromark') ||
-              id.includes('node_modules/mdast') ||
-              id.includes('node_modules/hast')) {
-            return 'markdown';
-          }
-          // ── DnD library ── only on tasks/kanban
-          if (id.includes('node_modules/@hello-pangea/dnd')) {
-            return 'dnd';
-          }
-          // ── Google Generative AI SDK ── only used in agent interactions
-          if (id.includes('node_modules/@google/generative-ai')) {
-            return 'gemini-sdk';
+          const CHUNK_PATTERNS: Array<[string, RegExp]> = [
+            ['framer-motion', /node_modules\/framer-motion/],
+            ['recharts', /node_modules\/(recharts|d3|victory)/],
+            ['firebase', /node_modules\/(@firebase|firebase)/],
+            ['lottie', /node_modules\/lottie-(react|web)/],
+            ['doc-parsers', /node_modules\/(pdfjs-dist|mammoth)/],
+            ['markdown', /node_modules\/(react-markdown|remark|rehype|katex|unified|micromark|mdast|hast)/],
+            ['dnd', /node_modules\/@hello-pangea\/dnd/],
+            ['gemini-sdk', /node_modules\/@google\/generative-ai/],
+          ];
+          for (const [name, pattern] of CHUNK_PATTERNS) {
+            if (pattern.test(id)) return name;
           }
         }
       }

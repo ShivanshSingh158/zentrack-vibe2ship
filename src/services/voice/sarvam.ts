@@ -203,17 +203,6 @@ export function speakWithBrowserTTS(text: string): Promise<void> {
   });
 }
 
-// ─── Key status helper (for debugging / UI display) ────────────────────────
-
-export function getSarvamKeyStatus() {
-  const now = Date.now();
-  return keyPool.map(k => ({
-    label: k.label,
-    available: now >= k.rateLimitedUntil,
-    cooldownRemainingSeconds: Math.max(0, Math.ceil((k.rateLimitedUntil - now) / 1000)),
-    useCount: k.useCount,
-  }));
-}
 
 /**
  * Converts speech to text using Sarvam AI's STT endpoint.

@@ -194,13 +194,18 @@ export function CreativeProvider({
     ));
   }, [scheduleListenerRestart]);
 
+  const wasSubscribedRef = useRef(false);
+
   useEffect(() => {
-    if (user && subscribedRef.current) {
+    if (user && (subscribedRef.current || wasSubscribedRef.current)) {
+      subscribedRef.current = false;
       openSubscriptions(user.uid);
+      wasSubscribedRef.current = true;
     } else if (!user) {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
+      wasSubscribedRef.current = false;
       if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     }
     return () => {
@@ -216,7 +221,10 @@ export function CreativeProvider({
   }, []);
 
   const ensureSubscribed = useCallback(() => {
-    if (user && !subscribedRef.current) openSubscriptions(user.uid);
+    if (user && !subscribedRef.current) {
+      wasSubscribedRef.current = true;
+      openSubscriptions(user.uid);
+    }
   }, [user?.uid, openSubscriptions]);
 
   // Notes are derived from storageNodes — no extra subscription needed

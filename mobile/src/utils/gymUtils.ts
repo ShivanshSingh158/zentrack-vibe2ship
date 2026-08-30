@@ -33,7 +33,13 @@ export const MUSCLE_CANONICAL: Record<string, string> = {
   calves: 'Calves',
   abs: 'Abs',
   forearms: 'Forearms',
-  glutes: 'Hamstrings', // Clubbed into Hamstrings
+  glutes: 'Glutes',
+  'glutes/abductors': 'Glutes/Abductors',
+  'glutes/abductors (outer glutes)': 'Glutes/Abductors',
+  'gluteus medius': 'Glutes/Abductors',
+  abductor: 'Glutes/Abductors',
+  'gluteus maximus': 'Glutes',
+  'glutes/hams': 'Glutes',
   traps: 'Traps',
   mixed: 'Mixed',
   // Micro-targets
@@ -52,10 +58,6 @@ export const MUSCLE_CANONICAL: Record<string, string> = {
   'long bicep': 'Biceps',
   'quad teardrop': 'Quads',
   'glutes/quads': 'Quads',
-  'glutes/abductors': 'Hamstrings', // Clubbed into Hamstrings
-  'glutes/hams': 'Hamstrings', // Clubbed into Hamstrings
-  'gluteus maximus': 'Hamstrings',
-  'gluteus medius': 'Hamstrings',
   'gastrocnemius': 'Calves',
   'soleus': 'Calves',
   'upper abs': 'Abs',
@@ -205,7 +207,7 @@ export function isValidWorkoutSession(log: any): boolean {
   return completedExercises >= 3 || hasCompletedCardio;
 }
 
-import { WEEKDAY_TO_PLAN, GYM_PLAN } from '../data/gymPlan';
+import { WEEKDAY_TO_PLAN, GYM_PLAN, EXERCISE_ALTERNATIVES } from '../data/gymPlan';
 
 export const calculateGymStreak = (logs: any[] | null | undefined, userGymPlan?: any | null): number => {
   if (!logs || logs.length === 0) return 0;
@@ -654,17 +656,149 @@ export function resolveExerciseTargetMuscle(
     return { targetMuscle: 'Abs', canonicalGroup: 'Abs' };
   }
 
+  // Glute Abductors (Outer glutes / Hip Abduction)
+  if (
+    lower.includes('abduct') ||
+    lower.includes('outer glute') ||
+    lower.includes('clamshell') ||
+    lower.includes('fire hydrant') ||
+    lower.includes('curtsy') ||
+    lower.includes('lateral band walk')
+  ) {
+    return { targetMuscle: 'Glutes/Abductors', canonicalGroup: 'Glutes/Abductors' };
+  }
+
+  // Glutes (Maximus / Hip Extension)
+  if (
+    lower.includes('hip thrust') ||
+    lower.includes('glute bridge') ||
+    lower.includes('kas bridge') ||
+    lower.includes('glute kickback') ||
+    (lower.includes('glute') && !lower.includes('ham') && !lower.includes('ghr'))
+  ) {
+    return { targetMuscle: 'Glutes', canonicalGroup: 'Glutes' };
+  }
+
+  // Hamstrings (Knee Flexion & Hip Hinges)
+  if (
+    lower.includes('leg curl') ||
+    lower.includes('rdl') ||
+    lower.includes('romanian') ||
+    lower.includes('good morning') ||
+    lower.includes('stiff leg') ||
+    lower.includes('stiff-leg') ||
+    lower.includes('hamstring') ||
+    lower.includes('glute ham') ||
+    lower.includes('ghr')
+  ) {
+    return { targetMuscle: 'Hamstrings', canonicalGroup: 'Hamstrings' };
+  }
+
   // Forearms
   if (lower.includes('wrist') || lower.includes('forearm') || lower.includes('farmers')) {
     return { targetMuscle: 'Forearms', canonicalGroup: 'Forearms' };
   }
 
-  // Glutes
-  if (lower.includes('hip thrust') || lower.includes('glute') || lower.includes('abductor')) {
-    return { targetMuscle: 'Glutes', canonicalGroup: 'Hamstrings' };
+  return { targetMuscle: explicitMuscle || 'Full Body', canonicalGroup: explicitMuscle ? canonicalizeMuscle(explicitMuscle) : 'Mixed' };
+}
+
+/**
+ * Intelligent Biomechanical Prescription Generator.
+ * Calibrates sets, rep targets, and rest periods according to movement pattern,
+ * CNS/axial demands, and muscle fiber recruitment characteristics.
+ */
+export function getBiomechanicalPrescription(
+  exerciseName: string,
+  muscle?: string
+): { targetSets: number; targetReps: string; restTimeSecs: number } {
+  const n = (exerciseName || '').toLowerCase().trim();
+
+  // 1. Calves, Abs, Forearms & High-Rep Burnout (12–15 / 15–20 reps, 45–60s rest)
+  if (
+    n.includes('calf') ||
+    n.includes('soleus') ||
+    n.includes('wrist curl') ||
+    n.includes('ab crunch') ||
+    n.includes('cable crunch') ||
+    n.includes('knee raise') ||
+    n.includes('leg raise') ||
+    n.includes('woodchopper') ||
+    n.includes('pallof') ||
+    n.includes('clamshell') ||
+    n.includes('band walk') ||
+    n.includes('fire hydrant')
+  ) {
+    if (n.includes('clamshell') || n.includes('band walk') || n.includes('fire hydrant')) {
+      return { targetSets: 3, targetReps: '15–20', restTimeSecs: 45 };
+    }
+    return { targetSets: 3, targetReps: '12–15', restTimeSecs: 60 };
   }
 
-  return { targetMuscle: explicitMuscle || 'Full Body', canonicalGroup: explicitMuscle ? canonicalizeMuscle(explicitMuscle) : 'Mixed' };
+  // 2. Heavy Primary Free-Weight Compounds (4 sets, 6–8 reps, 150–180s rest)
+  if (
+    n === 'barbell back squat' ||
+    n === 'barbell squat' ||
+    n === 'barbell back squats' ||
+    n === 'barbell bench press' ||
+    n === 'flat barbell bench press' ||
+    n.includes('barbell deadlift') ||
+    n === 'deadlift' ||
+    n.includes('barbell bent-over row') ||
+    n.includes('standing barbell military') ||
+    n.includes('barbell military press') ||
+    n.includes('romanian deadlifts (rdl - barbell)') ||
+    n.includes('romanian deadlift (rdl')
+  ) {
+    return { targetSets: 4, targetReps: '6–8', restTimeSecs: 150 };
+  }
+
+  // 3. Heavy Machine Compounds & Dumbbell Power Presses (8–10 reps, 120s rest)
+  if (
+    n.includes('hack squat') ||
+    n.includes('leg press') ||
+    n.includes('incline dumbbell press') ||
+    n.includes('converging incline') ||
+    n.includes('hammer strength incline') ||
+    n.includes('incline barbell') ||
+    n.includes('chest-supported t-bar') ||
+    n.includes('weighted pull') ||
+    n.includes('weighted chin') ||
+    n.includes('weighted dip') ||
+    n.includes('barbell hip thrust') ||
+    n.includes('seated dumbbell shoulder press') ||
+    n.includes('machine overhead press') ||
+    n.includes('close-grip barbell bench')
+  ) {
+    return { targetSets: 3, targetReps: '8–10', restTimeSecs: 120 };
+  }
+
+  // 4. Pure Isolations, Stretch Loading & Arm Work (10–12 reps, 75s rest)
+  if (
+    n.includes('lateral raise') ||
+    n.includes('reverse pec deck') ||
+    n.includes('face pull') ||
+    n.includes('pec deck') ||
+    n.includes('cable crossover') ||
+    n.includes('cable fly') ||
+    n.includes('dumbbell fly') ||
+    n.includes('skullcrusher') ||
+    n.includes('skull crusher') ||
+    n.includes('katana') ||
+    n.includes('overhead cable tricep') ||
+    n.includes('tricep pushdown') ||
+    n.includes('curl') ||
+    n.includes('seated leg curl') ||
+    n.includes('lying leg curl') ||
+    n.includes('leg extension') ||
+    n.includes('hip abduction') ||
+    n.includes('glute kickback') ||
+    n.includes('shrug')
+  ) {
+    return { targetSets: 3, targetReps: '10–12', restTimeSecs: 75 };
+  }
+
+  // 5. Default Secondary Compound (8–12 reps, 90s rest)
+  return { targetSets: 3, targetReps: '8–12', restTimeSecs: 90 };
 }
 
 export interface ExerciseSwapOption {
@@ -677,13 +811,15 @@ export interface ExerciseSwapOption {
   restTimeSecs: number;
   videoId?: string;
   reason?: string;
+  tier?: 'S Tier' | 'A+ Tier' | 'A Tier' | 'B Tier';
   isFromTemplate?: boolean;
   dayName?: string;
 }
 
 /**
  * Returns clean, strictly relevant swap alternatives for the exercise's target muscle.
- * Never dumps unrelated exercises or mixes different muscle groups.
+ * Prioritizes top-8 high-yield biomechanical movements ranked S Tier -> A+ Tier -> A Tier -> B Tier.
+ * Strictly excludes the current exercise being swapped.
  */
 export function getExerciseSwapAlternatives(
   currentExerciseName: string,
@@ -697,59 +833,94 @@ export function getExerciseSwapAlternatives(
 
   const results: ExerciseSwapOption[] = [];
 
-  // 1. First, search for exact same target muscle matches in EXERCISE_DATABASE
-  const exactSubMatches = EXERCISE_DATABASE.filter(db => {
-    if (!db.name || seenKeys.has(normalizeExerciseKey(db.name))) return false;
-    const dbMuscleLower = (db.muscle || '').toLowerCase();
-    const targetLower = targetMuscle.toLowerCase();
-    return dbMuscleLower === targetLower || dbMuscleLower.includes(targetLower) || targetLower.includes(dbMuscleLower);
-  });
-
-  for (const db of exactSubMatches) {
-    if (results.length >= 8) break;
-    const key = normalizeExerciseKey(db.name);
+  // 1. Primary Source: High-Yield Biomechanical Curated Alternatives (S Tier -> A+ Tier -> A Tier -> B Tier)
+  const curatedList = EXERCISE_ALTERNATIVES[targetMuscle] || EXERCISE_ALTERNATIVES[canonicalGroup] || [];
+  for (const alt of curatedList) {
+    if (!alt?.name) continue;
+    const key = normalizeExerciseKey(alt.name);
     if (seenKeys.has(key)) continue;
     seenKeys.add(key);
 
+    const rx = getBiomechanicalPrescription(alt.name, targetMuscle);
+
     results.push({
-      id: db.id || `swap_db_${results.length}`,
-      name: db.name,
-      muscle: db.muscle || targetMuscle,
+      id: `curated_swap_${results.length}`,
+      name: alt.name,
+      muscle: targetMuscle,
       canonicalGroup,
-      targetSets: 3,
-      targetReps: '8-12',
-      restTimeSecs: 90,
+      targetSets: alt.targetSets || rx.targetSets,
+      targetReps: alt.targetReps || rx.targetReps,
+      restTimeSecs: alt.restTimeSecs || rx.restTimeSecs,
+      videoId: alt.videoId,
+      tier: alt.tier,
+      reason: alt.reason || `Direct alternative for ${targetMuscle}`,
       isFromTemplate: false,
-      reason: `Direct alternative targeting ${targetMuscle}`,
     });
+    if (results.length >= 8) break;
   }
 
-  // 2. If needed, fill from same canonical group in EXERCISE_DATABASE (e.g. Other Chest / Back / Biceps / Quads)
-  if (results.length < 8) {
-    const groupMatches = EXERCISE_DATABASE.filter(db => {
+  // 2. Secondary: If user has other workout days in active plan, surface relevant exercises from their routine
+  if (Array.isArray(activePlanDays) && activePlanDays.length > 0 && results.length < 8) {
+    for (const day of activePlanDays) {
+      if (!Array.isArray(day?.exercises)) continue;
+      for (const ex of day.exercises) {
+        if (!ex?.name) continue;
+        const key = normalizeExerciseKey(ex.name);
+        if (seenKeys.has(key)) continue;
+
+        const exTarget = resolveExerciseTargetMuscle(ex.name, ex.muscle);
+        if (exTarget.targetMuscle === targetMuscle || exTarget.canonicalGroup === canonicalGroup) {
+          seenKeys.add(key);
+          results.push({
+            id: ex.id || `template_swap_${results.length}`,
+            name: ex.name,
+            muscle: ex.muscle || targetMuscle,
+            canonicalGroup,
+            targetSets: Number(ex.targetSets) || 3,
+            targetReps: ex.targetReps || '8–12',
+            restTimeSecs: Number(ex.restTimeSecs) || 90,
+            videoId: ex.videoId,
+            reason: `From your ${day.name || 'Routine'}`,
+            isFromTemplate: true,
+            dayName: day.name,
+          });
+          if (results.length >= 8) break;
+        }
+      }
+    }
+  }
+
+  // 3. Fallback: Broad database only if still fewer than 6
+  if (results.length < 6) {
+    const dbMatches = EXERCISE_DATABASE.filter(db => {
       if (!db.name || seenKeys.has(normalizeExerciseKey(db.name))) return false;
-      return canonicalizeMuscle(db.muscle).toLowerCase() === canonicalGroup.toLowerCase();
+      const dbMuscleLower = (db.muscle || '').toLowerCase();
+      const targetLower = targetMuscle.toLowerCase();
+      return dbMuscleLower === targetLower || dbMuscleLower.includes(targetLower) || targetLower.includes(dbMuscleLower);
     });
 
-    for (const db of groupMatches) {
-      if (results.length >= 10) break;
+    for (const db of dbMatches) {
+      if (results.length >= 8) break;
       const key = normalizeExerciseKey(db.name);
       if (seenKeys.has(key)) continue;
       seenKeys.add(key);
 
+      const rx = getBiomechanicalPrescription(db.name, targetMuscle);
+
       results.push({
         id: db.id || `swap_db_${results.length}`,
         name: db.name,
-        muscle: db.muscle || canonicalGroup,
+        muscle: db.muscle || targetMuscle,
         canonicalGroup,
-        targetSets: 3,
-        targetReps: '8-12',
-        restTimeSecs: 90,
+        targetSets: rx.targetSets,
+        targetReps: rx.targetReps,
+        restTimeSecs: rx.restTimeSecs,
         isFromTemplate: false,
-        reason: `${canonicalGroup} alternative`,
+        reason: `Alternative for ${targetMuscle}`,
       });
     }
   }
 
   return results;
 }
+

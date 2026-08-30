@@ -13,8 +13,8 @@ export const makeZenGymAiStyles = (colors: any, isDark: boolean = true) =>
       backgroundColor: 'rgba(0, 0, 0, 0.72)',
     },
     container: {
-      height: '90%',
-      maxHeight: '90%',
+      flex: 1,
+      marginTop: '15%',
       backgroundColor: isDark ? '#000000' : colors.background,
       borderTopLeftRadius: 28,
       borderTopRightRadius: 28,

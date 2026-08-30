@@ -37,23 +37,25 @@ export function getRestDuration(exercise: { name: string, isCompound?: boolean }
   return 90;                                       // 90s isolation
 }
 
+import { evaluateProgression, ProgressionResult, ProgressionPolicy } from './progressionEngine';
+import { estimate1RM, OneRMFormula, calculateRepMaxTable } from './oneRepMaxEngine';
+
+export { evaluateProgression, ProgressionResult, ProgressionPolicy, estimate1RM, OneRMFormula, calculateRepMaxTable };
+
 export interface OverloadSuggestion {
   type: "increase" | "decrease" | "maintain";
   weightDelta: number;   // kg to add/remove (0 for maintain)
   reason: string;
   recommended: number;   // suggested absolute weight in kg
+  isDeload?: boolean;
+  policy?: ProgressionPolicy;
 }
 
 /**
- * Compute overload suggestion for a specific exercise.
- * @param exercise - full exercise object
- * @param currentWeight - current planned weight in kg
- * @param targetSets - how many sets planned
- * @param targetReps - target reps (e.g. 8 for "8-12" → use lower bound)
- * @param gymLogs - all gym logs from context
+ * Compute overload suggestion for a specific exercise using scientific progression policies.
  */
 export function getOverloadSuggestion(
-  exercise: { name: string, isCompound?: boolean },
+  exercise: { name: string; isCompound?: boolean; muscle?: string; targetSets?: number; targetReps?: string; progressionPolicy?: ProgressionPolicy },
   currentWeight: number,
   targetSets: number,
   targetRepsStr: string,
@@ -61,75 +63,39 @@ export function getOverloadSuggestion(
 ): OverloadSuggestion | null {
   if (!exercise || !exercise.name || currentWeight <= 0) return null;
 
-  // Parse target reps (handle "8-12" → 8)
-  const targetReps = parseInt(String(targetRepsStr).split("-")[0], 10) || 8;
-
-  // Find sessions with this exercise (sorted newest-first, early-exit at 3)
-  const targetKey = normalizeExerciseKey(exercise.name);
-  const sortedLogs = (gymLogs || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  const relevantSessions: any[] = [];
-  for (const log of sortedLogs) {
-    if (Array.isArray(log.exercises)) {
-      const hasEx = log.exercises.some((e: any) => e?.name && normalizeExerciseKey(e.name) === targetKey);
-      if (hasEx) {
-        relevantSessions.push(log);
-        if (relevantSessions.length === 3) break;
-      }
-    }
-  }
-
-  if (relevantSessions.length < 2) return null; // Need at least 2 sessions
-
-  // Extract set data for this exercise from each session
-  const sessionData = relevantSessions.map(log => {
-    const ex = log.exercises.find((e: any) => e?.name && normalizeExerciseKey(e.name) === targetKey);
-    const avgReps = calculateExerciseAvgReps(ex as any);
-    const maxWeight = calculateExerciseMaxWeight(ex as any);
-    const completedSetsCount = ex ? (ex.setsLog || []).filter((s: any) => s.completed).length : 0;
-    return { sets: completedSetsCount, avgReps, maxWeight };
-  });
-
-  const isCompoundEx = exercise.isCompound ?? isLegacyCompound(exercise.name);
-  const step = isCompoundEx ? 2.5 : 1.25;
-
-  // Check if user consistently hit their targets
-  const hitTargetBothSessions = sessionData.slice(0, 2).every(d =>
-    d.sets >= targetSets && d.avgReps >= targetReps
+  const result = evaluateProgression(
+    {
+      name: exercise.name,
+      targetSets: exercise.targetSets || targetSets,
+      targetReps: exercise.targetReps || targetRepsStr,
+      isCompound: exercise.isCompound,
+      muscle: exercise.muscle,
+      progressionPolicy: exercise.progressionPolicy,
+    },
+    currentWeight,
+    gymLogs || []
   );
 
-  if (hitTargetBothSessions) {
-    const newWeight = currentWeight + step;
-    return {
-      type: "increase",
-      weightDelta: step,
-      reason: `Hit ${targetSets}x${targetReps} for 2+ sessions`,
-      recommended: newWeight,
-    };
+  let type: "increase" | "decrease" | "maintain" = "maintain";
+  if (result.weightDelta > 0) {
+    type = "increase";
+  } else if (result.weightDelta < 0 || result.isDeload) {
+    type = "decrease";
   }
 
-  // Check deload — consistently missing reps
-  const failedBoth = sessionData.slice(0, 2).every(d => d.avgReps < targetReps - 2 && d.sets > 0);
-  if (failedBoth) {
-    const newWeight = Math.max(0, currentWeight - step * 2);
-    return {
-      type: "decrease",
-      weightDelta: -step * 2,
-      reason: "Reps consistently below target",
-      recommended: newWeight,
-    };
-  }
-
-  return { type: "maintain", weightDelta: 0, reason: "Keep current weight", recommended: currentWeight };
+  return {
+    type,
+    weightDelta: result.weightDelta,
+    reason: result.reason,
+    recommended: result.recommendedWeight,
+    isDeload: result.isDeload,
+    policy: result.policy,
+  };
 }
 
-// ─── 1RM Calculator ──────────────────────────────────────────────────────────
-// Epley formula: 1RM = weight × (1 + reps/30)
-// Most accurate for reps 1–10. Clamp reps to max 30 to avoid absurd estimates.
-
-export function calculate1RM(weight: number, reps: number): number {
-  if (weight <= 0 || reps <= 0) return 0;
-  const clampedReps = Math.min(reps, 30);
-  return Math.round(weight * (1 + clampedReps / 30));
+// ─── 1RM Calculator (Multi-Formula Enabled) ──────────────────────────────────
+export function calculate1RM(weight: number, reps: number, formula: OneRMFormula = 'epley'): number {
+  return Math.round(estimate1RM(weight, reps, formula));
 }
 
 // ─── PR Storage ──────────────────────────────────────────────────────────────

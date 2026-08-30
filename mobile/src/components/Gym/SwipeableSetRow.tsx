@@ -1,7 +1,8 @@
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, TextInput, Animated, PanResponder, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GymSet } from '../../types/gym.types';
+import { hapticLight } from '../../utils/haptics';
 
 export interface SwipeableSetRowProps {
   set: GymSet;
@@ -45,6 +46,23 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
       isTriggeringRef.current = false;
     }
   }, [isCompleted]);
+
+  // Stepper Handlers (+/- 2.5kg for Weight up to 1000kg, +/- 1 for Reps up to 50)
+  const handleWeightAdjust = useCallback((delta: number) => {
+    if (isCompleted) return;
+    hapticLight();
+    const currentVal = parseFloat(displayWeight) || 0;
+    const newVal = Math.min(1000, Math.max(0, Math.round((currentVal + delta) * 10) / 10));
+    onTextChange('weight', newVal === 0 ? '' : String(newVal));
+  }, [isCompleted, displayWeight, onTextChange]);
+
+  const handleRepsAdjust = useCallback((delta: number) => {
+    if (isCompleted) return;
+    hapticLight();
+    const currentVal = parseInt(displayReps, 10) || 0;
+    const newVal = Math.min(50, Math.max(0, currentVal + delta));
+    onTextChange('reps', newVal === 0 ? '' : String(newVal));
+  }, [isCompleted, displayReps, onTextChange]);
 
   const panResponder = useMemo(
     () =>
@@ -150,47 +168,102 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
           style={styles.setIndexArea}
         >
           {isCompleted ? (
-            <Ionicons name="checkmark-circle" size={20} color={colors.accentPrimary} />
+            <Ionicons
+              name="checkmark-circle"
+              size={20}
+              color={set.isWarmup ? '#ff9f4d' : colors.accentPrimary}
+            />
           ) : (
-            <Text style={[styles.setIndexText, isActive && { color: colors.accentPrimary }]}>{set.setNumber}</Text>
+            <Text
+              style={[
+                styles.setIndexText,
+                set.isWarmup && { color: '#ff9f4d', fontWeight: '700', fontSize: 13 },
+                isActive && { color: set.isWarmup ? '#ff9f4d' : colors.accentPrimary },
+              ]}
+            >
+              {set.warmupLabel || (set.isWarmup ? `W${set.setNumber}` : set.setNumber)}
+            </Text>
           )}
         </TouchableOpacity>
 
-        {/* Controlled inputs with local state - locked when completed */}
-        <View style={styles.inputGroup}>
-          {displayWeight === '' && (
-            <View style={styles.fakePlaceholder} pointerEvents="none">
-              <Text style={styles.fakePlaceholderText}>kg</Text>
-            </View>
-          )}
-          <TextInput
-            style={[styles.textInput, isCompleted && { opacity: 0.85, color: colors.textPrimary }]}
-            value={displayWeight}
-            keyboardType="numeric"
-            editable={!isCompleted}
-            onChangeText={(text) => onTextChange('weight', text)}
-            onBlur={onBlur}
-          />
+        {/* Weight Stepper: [- 25 +] (+/- 2.5 kg) */}
+        <View style={[styles.stepperContainer, isCompleted && { opacity: 0.7 }]}>
+          <TouchableOpacity
+            style={styles.stepperBtn}
+            onPress={() => handleWeightAdjust(-2.5)}
+            disabled={isCompleted}
+            hitSlop={6}
+          >
+            <Ionicons name="remove" size={17} color={isCompleted ? colors.textMuted : colors.textSecondary} />
+          </TouchableOpacity>
+
+          <View style={styles.stepperInputWrapper}>
+            {displayWeight === '' && (
+              <View style={styles.fakePlaceholder} pointerEvents="none">
+                <Text style={styles.fakePlaceholderText}>kg</Text>
+              </View>
+            )}
+            <TextInput
+              style={[styles.stepperTextInput, isCompleted && { color: colors.textPrimary }]}
+              value={displayWeight}
+              keyboardType="decimal-pad"
+              editable={!isCompleted}
+              onChangeText={(text) => onTextChange('weight', text)}
+              onBlur={onBlur}
+              selectTextOnFocus
+            />
+          </View>
+
+          <TouchableOpacity
+            style={styles.stepperBtn}
+            onPress={() => handleWeightAdjust(2.5)}
+            disabled={isCompleted}
+            hitSlop={6}
+          >
+            <Ionicons name="add" size={17} color={isCompleted ? colors.textMuted : colors.textSecondary} />
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.inputGroup}>
-          {displayReps === '' && (
-            <View style={styles.fakePlaceholder} pointerEvents="none">
-              <Text style={styles.fakePlaceholderText}>reps</Text>
-            </View>
-          )}
-          <TextInput
-            style={[styles.textInput, isCompleted && { opacity: 0.85, color: colors.textPrimary }]}
-            value={displayReps}
-            keyboardType="numeric"
-            editable={!isCompleted}
-            onChangeText={(text) => onTextChange('reps', text)}
-            onBlur={onBlur}
-          />
+        {/* Reps Stepper: [- 8 +] (+/- 1 rep) */}
+        <View style={[styles.stepperContainer, isCompleted && { opacity: 0.7 }]}>
+          <TouchableOpacity
+            style={styles.stepperBtn}
+            onPress={() => handleRepsAdjust(-1)}
+            disabled={isCompleted}
+            hitSlop={6}
+          >
+            <Ionicons name="remove" size={17} color={isCompleted ? colors.textMuted : colors.textSecondary} />
+          </TouchableOpacity>
+
+          <View style={styles.stepperInputWrapper}>
+            {displayReps === '' && (
+              <View style={styles.fakePlaceholder} pointerEvents="none">
+                <Text style={styles.fakePlaceholderText}>reps</Text>
+              </View>
+            )}
+            <TextInput
+              style={[styles.stepperTextInput, isCompleted && { color: colors.textPrimary }]}
+              value={displayReps}
+              keyboardType="number-pad"
+              editable={!isCompleted}
+              onChangeText={(text) => onTextChange('reps', text)}
+              onBlur={onBlur}
+              selectTextOnFocus
+            />
+          </View>
+
+          <TouchableOpacity
+            style={styles.stepperBtn}
+            onPress={() => handleRepsAdjust(1)}
+            disabled={isCompleted}
+            hitSlop={6}
+          >
+            <Ionicons name="add" size={17} color={isCompleted ? colors.textMuted : colors.textSecondary} />
+          </TouchableOpacity>
         </View>
 
         {/* Right Action / Subtle Swipe Hint */}
-        <View style={{ width: 28, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 22, alignItems: 'center', justifyContent: 'center' }}>
           {!isCompleted ? (
             <Ionicons name="chevron-forward" size={14} color={isActive ? colors.accentPrimary : colors.textMuted} style={{ opacity: 0.4 }} />
           ) : (

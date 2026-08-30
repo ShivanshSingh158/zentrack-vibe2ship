@@ -8,7 +8,8 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   Modal, View, Text, TouchableOpacity, TextInput, Platform,
-  ScrollView, KeyboardAvoidingView, ActivityIndicator, Alert, Pressable,
+  ScrollView, ActivityIndicator, Alert, Pressable, KeyboardAvoidingView,
+  Keyboard, KeyboardEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -88,6 +89,25 @@ export function ZenGymAiModal({
       text: "👋 Hey! I'm **S.A.R.A Gym AI**.\n\nI can analyze your sets, suggest biomechanical exercise swaps, build personalized multi-day training splits, or adjust your deload volume. What's on your mind?",
     },
   ]);
+  const [androidKeyboardPadding, setAndroidKeyboardPadding] = useState(0);
+
+  // Dynamic Keyboard Height Tracking for Standalone Android APKs & iOS
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const showSub = Keyboard.addListener('keyboardDidShow', (e: any) => {
+      setAndroidKeyboardPadding(e?.endCoordinates?.height || 0);
+      setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setAndroidKeyboardPadding(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const scrollRef = useRef<ScrollView>(null);
 
@@ -177,115 +197,125 @@ export function ZenGymAiModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
-        <View style={styles.container}>
-          {/* Drag Handle */}
-          <View style={styles.handleWrap}>
-            <View style={styles.handle} />
-          </View>
+    <Modal visible={visible} animationType="slide" transparent={true} statusBarTranslucent={true} onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={[
+            styles.modalOverlay,
+            Platform.OS === 'android' && androidKeyboardPadding > 0 && {
+              paddingBottom: androidKeyboardPadding,
+            },
+          ]}>
+          <Pressable style={styles.backdrop} onPress={onClose} />
+          <View style={styles.container}>
+            {/* Drag Handle */}
+            <View style={styles.handleWrap}>
+              <View style={styles.handle} />
+            </View>
 
           {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View style={styles.avatarBox}>
-              <Ionicons name="fitness" size={20} color={colors.accentPrimary} />
-            </View>
-            <View>
-              <Text style={styles.title}>GYM-GPT Coach</Text>
-              <Text style={styles.subtitle}>S.A.R.A Biomechanical AI</Text>
-            </View>
-          </View>
-
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => setShowProfile(true)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="person-circle-outline" size={22} color={colors.textPrimary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => {
-                Alert.alert('Clear Chat', 'Reset all conversation history?', [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Clear',
-                    style: 'destructive',
-                    onPress: () => {
-                      setMessages([]);
-                      AsyncStorage.removeItem(STORAGE_KEY_SESSIONS);
-                    },
-                  },
-                ]);
-              }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.iconBtn} onPress={onClose} activeOpacity={0.7}>
-              <Ionicons name="close" size={20} color={colors.textPrimary} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Chat Area */}
-        <ScrollView
-          ref={scrollRef}
-          style={styles.chatArea}
-          contentContainerStyle={{ paddingBottom: 24 }}
-          keyboardShouldPersistTaps="handled"
-        >
-          {messages.map(msg => (
-            <GymAiChatBubble
-              key={msg.id}
-              msg={msg}
-              onSelectOption={opt => handleSend(opt)}
-              onWriteOwn={() => {}}
-              styles={styles}
-              colors={colors}
-              isDark={isDark}
-            />
-          ))}
-
-          {loading && (
-            <View style={[styles.msgRow, styles.msgRowAi]}>
-              <View style={[styles.msgBubbleAi, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
-                <ActivityIndicator size="small" color={colors.accentPrimary} />
-                <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 13, color: colors.textMuted }}>
-                  S.A.R.A is analyzing biomechanics...
-                </Text>
+          <View style={styles.header}>
+            <View style={styles.headerLeft}>
+              <View style={styles.avatarBox}>
+                <Ionicons name="fitness" size={20} color={colors.accentPrimary} />
+              </View>
+              <View>
+                <Text style={styles.title}>GYM-GPT Coach</Text>
+                <Text style={styles.subtitle}>S.A.R.A Biomechanical AI</Text>
               </View>
             </View>
-          )}
-        </ScrollView>
 
-        {/* Quick Prompts Strip */}
-        <View style={{ paddingHorizontal: 12 }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.quickChipsScroll}
-          >
-            {QUICK_PROMPTS.map(p => (
+            <View style={styles.headerActions}>
               <TouchableOpacity
-                key={p}
-                style={styles.quickChip}
-                onPress={() => handleSend(p)}
+                style={styles.iconBtn}
+                onPress={() => setShowProfile(true)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.quickChipText}>{p}</Text>
+                <Ionicons name="person-circle-outline" size={22} color={colors.textPrimary} />
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
 
-        {/* Input Bar */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => {
+                  Alert.alert('Clear Chat', 'Reset all conversation history?', [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Clear',
+                      style: 'destructive',
+                      onPress: () => {
+                        setMessages([]);
+                        AsyncStorage.removeItem(STORAGE_KEY_SESSIONS);
+                      },
+                    },
+                  ]);
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.iconBtn} onPress={onClose} activeOpacity={0.7}>
+                <Ionicons name="close" size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Chat Area */}
+          <ScrollView
+            ref={scrollRef}
+            style={styles.chatArea}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
+            {messages.map(msg => (
+              <GymAiChatBubble
+                key={msg.id}
+                msg={msg}
+                onSelectOption={opt => handleSend(opt)}
+                onWriteOwn={() => {}}
+                styles={styles}
+                colors={colors}
+                isDark={isDark}
+              />
+            ))}
+
+            {loading && (
+              <View style={[styles.msgRow, styles.msgRowAi]}>
+                <View style={[styles.msgBubbleAi, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
+                  <ActivityIndicator size="small" color={colors.accentPrimary} />
+                  <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 13, color: colors.textMuted }}>
+                    S.A.R.A is analyzing biomechanics...
+                  </Text>
+                </View>
+              </View>
+            )}
+          </ScrollView>
+
+          {/* Quick Prompts Strip */}
+          <View style={{ paddingHorizontal: 12 }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickChipsScroll}
+              keyboardShouldPersistTaps="handled"
+            >
+              {QUICK_PROMPTS.map(p => (
+                <TouchableOpacity
+                  key={p}
+                  style={styles.quickChip}
+                  onPress={() => handleSend(p)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.quickChipText}>{p}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Input Bar */}
           <View style={styles.inputBarWrapper}>
             <View style={styles.inputContainer}>
               <TextInput
@@ -308,9 +338,9 @@ export function ZenGymAiModal({
               </TouchableOpacity>
             </View>
           </View>
-        </KeyboardAvoidingView>
         </View>
       </View>
+    </KeyboardAvoidingView>
 
       {/* Gym Athlete Profile Modal */}
       <GymProfileModal visible={showProfile} onClose={() => setShowProfile(false)} />

@@ -80,6 +80,8 @@ const _BOOT_T0 = (global as any).__BOOT_T0 || Date.now();
 console.log(`[BOOT-DIAG] App.tsx module evaluated at dt=${Date.now() - _BOOT_T0}ms`);
 // ═══════════════════════════════════════════════════════════════════════════════
 
+import { PomodoroProvider } from './src/contexts/PomodoroContext';
+
 function ThemedAppContainer() {
   const { colors, isDark } = useTheme();
 
@@ -92,10 +94,12 @@ function ThemedAppContainer() {
         />
         <PortalProvider>
           <MobileDataProvider>
-            <ErrorBoundary screenName="RootApp">
-              <AppNavigator />
-            </ErrorBoundary>
-            <OfflineIndicator />
+            <PomodoroProvider>
+              <ErrorBoundary screenName="RootApp">
+                <AppNavigator />
+              </ErrorBoundary>
+              <OfflineIndicator />
+            </PomodoroProvider>
           </MobileDataProvider>
         </PortalProvider>
       </SafeAreaProvider>

@@ -27,10 +27,12 @@ import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing, runOnJS
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { queueWrite } from '../../services/offlineSync';
+import { safeWrite } from '../../utils/safeWrite';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
+import { Task } from '../../contexts/MobileDataContext';
 import { parseNLTask } from '../../utils/dateUtils';
 import { COLLECTION } from '../../config/constants';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
@@ -62,7 +64,7 @@ const TABS: { key: CaptureType; label: string; icon: string }[] = [
 export default function QuickCaptureSheet({ visible, onClose }: Props) {
     const { colors, isDark } = useTheme();
     const s = makeStyles(colors, isDark);
-  const { user } = useCoreData();
+  const { user, optimisticAddTask } = useCoreData();
   const insets = useSafeAreaInsets();
   const [type, setType] = useState<CaptureType>('task');
   const [text, setText] = useState('');
@@ -198,17 +200,42 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
         }
 
         for (const t of parsedData) {
-          await queueWrite(COLLECTION.TASKS, 'add', {
+          const docRef = doc(collection(db, COLLECTION.TASKS));
+          const taskId = docRef.id;
+          const taskDate = t.date || new Date().toISOString().slice(0, 10);
+          const taskObj: Task = {
+            id: taskId,
             userId: user.uid,
             title: t.title || textToSave.trim(),
             status: 'pending',
             priority: t.priority || 'P2',
-            date: t.date || new Date().toISOString().slice(0, 10),
+            date: taskDate,
+            timeSlot: t.timeSlot || undefined,
+            isRecurring: !!t.isRecurring,
+            recurrenceRule: t.frequency ? { type: t.frequency, interval: 1 } : undefined,
+          };
+          optimisticAddTask(taskObj);
+
+          const firestorePayload = {
+            userId: user.uid,
+            title: t.title || textToSave.trim(),
+            text: t.title || textToSave.trim(),
+            status: 'pending',
+            priority: t.priority || 'P2',
+            date: taskDate,
             timeSlot: t.timeSlot || null,
             isRecurring: !!t.isRecurring,
             frequency: t.frequency || null,
             createdAt: serverTimestamp(),
-          });
+          };
+
+          await safeWrite(
+            () => setDoc(docRef, firestorePayload),
+            COLLECTION.TASKS,
+            'set',
+            firestorePayload,
+            taskId,
+          );
         }
       } else if (type === 'note') {
         await queueWrite(COLLECTION.STORAGE_NODES, 'add', {

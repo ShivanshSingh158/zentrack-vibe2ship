@@ -9,6 +9,8 @@ import { useTheme } from "../../contexts/ThemeContext";
 // Extracted Styles
 import { makeAnimatedRestTimerStyles } from './animatedRestTimerStyles';
 
+import { playCountdownTick, playTimerFinishChime } from '../../services/gymSoundSynthesizer';
+
 interface AnimatedRestTimerProps {
   startTime: number;
   durationSecs: number;
@@ -27,6 +29,7 @@ export default function AnimatedRestTimer({
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeAnimatedRestTimerStyles(colors, isDark), [colors, isDark]);
   const [isExpanded, setIsExpanded] = useState(false);
+  const lastBeepSecRef = useRef<number | null>(null);
 
   // Draggable position state (PanResponder)
   const pan = useRef(new Animated.ValueXY()).current;
@@ -49,6 +52,14 @@ export default function AnimatedRestTimer({
       ),
       onPanResponderRelease: () => {
         pan.flattenOffset();
+        // Guarantee timer never settles below the safe docked baseline
+        if ((pan.y as any)._value > 0) {
+          Animated.spring(pan.y, {
+            toValue: 0,
+            useNativeDriver: false,
+            bounciness: 6,
+          }).start();
+        }
       },
     })
   ).current;
@@ -59,6 +70,13 @@ export default function AnimatedRestTimer({
   });
 
   useEffect(() => {
+    // Reset position to default dock location whenever a new timer starts
+    pan.setValue({ x: 0, y: 0 });
+    pan.setOffset({ x: 0, y: 0 });
+    lastBeepSecRef.current = null;
+  }, [startTime]);
+
+  useEffect(() => {
     let skipped = false;
     const updateTimer = () => {
       if (skipped) return;
@@ -66,8 +84,18 @@ export default function AnimatedRestTimer({
       const rem = Math.max(0, durationSecs - elapsed);
       setRemSecs(rem);
 
+      // Synthesizer Audio Cues: 3... 2... 1... Tick
+      if (rem > 0 && rem <= 3 && lastBeepSecRef.current !== rem) {
+        lastBeepSecRef.current = rem;
+        playCountdownTick();
+      }
+
       if (rem <= 0) {
         skipped = true;
+        if (lastBeepSecRef.current !== 0) {
+          lastBeepSecRef.current = 0;
+          playTimerFinishChime();
+        }
         setTimeout(() => {
           InteractionManager.runAfterInteractions(() => {
             onSkip();

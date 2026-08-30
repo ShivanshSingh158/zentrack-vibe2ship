@@ -22,23 +22,9 @@ export const formatDuration = (ms: number) => {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 };
 
-export const fetchVideoTitle = async (url: string): Promise<string> => {
-  try {
-    const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    return data.title || '';
-  } catch {
-    return '';
-  }
-};
-
-export const CW_KEY = 'learning_continue_watching';
-export const EXPANDED_KEY = 'learning_expanded_topic';
 export const SPEED_KEY = 'learning_playback_speed';
 export const SPEEDS = [1, 1.25, 1.5, 1.75, 2];
 export const TS_KEY = (videoId: string) => `yt_ts_${videoId}`;
-export const UNDO_DELAY = 3500;
 
 export const progressColor = (pct: number) => {
   if (pct === 100) return '#10b981';

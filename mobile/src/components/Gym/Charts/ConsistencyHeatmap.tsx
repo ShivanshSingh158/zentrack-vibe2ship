@@ -1,19 +1,35 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, COLORS } from '../../../theme/tokens';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { hapticLight } from '../../../utils/haptics';
 
 interface ConsistencyHeatmapProps {
   data: { date: string; volume: number }[];
 }
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+const NUM_WEEKS = 18; // 18 weeks = 126 days (fills horizontal card width cleanly)
 
-function getLast90Days(): string[] {
-  const dates = [];
-  for (let i = 89; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
+function getRecentWeeksDates(numWeeks: number = 18): string[] {
+  const dates: string[] = [];
+  const today = new Date();
+  const todayDay = today.getDay(); // 0 is Sunday
+  const daysFromMonday = todayDay === 0 ? 6 : todayDay - 1;
+
+  // Find Monday of the current week
+  const currentMonday = new Date(today);
+  currentMonday.setDate(today.getDate() - daysFromMonday);
+
+  // Start (numWeeks - 1) weeks before current Monday
+  const startMonday = new Date(currentMonday);
+  startMonday.setDate(currentMonday.getDate() - (numWeeks - 1) * 7);
+
+  const totalDays = numWeeks * 7;
+  for (let i = 0; i < totalDays; i++) {
+    const d = new Date(startMonday);
+    d.setDate(startMonday.getDate() + i);
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
@@ -22,16 +38,9 @@ function getLast90Days(): string[] {
   return dates;
 }
 
-function getIntensityColor(volume: number, isDark: boolean = true): string {
-  if (volume <= 0) return isDark ? 'rgba(255,255,255,0.04)' : '#EAE9F2';
-  if (volume < 1000) return isDark ? 'rgba(165,153,255,0.22)' : 'rgba(108,92,231,0.25)';
-  if (volume < 3000) return isDark ? 'rgba(165,153,255,0.52)' : 'rgba(108,92,231,0.55)';
-  return isDark ? '#a599ff' : '#059669';
-}
-
 function formatDateShort(dateStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number);
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${months[m - 1]} ${d}`;
 }
 
@@ -41,15 +50,13 @@ export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
 
   const [selected, setSelected] = useState<{ date: string; volume: number } | null>(null);
 
-  const { grid, totalWorkouts, maxVolume, volumeMap } = useMemo(() => {
-    const dateStrings = getLast90Days();
+  const { grid, totalWorkouts, volumeMap } = useMemo(() => {
+    const dateStrings = getRecentWeeksDates(NUM_WEEKS);
     const volumeMap = new Map<string, number>();
-    let maxVol = 0;
     let workoutCount = 0;
 
     data.forEach(d => {
       volumeMap.set(d.date, d.volume);
-      if (d.volume > maxVol) maxVol = d.volume;
       if (d.volume > 0) workoutCount++;
     });
 
@@ -62,7 +69,6 @@ export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
     return {
       grid: chunks,
       totalWorkouts: workoutCount,
-      maxVolume: maxVol || 1,
       volumeMap,
     };
   }, [data]);
@@ -71,34 +77,35 @@ export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
     return volumeMap.get(dateStr) || 0;
   };
 
-  const legendColors = [
-    isDark ? 'rgba(255,255,255,0.04)' : '#EAE9F2',
-    isDark ? 'rgba(165,153,255,0.22)' : 'rgba(108,92,231,0.25)',
-    isDark ? 'rgba(165,153,255,0.52)' : 'rgba(108,92,231,0.55)',
-    isDark ? '#a599ff' : '#059669',
-  ];
+  const todayStr = useMemo(() => {
+    const t = new Date();
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  }, []);
 
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>CONSISTENCY HEATMAP</Text>
-          <Text style={styles.subtitle}>
-            {totalWorkouts} workouts in the last 90 days
-          </Text>
+        <View style={styles.headerLeft}>
+          <View style={styles.headerIcon}>
+            <Ionicons name="calendar-outline" size={13} color="#5eda9e" />
+          </View>
+          <View>
+            <Text style={styles.title}>CONSISTENCY GRID</Text>
+            <Text style={styles.subtitle}>
+              {totalWorkouts} {totalWorkouts === 1 ? 'workout' : 'workouts'} logged across {NUM_WEEKS} weeks
+            </Text>
+          </View>
         </View>
-        {/* Intensity legend */}
-        <View style={styles.intensityLegend}>
-          <Text style={styles.legendLabel}>Less</Text>
-          {legendColors.map((c, i) => (
-            <View key={i} style={[styles.legendCell, { backgroundColor: c }]} />
-          ))}
-          <Text style={styles.legendLabel}>More</Text>
+
+        {/* Active Badge */}
+        <View style={styles.activeTag}>
+          <View style={styles.activeDot} />
+          <Text style={styles.activeTagText}>Logged</Text>
         </View>
       </View>
 
-      {/* Day labels + grid */}
+      {/* Day labels + Full-Width Grid */}
       <View style={styles.heatmapRow}>
         {/* Mon–Sun row labels */}
         <View style={styles.dayLabelsCol}>
@@ -107,29 +114,37 @@ export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
           ))}
         </View>
 
-        {/* Scrollable grid */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollArea}>
+        {/* Full-width scrollable grid (auto-scrolled to latest) */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.scrollArea}
+          contentContainerStyle={styles.scrollContent}
+        >
           <View style={styles.grid}>
             {grid.map((col, colIndex) => (
               <View key={`col-${colIndex}`} style={styles.column}>
                 {col.map((dateStr) => {
                   const vol = volumeForDate(dateStr);
-                  const bgColor = getIntensityColor(vol, isDark);
+                  const isLogged = vol > 0;
+                  const isToday = dateStr === todayStr;
                   const isSelected = selected?.date === dateStr;
+
                   return (
                     <TouchableOpacity
                       key={dateStr}
                       onPress={() => {
-                        if (vol > 0) {
-                          setSelected(prev => prev?.date === dateStr ? null : { date: dateStr, volume: vol });
-                        }
+                        hapticLight();
+                        setSelected(prev => (prev?.date === dateStr ? null : { date: dateStr, volume: vol }));
                       }}
-                      activeOpacity={vol > 0 ? 0.7 : 1}
+                      activeOpacity={0.75}
+                      style={styles.cellWrapper}
                     >
                       <View
                         style={[
                           styles.cell,
-                          { backgroundColor: bgColor },
+                          isLogged ? styles.cellLogged : styles.cellEmpty,
+                          isToday && !isLogged && styles.cellToday,
                           isSelected && styles.cellSelected,
                         ]}
                       />
@@ -145,11 +160,12 @@ export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
       {/* Selected cell tooltip */}
       {selected && (
         <View style={styles.tooltip}>
+          <View style={[styles.tooltipDot, { backgroundColor: selected.volume > 0 ? '#5eda9e' : '#8e8e93' }]} />
           <Text style={styles.tooltipDate}>{formatDateShort(selected.date)}</Text>
           <Text style={styles.tooltipVol}>
-            {selected.volume >= 1000
-              ? `${(selected.volume / 1000).toFixed(1)}k kg`
-              : `${selected.volume} kg`} trained
+            {selected.volume > 0
+              ? `${selected.volume >= 1000 ? (selected.volume / 1000).toFixed(1) + 'k' : selected.volume} kg volume`
+              : 'Rest day / No log'}
           </Text>
         </View>
       )}
@@ -159,46 +175,67 @@ export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
 
 const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   container: {
-    backgroundColor: colors.surface,
+    backgroundColor: isDark ? '#0d0d10' : colors.surface,
     borderRadius: RADIUS.xl,
-    padding: SPACE.md,
-    marginBottom: 12,
+    padding: 16,
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: isDark ? '#1f1f26' : colors.border,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 14,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 7,
+    backgroundColor: 'rgba(94, 218, 158, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(94, 218, 158, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.textTertiary,
-    letterSpacing: 1.2,
+    fontSize: 11,
+    color: '#ffffff',
+    letterSpacing: 0.8,
   },
   subtitle: {
     fontFamily: FONT_FAMILY.regular,
-    fontSize: FONT_SIZE.xs,
-    color: colors.textTertiary,
-    marginTop: 2,
+    fontSize: 11,
+    color: '#8e8e93',
+    marginTop: 1,
   },
-  intensityLegend: {
+  activeTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 5,
+    backgroundColor: 'rgba(94, 218, 158, 0.10)',
+    borderColor: 'rgba(94, 218, 158, 0.25)',
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
-  legendLabel: {
-    fontSize: 8,
-    color: colors.textTertiary,
-    fontFamily: FONT_FAMILY.regular,
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#5eda9e',
   },
-  legendCell: {
-    width: 10,
-    height: 10,
-    borderRadius: 2,
+  activeTagText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 10,
+    color: '#5eda9e',
   },
   heatmapRow: {
     flexDirection: 'row',
@@ -206,39 +243,64 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
   dayLabelsCol: {
     justifyContent: 'space-between',
-    height: 7 * 18, // 7 rows × 18px each (14px cell + 4px gap)
-    paddingRight: 6,
-    paddingVertical: 2,
+    height: 7 * 19, // 7 rows × 19px each
+    paddingRight: 8,
+    paddingVertical: 1,
   },
   dayLabelText: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: 9,
-    color: colors.textTertiary,
-    lineHeight: 14,
+    color: '#636366',
+    lineHeight: 15,
   },
   scrollArea: {
-    flexGrow: 0,
+    flex: 1,
+  },
+  scrollContent: {
+    paddingRight: 4,
   },
   grid: {
     flexDirection: 'row',
-    gap: 3,
+    gap: 4.5,
   },
   column: {
     flexDirection: 'column',
-    gap: 3,
+    gap: 4.5,
+  },
+  cellWrapper: {
+    padding: 0,
   },
   cell: {
-    width: 14,
-    height: 14,
-    borderRadius: 3,
+    width: 15.5,
+    height: 15.5,
+    borderRadius: 3.5,
+  },
+  cellEmpty: {
+    backgroundColor: isDark ? '#17171c' : '#EAE9F2',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)',
+  },
+  cellLogged: {
+    backgroundColor: '#5eda9e',
+    borderWidth: 1,
+    borderColor: '#7feebe',
+    shadowColor: '#5eda9e',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  cellToday: {
+    borderColor: 'rgba(94, 218, 158, 0.4)',
+    borderWidth: 1,
   },
   cellSelected: {
-    borderWidth: 1.5,
-    borderColor: colors.accentPrimary,
+    borderWidth: 1.8,
+    borderColor: '#ffffff',
   },
   tooltip: {
-    marginTop: 10,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)',
+    marginTop: 12,
+    backgroundColor: isDark ? '#17171c' : colors.surface2,
     borderRadius: RADIUS.md,
     paddingHorizontal: 12,
     paddingVertical: 7,
@@ -247,16 +309,21 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     gap: 8,
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.2)',
+    borderColor: isDark ? 'rgba(94, 218, 158, 0.25)' : 'rgba(94, 218, 158, 0.3)',
+  },
+  tooltipDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   tooltipDate: {
     fontSize: 11,
     fontFamily: FONT_FAMILY.bold,
-    color: colors.accentPrimary,
+    color: '#ffffff',
   },
   tooltipVol: {
     fontSize: 11,
     fontFamily: FONT_FAMILY.medium,
-    color: colors.textPrimary,
+    color: '#5eda9e',
   },
 });

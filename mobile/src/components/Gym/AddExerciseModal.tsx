@@ -21,14 +21,16 @@ import { autoResolveExerciseVideoId } from '../../services/exerciseVideoResolver
 import { aiResolveExercise, AIExerciseInfo } from '../../services/geminiProxy';
 import { GYM_PLAN } from '../../data/gymPlan';
 import { EXERCISE_DATABASE } from '../../data/exerciseDatabase';
+import { searchExercises } from '../../services/exerciseMediaService';
 import { handleSyncError } from '../../utils/errorUtils';
 
 // Extracted Subcomponents & Styles
 import { makeAddExerciseStyles } from './addExerciseStyles';
 import ExerciseSearchDropdown, { ExerciseCatalogEntry } from './ExerciseSearchDropdown';
 import ExerciseCustomFields from './ExerciseCustomFields';
+import { getBiomechanicalPrescription } from '../../utils/gymUtils';
 
-/** Build a full deduplicated exercise catalogue from our plan + database. */
+/** Build a full deduplicated exercise catalogue from our database + plan + dataset with calibrated tiers. */
 function buildCatalogue(): ExerciseCatalogEntry[] {
   const seen = new Set<string>();
   const result: ExerciseCatalogEntry[] = [];
@@ -40,69 +42,57 @@ function buildCatalogue(): ExerciseCatalogEntry[] {
     result.push(e);
   };
 
-  // GYM_PLAN exercises (highest priority • have full metadata)
+  // 1. EXERCISE_DATABASE (Primary source with 492 scientifically audited entries & tiers)
+  for (const dbEntry of EXERCISE_DATABASE) {
+    const rx = getBiomechanicalPrescription(dbEntry.name, dbEntry.muscle);
+    add({
+      id: dbEntry.id,
+      name: dbEntry.name,
+      muscle: dbEntry.muscle,
+      tier: dbEntry.tier || 'C Tier',
+      targetSets: rx.targetSets,
+      targetReps: rx.targetReps,
+      restTimeSecs: rx.restTimeSecs,
+      videoId: (dbEntry as any).videoId || '',
+      aliases: dbEntry.aliases,
+    });
+  }
+
+  // 2. GYM_PLAN exercises
   for (const day of GYM_PLAN) {
     for (const ex of day.exercises) {
+      const rx = getBiomechanicalPrescription(ex.name, ex.muscle);
       add({
         id: ex.id,
         name: ex.name,
         muscle: ex.muscle ?? 'Mixed',
-        targetSets: ex.targetSets ?? 3,
-        targetReps: ex.targetReps ?? '8-12',
-        restTimeSecs: (ex as any).restTimeSecs ?? 60,
+        tier: (ex as any).tier || 'A Tier',
+        targetSets: ex.targetSets ?? rx.targetSets,
+        targetReps: ex.targetReps ?? rx.targetReps,
+        restTimeSecs: (ex as any).restTimeSecs ?? rx.restTimeSecs,
         videoId: ex.videoId ?? '',
       });
     }
   }
 
-  const MUSCLE_DEFAULTS: Record<string, { sets: number; reps: string; rest: number }> = {
-    Chest: { sets: 3, reps: '8-12', rest: 90 },
-    Back: { sets: 3, reps: '8-12', rest: 90 },
-    Shoulders: { sets: 3, reps: '10-15', rest: 75 },
-    'Side Delts': { sets: 3, reps: '12-15', rest: 60 },
-    'Rear Delts': { sets: 3, reps: '12-15', rest: 60 },
-    Triceps: { sets: 3, reps: '10-12', rest: 60 },
-    Biceps: { sets: 3, reps: '10-12', rest: 60 },
-    Brachialis: { sets: 3, reps: '10-12', rest: 60 },
-    Quads: { sets: 3, reps: '8-12', rest: 90 },
-    'Quads/Glutes': { sets: 3, reps: '8-12', rest: 90 },
-    Hamstrings: { sets: 3, reps: '8-12', rest: 90 },
-    'Glutes/Hams': { sets: 3, reps: '10-15', rest: 75 },
-    Calves: { sets: 4, reps: '12-15', rest: 45 },
-    Soleus: { sets: 4, reps: '12-15', rest: 45 },
-    Abs: { sets: 3, reps: '12-15', rest: 45 },
-    Obliques: { sets: 3, reps: '12-15', rest: 45 },
-    Forearms: { sets: 3, reps: '15-20', rest: 45 },
-    Mixed: { sets: 3, reps: '8-12', rest: 60 },
-  };
-
-  // EXERCISE_DATABASE integration
-  for (const dbEntry of EXERCISE_DATABASE) {
-    let defaults = MUSCLE_DEFAULTS[dbEntry.muscle];
-    if (!defaults) {
-      if (dbEntry.muscle.includes('Chest')) defaults = MUSCLE_DEFAULTS['Chest'];
-      else if (dbEntry.muscle.includes('Back') || dbEntry.muscle.includes('Lats')) defaults = MUSCLE_DEFAULTS['Back'];
-      else if (dbEntry.muscle.includes('Delt')) defaults = MUSCLE_DEFAULTS['Shoulders'];
-      else if (dbEntry.muscle.includes('Tricep')) defaults = MUSCLE_DEFAULTS['Triceps'];
-      else if (dbEntry.muscle.includes('Bicep')) defaults = MUSCLE_DEFAULTS['Biceps'];
-      else if (dbEntry.muscle.includes('Quad')) defaults = MUSCLE_DEFAULTS['Quads'];
-      else if (dbEntry.muscle.includes('Glute') || dbEntry.muscle.includes('Ham')) defaults = MUSCLE_DEFAULTS['Hamstrings'];
-      else if (dbEntry.muscle.includes('Calf')) defaults = MUSCLE_DEFAULTS['Calves'];
-      else if (dbEntry.muscle.includes('Abs') || dbEntry.muscle.includes('Oblique')) defaults = MUSCLE_DEFAULTS['Abs'];
-      else if (dbEntry.muscle.includes('Forearm')) defaults = MUSCLE_DEFAULTS['Forearms'];
-      else defaults = MUSCLE_DEFAULTS['Mixed'];
-    }
+  // 3. 1,324 Exercises Dataset integration
+  const datasetExercises = searchExercises('', 'all', 2000);
+  for (const ex of datasetExercises) {
+    const rawMuscle = ex.target || ex.bodyPart || 'Mixed';
+    const cleanMuscle = rawMuscle.charAt(0).toUpperCase() + rawMuscle.slice(1);
+    const rx = getBiomechanicalPrescription(ex.name, cleanMuscle);
 
     add({
-      id: dbEntry.id,
-      name: dbEntry.name,
-      muscle: dbEntry.muscle,
-      targetSets: defaults.sets,
-      targetReps: defaults.reps,
-      restTimeSecs: defaults.rest,
-      videoId: (dbEntry as any).videoId || '',
-      aliases: dbEntry.aliases,
-    } as any);
+      id: ex.id,
+      name: ex.name,
+      muscle: cleanMuscle,
+      tier: 'C Tier',
+      targetSets: rx.targetSets,
+      targetReps: rx.targetReps,
+      restTimeSecs: rx.restTimeSecs,
+      videoId: '',
+      aliases: ex.secondaryMuscles,
+    });
   }
 
   return result;
@@ -153,6 +143,84 @@ interface Props {
   existingExerciseIds?: string[];
 }
 
+const TIER_SORT_WEIGHT: Record<string, number> = {
+  'S Tier': 1,
+  'A+ Tier': 2,
+  'A Tier': 3,
+  'B Tier': 4,
+  'C Tier': 5,
+};
+
+const sortTierWise = (list: ExerciseCatalogEntry[]) => {
+  return list.sort((a, b) => {
+    const weightA = a.tier ? (TIER_SORT_WEIGHT[a.tier] ?? 5) : 5;
+    const weightB = b.tier ? (TIER_SORT_WEIGHT[b.tier] ?? 5) : 5;
+    if (weightA !== weightB) return weightA - weightB;
+    return a.name.localeCompare(b.name);
+  });
+};
+
+function checkCategoryMatch(m: string, category: string): boolean {
+  const l = (m || '').toLowerCase();
+  const cat = category.toLowerCase();
+
+  if (cat === 'back') {
+    if (l.includes('tricep') || l.includes('bicep') || l.includes('brach') || l.includes('delt')) return false;
+    return (
+      l.includes('back') ||
+      l.includes('lat width') ||
+      l.includes('latissimus') ||
+      l.includes('lats') ||
+      l.includes('rhomboid') ||
+      l.includes('erector')
+    );
+  }
+  if (cat === 'arms') {
+    return (
+      l.includes('bicep') ||
+      l.includes('tricep') ||
+      l.includes('brach') ||
+      l.includes('forearm') ||
+      l.includes('wrist')
+    );
+  }
+  if (cat === 'legs') {
+    return (
+      l.includes('quad') ||
+      l.includes('glute') ||
+      l.includes('hamstring') ||
+      l.includes('calf') ||
+      l.includes('calves') ||
+      l.includes('soleus') ||
+      l.includes('tibialis') ||
+      l.includes('vmo') ||
+      l.includes('adductor') ||
+      l.includes('abductor') ||
+      l.includes('legs')
+    );
+  }
+  if (cat === 'chest') {
+    return l.includes('chest') || l.includes('pec') || l.includes('serratus');
+  }
+  if (cat === 'shoulders') {
+    return l.includes('delt') || l.includes('shoulder') || l.includes('upper trap');
+  }
+  if (cat === 'abs') {
+    return l.includes('abs') || l.includes('oblique') || l.includes('core') || l.includes('transverse') || l.includes('vacuum');
+  }
+  return l.includes(cat);
+}
+
+// Pre-computed category lists (0ms latency on chip clicks)
+const PRECOMPUTED_CATEGORY_MAP: Record<string, ExerciseCatalogEntry[]> = {
+  Chest: sortTierWise(EXERCISE_CATALOGUE.filter(e => checkCategoryMatch(e.muscle, 'Chest'))),
+  Back: sortTierWise(EXERCISE_CATALOGUE.filter(e => checkCategoryMatch(e.muscle, 'Back'))),
+  Legs: sortTierWise(EXERCISE_CATALOGUE.filter(e => checkCategoryMatch(e.muscle, 'Legs'))),
+  Shoulders: sortTierWise(EXERCISE_CATALOGUE.filter(e => checkCategoryMatch(e.muscle, 'Shoulders'))),
+  Arms: sortTierWise(EXERCISE_CATALOGUE.filter(e => checkCategoryMatch(e.muscle, 'Arms'))),
+  Abs: sortTierWise(EXERCISE_CATALOGUE.filter(e => checkCategoryMatch(e.muscle, 'Abs'))),
+};
+
 export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeAddExerciseStyles(colors, isDark), [colors, isDark]);
@@ -176,36 +244,23 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
   const [isAdding, setIsAdding] = useState(false);
   const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Search & filter
+  // 0ms Instant Search & Filter Memo
   const suggestions = useMemo(() => {
     const q = name.trim().toLowerCase();
 
-    const checkMuscleMatch = (exerciseMuscle: string, filterName: string | null) => {
-      if (!filterName) return true;
-      const t = exerciseMuscle.toLowerCase();
-      const f = filterName.toLowerCase();
-      if (f === 'legs') return t.includes('quad') || t.includes('glute') || t.includes('ham') || t.includes('calf') || t.includes('soleus');
-      if (f === 'arms') return t.includes('bicep') || t.includes('tricep') || t.includes('brach') || t.includes('forearm');
-      if (f === 'abs') return t.includes('abs') || t.includes('oblique') || t.includes('core');
-      if (f === 'back') return t.includes('back') || t.includes('lat');
-      if (f === 'shoulders') return t.includes('shoulder') || t.includes('delt');
-      return t.includes(f);
-    };
-
     if (muscleSearchFilter && !q) {
-      return EXERCISE_CATALOGUE
-        .filter(e => checkMuscleMatch(e.muscle, muscleSearchFilter))
-        .slice(0, 30);
+      return PRECOMPUTED_CATEGORY_MAP[muscleSearchFilter] || [];
     }
     if (!q || q.length < 1) return [];
 
-    return EXERCISE_CATALOGUE
-      .filter(e => {
-        const nameMatch = e.name.toLowerCase().includes(q) || (e.aliases && e.aliases.some(alias => alias.toLowerCase().includes(q)));
-        const muscleMatch = checkMuscleMatch(e.muscle, muscleSearchFilter);
-        return nameMatch && muscleMatch;
-      })
-      .slice(0, 30);
+    const baseList = muscleSearchFilter ? (PRECOMPUTED_CATEGORY_MAP[muscleSearchFilter] || EXERCISE_CATALOGUE) : EXERCISE_CATALOGUE;
+    const searchFiltered = baseList.filter(e => {
+      return (
+        e.name.toLowerCase().includes(q) ||
+        (e.aliases && e.aliases.some(alias => alias.toLowerCase().includes(q)))
+      );
+    });
+    return searchFiltered;
   }, [name, muscleSearchFilter]);
 
   const getLastSessionSets = (exerciseId: string, exerciseName: string) => {
@@ -401,7 +456,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
   const hasLastSession = selectedExerciseId ? !!getLastSessionSets(selectedExerciseId, name) : false;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={resetAndClose}>
+    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={resetAndClose}>
       <View style={styles.modalBg}>
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={resetAndClose} />
         <KeyboardAvoidingView

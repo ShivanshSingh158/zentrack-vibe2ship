@@ -9,6 +9,8 @@ import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { useKeepAwake } from 'expo-keep-awake';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FONT_FAMILY, SPACE, RADIUS, FONT_SIZE } from '../../theme/tokens';
 import { useGymLog, todayStr } from '../../hooks/useGymLog';
@@ -29,10 +31,24 @@ import ActiveQuickChips from '../../components/Gym/ActiveQuickChips';
 import SupersetPickerModal from '../../components/Gym/SupersetPickerModal';
 import ActiveSwapModal from '../../components/Gym/ActiveSwapModal';
 import AnimatedRestTimer from '../../components/Gym/AnimatedRestTimer';
+import { insertWarmupLadder } from '../../utils/warmupGenerator';
 
 interface SetInputState {
   weight: string;
   reps: string;
+}
+
+// ─── Pure Helper: Parse Upper Circuit of Reps (e.g., "10-12" -> 12, "8-10" -> 10) ───
+export function parseUpperTargetReps(targetRepsStr?: string | number | null): number {
+  if (!targetRepsStr) return 10;
+  const str = String(targetRepsStr).trim();
+  if (str.includes('-')) {
+    const parts = str.split('-');
+    const upper = parseInt(parts[parts.length - 1].trim(), 10);
+    if (!isNaN(upper) && upper > 0) return Math.min(50, upper);
+  }
+  const val = parseInt(str, 10);
+  return !isNaN(val) && val > 0 ? Math.min(50, val) : 10;
 }
 
 // ─── Pure Helper: Resolve Set Weight & Reps across fallback tiers ─────────────
@@ -46,7 +62,7 @@ function resolveSetWeightAndReps(
   isWeightEdited?: boolean,
   isRepsEdited?: boolean
 ): { weight: number | null; reps: number | null } {
-  // 1. Resolve Weight
+  // 1. Resolve Weight (Clamped 0 - 1000 kg)
   let weight: number | null = null;
   if (input?.weight !== '' && input?.weight !== undefined) {
     weight = parseFloat(input.weight);
@@ -62,25 +78,25 @@ function resolveSetWeightAndReps(
     weight = Number(overloadSuggestion.recommended);
   }
 
-  // 2. Resolve Reps
+  // 2. Resolve Reps (Clamped 1 - 50 reps, upper bound of ranges)
   let reps: number | null = null;
   if (input?.reps !== '' && input?.reps !== undefined) {
-    reps = parseInt(input.reps, 10);
+    reps = parseUpperTargetReps(input.reps);
   } else if (isRepsEdited) {
     reps = null;
   } else if (currentSet?.reps != null && Number(currentSet.reps) > 0) {
-    reps = Number(currentSet.reps);
+    reps = parseUpperTargetReps(currentSet.reps);
   } else if (prevInput?.reps !== '' && prevInput?.reps !== undefined) {
-    reps = parseInt(prevInput.reps, 10);
+    reps = parseUpperTargetReps(prevInput.reps);
   } else if (prevSet?.reps != null && Number(prevSet.reps) > 0) {
-    reps = Number(prevSet.reps);
+    reps = parseUpperTargetReps(prevSet.reps);
   } else {
-    reps = parseInt(String(targetRepsStr || '8').split('-')[0], 10) || 8;
+    reps = parseUpperTargetReps(targetRepsStr);
   }
 
   return {
-    weight: weight !== null && !isNaN(weight) ? weight : null,
-    reps: reps !== null && !isNaN(reps) ? reps : 8,
+    weight: weight !== null && !isNaN(weight) ? Math.min(1000, Math.max(0, weight)) : null,
+    reps: reps !== null && !isNaN(reps) ? Math.min(50, Math.max(1, reps)) : 10,
   };
 }
 
@@ -127,6 +143,13 @@ export default function ActiveLoggingScreen() {
     updateNotes,
   } = useGymLog(date);
 
+  const insets = useSafeAreaInsets();
+  // Guarantee timer always floats cleanly above bottom navigation bar
+  const timerBottomOffset = Math.max(insets.bottom + 68, 88);
+
+  // Prevent phone screen from locking or sleeping during active workout
+  useKeepAwake();
+
   const [showPR, setShowPR] = useState(false);
   const [workoutNotes, setWorkoutNotes] = useState(log?.notes || '');
   const [showNotesInput, setShowNotesInput] = useState(!!log?.notes);
@@ -151,6 +174,11 @@ export default function ActiveLoggingScreen() {
   const [aiSwapList, setAiSwapList] = useState<any[]>([]);
   const [isAiSwapLoading, setIsAiSwapLoading] = useState(false);
   const [isRefreshingVideo, setIsRefreshingVideo] = useState(false);
+  const [showCompletedWarmups, setShowCompletedWarmups] = useState(false);
+
+  useEffect(() => {
+    setShowCompletedWarmups(false);
+  }, [activeExIndex]);
 
   const { gymLogs } = useWellnessData();
 
@@ -234,10 +262,10 @@ export default function ActiveLoggingScreen() {
           initialWeight = String(lastSet.weight);
         }
 
-        const defaultTargetReps = String(parseInt(String(exercise.targetReps || '8-12').split('-')[0], 10) || 8);
+        const defaultTargetReps = String(parseUpperTargetReps(exercise.targetReps));
         let initialReps = (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0)
-          ? String(s.reps)
-          : (lastSet?.reps ? String(lastSet.reps) : defaultTargetReps);
+          ? String(parseUpperTargetReps(s.reps))
+          : (lastSet?.reps ? String(parseUpperTargetReps(lastSet.reps)) : defaultTargetReps);
 
         return {
           weight: edited?.weight ? (liveWeight !== undefined ? liveWeight : (existingWeight || '')) : (initialWeight || existingWeight || ''),
@@ -247,34 +275,12 @@ export default function ActiveLoggingScreen() {
     });
   }, [exercise?.exerciseId, exercise?.name, activeExIndex, exercise?.setsLog, gymLogs, overloadSuggestion, date]);
 
-  // Load AI Swaps on modal open
+  // Load Instant Database Swaps on modal open
   useEffect(() => {
     if (!showSwapModal || !exercise) return;
-    let isCancelled = false;
     const swaps = getExerciseSwapAlternatives(exercise.name, exercise.muscle);
-
-    setAiSwapList([]);
-    setIsAiSwapLoading(true);
-
-    async function loadAllSwaps() {
-      try {
-        const enriched = await Promise.all(
-          swaps.map(async (alt) => {
-            let vidId = alt.videoId && alt.videoId !== '1' ? alt.videoId : undefined;
-            if (!vidId) vidId = (await autoResolveExerciseVideoId(alt.name)) || '';
-            return { ...alt, videoId: vidId };
-          })
-        );
-        if (!isCancelled) setAiSwapList(enriched);
-      } catch (e) {
-        if (!isCancelled) setAiSwapList(swaps);
-      } finally {
-        if (!isCancelled) setIsAiSwapLoading(false);
-      }
-    }
-
-    loadAllSwaps();
-    return () => { isCancelled = true; };
+    setAiSwapList(swaps);
+    setIsAiSwapLoading(false);
   }, [showSwapModal, exercise?.name, exercise?.muscle]);
 
   // Auto-resolve video ID
@@ -304,7 +310,7 @@ export default function ActiveLoggingScreen() {
 
     const weightPart = prevSession.lastWeight ? `@ ${prevSession.lastWeight}kg` : '';
     const repsPart = prevSession.avgReps ? `${prevSession.avgReps} reps` : '';
-    return `Last time: ${prevSession.sets.length} sets ${repsPart ? `× ${repsPart}` : ''} ${weightPart}`.trim();
+    return `Last: ${prevSession.sets.length} sets ${repsPart ? `× ${repsPart}` : ''} ${weightPart}`.trim();
   }, [log, activeExIndex, gymLogs, date]);
 
   const activeSetIndex = exercise ? exercise.setsLog.findIndex(s => !s.completed) : -1;
@@ -337,10 +343,28 @@ export default function ActiveLoggingScreen() {
   }, [exercise, isRefreshingVideo, realExerciseIndex, updateExercise]);
 
   const handleTextChange = useCallback((setIdx: number, field: 'reps' | 'weight', text: string) => {
+    let sanitized = text.trim();
+
+    if (field === 'weight') {
+      const num = parseFloat(sanitized);
+      if (!isNaN(num) && num > 1000) {
+        sanitized = '1000';
+      }
+    } else if (field === 'reps') {
+      if (sanitized.includes('-')) {
+        sanitized = String(parseUpperTargetReps(sanitized));
+      } else {
+        const num = parseInt(sanitized, 10);
+        if (!isNaN(num) && num > 50) {
+          sanitized = '50';
+        }
+      }
+    }
+
     if (!userEditedFieldsRef.current[setIdx]) userEditedFieldsRef.current[setIdx] = {};
     userEditedFieldsRef.current[setIdx][field] = true;
     if (!liveInputsRef.current[setIdx]) liveInputsRef.current[setIdx] = {};
-    liveInputsRef.current[setIdx][field] = text;
+    liveInputsRef.current[setIdx][field] = sanitized;
 
     setSetInputs(prev => {
       const next = [...prev];
@@ -349,7 +373,7 @@ export default function ActiveLoggingScreen() {
         weight: curSet?.weight != null ? String(curSet.weight) : '',
         reps: curSet?.reps != null ? String(curSet.reps) : ''
       };
-      next[setIdx] = { ...current, [field]: text };
+      next[setIdx] = { ...current, [field]: sanitized };
       return next;
     });
   }, [exercise?.setsLog]);
@@ -483,7 +507,7 @@ export default function ActiveLoggingScreen() {
       baseWeight = Number(overloadSuggestion.recommended);
     }
 
-    const newWeight = Math.max(0, Math.round((baseWeight + delta) * 10) / 10);
+    const newWeight = Math.min(1000, Math.max(0, Math.round((baseWeight + delta) * 10) / 10));
     handleTextChange(targetIdx, 'weight', String(newWeight));
   }, [exercise, activeSetIndex, setInputs, overloadSuggestion, handleTextChange]);
 
@@ -497,18 +521,18 @@ export default function ActiveLoggingScreen() {
     const curInput = setInputs[targetIdx];
     const prevSet = targetIdx > 0 ? exercise.setsLog[targetIdx - 1] : null;
 
-    let baseReps = 8;
+    let baseReps = 10;
     if (curInput?.reps !== '' && curInput?.reps !== undefined) {
-      baseReps = parseInt(curInput.reps, 10) || 8;
+      baseReps = parseUpperTargetReps(curInput.reps);
     } else if (curSet?.reps != null && Number(curSet.reps) > 0) {
-      baseReps = Number(curSet.reps);
+      baseReps = parseUpperTargetReps(curSet.reps);
     } else if (prevSet?.reps != null && Number(prevSet.reps) > 0) {
-      baseReps = Number(prevSet.reps);
+      baseReps = parseUpperTargetReps(prevSet.reps);
     } else {
-      baseReps = parseInt(String(exercise.targetReps || '8').split('-')[0], 10) || 8;
+      baseReps = parseUpperTargetReps(exercise.targetReps);
     }
 
-    const newReps = Math.max(1, baseReps + delta);
+    const newReps = Math.min(50, Math.max(1, baseReps + delta));
     handleTextChange(targetIdx, 'reps', String(newReps));
   }, [exercise, activeSetIndex, setInputs, handleTextChange]);
 
@@ -521,8 +545,24 @@ export default function ActiveLoggingScreen() {
     const prevSet = targetIdx > 0 ? exercise.setsLog[targetIdx - 1] : null;
     const prevInput = targetIdx > 0 ? setInputs[targetIdx - 1] : null;
 
-    const repWeight = prevInput?.weight || (prevSet?.weight != null ? String(prevSet.weight) : (overloadSuggestion?.recommended ? String(overloadSuggestion.recommended) : ''));
-    const repReps = prevInput?.reps || (prevSet?.reps != null ? String(prevSet.reps) : (String(exercise.targetReps || '8').split('-')[0] || '8'));
+    let repWeight = '';
+    if (prevInput?.weight) {
+      repWeight = prevInput.weight;
+    } else if (prevSet?.weight != null && Number(prevSet.weight) > 0) {
+      repWeight = String(prevSet.weight);
+    } else if (overloadSuggestion?.recommended) {
+      repWeight = String(Math.min(1000, Number(overloadSuggestion.recommended)));
+    }
+
+    let repReps = '';
+    if (prevInput?.reps) {
+      repReps = String(parseUpperTargetReps(prevInput.reps));
+    } else if (prevSet?.reps != null && Number(prevSet.reps) > 0) {
+      repReps = String(parseUpperTargetReps(prevSet.reps));
+    } else {
+      // Match Target upper bound (e.g. 10-12 -> 12)
+      repReps = String(parseUpperTargetReps(exercise.targetReps));
+    }
 
     if (repWeight) handleTextChange(targetIdx, 'weight', repWeight);
     if (repReps) handleTextChange(targetIdx, 'reps', repReps);
@@ -552,6 +592,60 @@ export default function ActiveLoggingScreen() {
     setSetInputs(prev => prev.filter((_, i) => i !== idx));
   }, [exercise, realExerciseIndex, updateExercise]);
 
+  const warmupSets = useMemo(() => exercise?.setsLog.filter(s => s.isWarmup) || [], [exercise?.setsLog]);
+  const hasWarmups = warmupSets.length > 0;
+  const allWarmupsCompleted = hasWarmups && warmupSets.every(s => s.completed);
+  const hasAnyWarmupCompleted = hasWarmups && warmupSets.some(s => s.completed);
+
+  const handleAutoWarmup = useCallback(() => {
+    if (!exercise) return;
+    hapticMedium();
+
+    const existingWarmups = exercise.setsLog.filter(s => s.isWarmup);
+    if (existingWarmups.length > 0) {
+      // Toggle off / remove warmups
+      const workingSetsOnly = exercise.setsLog.filter(s => !s.isWarmup).map((s, i) => ({
+        ...s,
+        setNumber: i + 1,
+        isWarmup: false,
+        warmupLabel: undefined,
+      }));
+      const newEx = {
+        ...exercise,
+        setsLog: workingSetsOnly,
+      };
+      updateExercise(realExerciseIndex, newEx);
+      setSetInputs(workingSetsOnly.map(s => ({
+        weight: (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ? String(s.weight) : '',
+        reps: (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0) ? String(s.reps) : '',
+      })));
+      return;
+    }
+
+    // Determine target working weight
+    let targetW = 40;
+    const firstWorking = exercise.setsLog.find(s => !s.isWarmup && s.weight != null && Number(s.weight) > 0);
+    if (firstWorking?.weight) {
+      targetW = Number(firstWorking.weight);
+    } else if (overloadSuggestion?.recommended) {
+      targetW = Number(overloadSuggestion.recommended);
+    } else if (exercise.lastSessionSets?.[0]?.weight) {
+      targetW = Number(exercise.lastSessionSets[0].weight);
+    }
+
+    const updatedSets = insertWarmupLadder(exercise.setsLog, targetW);
+    const newEx = {
+      ...exercise,
+      setsLog: updatedSets,
+    };
+
+    updateExercise(realExerciseIndex, newEx);
+    setSetInputs(updatedSets.map(s => ({
+      weight: (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ? String(s.weight) : '',
+      reps: (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0) ? String(s.reps) : '',
+    })));
+  }, [exercise, overloadSuggestion, lastTimeData, realExerciseIndex, updateExercise]);
+
   const handleAddSet = useCallback(() => {
     if (!exercise) return;
     hapticLight();
@@ -565,7 +659,7 @@ export default function ActiveLoggingScreen() {
       setsLog: [
         ...exercise.setsLog,
         {
-          setNumber: exercise.setsLog.length + 1,
+          setNumber: exercise.setsLog.filter(s => !s.isWarmup).length + 1,
           reps: repsVal,
           weight: weightVal,
           completed: false,
@@ -686,6 +780,9 @@ export default function ActiveLoggingScreen() {
               overloadSuggestion={overloadSuggestion}
               lastTimeData={lastTimeData}
               showVideo={showVideo}
+              activeSetIndex={activeSetIndex}
+              isAllComplete={isAllComplete}
+              onRepeatPrevious={handleRepeatPreviousSet}
               colors={colors}
               styles={styles}
               onSwapPress={() => {
@@ -739,18 +836,7 @@ export default function ActiveLoggingScreen() {
               />
             )}
 
-            {/* Smart Quick-Fill Chips */}
-            {!isAllComplete && (
-              <ActiveQuickChips
-                activeSetIndex={activeSetIndex}
-                styles={styles}
-                onRepeatPrevious={handleRepeatPreviousSet}
-                onAdjustWeight={handleAdjustWeight}
-                onAdjustReps={handleAdjustReps}
-              />
-            )}
-
-            {/* Set Rows */}
+            {/* Set Rows with Warmup / Working Phase Dividers */}
             {exercise.setsLog.map((set, idx) => {
               const isActive = idx === activeSetIndex;
               const inputState = setInputs[idx] || { weight: '', reps: '' };
@@ -766,69 +852,131 @@ export default function ActiveLoggingScreen() {
                 ? (setRepsStr || inputState.reps || '')
                 : (isInputReady ? inputState.reps : (setRepsStr || ''));
 
+              const prevSet = idx > 0 ? exercise.setsLog[idx - 1] : null;
+              const isFirstWarmup = set.isWarmup && idx === 0;
+              const isFirstWorking = !set.isWarmup && (idx === 0 || !!prevSet?.isWarmup);
+
+              // Auto-collapse completed warm-up sets
+              if (set.isWarmup && allWarmupsCompleted && !showCompletedWarmups) {
+                if (isFirstWarmup) {
+                  return (
+                    <TouchableOpacity
+                      key="warmup-collapsed-summary"
+                      activeOpacity={0.75}
+                      onPress={() => {
+                        hapticLight();
+                        setShowCompletedWarmups(true);
+                      }}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        backgroundColor: 'rgba(255, 159, 77, 0.08)',
+                        borderColor: 'rgba(255, 159, 77, 0.22)',
+                        borderWidth: 1,
+                        borderRadius: RADIUS.md,
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="checkmark-circle" size={14} color="#ff9f4d" />
+                        <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 11.5, color: '#ff9f4d' }}>
+                          Warm-up Completed ({warmupSets.length} {warmupSets.length === 1 ? 'set' : 'sets'})
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                        <Text style={{ fontFamily: FONT_FAMILY.regular, fontSize: 11, color: colors.textMuted }}>Show</Text>
+                        <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }
+                return null;
+              }
+
               return (
-                <SwipeableSetRow
-                  key={`set-${idx}`}
-                  set={set}
-                  idx={idx}
-                  isActive={isActive}
-                  isCompleted={!!set.completed}
-                  displayWeight={displayWeight}
-                  displayReps={displayReps}
-                  colors={colors}
-                  isDark={isDark}
-                  styles={styles}
-                  onTextChange={(field, text) => handleTextChange(idx, field, text)}
-                  onBlur={() => handleBlur(idx)}
-                  onToggleComplete={() => handleToggleSetComplete(idx)}
-                  onLongPress={() => handleDeleteSet(idx)}
-                  onSwipeComplete={() => handleSwipeCompleteSet(idx)}
-                />
+                <React.Fragment key={`set-frag-${idx}`}>
+                  {isFirstWarmup && (
+                    <View style={[styles.phaseHeaderRow, allWarmupsCompleted && { justifyContent: 'space-between' }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                        <Ionicons name="layers-outline" size={13} color="#ff9f4d" />
+                        <Text style={[styles.phaseHeaderText, { color: '#ff9f4d' }]}>WARM-UP SETS</Text>
+                        <View style={styles.phaseHeaderLine} />
+                      </View>
+                      {allWarmupsCompleted && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            hapticLight();
+                            setShowCompletedWarmups(false);
+                          }}
+                          style={{ paddingHorizontal: 6, paddingVertical: 2 }}
+                        >
+                          <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 11, color: colors.textMuted }}>Hide</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                  {isFirstWorking && hasWarmups && (!allWarmupsCompleted || showCompletedWarmups) && (
+                    <View style={styles.phaseHeaderRow}>
+                      <Ionicons name="barbell-outline" size={13} color={colors.accentPrimary} />
+                      <Text style={[styles.phaseHeaderText, { color: colors.accentPrimary }]}>WORKING SETS</Text>
+                      <View style={styles.phaseHeaderLine} />
+                    </View>
+                  )}
+                  <SwipeableSetRow
+                    key={`set-${idx}`}
+                    set={set}
+                    idx={idx}
+                    isActive={isActive}
+                    isCompleted={!!set.completed}
+                    displayWeight={displayWeight}
+                    displayReps={displayReps}
+                    colors={colors}
+                    isDark={isDark}
+                    styles={styles}
+                    onTextChange={(field, text) => handleTextChange(idx, field, text)}
+                    onBlur={() => handleBlur(idx)}
+                    onToggleComplete={() => handleToggleSetComplete(idx)}
+                    onLongPress={() => handleDeleteSet(idx)}
+                    onSwipeComplete={() => handleSwipeCompleteSet(idx)}
+                  />
+                </React.Fragment>
               );
             })}
 
-            {/* Add Set Button */}
-            <TouchableOpacity onPress={handleAddSet} style={styles.addSetBtn}>
-              <Text style={styles.addSetBtnText}>+ Add Set</Text>
-            </TouchableOpacity>
-
-            {/* Session Notes */}
-            <View style={{ marginTop: 20, marginBottom: 8 }}>
+            {/* Set Actions: Balanced Clean Pills for Add Set & Auto Warm-up */}
+            <View style={[styles.setActionsRow, hasAnyWarmupCompleted && { justifyContent: 'center' }]}>
               <TouchableOpacity
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}
-                onPress={() => {
-                  hapticLight();
-                  setShowNotesInput(prev => !prev);
-                }}
+                onPress={handleAddSet}
+                style={[styles.actionPillBtn, styles.actionPillPrimary, hasAnyWarmupCompleted && { flex: 0, paddingHorizontal: 24 }]}
+                activeOpacity={0.75}
               >
-                <Ionicons name={showNotesInput ? 'remove' : 'add'} size={16} color={colors.textMuted} />
-                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  Session Notes
-                </Text>
+                <Ionicons name="add" size={16} color={isDark ? '#a599ff' : colors.accentPrimary} />
+                <Text style={styles.actionPillPrimaryText}>Add Set</Text>
               </TouchableOpacity>
 
-              {showNotesInput && (
-                <TextInput
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    borderRadius: RADIUS.md,
-                    borderWidth: 1,
-                    borderColor: workoutNotes ? 'rgba(165,153,255,0.3)' : 'rgba(255,255,255,0.08)',
-                    padding: 12,
-                    color: colors.textPrimary,
-                    fontFamily: FONT_FAMILY.body,
-                    fontSize: 14,
-                    minHeight: 80,
-                    textAlignVertical: 'top',
-                  }}
-                  placeholder="How did this session feel? Any notes on form, energy, or PRs..."
-                  placeholderTextColor={colors.textMuted}
-                  multiline
-                  value={workoutNotes}
-                  onChangeText={setWorkoutNotes}
-                  onBlur={() => updateNotes(workoutNotes)}
-                />
-              )}
+              {/* Show Auto Warm-up if no warmups, or Remove Warm-up ONLY if none of the warmups are completed yet */}
+              {!hasWarmups ? (
+                <TouchableOpacity
+                  onPress={handleAutoWarmup}
+                  style={styles.actionPillBtn}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name="layers-outline" size={15} color={colors.textSecondary} />
+                  <Text style={styles.actionPillSecondaryText}>Auto Warm-up</Text>
+                </TouchableOpacity>
+              ) : !hasAnyWarmupCompleted ? (
+                <TouchableOpacity
+                  onPress={handleAutoWarmup}
+                  style={[styles.actionPillBtn, styles.warmupBtnActive]}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name="close-circle-outline" size={15} color="#ff9f4d" />
+                  <Text style={styles.actionPillActiveText}>Remove Warm-up</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             {/* Main Action Button */}
@@ -853,9 +1001,19 @@ export default function ActiveLoggingScreen() {
           </ScrollView>
         </View>
 
-        {/* Sticky Rest Timer Overlay */}
+        {/* Sticky Rest Timer Overlay (Always floating strictly above the Bottom Tab Bar) */}
         {(restTimerStartTime && restTimerDurationSecs) ? (
-          <View style={{ position: 'absolute', bottom: 90, left: 0, right: 0, alignItems: 'center', zIndex: 9999 }} pointerEvents="box-none">
+          <View
+            style={{
+              position: 'absolute',
+              bottom: timerBottomOffset,
+              left: 0,
+              right: 0,
+              alignItems: 'center',
+              zIndex: 9999,
+            }}
+            pointerEvents="box-none"
+          >
             <AnimatedRestTimer
               startTime={restTimerStartTime}
               durationSecs={restTimerDurationSecs}

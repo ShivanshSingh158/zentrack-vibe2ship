@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo, memo, useCallback, Suspense } from 'react';
-import { View, Text, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Animated, LayoutAnimation, ScrollView, InteractionManager } from 'react-native';
+import { View, Text, TouchableOpacity, Platform, Alert, Animated, LayoutAnimation, ScrollView, InteractionManager } from 'react-native';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,6 +24,8 @@ import { GymExerciseOptionsSheet } from '../../components/Gym/GymExerciseOptions
 import { useGymAiPlanManager } from '../../hooks/useGymAiPlanManager';
 import GymExerciseDraggableRow from '../../components/Gym/GymExerciseDraggableRow';
 import GymWorkoutBanner from '../../components/Gym/GymWorkoutBanner';
+import WeeklyGymReport from '../../components/Gym/WeeklyGymReport';
+import { useGymPlanPreCache } from '../../hooks/useGymPlanPreCache';
 
 // ─── Heavy Modals: Lazy-loaded on demand (skips parsing ~9,750 LOC on cold boot) ───
 const AddExerciseModal = React.lazy(() => import('../../components/Gym/AddExerciseModal').then(m => ({ default: m.AddExerciseModal })));
@@ -35,7 +37,6 @@ const SwapRoutineModal = React.lazy(() => import('../../components/Gym/SwapRouti
 const GymProfileModal = React.lazy(() => import('../../components/Gym/GymProfileModal').then(m => ({ default: m.GymProfileModal })));
 const GymTemplateModal = React.lazy(() => import('../../components/Gym/GymTemplateModal').then(m => ({ default: m.GymTemplateModal })));
 const GymScheduleSettingsModal = React.lazy(() => import('../../components/Gym/GymScheduleSettingsModal').then(m => ({ default: m.GymScheduleSettingsModal })));
-const WeeklyGymReport = React.lazy(() => import('../../components/Gym/WeeklyGymReport'));
 const BodyMetricsSheet = React.lazy(() => import('../../components/Gym/BodyMetricsSheet'));
 const PRHallOfFameSheet = React.lazy(() => import('../../components/Gym/PRHallOfFameSheet'));
 
@@ -72,6 +73,9 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
 
   const { gymLogs, waterLogs, sleepLogs, applyMasterTemplate, userGymPlan, updateMasterPlan, updateFullMasterPlan } = useWellnessData();
   const { user } = useCoreData();
+
+  // Background exercise GIF pre-caching for 100% offline gym workouts
+  useGymPlanPreCache();
 
   // Streak calculation (deferred after frame 0)
   const [currentStreak, setCurrentStreak] = useState(0);
@@ -354,7 +358,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   const renderHeader = useCallback(() => (
     <>
       {/* Week Strip */}
-      <Animated.View style={[s.weekStrip, { opacity: Animated.multiply(headerFade, animWeek), transform: [{ translateY: animWeek.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
+      <View style={s.weekStrip}>
         <TouchableOpacity onPress={() => { hapticLight(); LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setWeekOffset(prev => prev - 1); setSelectedDate(prev => dateStrOffset(-7, prev)); }} style={s.weekNavBtn}>
           <Ionicons name="chevron-back" size={16} color={COLORS.textTertiary} />
         </TouchableOpacity>
@@ -382,7 +386,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         <TouchableOpacity onPress={() => { hapticLight(); LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setWeekOffset(prev => prev + 1); setSelectedDate(prev => dateStrOffset(7, prev)); }} style={s.weekNavBtn}>
           <Ionicons name="chevron-forward" size={16} color={COLORS.textTertiary} />
         </TouchableOpacity>
-      </Animated.View>
+      </View>
 
       {planDay?.isRest ? (
         <WeeklyGymReport gymLogs={gymLogs} weekAnchorDate={selectedDate} userGymPlan={userGymPlan} />
@@ -432,7 +436,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </>
       )}
     </>
-  ), [s, headerFade, animWeek, weekDates, selectedDate, planDay?.isRest, gymLogs, userGymPlan, sleepLogs, triggerDeload, log, currentStreak, animBanner, navigation, handleStartWorkout, handleResumeWorkout, endWorkout, resumeWorkout, activeExercisesData.length]);
+  ), [s, weekDates, selectedDate, planDay?.isRest, gymLogs, userGymPlan, sleepLogs, triggerDeload, log, currentStreak, animBanner, navigation, handleStartWorkout, handleResumeWorkout, endWorkout, resumeWorkout, activeExercisesData.length]);
 
   // Cardio Renderer
   const renderCardio = useCallback(() => {
@@ -601,10 +605,10 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
           </View>
         </View>
 
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={{ flex: 1 }}>
           <DraggableFlatList
             data={activeExercisesData}
-            keyExtractor={(item, index) => item.exerciseId + '-' + index}
+            keyExtractor={(item, index) => (item.exerciseId || item.id || item.name || 'ex') + '-' + index}
             renderItem={renderExerciseItem}
             ListHeaderComponent={renderHeader}
             ListFooterComponent={renderFooter}
@@ -809,7 +813,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
               s={s}
             />
           )}
-        </KeyboardAvoidingView>
+        </View>
       </View>
 
       {/* Progressive Overload Toast */}

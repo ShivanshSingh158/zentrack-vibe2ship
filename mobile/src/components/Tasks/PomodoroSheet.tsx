@@ -1,46 +1,55 @@
 /**
- * PomodoroSheet.tsx - ZenTrack Mobile
+ * PomodoroSheet.tsx — ZenTrack Mobile
  *
- * Ultra-Modern 90 FPS Pomodoro Timer with subtle typography,
- * dynamic auto-calculated task duration, smooth SVG progress ring,
- * breathing ambient aura, and pure OLED black aesthetics.
+ * Ultra-Modern 90 FPS Subtle Pomodoro Timer:
+ * - Powered by global persistent `PomodoroContext` (survives app restarts & backgrounding).
+ * - Smooth SVG progress ring with linear gradient and subtle dual-layer breathing aura.
+ * - Tabular monospace digits for 0-jitter countdown rendering.
+ * - Dynamic task duration calculation and auto-linking.
  */
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
-  View, Text, Modal, Pressable, ScrollView, Platform, Vibration, StyleSheet,
+  View, Text, Modal, Pressable, ScrollView, StyleSheet,
 } from 'react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, withRepeat, withSequence,
-  Easing, useAnimatedProps,
+  Easing, useAnimatedProps, withSpring,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
-import { db } from '../../services/firebase';
+import { usePomodoro } from '../../contexts/PomodoroContext';
 import { feedback } from '../../utils/haptics';
 import { formatLocalDateStr } from '../../utils/dateUtils';
-import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '../../theme/tokens';
+import { SPACE } from '../../theme/tokens';
 
-// Extracted math, subcomponents & styles
 import {
-  PomodoroMode, PomodoroConfig, DEFAULT_CONFIG,
-  calculateTaskDurationSeconds, parseTimeToMinutes, formatTime, formatDurationLabel,
+  PomodoroMode,
+  calculateTaskDurationSeconds,
+  formatTime,
+  formatDurationLabel,
 } from './pomodoroTimeMath';
 import {
-  RING_SIZE, RING_STROKE, RING_RADIUS, RING_CIRCUM,
-  modeLabel, modeIconName, modeAccentDark, modeAccentLight, makeStyles,
+  RING_SIZE,
+  RING_STROKE,
+  RING_RADIUS,
+  RING_CIRCUM,
+  modeLabel,
+  modeIconName,
+  modeAccentDark,
+  modeAccentLight,
+  makeStyles,
 } from './pomodoroStyles';
 import PomodoroTaskPicker from './PomodoroTaskPicker';
 
-export type { PomodoroMode, PomodoroConfig };
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 interface PomodoroSheetProps {
-  visible: boolean;
-  onClose: () => void;
+  visible?: boolean;
+  onClose?: () => void;
   tasks?: Array<{
     id?: string;
     title?: string;
@@ -53,46 +62,70 @@ interface PomodoroSheetProps {
   selectedDate?: string;
 }
 
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
-export default function PomodoroSheet({ visible, onClose, tasks = [], selectedDate }: PomodoroSheetProps) {
+export default function PomodoroSheet({
+  visible: propVisible,
+  onClose: propOnClose,
+  tasks = [],
+  selectedDate,
+}: PomodoroSheetProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { user } = useCoreData();
-  const accent = isDark ? modeAccentDark : modeAccentLight;
+  const { tasks: coreTasks } = useCoreData();
+  const {
+    status,
+    mode,
+    timeLeft,
+    totalDuration,
+    sessionCount,
+    completedToday,
+    linkedTaskId,
+    config,
+    isSheetOpen,
+    setIsSheetOpen,
+    toggleTimer,
+    resetTimer,
+    skipSession,
+    extendTime,
+    switchMode,
+    setConfig,
+    setLinkedTask,
+    unlinkTask,
+  } = usePomodoro();
 
-  const [mode, setMode] = useState<PomodoroMode>('focus');
-  const [config, setConfig] = useState<PomodoroConfig>(DEFAULT_CONFIG);
-  const [timeLeft, setTimeLeft] = useState<number>(config.focus);
-  const [running, setRunning] = useState<boolean>(false);
-  const [sessionCount, setSessionCount] = useState<number>(0);
-  const [completedToday, setCompletedToday] = useState<number>(0);
-  const [linkedTaskId, setLinkedTaskId] = useState<string | null>(null);
+  const isVisible = propVisible !== undefined ? propVisible : isSheetOpen;
+  const handleClose = useCallback(() => {
+    if (propOnClose) propOnClose();
+    setIsSheetOpen(false);
+  }, [propOnClose, setIsSheetOpen]);
+
+  const accentFn = isDark ? modeAccentDark : modeAccentLight;
+  const currentAccent = accentFn(mode);
+
   const [showTaskPicker, setShowTaskPicker] = useState<boolean>(false);
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const slideY = useSharedValue(600);
   const sheetOpacity = useSharedValue(0);
 
   // 90 FPS Breathing aura animations
   const pulseScale = useSharedValue(1);
-  const pulseOpacity = useSharedValue(0.12);
+  const pulseOpacity = useSharedValue(0.10);
+  const playBtnScale = useSharedValue(1);
 
   useEffect(() => {
-    if (visible) {
+    if (isVisible) {
       sheetOpacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
-      slideY.value = withTiming(0, { duration: 200, easing: Easing.out(Easing.cubic) });
+      slideY.value = withTiming(0, { duration: 220, easing: Easing.out(Easing.cubic) });
     } else {
       sheetOpacity.value = withTiming(0, { duration: 140, easing: Easing.in(Easing.quad) });
-      slideY.value = withTiming(600, { duration: 150, easing: Easing.in(Easing.quad) });
+      slideY.value = withTiming(600, { duration: 160, easing: Easing.in(Easing.quad) });
     }
-  }, [visible]);
+  }, [isVisible]);
 
   useEffect(() => {
-    if (running) {
+    if (status === 'running') {
       pulseScale.value = withRepeat(
         withSequence(
-          withTiming(1.06, { duration: 1600, easing: Easing.inOut(Easing.sin) }),
+          withTiming(1.08, { duration: 1600, easing: Easing.inOut(Easing.sin) }),
           withTiming(1.0, { duration: 1600, easing: Easing.inOut(Easing.sin) })
         ),
         -1,
@@ -100,7 +133,7 @@ export default function PomodoroSheet({ visible, onClose, tasks = [], selectedDa
       );
       pulseOpacity.value = withRepeat(
         withSequence(
-          withTiming(0.24, { duration: 1600, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0.26, { duration: 1600, easing: Easing.inOut(Easing.sin) }),
           withTiming(0.08, { duration: 1600, easing: Easing.inOut(Easing.sin) })
         ),
         -1,
@@ -110,7 +143,7 @@ export default function PomodoroSheet({ visible, onClose, tasks = [], selectedDa
       pulseScale.value = withTiming(1, { duration: 300 });
       pulseOpacity.value = withTiming(0.08, { duration: 300 });
     }
-  }, [running]);
+  }, [status]);
 
   const sheetAnimStyle = useAnimatedStyle(() => ({ transform: [{ translateY: slideY.value }] }));
   const backdropAnimStyle = useAnimatedStyle(() => ({ opacity: sheetOpacity.value }));
@@ -118,97 +151,29 @@ export default function PomodoroSheet({ visible, onClose, tasks = [], selectedDa
     transform: [{ scale: pulseScale.value }],
     opacity: pulseOpacity.value,
   }));
+  const playBtnAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: playBtnScale.value }],
+  }));
 
   const progress = useSharedValue(1);
-  const totalTime = useMemo(() => config[mode], [mode, config]);
+  const currentTotal = totalDuration > 0 ? totalDuration : config[mode];
 
   useEffect(() => {
-    const pct = totalTime > 0 ? timeLeft / totalTime : 0;
-    progress.value = withTiming(pct, { duration: 350, easing: Easing.out(Easing.quad) });
-  }, [timeLeft, totalTime]);
+    const pct = currentTotal > 0 ? timeLeft / currentTotal : 0;
+    progress.value = withTiming(pct, { duration: 300, easing: Easing.out(Easing.quad) });
+  }, [timeLeft, currentTotal]);
 
   const animatedRingProps = useAnimatedProps(() => ({
     strokeDashoffset: RING_CIRCUM * (1 - progress.value),
   }));
 
-  const switchMode = useCallback((newMode: PomodoroMode) => {
-    feedback.tap();
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = null;
-    setRunning(false);
-    setMode(newMode);
-    setTimeLeft(config[newMode]);
-    progress.value = withTiming(1, { duration: 250 });
-  }, [config]);
-
-  const handleSessionComplete = useCallback(async (completedMode: PomodoroMode) => {
-    setRunning(false);
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = null;
-    if (Platform.OS === 'android') Vibration.vibrate([0, 300, 200, 300]);
-    feedback.success();
-
-    if (completedMode === 'focus') {
-      const newCount = sessionCount + 1;
-      setSessionCount(newCount);
-      setCompletedToday(c => c + 1);
-      if (user?.uid) {
-        try {
-          await addDoc(collection(db, 'pomodoro_sessions'), {
-            userId: user.uid,
-            startTime: serverTimestamp(),
-            duration: config.focus,
-            taskId: linkedTaskId ?? null,
-            mode: 'focus',
-          });
-        } catch { /* non-blocking */ }
-      }
-      switchMode(newCount % config.sessionsUntilLong === 0 ? 'longBreak' : 'shortBreak');
-    } else {
-      switchMode('focus');
-    }
-  }, [sessionCount, config, linkedTaskId, user, switchMode]);
-
-  useEffect(() => {
-    if (running) {
-      intervalRef.current = setInterval(() => {
-        setTimeLeft(prev => {
-          if (prev <= 1) { setTimeout(() => handleSessionComplete(mode), 0); return 0; }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-    }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [running, mode]);
-
-  const handleStartPause = useCallback(() => {
-    feedback.commit();
-    setRunning(r => !r);
-  }, []);
-
-  const handleReset = useCallback(() => {
-    feedback.tap();
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = null;
-    setRunning(false);
-    setTimeLeft(config[mode]);
-    progress.value = withTiming(1, { duration: 250 });
-  }, [mode, config]);
-
-  const handleSkip = useCallback(() => {
-    feedback.tap();
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = null;
-    setRunning(false);
-    handleSessionComplete(mode);
-  }, [mode, handleSessionComplete]);
-
-  const handleAddFiveMin = useCallback(() => {
-    feedback.tap();
-    setTimeLeft(prev => prev + 5 * 60);
-  }, []);
+  const handlePlayPause = () => {
+    playBtnScale.value = withSequence(
+      withSpring(0.92, { damping: 15, stiffness: 300 }),
+      withSpring(1, { damping: 12, stiffness: 200 })
+    );
+    toggleTimer();
+  };
 
   const handleToggleDuration = useCallback((targetMode: PomodoroMode, options: number[]) => {
     feedback.tap();
@@ -217,71 +182,41 @@ export default function PomodoroSheet({ visible, onClose, tasks = [], selectedDa
     const nextMins = options[(currentIndex + 1) % options.length];
     const newConfig = { ...config, [targetMode]: nextMins * 60 };
     setConfig(newConfig);
-    if (mode === targetMode) {
-      setTimeLeft(nextMins * 60);
+    if (mode === targetMode && status === 'idle') {
+      switchMode(targetMode);
     }
-  }, [config, mode]);
+  }, [config, mode, status, setConfig, switchMode]);
+
+  // Tasks source for task picker
+  const allTasks = tasks.length > 0 ? tasks : coreTasks;
+  const targetDateStr = useMemo(() => selectedDate || formatLocalDateStr(new Date()), [selectedDate]);
+  const pendingTasks = useMemo(() => {
+    return allTasks.filter((t: any) => {
+      const isPending = t.status === 'pending' || t.status === 'in_progress';
+      if (!isPending) return false;
+      return t.date === targetDateStr;
+    });
+  }, [allTasks, targetDateStr]);
+
+  const linkedTask = useMemo(() => allTasks.find((t: any) => t.id === linkedTaskId), [allTasks, linkedTaskId]);
 
   const handleSelectTask = useCallback((taskId: string) => {
-    const targetTask = tasks.find(t => t.id === taskId);
-    setLinkedTaskId(taskId);
+    const targetTask = allTasks.find((t: any) => t.id === taskId);
     setShowTaskPicker(false);
     feedback.commit();
 
     if (targetTask) {
       const calculatedSecs = calculateTaskDurationSeconds(targetTask);
-      setConfig(prev => ({ ...prev, focus: calculatedSecs }));
-      if (mode === 'focus' && !running) {
-        setTimeLeft(calculatedSecs);
-        progress.value = withTiming(1, { duration: 250 });
-      }
+      setLinkedTask(taskId, targetTask.title || (targetTask as any)?.text || '', calculatedSecs);
+    } else {
+      setLinkedTask(taskId, null);
     }
-  }, [tasks, mode, running]);
-
-  const handleUnlinkTask = useCallback(() => {
-    setLinkedTaskId(null);
-    feedback.tap();
-    setConfig(prev => ({ ...prev, focus: DEFAULT_CONFIG.focus }));
-    if (mode === 'focus' && !running) {
-      setTimeLeft(DEFAULT_CONFIG.focus);
-      progress.value = withTiming(1, { duration: 250 });
-    }
-  }, [mode, running]);
-
-  const handleClose = useCallback(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = null;
-    setRunning(false);
-    onClose();
-  }, [onClose]);
-
-  const currentAccent = accent(mode);
-  const targetDateStr = useMemo(() => selectedDate || formatLocalDateStr(new Date()), [selectedDate]);
-  const pendingTasks = useMemo(() => {
-    return tasks.filter(t => {
-      const isPending = t.status === 'pending' || t.status === 'in_progress';
-      if (!isPending) return false;
-      return t.date === targetDateStr;
-    });
-  }, [tasks, targetDateStr]);
-  const linkedTask = useMemo(() => tasks.find(t => t.id === linkedTaskId), [tasks, linkedTaskId]);
-
-  // Auto-detect when linked task is completed externally
-  useEffect(() => {
-    if (linkedTaskId) {
-      const isStillPending = tasks.some(t => t.id === linkedTaskId && t.status !== 'completed');
-      if (!isStillPending) {
-        setLinkedTaskId(null);
-        setConfig(prev => ({ ...prev, focus: DEFAULT_CONFIG.focus }));
-        feedback.success();
-      }
-    }
-  }, [tasks, linkedTaskId]);
+  }, [allTasks, setLinkedTask]);
 
   const completionPct = useMemo(() => {
-    if (!totalTime || totalTime <= 0) return 0;
-    return Math.min(100, Math.max(0, Math.round(((totalTime - timeLeft) / totalTime) * 100)));
-  }, [timeLeft, totalTime]);
+    if (!currentTotal || currentTotal <= 0) return 0;
+    return Math.min(100, Math.max(0, Math.round(((currentTotal - timeLeft) / currentTotal) * 100)));
+  }, [timeLeft, currentTotal]);
 
   const calculatedTaskDurationText = useMemo(() => {
     if (!linkedTask) return null;
@@ -291,10 +226,10 @@ export default function PomodoroSheet({ visible, onClose, tasks = [], selectedDa
 
   const s = makeStyles(colors, isDark, currentAccent, insets);
 
-  if (!visible) return null;
+  if (!isVisible) return null;
 
   return (
-    <Modal transparent visible={visible} onRequestClose={handleClose} statusBarTranslucent animationType="none">
+    <Modal transparent visible={isVisible} onRequestClose={handleClose} statusBarTranslucent animationType="none">
       <Animated.View style={[s.backdrop, backdropAnimStyle]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
       </Animated.View>
@@ -309,7 +244,9 @@ export default function PomodoroSheet({ visible, onClose, tasks = [], selectedDa
         <View style={s.header}>
           <View>
             <Text style={s.headerTitle}>Pomodoro</Text>
-            <Text style={s.headerSub}>{completedToday} {completedToday === 1 ? 'session' : 'sessions'} completed today</Text>
+            <Text style={s.headerSub}>
+              {completedToday} {completedToday === 1 ? 'session' : 'sessions'} completed today
+            </Text>
           </View>
           <Pressable onPress={handleClose} style={s.closeBtn} hitSlop={12}>
             <Ionicons name="close" size={18} color={colors.textMuted} />
@@ -383,9 +320,14 @@ export default function PomodoroSheet({ visible, onClose, tasks = [], selectedDa
             <View style={s.ringCenterContent}>
               {/* Subtle Status Pill */}
               <View style={s.statusPill}>
-                <View style={[s.statusDot, { backgroundColor: running ? currentAccent : colors.textTertiary }]} />
-                <Text style={[s.statusPillText, { color: running ? currentAccent : colors.textMuted }]}>
-                  {running ? modeLabel(mode) : 'PAUSED'}
+                <View
+                  style={[
+                    s.statusDot,
+                    { backgroundColor: status === 'running' ? currentAccent : colors.textTertiary },
+                  ]}
+                />
+                <Text style={[s.statusPillText, { color: status === 'running' ? currentAccent : colors.textMuted }]}>
+                  {status === 'paused' ? 'PAUSED' : status === 'running' ? modeLabel(mode) : 'READY'}
                 </Text>
               </View>
 
@@ -394,7 +336,11 @@ export default function PomodoroSheet({ visible, onClose, tasks = [], selectedDa
 
               {/* Completion & Time Remaining Meta */}
               <Text style={s.timerMeta}>
-                {running ? `${completionPct}% completed` : `Tap play to start`}
+                {status === 'running'
+                  ? `${completionPct}% completed`
+                  : status === 'paused'
+                  ? `Paused • Tap play to resume`
+                  : `Tap play to start`}
               </Text>
             </View>
           </View>
@@ -409,7 +355,12 @@ export default function PomodoroSheet({ visible, onClose, tasks = [], selectedDa
                     key={i}
                     style={[
                       s.pipCapsule,
-                      isCompleted && { backgroundColor: currentAccent, shadowColor: currentAccent, shadowOpacity: 0.5, shadowRadius: 6 },
+                      isCompleted && {
+                        backgroundColor: currentAccent,
+                        shadowColor: currentAccent,
+                        shadowOpacity: 0.6,
+                        shadowRadius: 6,
+                      },
                     ]}
                   />
                 );
@@ -420,32 +371,34 @@ export default function PomodoroSheet({ visible, onClose, tasks = [], selectedDa
             </Text>
           </View>
 
-          {/* Controls Bar: Reset • Play/Pause • Skip • +5m */}
+          {/* Controls Bar: Reset • Play/Pause • Skip */}
           <View style={s.controlsContainer}>
-            <Pressable style={s.secondaryControlBtn} onPress={handleReset} hitSlop={8}>
+            <Pressable style={s.secondaryControlBtn} onPress={resetTimer} hitSlop={8}>
               <Ionicons name="refresh-outline" size={20} color={colors.textSecondary} />
             </Pressable>
 
-            <Pressable
-              style={[s.primaryPlayBtn, { backgroundColor: currentAccent, shadowColor: currentAccent }]}
-              onPress={handleStartPause}
-            >
-              <Ionicons
-                name={running ? 'pause' : 'play'}
-                size={28}
-                color={isDark ? '#000000' : '#ffffff'}
-                style={running ? undefined : { marginLeft: 3 }}
-              />
-            </Pressable>
+            <Animated.View style={playBtnAnimStyle}>
+              <Pressable
+                style={[s.primaryPlayBtn, { backgroundColor: currentAccent, shadowColor: currentAccent }]}
+                onPress={handlePlayPause}
+              >
+                <Ionicons
+                  name={status === 'running' ? 'pause' : 'play'}
+                  size={30}
+                  color={isDark ? '#000000' : '#ffffff'}
+                  style={status === 'running' ? undefined : { marginLeft: 3 }}
+                />
+              </Pressable>
+            </Animated.View>
 
-            <Pressable style={s.secondaryControlBtn} onPress={handleSkip} hitSlop={8}>
+            <Pressable style={s.secondaryControlBtn} onPress={skipSession} hitSlop={8}>
               <Ionicons name="play-skip-forward-outline" size={20} color={colors.textSecondary} />
             </Pressable>
           </View>
 
           {/* Quick +5 Min Extension Pill */}
           <View style={s.quickBoostRow}>
-            <Pressable style={s.quickBoostBtn} onPress={handleAddFiveMin}>
+            <Pressable style={s.quickBoostBtn} onPress={() => extendTime(300)}>
               <Ionicons name="add" size={13} color={colors.textSecondary} />
               <Text style={s.quickBoostText}>+5 min extend</Text>
             </Pressable>
@@ -460,7 +413,7 @@ export default function PomodoroSheet({ visible, onClose, tasks = [], selectedDa
             linkedTaskId={linkedTaskId}
             showTaskPicker={showTaskPicker}
             setShowTaskPicker={setShowTaskPicker}
-            handleUnlinkTask={handleUnlinkTask}
+            handleUnlinkTask={unlinkTask}
             handleSelectTask={handleSelectTask}
             pendingTasks={pendingTasks}
             formatDurationLabel={formatDurationLabel}
