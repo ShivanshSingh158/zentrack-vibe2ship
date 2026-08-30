@@ -38,6 +38,7 @@ import { makeGymProgressStyles } from './gymProgressStyles';
 import AnatomicalBodyMapCard from '../../components/Gym/AnatomicalBodyMapCard';
 import EffortDistributionCard from '../../components/Gym/Charts/EffortDistributionCard';
 import GymProgressCardio from '../../components/Gym/GymProgressCardio';
+import GymProgressSkeleton from '../../components/Gym/GymProgressSkeleton';
 import { estimate1RM, calculateRepMaxTable } from '../../services/oneRepMaxEngine';
 import { calculateEffortSummary } from '../../services/effortEngine';
 
@@ -64,7 +65,7 @@ export default function GymProgressScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeGymProgressStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
-  const { gymLogs } = useWellnessData();
+  const { gymLogs, gymLogsReady } = useWellnessData();
 
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
@@ -373,7 +374,12 @@ export default function GymProgressScreen() {
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      {!gymLogsReady && (!gymLogs || gymLogs.length === 0) ? (
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <GymProgressSkeleton />
+        </ScrollView>
+      ) : (
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* 1. ── Top 4 KPI Dashboard Tiles ────────────────────────────────────── */}
         <Animated.View
           style={[
@@ -794,7 +800,8 @@ export default function GymProgressScreen() {
             />
           </View>
         ) : null}
-      </ScrollView>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }

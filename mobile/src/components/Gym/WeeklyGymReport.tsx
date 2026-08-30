@@ -32,6 +32,7 @@ import EffortDistributionCard from './Charts/EffortDistributionCard';
 import ExerciseDeepDiveModal from './ExerciseDeepDiveModal';
 import ConsistencyHeatmap from './Charts/ConsistencyHeatmap';
 import AnatomicalBodyMapCard from './AnatomicalBodyMapCard';
+import WeeklyReportSkeleton from './WeeklyReportSkeleton';
 import {
   getOrGenerateWeeklyGymAnalysis,
   getCachedWeeklyGymAnalysis,

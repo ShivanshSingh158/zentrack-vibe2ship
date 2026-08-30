@@ -31,6 +31,7 @@ import { getDueFlashcards, Flashcard } from '../services/flashcardService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useOfflineStatus } from '../hooks/useOfflineStatus';
 import { areItemsEqual } from '../utils/schemaGuards';
+import DashboardSkeleton from '../components/Dashboard/DashboardSkeleton';
 
 export default function DashboardScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
@@ -403,17 +404,21 @@ export default function DashboardScreen() {
             </View>
           </Animated.View>
 
-          {/* ⚡ 3-Minute Active Recall Due Widget */}
-          <ActiveRecallBanner
-            dueFlashcards={dueFlashcards}
-            isBannerDismissed={isBannerDismissed}
-            onPressReview={() => setFlashcardModalVisible(true)}
-            onDismiss={handleDismissBanner}
-            colors={colors}
-            isDark={isDark}
-          />
+          {!data.tasksReady && data.tasks.length === 0 ? (
+            <DashboardSkeleton />
+          ) : (
+            <>
+              {/* ⚡ 3-Minute Active Recall Due Widget */}
+              <ActiveRecallBanner
+                dueFlashcards={dueFlashcards}
+                isBannerDismissed={isBannerDismissed}
+                onPressReview={() => setFlashcardModalVisible(true)}
+                onDismiss={handleDismissBanner}
+                colors={colors}
+                isDark={isDark}
+              />
 
-          {data.layout.map((layoutItem) => {
+              {data.layout.map((layoutItem) => {
             if (layoutItem.hidden) return null;
 
             if (layoutItem.id === 'quote') {
@@ -486,6 +491,8 @@ export default function DashboardScreen() {
             }
             return null;
           })}
+          </>
+        )}
         </ScrollView>
       </KeyboardAvoidingView>
 

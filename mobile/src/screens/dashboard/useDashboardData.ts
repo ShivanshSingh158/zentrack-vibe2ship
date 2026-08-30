@@ -51,7 +51,7 @@ const DASH_STORAGE_KEYS = [
 export function useDashboardData() {
   // ── Granular domain hooks (replaces useMobileData() monolith) ─────────────
   // Dashboard only re-renders when these specific slices change.
-  const { user, tasks, habitLogs, allHabits } = useCoreData();
+  const { user, tasks, habitLogs, allHabits, tasksReady } = useCoreData();
   const { attendance, attendanceLogs, assignments } = useAcademicData();
   const { gymLogs, userGymPlan, waterLogs, ensureSubscribed: ensureWellnessSubscribed } = useWellnessData();
   const { customEvents } = usePlannerData();
@@ -425,6 +425,7 @@ export function useDashboardData() {
     nowDate, nextClass, appStreak,
     classesAttendedToday, classesTotalToday, overallAttendancePct,
     // State
+    tasksReady,
     quote, xp, xpGain, captureVisible, layout, layoutSheetVisible,
     waterLogVisible, waterTotal,
     // Sara surface

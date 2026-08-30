@@ -26,6 +26,7 @@ import GymExerciseDraggableRow from '../../components/Gym/GymExerciseDraggableRo
 import GymWorkoutBanner from '../../components/Gym/GymWorkoutBanner';
 import WeeklyGymReport from '../../components/Gym/WeeklyGymReport';
 import { useGymPlanPreCache } from '../../hooks/useGymPlanPreCache';
+import GymHomeSkeleton from '../../components/Gym/GymHomeSkeleton';
 
 // ─── Heavy Modals: Lazy-loaded on demand (skips parsing ~9,750 LOC on cold boot) ───
 const AddExerciseModal = React.lazy(() => import('../../components/Gym/AddExerciseModal').then(m => ({ default: m.AddExerciseModal })));
@@ -71,7 +72,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     }, [pillAnim])
   );
 
-  const { gymLogs, waterLogs, sleepLogs, applyMasterTemplate, userGymPlan, updateMasterPlan, updateFullMasterPlan } = useWellnessData();
+  const { gymLogs, gymLogsReady, waterLogs, sleepLogs, applyMasterTemplate, userGymPlan, updateMasterPlan, updateFullMasterPlan } = useWellnessData();
   const { user } = useCoreData();
 
   // Background exercise GIF pre-caching for 100% offline gym workouts
@@ -606,14 +607,19 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </View>
 
         <View style={{ flex: 1 }}>
-          <DraggableFlatList
-            data={activeExercisesData}
-            keyExtractor={(item, index) => (item.exerciseId || item.id || item.name || 'ex') + '-' + index}
-            renderItem={renderExerciseItem}
-            ListHeaderComponent={renderHeader}
-            ListFooterComponent={renderFooter}
-            containerStyle={{ flex: 1 }}
-            activationDistance={20}
+          {!gymLogsReady && gymLogs.length === 0 && !userGymPlan ? (
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 80 }}>
+              <GymHomeSkeleton />
+            </ScrollView>
+          ) : (
+            <DraggableFlatList
+              data={activeExercisesData}
+              keyExtractor={(item, index) => (item.exerciseId || item.id || item.name || 'ex') + '-' + index}
+              renderItem={renderExerciseItem}
+              ListHeaderComponent={renderHeader}
+              ListFooterComponent={renderFooter}
+              containerStyle={{ flex: 1 }}
+              activationDistance={20}
             onDragEnd={({ data }) => {
               if (!log) return;
               const newFullList = [];
@@ -655,6 +661,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
             }}
             scrollEventThrottle={16}
           />
+        )}
 
           {/* Lazy Modals & Sheets */}
           <Suspense fallback={null}>

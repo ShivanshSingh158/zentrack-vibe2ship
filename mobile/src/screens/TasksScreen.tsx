@@ -39,6 +39,7 @@ import TaskTemplatesSheet from '../components/Tasks/TaskTemplatesSheet';
 import { usePomodoro } from '../contexts/PomodoroContext';
 import EditTaskModal from './tasks/EditTaskModal';
 import NewTaskModal from './tasks/NewTaskModal';
+import TasksSkeleton from '../components/Tasks/TasksSkeleton';
 
 function formatTimeStr(raw: string): string {
   if (!raw) return '';
@@ -340,7 +341,11 @@ export default function TasksScreen() {
       )}
 
       {/* VIEWS */}
-      {viewMode === 'timeline' ? (
+      {!tasksReady && tasks.length === 0 ? (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+          <TasksSkeleton />
+        </ScrollView>
+      ) : viewMode === 'timeline' ? (
         <View style={{ flex: 1 }}>
           <TimelineView 
             tasks={selectedDateTasks} 
