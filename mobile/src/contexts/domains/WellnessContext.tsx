@@ -94,25 +94,6 @@ export function WellnessProvider({
     (initialManifest?.waterLogs?.length ?? 0) > 0
   );
 
-  // Fallback hydration: handles cold-start race conditions seamlessly
-  useEffect(() => {
-    let isCancelled = false;
-    loadBootManifest().then(manifest => {
-      if (isCancelled || !manifest) return;
-      unstable_batchedUpdates(() => {
-        setGymLogs(prev => prev.length === 0 && (manifest.gymLogs?.length ?? 0) > 0 ? manifest.gymLogs : prev);
-        setUserGymPlan(prev => !prev && manifest.userGymPlan ? manifest.userGymPlan : prev);
-        setWaterLogs(prev => prev.length === 0 && (manifest.waterLogs?.length ?? 0) > 0 ? manifest.waterLogs : prev);
-        setSleepLogs(prev => prev.length === 0 && (manifest.sleepLogs?.length ?? 0) > 0 ? manifest.sleepLogs : prev);
-        setWeightLogs(prev => prev.length === 0 && (manifest.weightLogs?.length ?? 0) > 0 ? manifest.weightLogs : prev);
-        if ((manifest.gymLogs?.length ?? 0) > 0 || !!manifest.userGymPlan || (manifest.waterLogs?.length ?? 0) > 0) {
-          hasCachedDataRef.current = true;
-        }
-      });
-    }).catch(() => {});
-    return () => { isCancelled = true; };
-  }, []);
-
   // ── Listener auto-restart on error ───────────────────────────────────────
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,23 +124,37 @@ export function WellnessProvider({
     return () => sub.remove();
   }, [user?.uid]);
 
-  // ── Offline-first boot: seed from boot manifest L1 cache immediately ───────
-  // If getBootManifestSync() already populated state on Frame 0, this does 0 re-renders.
+  // ── Offline-first boot: seed from boot manifest L1 cache in parallel ───────
   useEffect(() => {
-    let cancelled = false;
+    let isCancelled = false;
     loadBootManifest().then(manifest => {
-      if (cancelled) return;
+      if (isCancelled || !manifest) return;
       unstable_batchedUpdates(() => {
         let seeded = false;
-        if (gymLogs.length === 0 && Array.isArray(manifest.gymLogs) && manifest.gymLogs.length > 0)       { setGymLogs(manifest.gymLogs); seeded = true; }
-        if (!userGymPlan && manifest.userGymPlan)                                                         { setUserGymPlan(manifest.userGymPlan); seeded = true; }
-        if (waterLogs.length === 0 && Array.isArray(manifest.waterLogs) && manifest.waterLogs.length > 0)    { setWaterLogs(manifest.waterLogs); seeded = true; }
-        if (sleepLogs.length === 0 && Array.isArray(manifest.sleepLogs) && manifest.sleepLogs.length > 0)    { setSleepLogs(manifest.sleepLogs); seeded = true; }
-        if (weightLogs.length === 0 && Array.isArray(manifest.weightLogs) && manifest.weightLogs.length > 0)  { setWeightLogs(manifest.weightLogs); seeded = true; }
+        if (gymLogs.length === 0 && (manifest.gymLogs?.length ?? 0) > 0) {
+          setGymLogs(manifest.gymLogs);
+          seeded = true;
+        }
+        if (!userGymPlan && manifest.userGymPlan) {
+          setUserGymPlan(manifest.userGymPlan);
+          seeded = true;
+        }
+        if (waterLogs.length === 0 && (manifest.waterLogs?.length ?? 0) > 0) {
+          setWaterLogs(manifest.waterLogs);
+          seeded = true;
+        }
+        if (sleepLogs.length === 0 && (manifest.sleepLogs?.length ?? 0) > 0) {
+          setSleepLogs(manifest.sleepLogs);
+          seeded = true;
+        }
+        if (weightLogs.length === 0 && (manifest.weightLogs?.length ?? 0) > 0) {
+          setWeightLogs(manifest.weightLogs);
+          seeded = true;
+        }
         if (seeded) hasCachedDataRef.current = true;
       });
     }).catch(() => {});
-    return () => { cancelled = true; };
+    return () => { isCancelled = true; };
   }, [user?.uid]);
 
 

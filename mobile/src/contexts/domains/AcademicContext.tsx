@@ -85,28 +85,12 @@ export function AcademicProvider({
   const [holidays, setHolidays]               = useState<string[]>([]);
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
-  // Fallback hydration: handles cold-start race conditions seamlessly
-  useEffect(() => {
-    let isCancelled = false;
-    loadBootManifest().then(manifest => {
-      if (isCancelled || !manifest) return;
-      unstable_batchedUpdates(() => {
-        setAttendance(prev => prev.length === 0 && (manifest.attendance?.length ?? 0) > 0 ? manifest.attendance : prev);
-        setAttendanceLogs(prev => prev.length === 0 && (manifest.attendanceLogs?.length ?? 0) > 0 ? manifest.attendanceLogs : prev);
-        setAssignments(prev => prev.length === 0 && (manifest.assignments?.length ?? 0) > 0 ? manifest.assignments : prev);
-        setSemesters(prev => prev.length === 0 && (manifest.semesters?.length ?? 0) > 0 ? manifest.semesters : prev);
-        setSemesterSubjects(prev => prev.length === 0 && (manifest.semesterSubjects?.length ?? 0) > 0 ? manifest.semesterSubjects : prev);
-      });
-    }).catch(() => {});
-    return () => { isCancelled = true; };
-  }, []);
   // OFFLINE-FIRST GUARD: if we seeded from cache, ignore empty memoryLocalCache snapshots.
   const hasCachedDataRef = useRef(
     (initialManifest?.attendance?.length ?? 0) > 0 ||
     (initialManifest?.assignments?.length ?? 0) > 0 ||
     (initialManifest?.semesters?.length ?? 0) > 0
   );
-
   // ── Listener auto-restart on error ───────────────────────────────────────
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -137,23 +121,37 @@ export function AcademicProvider({
     return () => sub.remove();
   }, [user?.uid]);
 
-  // ── Offline-first boot: seed ALL academic collections from boot manifest ───
-  // If getBootManifestSync() already populated state on Frame 0, this does 0 re-renders.
+  // ── Offline-first boot: seed ALL academic collections in parallel ─────────
   useEffect(() => {
-    let cancelled = false;
+    let isCancelled = false;
     loadBootManifest().then(manifest => {
-      if (cancelled) return;
+      if (isCancelled || !manifest) return;
       unstable_batchedUpdates(() => {
         let seeded = false;
-        if (attendance.length === 0 && Array.isArray(manifest.attendance) && manifest.attendance.length > 0)             { setAttendance(manifest.attendance); seeded = true; }
-        if (attendanceLogs.length === 0 && Array.isArray(manifest.attendanceLogs) && manifest.attendanceLogs.length > 0)     { setAttendanceLogs(manifest.attendanceLogs); seeded = true; }
-        if (assignments.length === 0 && Array.isArray(manifest.assignments) && manifest.assignments.length > 0)           { setAssignments(manifest.assignments); seeded = true; }
-        if (semesters.length === 0 && Array.isArray(manifest.semesters) && manifest.semesters.length > 0)               { setSemesters(manifest.semesters); seeded = true; }
-        if (semesterSubjects.length === 0 && Array.isArray(manifest.semesterSubjects) && manifest.semesterSubjects.length > 0) { setSemesterSubjects(manifest.semesterSubjects); seeded = true; }
+        if (attendance.length === 0 && (manifest.attendance?.length ?? 0) > 0) {
+          setAttendance(manifest.attendance);
+          seeded = true;
+        }
+        if (attendanceLogs.length === 0 && (manifest.attendanceLogs?.length ?? 0) > 0) {
+          setAttendanceLogs(manifest.attendanceLogs);
+          seeded = true;
+        }
+        if (assignments.length === 0 && (manifest.assignments?.length ?? 0) > 0) {
+          setAssignments(manifest.assignments);
+          seeded = true;
+        }
+        if (semesters.length === 0 && (manifest.semesters?.length ?? 0) > 0) {
+          setSemesters(manifest.semesters);
+          seeded = true;
+        }
+        if (semesterSubjects.length === 0 && (manifest.semesterSubjects?.length ?? 0) > 0) {
+          setSemesterSubjects(manifest.semesterSubjects);
+          seeded = true;
+        }
         if (seeded) hasCachedDataRef.current = true;
       });
     }).catch(() => {});
-    return () => { cancelled = true; };
+    return () => { isCancelled = true; };
   }, [user?.uid]);
 
   const openSubscriptions = useCallback((uid: string) => {

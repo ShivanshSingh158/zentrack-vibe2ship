@@ -128,27 +128,6 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const DEFAULT_PINNED_MODULES = ["Tasks", "Gym", "Calendar", "Attendance"];
   const [pinnedModules, setPinnedModulesState]    = useState<string[]>(initialManifest?.pinnedModules ?? DEFAULT_PINNED_MODULES);
 
-  // Fallback hydration: In 19/20 cold boots, getBootManifestSync() already populated state on Frame 0.
-  // In the 1/20 race condition where AsyncStorage.multiGet took >5ms, this promise resolves and
-  // immediately hydrates state so the user NEVER sees an empty task list or blank screen.
-  useEffect(() => {
-    let isCancelled = false;
-    loadBootManifest().then(manifest => {
-      if (isCancelled || !manifest) return;
-      unstable_batchedUpdates(() => {
-        setTasks(prev => (prev.length === 0 && (manifest.tasks?.length ?? 0) > 0) ? manifest.tasks : prev);
-        setHabits(prev => (prev.length === 0 && (manifest.habits?.length ?? 0) > 0) ? manifest.habits : prev);
-        setHabitLogs(prev => (prev.length === 0 && (manifest.habitLogs?.length ?? 0) > 0) ? manifest.habitLogs : prev);
-        if ((manifest.tasks?.length ?? 0) > 0 || (manifest.habits?.length ?? 0) > 0) {
-          hasCachedDataRef.current = true;
-          setFirestoreReady(true);
-        }
-      });
-    }).catch(() => {});
-
-    return () => { isCancelled = true; };
-  }, []);
-
   const setPinnedModules = (mods: string[]) => {
     const clamped = mods.length > 0 ? mods.slice(0, 4) : DEFAULT_PINNED_MODULES;
     setPinnedModulesState(clamped);
@@ -156,43 +135,53 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem("@zentrack_pinned_modules", JSON.stringify(clamped)).catch(console.warn);
   };
 
-  // NOTE: readCoreCacheMulti() was previously called here to reseed tasks/habits/habitLogs.
-  // That was a REDUNDANT double-read. The data is already seeded from getBootManifestSync()
-  // in the useState() initializers above (lines 87-89). bootManifest.ts reads the same
-  // AsyncStorage keys (@zentrack_cache_tasks, @zentrack_cache_habits, @zentrack_cache_habitlogs)
-  // in its multiGet call. Calling readCoreCacheMulti() again caused:
-  //   1. A 2nd AsyncStorage.multiGet (5-15ms blocked async) on every uid change
-  //   2. 3 setState calls with IDENTICAL values → 3 spurious re-renders of Dashboard
-  //   3. This fired on EVERY Firebase auth confirmation (every ~60min)
-  // Removed. Firestore snapshots below write fresh data to both state and AsyncStorage
-  // so subsequent boots are always fast.
-
-  // Auth state — updates user reference.
-  // OFFLINE-FIRST GUARD: Firebase fires onAuthStateChanged(null) during routine
-  // 60-min token refreshes. We suppress null-user clears for 5 seconds after
-  // first auth, and only clear when there is ALSO no optimistic user in storage.
-  // This matches the WhatsApp / Instagram pattern: offline = stay logged in.
+  // ── Parallel Startup Hydration & Auth Resolution (Promise.all) ───────────
   useEffect(() => {
     let cancelled = false;
 
-    // Check synchronous auth or cached optimistic user on mount (~0ms).
-    // GUARD: Skip setUser if the UID is already correct (seeded by getBootManifestSync
-    // in useState). Prevents a spurious re-render cascade on Frame 0.
+    // Check synchronous auth on Frame 0
     if (auth.currentUser) {
       setUser(prev => {
-        if (prev?.uid === auth.currentUser?.uid) return prev; // Already correct — no re-render
+        if (prev?.uid === auth.currentUser?.uid) return prev;
         firstAuthAtRef.current = Date.now();
         return auth.currentUser;
       });
       if (!firstAuthAtRef.current) firstAuthAtRef.current = Date.now();
-    } else {
-      AsyncStorage.getItem('@zentrack_optimistic_user').then(raw => {
-        if (!cancelled && raw) {
+    }
+
+    // Run boot manifest hydration and authStateReady in parallel across native bridge
+    Promise.all([
+      loadBootManifest().catch(() => null),
+      auth.authStateReady().catch(() => null),
+      AsyncStorage.getItem('@zentrack_optimistic_user').catch(() => null),
+    ]).then(([manifest, _, rawUser]) => {
+      if (cancelled) return;
+
+      unstable_batchedUpdates(() => {
+        // 1. Hydrate manifest data if needed
+        if (manifest) {
+          setTasks(prev => (prev.length === 0 && (manifest.tasks?.length ?? 0) > 0) ? manifest.tasks : prev);
+          setHabits(prev => (prev.length === 0 && (manifest.habits?.length ?? 0) > 0) ? manifest.habits : prev);
+          setHabitLogs(prev => (prev.length === 0 && (manifest.habitLogs?.length ?? 0) > 0) ? manifest.habitLogs : prev);
+          if ((manifest.tasks?.length ?? 0) > 0 || (manifest.habits?.length ?? 0) > 0) {
+            hasCachedDataRef.current = true;
+            setFirestoreReady(true);
+          }
+        }
+
+        // 2. Resolve user from auth state or optimistic storage
+        if (auth.currentUser) {
+          setUser(prev => {
+            if (auth.currentUser && prev?.uid === auth.currentUser.uid) return prev;
+            return auth.currentUser;
+          });
+          firstAuthAtRef.current = Date.now();
+        } else if (rawUser) {
           try {
-            const parsed = JSON.parse(raw);
+            const parsed = JSON.parse(rawUser);
             if (parsed?.uid) {
               setUser(prev => {
-                if (prev?.uid === parsed.uid) return prev; // Already correct — no re-render
+                if (prev?.uid === parsed.uid) return prev;
                 firstAuthAtRef.current = Date.now();
                 return parsed as User;
               });
@@ -200,20 +189,8 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
             }
           } catch {}
         }
-      }).catch(() => {});
-    }
-
-    auth.authStateReady().then(() => {
-      if (!cancelled && auth.currentUser) {
-        // Only update if UID is different — avoids re-render cascade when Firebase
-        // re-confirms the same session with a new object reference after token refresh.
-        setUser(prev => {
-          if (auth.currentUser && prev?.uid === auth.currentUser.uid) return prev;
-          return auth.currentUser;
-        });
-        firstAuthAtRef.current = Date.now();
-      }
-    }).catch(() => {});
+      });
+    });
 
     const unsub = onAuthStateChanged(auth, u => {
       if (!cancelled) {
