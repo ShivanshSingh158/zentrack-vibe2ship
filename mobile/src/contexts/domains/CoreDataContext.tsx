@@ -24,6 +24,7 @@ import { handleSyncError } from '../../utils/errorUtils';
 import { parseTask, parseHabit, parseHabitLog, areItemsEqual } from "../../utils/schemaGuards";
 import { syncXPWithFirestore } from "../../services/xpSystem";
 import { fetchServerSyncMeta, getLocalSyncTimestamp, setLocalSyncTimestamp } from "../../utils/syncMeta";
+import { clearOrchestratorCache } from "../../agent/orchestrator";
 
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
@@ -464,6 +465,12 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
  */
 export async function performSignOut() {
   try {
+    // FIX (Risk 3): Clear SARA's in-memory prompt cache before sign-out.
+    // The prompt cache is a module-level variable that persists across sessions.
+    // If not cleared, User B on the same device gets User A's task/habit summaries
+    // injected into their first SARA query until the 30-second TTL expires.
+    clearOrchestratorCache();
+
     await AsyncStorage.multiRemove([
       '@zentrack_optimistic_user',
       '@zentrack_offline_write_queue', // Prevents offline writes from one user syncing under another

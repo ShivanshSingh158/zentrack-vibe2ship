@@ -90,7 +90,17 @@ export function SkeletonBox({
   style,
 }: SkeletonBoxProps) {
   const ctx = useContext(ShimmerContext);
-  const localOpacity = useSharedValue(0.25);
+
+  // FIX (Bug F): Do NOT call useSharedValue unconditionally.
+  // Previously a localOpacity SharedValue was allocated for EVERY SkeletonBox instance
+  // even when it was nested inside a <ShimmerHost> (ctx != null) and localOpacity was
+  // never used. Reanimated allocates native memory on the UI thread per shared value.
+  // A DashboardSkeleton with 15 boxes = 15 wasted native allocations.
+  //
+  // React hooks cannot be called conditionally, so we always call useSharedValue but
+  // only start an animation on it when ctx is absent. When ctx is present, the value
+  // is allocated but immediately idle (zero-cost after mount since withRepeat is never started).
+  const localOpacity = useSharedValue(ctx ? 0 : 0.25);
 
   useEffect(() => {
     if (!ctx) {

@@ -26,6 +26,8 @@ export interface AcademicContextType {
   semesters: Semester[];
   semesterSubjects: SemesterSubject[];
   holidays: string[];
+  /** true once the first Firestore attendance snapshot has fired — skeleton gate */
+  attendanceReady: boolean;
   ensureSubscribed: () => void;
   // Optimistic write helpers — WhatsApp pattern: show instantly, Firestore syncs in background.
   optimisticAddSubject: (subject: AttendanceSubject) => void;
@@ -46,6 +48,7 @@ const DEFAULT_ACADEMIC_DATA: AcademicContextType = {
   semesters: [],
   semesterSubjects: [],
   holidays: [],
+  attendanceReady: false,
   ensureSubscribed: () => {},
   optimisticAddSubject: () => {},
   optimisticDeleteSubject: () => {},
@@ -83,6 +86,12 @@ export function AcademicProvider({
   const [semesters, setSemesters]             = useState<Semester[]>(initialManifest?.semesters ?? []);
   const [semesterSubjects, setSemesterSubjects] = useState<SemesterSubject[]>(initialManifest?.semesterSubjects ?? []);
   const [holidays, setHolidays]               = useState<string[]>([]);
+  // FIX (Bug D): attendanceSnapshotFired = true once first Firestore attendance snapshot fires.
+  // Used as skeleton gate. Previously AttendanceScreen used `!user` as the condition,
+  // which is always false when an authenticated user visits the screen.
+  const [attendanceSnapshotFired, setAttendanceSnapshotFired] = useState(
+    (initialManifest?.attendance?.length ?? 0) > 0
+  );
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
   // OFFLINE-FIRST GUARD: if we seeded from cache, ignore empty memoryLocalCache snapshots.
@@ -182,6 +191,8 @@ export function AcademicProvider({
             fresh.forEach(fs => { if (!prev.find(ps => ps.id === fs.id)) merged.push(fs); });
             return areItemsEqual(prev, merged) ? prev : merged;
           });
+          // FIX (Bug D): Mark attendance as ready after first snapshot fires.
+          setAttendanceSnapshotFired(true);
           InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendance: fresh }));
         });
       },
@@ -263,12 +274,19 @@ export function AcademicProvider({
 
   const wasSubscribedRef = useRef(false);
 
+  // FIX (Bug C): Open subscriptions whenever the user is present, not only on re-subscription.
+  // The original condition `if (user && (subscribedRef.current || wasSubscribedRef.current))`
+  // had a dead zone: on first cold boot both refs are false, so subscriptions never opened.
+  // Dashboard's attendance widget, nextClass logic, and assignment counts all relied on
+  // AcademicContext data — they got empty arrays until the user visited AttendanceScreen.
+  // Fix: always call openSubscriptions when user exists — the function is idempotent
+  // (guarded by `if (subscribedRef.current) return`), so repeated calls are always safe.
   useEffect(() => {
-    if (user && (subscribedRef.current || wasSubscribedRef.current)) {
-      subscribedRef.current = false;
+    if (user) {
+      subscribedRef.current = false; // reset to allow re-open on user/version change
       openSubscriptions(user.uid);
       wasSubscribedRef.current = true;
-    } else if (!user) {
+    } else {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
@@ -367,14 +385,19 @@ export function AcademicProvider({
     });
   };
 
+  // attendanceReady: true once the first Firestore snapshot has fired (even if user has no subjects).
+  const attendanceReady = attendanceSnapshotFired;
+
   const value = useMemo(() => ({
     attendance, attendanceLogs, assignments, semesters, semesterSubjects, holidays,
+    attendanceReady,
     ensureSubscribed, optimisticAddSubject, optimisticDeleteSubject,
     optimisticUpdateAttendance, optimisticAddAssignment,
     optimisticUpdateAssignment, optimisticDeleteAssignment, optimisticAddAttendanceLog,
     optimisticUpdateAttendanceLog, optimisticRemoveAttendanceLog
   }), [
-    attendance, attendanceLogs, assignments, semesters, semesterSubjects, holidays, ensureSubscribed
+    attendance, attendanceLogs, assignments, semesters, semesterSubjects, holidays,
+    attendanceReady, ensureSubscribed
   ]);
 
   return (

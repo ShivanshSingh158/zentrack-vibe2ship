@@ -607,7 +607,10 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </View>
 
         <View style={{ flex: 1 }}>
-          {!gymLogsReady && gymLogs.length === 0 && !userGymPlan ? (
+          {/* FIX (Bug E): Triple AND gate was too strict — a user who has a plan but no
+              logs (!userGymPlan = false) or a user with cached logs (gymLogs.length > 0)
+              would never see the skeleton. Relaxed to the standard 2-condition pattern. */}
+          {!gymLogsReady && gymLogs.length === 0 ? (
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 80 }}>
               <GymHomeSkeleton />
             </ScrollView>

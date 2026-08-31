@@ -474,6 +474,7 @@ export default function AttendanceScreen() {
 
   // 1. Core Data & State Hook
   const academic = useAcademicData();
+  const { attendanceReady } = academic;
   const data = useAttendanceData();
   const {
     user, subjects, logs, holidays, logsBySubjectId,
@@ -730,7 +731,10 @@ export default function AttendanceScreen() {
           />
         )}
 
-        {!user && subjects.length === 0 ? (
+        {/* FIX (Bug D): Skeleton trigger was `!user` which is always false for authenticated users.
+            Now uses `!attendanceReady` — true during the window between app launch and first
+            Firestore attendance snapshot. Shows skeleton until real data (even empty) arrives. */}
+        {!attendanceReady && subjects.length === 0 ? (
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 120, paddingTop: insets.top + 54 }}

@@ -65,7 +65,20 @@ function summarizeAttendance(subjects: any[] = []) {
 
 // ─── Full System Prompt Builder (fallback for complex queries) ────────────────
 
-let _promptCache: { prompt: string; hash: string; builtAt: number } | null = null;
+// FIX (Risk 3): _promptCache is a module-level variable that persists across user
+// sessions in the same app process. Without a UID guard, User A's task/habit/gym
+// summaries could leak into User B's first SARA query on a shared device.
+// Fix: (1) embed userId in the cache entry, (2) export clearOrchestratorCache() to
+// be called from performSignOut(), so cache is explicitly wiped on every logout.
+let _promptCache: { prompt: string; hash: string; builtAt: number; userId: string } | null = null;
+
+/**
+ * Clears the orchestrator's in-memory prompt cache.
+ * MUST be called on user sign-out to prevent cross-user data bleed.
+ */
+export function clearOrchestratorCache(): void {
+  _promptCache = null;
+}
 
 function _buildPromptFingerprint(ctx: AppContext): string {
   return [
@@ -90,10 +103,16 @@ function buildSystemPrompt(
   // O6 FIX: Cache the system prompt with a 30-second TTL based on data fingerprint
   // to avoid serializing 500+ tasks/logs on every chat message.
   // Note: session awareness and proactive scan are NOT cached (they're dynamic per-turn).
+  const currentUserId = auth.currentUser?.uid || '';
   const hash = _buildPromptFingerprint(ctx) + '|' + (memorySummary?.length || 0);
   let basePrompt: string;
 
-  if (_promptCache && _promptCache.hash === hash && Date.now() - _promptCache.builtAt < 30000) {
+  if (
+    _promptCache &&
+    _promptCache.hash === hash &&
+    _promptCache.userId === currentUserId &&
+    Date.now() - _promptCache.builtAt < 30000
+  ) {
     basePrompt = _promptCache.prompt;
   } else {
     const now = new Date();
@@ -174,7 +193,7 @@ ${JSON.stringify(recentJobs)}
 ${ctx.notifSettingsSummary ? `${ctx.notifSettingsSummary}\n` : ''}
 ${buildActionRules(tomorrowISO, todayISO)}`;
 
-    _promptCache = { prompt: basePrompt, hash, builtAt: Date.now() };
+    _promptCache = { prompt: basePrompt, hash, builtAt: Date.now(), userId: currentUserId };
   }
 
   // Session awareness and proactive scan are ALWAYS freshly computed (not cached)

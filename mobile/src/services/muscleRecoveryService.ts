@@ -6,6 +6,12 @@
  * - Computes training load distribution across 18 drawable muscle groups.
  * - Exponential Fatigue & Muscle Recovery modeling (Fatigued / Recovering / Ready).
  * - Strength retention & 1RM capacity decay tracking over time.
+ *
+ * CACHE DESIGN NOTE: All time-sensitive functions (calculateMuscleLoad,
+ * calculateMuscleFatigue, calculateMacroVolumeLoad, calculateMuscleGrowthProgression,
+ * calculateSymmetryAndBalance) embed today's ISO date string in the cache key when
+ * no anchorDateStr is provided. This forces a daily cache invalidation — fatigue scores
+ * decay over hours and must not be served stale from a previous morning's computation.
  */
 
 import { GymDayLog } from '../types/gym.types';
@@ -237,7 +243,10 @@ export function calculateMuscleLoad(
   anchorDateStr?: string,
   onlyHardSets: boolean = false
 ): Record<MuscleSlug, number> {
-  const cacheKey = `muscle_load_${generateDatasetFingerprint(logs, `${windowDays}_${anchorDateStr || ''}_${onlyHardSets}`)}`;
+  // FIX (Bug A): Append today's date when no anchorDateStr — fatigue uses Date.now() internally
+  // and decays over hours. Without a date tag the cache serves stale data all day.
+  const todayTag = anchorDateStr || new Date().toISOString().slice(0, 10);
+  const cacheKey = `muscle_load_${generateDatasetFingerprint(logs, `${windowDays}_${todayTag}_${onlyHardSets}`)}`;
   return computeOrGetHotCache(cacheKey, () => {
     const load: Record<MuscleSlug, number> = {} as any;
     MUSCLES.forEach(m => (load[m] = 0));
@@ -313,7 +322,10 @@ export function calculateMuscleFatigue(
   logs: GymDayLog[],
   anchorDateStr?: string
 ): Record<MuscleSlug, MuscleRecoveryData> {
-  const cacheKey = `muscle_fatigue_${generateDatasetFingerprint(logs, anchorDateStr || '')}`;
+  // FIX (Bug A): Fatigue decays exponentially with a ~36h half-life. Without a date tag
+  // the cache returns 9am scores at 6pm — showing muscles as fully recovered when they aren't.
+  const todayTag = anchorDateStr || new Date().toISOString().slice(0, 10);
+  const cacheKey = `muscle_fatigue_${generateDatasetFingerprint(logs, todayTag)}`;
   return computeOrGetHotCache(cacheKey, () => {
     const out: Record<MuscleSlug, MuscleRecoveryData> = {} as any;
     const now = anchorDateStr ? new Date(anchorDateStr).getTime() : Date.now();
@@ -421,7 +433,10 @@ export function calculateMacroVolumeLoad(
   windowDays: number = 30,
   anchorDateStr?: string
 ): Record<MuscleSlug, MacroMuscleVolume> {
-  const cacheKey = `macro_vol_${generateDatasetFingerprint(logs, `${windowDays}_${anchorDateStr || ''}`)}`;
+  // FIX (Bug A): Volume windows use Date.now() as their cutoff. The cache key must include
+  // today's date so the trailing-edge of the window advances correctly day-to-day.
+  const todayTag = anchorDateStr || new Date().toISOString().slice(0, 10);
+  const cacheKey = `macro_vol_${generateDatasetFingerprint(logs, `${windowDays}_${todayTag}`)}`;
   return computeOrGetHotCache(cacheKey, () => {
     const out: Record<MuscleSlug, MacroMuscleVolume> = {} as any;
     MUSCLES.forEach(m => (out[m] = { sets: 0, volumeKg: 0, level: 0, percentage: 0 }));
@@ -482,7 +497,9 @@ export function calculateMuscleGrowthProgression(
   windowDays: number = 30,
   anchorDateStr?: string
 ): Record<MuscleSlug, MacroMuscleGrowth> {
-  const cacheKey = `macro_growth_${generateDatasetFingerprint(logs, `${windowDays}_${anchorDateStr || ''}`)}`;
+  // FIX (Bug A): Growth progression uses Date.now() for the window cutoff — needs daily cache key.
+  const todayTag = anchorDateStr || new Date().toISOString().slice(0, 10);
+  const cacheKey = `macro_growth_${generateDatasetFingerprint(logs, `${windowDays}_${todayTag}`)}`;
   return computeOrGetHotCache(cacheKey, () => {
     const out: Record<MuscleSlug, MacroMuscleGrowth> = {} as any;
     MUSCLES.forEach(m => (out[m] = {
@@ -594,9 +611,15 @@ export function calculateSymmetryAndBalance(
   windowDays: number = 30,
   anchorDateStr?: string
 ): Record<MuscleSlug, MacroMuscleBalance> {
-  const cacheKey = `macro_symmetry_${generateDatasetFingerprint(logs, `${windowDays}_${anchorDateStr || ''}`)}`;
+  // FIX (Bug A): Same daily cache key needed here.
+  // FIX (Bug G): Pre-call calculateMacroVolumeLoad OUTSIDE the computeOrGetHotCache wrapper
+  // to avoid a double cold-miss on first render. On first call both symmetry AND volume are
+  // cache misses — without this hoist, the full log traversal ran twice in one JS frame.
+  // Now volumeMap is computed once (and itself cached), then reused by symmetry calculation.
+  const todayTag = anchorDateStr || new Date().toISOString().slice(0, 10);
+  const cacheKey = `macro_symmetry_${generateDatasetFingerprint(logs, `${windowDays}_${todayTag}`)}`;
+  const volumeMap = calculateMacroVolumeLoad(logs, windowDays, anchorDateStr);
   return computeOrGetHotCache(cacheKey, () => {
-    const volumeMap = calculateMacroVolumeLoad(logs, windowDays, anchorDateStr);
     const out: Record<MuscleSlug, MacroMuscleBalance> = {} as any;
 
     // Key Pair Ratios
