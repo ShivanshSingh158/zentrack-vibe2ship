@@ -22,6 +22,7 @@ import { useAcademicData } from '../contexts/domains/AcademicContext';
 import { usePlannerData } from '../contexts/domains/PlannerContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
 import { useTheme } from "../contexts/ThemeContext";
+import AnalyticsSkeleton from '../components/Analytics/AnalyticsSkeleton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CHART_H = 90;
@@ -589,7 +590,7 @@ export default function AnalyticsScreen() {
   // ── Granular domain hooks (replaces useMobileData() monolith) ─────────────
   // PERF: Each hook only re-renders this screen when ITS domain's Firestore
   // snapshot fires — not every domain update like the composite facade did.
-  const { tasks, habitLogs, allHabits } = useCoreData();
+  const { tasks, habitLogs, allHabits, tasksReady } = useCoreData();
   const { gymLogs } = useWellnessData();
   const { attendance, attendanceLogs, semesters } = useAcademicData();
   const { goals } = usePlannerData();
@@ -875,10 +876,15 @@ export default function AnalyticsScreen() {
           <PeriodSelector value={period} onChange={setPeriod} />
         </Animated.View>
 
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
+        {!tasksReady && tasks.length === 0 ? (
+          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <AnalyticsSkeleton />
+          </ScrollView>
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
           {/* ── 1. ZEN SCORE RING (Apple Health Activity Card) ── */}
           <Animated.View style={[styles.heroCard, {
             opacity: animRing,
@@ -1105,6 +1111,7 @@ export default function AnalyticsScreen() {
 
           <View style={{ height: 100 }} />
         </ScrollView>
+      )}
       </SafeAreaView>
     </View>
   );

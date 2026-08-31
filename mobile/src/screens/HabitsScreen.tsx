@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet,
+  View, Text, StyleSheet, ScrollView,
   TextInput, Modal, KeyboardAvoidingView, Platform, Alert, Animated, TouchableOpacity, DeviceEventEmitter, InteractionManager
 } from 'react-native';
 import Reanimated, { useSharedValue, useAnimatedStyle, withSpring, FadeInDown, withSequence, withTiming } from 'react-native-reanimated';
@@ -31,6 +31,7 @@ import { handleSyncError } from '../utils/errorUtils';
 import EmptyState from '../components/ui/EmptyState';
 import { formatLocalDateStr } from '../utils/dateUtils';
 import BottomSheet from '../components/ui/BottomSheet';
+import HabitsSkeleton from '../components/Habits/HabitsSkeleton';
 
 const getTodayStr = () => formatLocalDateStr(new Date());
 // IMPORTANT: never use a module-level `today` constant here — it gets frozen at app launch
@@ -990,19 +991,25 @@ export default function HabitsScreen() {
       </Animated.View>
 
       {/* —————————————————————————————————————————————————————————————————————— */}
-      <FlashList
-        data={listData}
-        keyExtractor={keyExtractor}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <EmptyState
-            mascot="running"
-            title="No habits yet"
-            subtitle="Start building your routines today."
-          />
-        }
-      />
+      {loading && allHabits.length === 0 ? (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+          <HabitsSkeleton />
+        </ScrollView>
+      ) : (
+        <FlashList
+          data={listData}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <EmptyState
+              mascot="running"
+              title="No habits yet"
+              subtitle="Start building your routines today."
+            />
+          }
+        />
+      )}
 
       <AnimatedPressable style={styles.fab} onPress={() => setCreateVisible(true)} activeOpacity={0.85}>
         <Ionicons name="add" size={26} color="#FFFFFF" />

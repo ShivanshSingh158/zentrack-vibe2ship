@@ -32,6 +32,7 @@ import EmptyState from '../components/ui/EmptyState';
 import { setTabBarVisible } from '../utils/tabBarScroll';
 import BottomSheet from '../components/ui/BottomSheet';
 import type { AttendanceSubject } from '../contexts/MobileDataContext';
+import AttendanceSkeleton from '../components/Academic/AttendanceSkeleton';
 
 // ── Pure Memoized Session Action Row ─────────────────────────────────────────
 interface SessionRowProps {
@@ -729,19 +730,27 @@ export default function AttendanceScreen() {
           />
         )}
 
-        <FlatList
-          data={isSelectedHoliday ? [] : todayFlatSessions}
-          keyExtractor={item => item.id}
-          showsVerticalScrollIndicator={false}
-          removeClippedSubviews={Platform.OS === 'android'}
-          initialNumToRender={6}
-          maxToRenderPerBatch={6}
-          windowSize={5}
-          contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 120, paddingTop: insets.top + 54 }}
-          onScroll={(e: any) => {
-            const y = e?.nativeEvent?.contentOffset?.y ?? 0;
-            updatePillVisibility(y);
-          }}
+        {!user && subjects.length === 0 ? (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 120, paddingTop: insets.top + 54 }}
+          >
+            <AttendanceSkeleton />
+          </ScrollView>
+        ) : (
+          <FlatList
+            data={isSelectedHoliday ? [] : todayFlatSessions}
+            keyExtractor={item => item.id}
+            showsVerticalScrollIndicator={false}
+            removeClippedSubviews={Platform.OS === 'android'}
+            initialNumToRender={6}
+            maxToRenderPerBatch={6}
+            windowSize={5}
+            contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 120, paddingTop: insets.top + 54 }}
+            onScroll={(e: any) => {
+              const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+              updatePillVisibility(y);
+            }}
           onScrollEndDrag={(e: any) => {
             const y = e?.nativeEvent?.contentOffset?.y ?? 0;
             if (y <= 30) {
@@ -779,6 +788,7 @@ export default function AttendanceScreen() {
           renderItem={renderItem}
           ListFooterComponent={listFooter}
         />
+      )}
 
       {/* ── Modals ── */}
 
