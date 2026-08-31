@@ -31,7 +31,7 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 import { navigationRef } from './src/navigation/AppNavigator';
 import { db, auth } from './src/services/firebase';
 import { doc, updateDoc, increment, addDoc, collection, getDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
-import { todayStr } from './src/hooks/useGymLog';
+import { formatLocalDateStr } from './src/utils/dateUtils';
 import { COLLECTION } from './src/config/constants';
 import { awardXP } from './src/services/xpSystem';
 
@@ -270,7 +270,7 @@ export default function App() {
         let confirmBody  = 'Keep the momentum going.';
         if (habitId) {
           try {
-            const todayDate = todayStr();
+            const todayDate = formatLocalDateStr();
 
             // ── DUPLICATE GUARD ────────────────────────────────────────────────
             // Prevent writing two logs if the user taps "Log It" twice or if
@@ -350,7 +350,7 @@ export default function App() {
         const subjectId   = data?.subjectId  as string | undefined;
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
-        const logDate     = (data?.date || todayStr()) as string;
+        const logDate     = (data?.date || formatLocalDateStr()) as string;
         const uid         = auth.currentUser?.uid;
         let success = false;
         if (subjectId) {
@@ -401,7 +401,7 @@ export default function App() {
         const subjectId   = data?.subjectId  as string | undefined;
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
-        const logDate     = (data?.date || todayStr()) as string;
+        const logDate     = (data?.date || formatLocalDateStr()) as string;
         const uid         = auth.currentUser?.uid;
         let success = false;
         if (subjectId) {
@@ -450,7 +450,7 @@ export default function App() {
         const subjectId   = data?.subjectId  as string | undefined;
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
-        const logDate     = (data?.date || todayStr()) as string;
+        const logDate     = (data?.date || formatLocalDateStr()) as string;
         const uid         = auth.currentUser?.uid;
         let success = false;
         if (subjectId) {
@@ -501,7 +501,7 @@ export default function App() {
           // Step 2: navigate inside GymStack after it mounts
           setTimeout(() => {
             if (navigationRef.isReady()) {
-              navigationRef.navigate('ActiveLogging', { date: todayStr() } as any);
+              navigationRef.navigate('ActiveLogging', { date: formatLocalDateStr() } as any);
             }
           }, 400);
         }

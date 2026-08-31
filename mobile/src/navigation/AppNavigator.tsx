@@ -26,7 +26,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { Image } from 'react-native';
 import { auth } from '../services/firebase';
 import { performSignOut } from '../contexts/domains/CoreDataContext';
-import { cacheAwareLazy } from '../utils/ModulePrefetcher';
+import { cacheAwareLazy, startPrefetching } from '../utils/ModulePrefetcher';
 import { loadBootManifest, getBootManifestSync, updateL1Cache, clearBootManifest } from '../utils/bootManifest';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -54,24 +54,26 @@ import LandingScreen from '../screens/LandingScreen';
 import AuthScreen from '../screens/AuthScreen';
 import OnboardingScreen, { ONBOARDING_KEY } from '../screens/OnboardingScreen';
 import DashboardScreen from '../screens/DashboardScreen';
-import TasksScreen from '../screens/TasksScreen';
-import CalendarScreen from '../screens/CalendarScreen';
-import AttendanceScreen from '../screens/AttendanceScreen';
-import GymStack from './GymStack';
-import MoreScreen from '../screens/MoreScreen';
-import HabitsScreen from '../screens/HabitsScreen';
-import NotesScreen from '../screens/NotesScreen';
-import AnalyticsScreen from '../screens/AnalyticsScreen';
-import GradesScreen from '../screens/GradesScreen';
-import AssignmentsScreen from '../screens/AssignmentsScreen';
-import LearningScreen from '../screens/LearningScreen';
-import SettingsScreen from '../screens/SettingsScreen';
-import NotificationsSettingsScreen from '../screens/NotificationsSettingsScreen';
-import XPConstellationScreen from '../screens/XPConstellationScreen';
-import StreakDetailScreen from '../screens/StreakDetailScreen';
-import AgentHistoryScreen from '../screens/AgentHistoryScreen';
-import WellbeingDashboardScreen from '../screens/WellbeingDashboardScreen';
-import SaraScreen from '../screens/SaraScreen';
+
+// --- Lazy Loaded Screens -----------------------------------------------------
+const TasksScreen = cacheAwareLazy('Tasks', () => import('../screens/TasksScreen'));
+const CalendarScreen = cacheAwareLazy('Calendar', () => import('../screens/CalendarScreen'));
+const AttendanceScreen = cacheAwareLazy('Attendance', () => import('../screens/AttendanceScreen'));
+const GymStack = cacheAwareLazy('Gym', () => import('./GymStack'));
+const MoreScreen = cacheAwareLazy('More', () => import('../screens/MoreScreen'));
+const HabitsScreen = cacheAwareLazy('Habits', () => import('../screens/HabitsScreen'));
+const NotesScreen = cacheAwareLazy('Notes', () => import('../screens/NotesScreen'));
+const AnalyticsScreen = cacheAwareLazy('Analytics', () => import('../screens/AnalyticsScreen'));
+const GradesScreen = cacheAwareLazy('Grades', () => import('../screens/GradesScreen'));
+const AssignmentsScreen = cacheAwareLazy('Assignments', () => import('../screens/AssignmentsScreen'));
+const LearningScreen = cacheAwareLazy('Learning', () => import('../screens/LearningScreen'));
+const SettingsScreen = cacheAwareLazy('Settings', () => import('../screens/SettingsScreen'));
+const NotificationsSettingsScreen = cacheAwareLazy('NotificationsSettings', () => import('../screens/NotificationsSettingsScreen'));
+const XPConstellationScreen = cacheAwareLazy('XPConstellation', () => import('../screens/XPConstellationScreen'));
+const StreakDetailScreen = cacheAwareLazy('StreakDetail', () => import('../screens/StreakDetailScreen'));
+const AgentHistoryScreen = cacheAwareLazy('AgentHistory', () => import('../screens/AgentHistoryScreen'));
+const WellbeingDashboardScreen = cacheAwareLazy('WellbeingDashboard', () => import('../screens/WellbeingDashboardScreen'));
+const SaraScreen = cacheAwareLazy('Sara', () => import('../screens/SaraScreen'));
 import { usePomodoro } from '../contexts/PomodoroContext';
 import PomodoroFloatingPill from '../components/Tasks/PomodoroFloatingPill';
 import PomodoroSheet from '../components/Tasks/PomodoroSheet';
@@ -210,6 +212,10 @@ function MainTabNavigator() {
   const effectivePinned = (Array.isArray(pinnedModules) && pinnedModules.length > 0)
     ? pinnedModules
     : ['Tasks', 'Gym', 'Calendar', 'Attendance'];
+
+  useEffect(() => {
+    startPrefetching(effectivePinned);
+  }, [effectivePinned]);
 
   // Ordered module IDs: Pinned modules in their exact selected order first, followed by unpinned modules
   const orderedModuleIds = useMemo(() => {

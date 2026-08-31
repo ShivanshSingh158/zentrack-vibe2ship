@@ -90,7 +90,7 @@ export function parseTask(docData: any, docId: string): Task {
     title,
     status,
     priority,
-    date: sanitizeString(d.date, new Date().toISOString().split('T')[0], 10),
+    date: sanitizeString(d.date, '', 10) || undefined,
     tags,
     isRecurring: Boolean(d.isRecurring),
     recurrenceRule: d.recurrenceRule && typeof d.recurrenceRule === 'object' ? d.recurrenceRule : undefined,
