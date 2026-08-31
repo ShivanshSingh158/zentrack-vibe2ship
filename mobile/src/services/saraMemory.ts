@@ -375,9 +375,17 @@ export async function getFingerprint(userId: string): Promise<BehavioralFingerpr
         _fingerprintCache = parsed;
         return parsed;
       }
+      // FIX (Bug #5): Log when stored fingerprint has a mismatched UID.
+      // This is the most common silent degradation path — stored fingerprint belongs
+      // to a previous user (cross-user device), so SARA's persona silently resets.
+      // This console.warn makes it detectable in dev logs and on-device diagnostics.
+      if (parsed.userId && parsed.userId !== userId) {
+        console.warn(`[BFE] Fingerprint UID mismatch: stored=${parsed.userId}, requested=${userId}. Returning default persona. This may indicate a cross-user session transition.`);
+      }
     }
   } catch (e) {
-    console.warn('[BFE] Failed to load fingerprint:', e);
+    // FIX (Bug #5): Log parse errors so corrupted storage is detectable.
+    console.warn('[BFE] Failed to load or parse fingerprint (returning default persona):', e);
   }
 
   const fp = defaultFingerprint(userId);

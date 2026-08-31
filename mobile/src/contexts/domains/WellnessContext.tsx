@@ -239,15 +239,18 @@ export function WellnessProvider({
 
   const wasSubscribedRef = useRef(false);
 
-  // Reset or open on user change — demand-based subscription matching Academic/Creative/Planner contexts.
-  // subscriptionVersion is included so a listener error retry (scheduleListenerRestart)
-  // cleanly re-runs this effect and re-opens all subscriptions if already subscribed.
+  // FIX (Bug #4): Open subscriptions whenever the user is present (not only on re-subscription).
+  // The original condition `if (user && (subscribedRef.current || wasSubscribedRef.current))`
+  // had a dead zone: on first cold boot both refs are false, so subscriptions never opened.
+  // Any screen navigating directly to Gym (without Dashboard) would never receive gym logs.
+  // Fix: always call openSubscriptions when user exists — the function itself is idempotent
+  // (guarded by `if (subscribedRef.current) return`), so calling it multiple times is safe.
   useEffect(() => {
-    if (user && (subscribedRef.current || wasSubscribedRef.current)) {
-      subscribedRef.current = false;
+    if (user) {
+      subscribedRef.current = false; // reset to allow re-open on user/version change
       openSubscriptions(user.uid);
       wasSubscribedRef.current = true;
-    } else if (!user) {
+    } else {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;

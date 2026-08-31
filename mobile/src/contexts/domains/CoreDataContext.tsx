@@ -190,6 +190,11 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           } catch {}
         }
       });
+    }).catch((err) => {
+      // FIX (Bug #1): Outer catch guards against runtime throws inside .then()
+      // (e.g. JSON.parse on corrupted AsyncStorage, unexpected manifest shape).
+      // App already has Frame 0 data from getBootManifestSync() — no user-visible impact.
+      console.warn('[CoreData] Parallel startup hydration error (non-critical):', err);
     });
 
     const unsub = onAuthStateChanged(auth, u => {
@@ -322,7 +327,12 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       // Fallback: mark ready if we already have cached data populated
       setFirestoreReady(true);
     }
-  }, [tasks.length, habits.length, habitLogs.length]);
+    // FIX (Bug #3): Do NOT include tasks.length/habits.length/habitLogs.length in deps.
+    // Those values changing on every optimisticAddTask/optimisticUpdateHabit call would
+    // recreate performDeltaSync and re-trigger the useEffect below, queuing a fresh
+    // user_sync_meta Firestore read on every rapid write. The function only needs to
+    // know whether ANY local data exists — captured by hasCachedDataRef.current instead.
+  }, []);
 
   // ── Foreground reconnect: check 1-read sync metadata on app resume ─────────
   useEffect(() => {
