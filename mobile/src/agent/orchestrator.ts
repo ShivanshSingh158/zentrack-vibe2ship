@@ -577,17 +577,17 @@ export async function orchestrateAgent(
   const thinkingText = getDynamicThinkingText(instruction);
   onStep({ type: 'thinking', title: thinkingText });
 
-  // ── Cap 1: Load CMG memory summary (async, from cache) ──────────────────
-  let memorySummaryText = appContext.memorySummary || '';
-  if (userId && !memorySummaryText) {
-    try {
-      memorySummaryText = await buildMemorySummary(userId);
-    } catch (e) {
-      // Non-critical — continue without memory
-    }
-  }
+  // ── Cap 1 & 7: Parallel Pre-Fetch of CMG Memory + BFE Fingerprint ──────────
+  const initialMemory = appContext.memorySummary || '';
+  const [memorySummaryText, fingerprint] = await Promise.all([
+    initialMemory
+      ? Promise.resolve(initialMemory)
+      : userId
+      ? buildMemorySummary(userId).catch(() => '')
+      : Promise.resolve(''),
+    userId ? getFingerprint(userId).catch(() => null) : Promise.resolve(null),
+  ]);
 
-  // ── Cap 7: Load BFE fingerprint for tone + context ───────────────────────
   let toneDirective = `PERSONA & TONE — KUNAL SHAH MINDSET:
 You are not a cheerleader. You are a blunt, first-principles thinking advisor who has no time for comfort-zone coddling.
 Core traits:
@@ -608,29 +608,24 @@ Examples of Kunal Shah style:
   ✗ "Amazing effort, keep it up!"`;
   let responseStyle = 'Format: 1-3 sentences max. Concise.';
   let personaContext = '';
-  try {
-    if (userId) {
-      const fingerprint = await getFingerprint(userId);
-      toneDirective = getSaraToneDirective(fingerprint);
-      responseStyle = getSaraResponseStyle(fingerprint);
-      if (fingerprint.persona) {
-        personaContext = `USER PERSONA:\nName: ${fingerprint.persona.name || 'User'}\nDegree/Year: ${fingerprint.persona.degree} (Year ${fingerprint.persona.year})\nStress Level: ${fingerprint.persona.currentStressLevel}\nMotivation: ${fingerprint.persona.motivationStyle}\nPrimary Goal: ${fingerprint.persona.primaryGoal}\nUpcoming Exam: ${fingerprint.persona.examPeriodStart || 'None'}`;
-      }
 
-      // Cap 4: Reasoning step — fingerprint loaded
-      onStep({
-        type: 'reasoning_step',
-        title: `🎭 Tone adapted: ${fingerprint.streakPersonality}`,
-      });
+  if (fingerprint) {
+    toneDirective = getSaraToneDirective(fingerprint);
+    responseStyle = getSaraResponseStyle(fingerprint);
+    if (fingerprint.persona) {
+      personaContext = `USER PERSONA:\nName: ${fingerprint.persona.name || 'User'}\nDegree/Year: ${fingerprint.persona.degree} (Year ${fingerprint.persona.year})\nStress Level: ${fingerprint.persona.currentStressLevel}\nMotivation: ${fingerprint.persona.motivationStyle}\nPrimary Goal: ${fingerprint.persona.primaryGoal}\nUpcoming Exam: ${fingerprint.persona.examPeriodStart || 'None'}`;
     }
-  } catch (e) {
-    // Non-critical
+
+    // Cap 4: Reasoning step — fingerprint loaded
+    onStep({
+      type: 'reasoning_step',
+      title: `🎭 Tone adapted: ${fingerprint.streakPersonality}`,
+    });
   }
 
   // ── Cap 2: IRCI — classify intent + build selective context ─────────────
   let systemPrompt: string;
   try {
-    const fingerprint = userId ? await getFingerprint(userId).catch(() => null) : null;
     const intentProfile = classifyIntent(instruction, fingerprint);
 
     // Cap 4: Reasoning steps per detected domain
