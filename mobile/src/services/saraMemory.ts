@@ -324,6 +324,18 @@ export async function buildMemorySummary(userId: string): Promise<string> {
   return `SARA MEMORY (from past sessions):\n${lines.join('\n')}`;
 }
 
+/**
+ * Parallel helper: loads both CMG memory summary and BFE fingerprint simultaneously
+ * in a single Promise.all() pass. Eliminates sequential async roundtrips.
+ */
+export async function loadMemoryAndFingerprint(userId: string): Promise<{ memorySummary: string; fingerprint: BehavioralFingerprint }> {
+  const [memorySummary, fingerprint] = await Promise.all([
+    buildMemorySummary(userId).catch(() => ''),
+    getFingerprint(userId).catch(() => defaultFingerprint(userId)),
+  ]);
+  return { memorySummary, fingerprint };
+}
+
 // ─── BFE: Load / Save ─────────────────────────────────────────────────────────
 
 function defaultFingerprint(userId: string): BehavioralFingerprint {

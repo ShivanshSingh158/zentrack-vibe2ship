@@ -842,14 +842,17 @@ export async function generateInitialGreeting(appContext: AppContext): Promise<s
   
   if (userId) {
     try {
-      if (!memorySummaryText) {
-        memorySummaryText = await buildMemorySummary(userId);
-      }
-      const fingerprint = await getFingerprint(userId);
-      toneDirective = getSaraToneDirective(fingerprint);
-      responseStyle = getSaraResponseStyle(fingerprint);
-      if (fingerprint.persona) {
-        personaContext = `USER PERSONA:\nName: ${fingerprint.persona.name || 'User'}\nDegree/Year: ${fingerprint.persona.degree} (Year ${fingerprint.persona.year})\nStress Level: ${fingerprint.persona.currentStressLevel}\nMotivation: ${fingerprint.persona.motivationStyle}\nPrimary Goal: ${fingerprint.persona.primaryGoal}\nUpcoming Exam: ${fingerprint.persona.examPeriodStart || 'None'}`;
+      const [fetchedMemory, fingerprint] = await Promise.all([
+        memorySummaryText ? Promise.resolve(memorySummaryText) : buildMemorySummary(userId).catch(() => ''),
+        getFingerprint(userId).catch(() => null),
+      ]);
+      memorySummaryText = fetchedMemory;
+      if (fingerprint) {
+        toneDirective = getSaraToneDirective(fingerprint);
+        responseStyle = getSaraResponseStyle(fingerprint);
+        if (fingerprint.persona) {
+          personaContext = `USER PERSONA:\nName: ${fingerprint.persona.name || 'User'}\nDegree/Year: ${fingerprint.persona.degree} (Year ${fingerprint.persona.year})\nStress Level: ${fingerprint.persona.currentStressLevel}\nMotivation: ${fingerprint.persona.motivationStyle}\nPrimary Goal: ${fingerprint.persona.primaryGoal}\nUpcoming Exam: ${fingerprint.persona.examPeriodStart || 'None'}`;
+        }
       }
     } catch (e) {}
   }
