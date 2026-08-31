@@ -28,6 +28,7 @@ import { calculateAppStreak } from '../../utils/streakUtils';
 import { formatLocalDateStr } from '../../utils/dateUtils';
 import { getBootManifestSync, loadBootManifest, updateL1Cache } from '../../utils/bootManifest';
 import { subscribeXPChanges } from '../../services/xpSystem';
+import { computeOrGetHotCache, generateDatasetFingerprint } from '../../utils/hotCacheStore';
 
 import { queueWrite } from '../../services/offlineSync';
 import { COLLECTION } from '../../config/constants';
@@ -387,33 +388,39 @@ export function useDashboardData() {
   );
 
   const appStreak = useMemo(() => {
-    return calculateAppStreak(tasks, gymLogs, habitLogs);
+    const cacheKey = `dash_streak_${generateDatasetFingerprint(tasks)}_${generateDatasetFingerprint(gymLogs)}_${generateDatasetFingerprint(habitLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      return calculateAppStreak(tasks, gymLogs, habitLogs);
+    });
   }, [tasks, gymLogs, habitLogs]);
 
-  // ── Today's Class & Overall Attendance Stats ──────────────────────────────
+  // ── Today's Class & Overall Attendance Stats (Hot-Cached) ─────────────────
   const { classesAttendedToday, classesTotalToday, overallAttendancePct } = useMemo(() => {
     if (!attendance || attendance.length === 0) {
       return { classesAttendedToday: 0, classesTotalToday: 0, overallAttendancePct: 0 };
     }
 
-    const attendedCount = (attendanceLogs || []).filter(l => 
-      l.date === todayStr && (l.action === 'attended' || (l.action as any) === 'present')
-    ).length;
+    const cacheKey = `dash_att_${todayStr}_${generateDatasetFingerprint(attendance)}_${generateDatasetFingerprint(attendanceLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      const attendedCount = (attendanceLogs || []).filter(l => 
+        l.date === todayStr && (l.action === 'attended' || (l.action as any) === 'present')
+      ).length;
 
-    let totalAttendedAll = 0;
-    let totalClassesAll = 0;
-    attendance.forEach(subj => {
-      totalAttendedAll += (subj.classesAttended || 0) + (subj.labsAttended || 0);
-      totalClassesAll += (subj.classesTotal || 0) + (subj.labsTotal || 0);
+      let totalAttendedAll = 0;
+      let totalClassesAll = 0;
+      attendance.forEach(subj => {
+        totalAttendedAll += (subj.classesAttended || 0) + (subj.labsAttended || 0);
+        totalClassesAll += (subj.classesTotal || 0) + (subj.labsTotal || 0);
+      });
+
+      const overallPct = totalClassesAll > 0 ? Math.round((totalAttendedAll / totalClassesAll) * 100) : 0;
+
+      return {
+        classesAttendedToday: attendedCount,
+        classesTotalToday: todayClasses.length,
+        overallAttendancePct: overallPct,
+      };
     });
-
-    const overallPct = totalClassesAll > 0 ? Math.round((totalAttendedAll / totalClassesAll) * 100) : 0;
-
-    return {
-      classesAttendedToday: attendedCount,
-      classesTotalToday: todayClasses.length,
-      overallAttendancePct: overallPct,
-    };
   }, [attendance, attendanceLogs, todayClasses, todayStr]);
 
   return {

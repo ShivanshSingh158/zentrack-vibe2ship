@@ -41,6 +41,7 @@ import GymProgressCardio from '../../components/Gym/GymProgressCardio';
 import GymProgressSkeleton from '../../components/Gym/GymProgressSkeleton';
 import { estimate1RM, calculateRepMaxTable } from '../../services/oneRepMaxEngine';
 import { calculateEffortSummary } from '../../services/effortEngine';
+import { computeOrGetHotCache, generateDatasetFingerprint } from '../../utils/hotCacheStore';
 
 const { width } = Dimensions.get('window');
 type TimeRange = '7d' | '30d' | '90d' | '1y' | 'all';
@@ -85,78 +86,81 @@ export default function GymProgressScreen() {
     ]).start();
   }, [timeRange]);
 
-  // ── Filter Logs Based on Time Range ──────────────────────────────────────────
+  // ── Filter Logs Based on Time Range (Hot-Cached) ───────────────────────────
   const { filteredLogs, kpi, volumeTimeline, cardioMetrics, allCompletedSets } = useMemo(() => {
-    const today = new Date();
-    const daysToSubtract =
-      timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : timeRange === '90d' ? 90 : timeRange === '1y' ? 365 : 0;
+    const cacheKey = `gym_prog_${timeRange}_${generateDatasetFingerprint(gymLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      const today = new Date();
+      const daysToSubtract =
+        timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : timeRange === '90d' ? 90 : timeRange === '1y' ? 365 : 0;
 
-    let fLogs = (gymLogs || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    if (daysToSubtract > 0) {
-      const cutoffDate = new Date(today);
-      cutoffDate.setDate(today.getDate() - daysToSubtract);
-      const cutoffStr = cutoffDate.toISOString().slice(0, 10);
-      fLogs = fLogs.filter(l => l.date >= cutoffStr);
-    }
-
-    let totalWorkouts = 0;
-    let totalVolumeKg = 0;
-    let totalCardioMins = 0;
-    let cardioDistance = 0;
-    let cardioCalories = 0;
-    const completedSetsList: any[] = [];
-    const dailyVolumeMap = new Map<string, number>();
-
-    fLogs.forEach(log => {
-      let isWorkout = false;
-      let sessionVol = 0;
-
-      log.exercises?.forEach(ex => {
-        if (ex.skipped) return;
-        ex.setsLog?.forEach((s: any) => {
-          if (s.completed) {
-            completedSetsList.push(s);
-            const w = Number(s.weight) || 0;
-            const r = Number(s.reps) || 0;
-            if (w > 0 && r > 0) {
-              sessionVol += w * r;
-              isWorkout = true;
-            }
-          }
-        });
-      });
-
-      totalVolumeKg += sessionVol;
-      if (sessionVol > 0) {
-        dailyVolumeMap.set(log.date, (dailyVolumeMap.get(log.date) || 0) + sessionVol);
+      let fLogs = (gymLogs || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      if (daysToSubtract > 0) {
+        const cutoffDate = new Date(today);
+        cutoffDate.setDate(today.getDate() - daysToSubtract);
+        const cutoffStr = cutoffDate.toISOString().slice(0, 10);
+        fLogs = fLogs.filter(l => l.date >= cutoffStr);
       }
 
-      log.cardio?.forEach(c => {
-        if (c.completed) {
-          if (c.durationMinutes) totalCardioMins += c.durationMinutes;
-          if (c.distanceKm) cardioDistance += c.distanceKm;
-          if (c.calories) cardioCalories += c.calories;
-          isWorkout = true;
+      let totalWorkouts = 0;
+      let totalVolumeKg = 0;
+      let totalCardioMins = 0;
+      let cardioDistance = 0;
+      let cardioCalories = 0;
+      const completedSetsList: any[] = [];
+      const dailyVolumeMap = new Map<string, number>();
+
+      fLogs.forEach(log => {
+        let isWorkout = false;
+        let sessionVol = 0;
+
+        log.exercises?.forEach(ex => {
+          if (ex.skipped) return;
+          ex.setsLog?.forEach((s: any) => {
+            if (s.completed) {
+              completedSetsList.push(s);
+              const w = Number(s.weight) || 0;
+              const r = Number(s.reps) || 0;
+              if (w > 0 && r > 0) {
+                sessionVol += w * r;
+                isWorkout = true;
+              }
+            }
+          });
+        });
+
+        totalVolumeKg += sessionVol;
+        if (sessionVol > 0) {
+          dailyVolumeMap.set(log.date, (dailyVolumeMap.get(log.date) || 0) + sessionVol);
         }
+
+        log.cardio?.forEach(c => {
+          if (c.completed) {
+            if (c.durationMinutes) totalCardioMins += c.durationMinutes;
+            if (c.distanceKm) cardioDistance += c.distanceKm;
+            if (c.calories) cardioCalories += c.calories;
+            isWorkout = true;
+          }
+        });
+
+        if (isWorkout) totalWorkouts++;
       });
 
-      if (isWorkout) totalWorkouts++;
-    });
+      // Volume timeline points
+      const vTimeline = Array.from(dailyVolumeMap.entries()).map(([dateStr, vol]) => {
+        const parts = dateStr.split('-');
+        const shortDate = `${parts[1]}/${parts[2]}`;
+        return { dateStr, shortDate, volume: vol };
+      });
 
-    // Volume timeline points
-    const vTimeline = Array.from(dailyVolumeMap.entries()).map(([dateStr, vol]) => {
-      const parts = dateStr.split('-');
-      const shortDate = `${parts[1]}/${parts[2]}`;
-      return { dateStr, shortDate, volume: vol };
+      return {
+        filteredLogs: fLogs,
+        kpi: { totalWorkouts, totalVolumeKg, totalCardioMins },
+        volumeTimeline: vTimeline,
+        cardioMetrics: { distance: cardioDistance, calories: cardioCalories },
+        allCompletedSets: completedSetsList,
+      };
     });
-
-    return {
-      filteredLogs: fLogs,
-      kpi: { totalWorkouts, totalVolumeKg, totalCardioMins },
-      volumeTimeline: vTimeline,
-      cardioMetrics: { distance: cardioDistance, calories: cardioCalories },
-      allCompletedSets: completedSetsList,
-    };
   }, [gymLogs, timeRange]);
 
   const windowDays = useMemo(() => {
@@ -167,55 +171,58 @@ export default function GymProgressScreen() {
 
   // ── Macro Hypertrophy Volume Distribution across Major Muscle Groups ─────────
   const macroMuscleStats = useMemo(() => {
-    const map: Record<string, { name: string; sets: number; volumeKg: number; color: string }> = {
-      Back: { name: 'Back & Lats', sets: 0, volumeKg: 0, color: '#89dceb' },
-      Chest: { name: 'Chest & Pecs', sets: 0, volumeKg: 0, color: '#a599ff' },
-      Quads: { name: 'Quads & Squats', sets: 0, volumeKg: 0, color: '#5eda9e' },
-      GlutesHams: { name: 'Glutes & Hamstrings', sets: 0, volumeKg: 0, color: '#ff9f4d' },
-      Shoulders: { name: 'Shoulders & Delts', sets: 0, volumeKg: 0, color: '#ffd32a' },
-      Arms: { name: 'Arms (Biceps / Triceps)', sets: 0, volumeKg: 0, color: '#b8afff' },
-      Core: { name: 'Core & Calves', sets: 0, volumeKg: 0, color: '#8e8e93' },
-    };
+    const cacheKey = `macro_stats_${generateDatasetFingerprint(filteredLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      const map: Record<string, { name: string; sets: number; volumeKg: number; color: string }> = {
+        Back: { name: 'Back & Lats', sets: 0, volumeKg: 0, color: '#89dceb' },
+        Chest: { name: 'Chest & Pecs', sets: 0, volumeKg: 0, color: '#a599ff' },
+        Quads: { name: 'Quads & Squats', sets: 0, volumeKg: 0, color: '#5eda9e' },
+        GlutesHams: { name: 'Glutes & Hamstrings', sets: 0, volumeKg: 0, color: '#ff9f4d' },
+        Shoulders: { name: 'Shoulders & Delts', sets: 0, volumeKg: 0, color: '#ffd32a' },
+        Arms: { name: 'Arms (Biceps / Triceps)', sets: 0, volumeKg: 0, color: '#b8afff' },
+        Core: { name: 'Core & Calves', sets: 0, volumeKg: 0, color: '#8e8e93' },
+      };
 
-    let totalSetsCount = 0;
-    let totalKgSum = 0;
+      let totalSetsCount = 0;
+      let totalKgSum = 0;
 
-    (filteredLogs || []).forEach(log => {
-      (log.exercises || []).forEach(ex => {
-        if (ex.skipped) return;
-        const m = (ex.muscle || '').toLowerCase();
-        let targetKey = 'Back';
-        if (m.includes('chest') || m.includes('pec')) targetKey = 'Chest';
-        else if (m.includes('quad') || m.includes('vmo')) targetKey = 'Quads';
-        else if (m.includes('ham') || m.includes('glute') || m.includes('rdl') || m.includes('hip')) targetKey = 'GlutesHams';
-        else if (m.includes('shoulder') || m.includes('delt') || m.includes('trap')) targetKey = 'Shoulders';
-        else if (m.includes('bicep') || m.includes('tricep') || m.includes('brach') || m.includes('arm') || m.includes('forearm')) targetKey = 'Arms';
-        else if (m.includes('abs') || m.includes('core') || m.includes('calf') || m.includes('calves') || m.includes('oblique')) targetKey = 'Core';
-        else targetKey = 'Back';
+      (filteredLogs || []).forEach(log => {
+        (log.exercises || []).forEach(ex => {
+          if (ex.skipped) return;
+          const m = (ex.muscle || '').toLowerCase();
+          let targetKey = 'Back';
+          if (m.includes('chest') || m.includes('pec')) targetKey = 'Chest';
+          else if (m.includes('quad') || m.includes('vmo')) targetKey = 'Quads';
+          else if (m.includes('ham') || m.includes('glute') || m.includes('rdl') || m.includes('hip')) targetKey = 'GlutesHams';
+          else if (m.includes('shoulder') || m.includes('delt') || m.includes('trap')) targetKey = 'Shoulders';
+          else if (m.includes('bicep') || m.includes('tricep') || m.includes('brach') || m.includes('arm') || m.includes('forearm')) targetKey = 'Arms';
+          else if (m.includes('abs') || m.includes('core') || m.includes('calf') || m.includes('calves') || m.includes('oblique')) targetKey = 'Core';
+          else targetKey = 'Back';
 
-        (ex.setsLog || []).forEach((s: any) => {
-          if (s.completed) {
-            const w = Number(s.weight) || 0;
-            const r = Number(s.reps) || 0;
-            const vol = w * r;
-            map[targetKey].sets += 1;
-            map[targetKey].volumeKg += vol;
-            totalSetsCount += 1;
-            totalKgSum += vol;
-          }
+          (ex.setsLog || []).forEach((s: any) => {
+            if (s.completed) {
+              const w = Number(s.weight) || 0;
+              const r = Number(s.reps) || 0;
+              const vol = w * r;
+              map[targetKey].sets += 1;
+              map[targetKey].volumeKg += vol;
+              totalSetsCount += 1;
+              totalKgSum += vol;
+            }
+          });
         });
       });
+
+      const list = Object.values(map)
+        .filter(item => item.sets > 0)
+        .sort((a, b) => b.volumeKg - a.volumeKg)
+        .map(item => ({
+          ...item,
+          percentage: totalKgSum > 0 ? Math.round((item.volumeKg / totalKgSum) * 100) : 0,
+        }));
+
+      return { list, totalSetsCount, totalKgSum };
     });
-
-    const list = Object.values(map)
-      .filter(item => item.sets > 0)
-      .sort((a, b) => b.volumeKg - a.volumeKg)
-      .map(item => ({
-        ...item,
-        percentage: totalKgSum > 0 ? Math.round((item.volumeKg / totalKgSum) * 100) : 0,
-      }));
-
-    return { list, totalSetsCount, totalKgSum };
   }, [filteredLogs]);
 
   // ── Total Volume Tonnage Line Coordinates ────────────────────────────────────
@@ -250,53 +257,56 @@ export default function GymProgressScreen() {
     }
   }, [allExerciseNames, selectedExercise]);
 
-  // ── Selected Exercise Deep-Dive Data ─────────────────────────────────────────
+  // ── Selected Exercise Deep-Dive Data (Hot-Cached) ───────────────────────────
   const exerciseSessions = useMemo(() => {
     if (!selectedExercise) return [];
-    const sessions: any[] = [];
-    const sorted = (gymLogs || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const cacheKey = `ex_sessions_${selectedExercise}_${generateDatasetFingerprint(gymLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      const sessions: any[] = [];
+      const sorted = (gymLogs || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
-    for (const log of sorted) {
-      for (const ex of log.exercises || []) {
-        if (ex.skipped) continue;
-        if (ex.name === selectedExercise) {
-          const completedSets = (ex.setsLog || []).filter((s: any) => s.completed && !s.isWarmup);
-          if (completedSets.length > 0) {
-            const topWeight = Math.max(0, ...completedSets.map((s: any) => Number(s.weight) || 0));
-            const topSet = completedSets.find((s: any) => Number(s.weight) === topWeight) || completedSets[0];
-            const maxReps = Number(topSet?.reps) || 0;
-            const oneRM = estimate1RM(topWeight, maxReps, 'epley');
+      for (const log of sorted) {
+        for (const ex of log.exercises || []) {
+          if (ex.skipped) continue;
+          if (ex.name === selectedExercise) {
+            const completedSets = (ex.setsLog || []).filter((s: any) => s.completed && !s.isWarmup);
+            if (completedSets.length > 0) {
+              const topWeight = Math.max(0, ...completedSets.map((s: any) => Number(s.weight) || 0));
+              const topSet = completedSets.find((s: any) => Number(s.weight) === topWeight) || completedSets[0];
+              const maxReps = Number(topSet?.reps) || 0;
+              const oneRM = estimate1RM(topWeight, maxReps, 'epley');
 
-            let rirSum = 0;
-            let rirCount = 0;
-            for (const s of completedSets) {
-              if (s.rir !== undefined && s.rir !== null) {
-                rirSum += Number(s.rir);
-                rirCount++;
-              } else if (s.rpe !== undefined && s.rpe !== null) {
-                rirSum += 10 - Number(s.rpe);
-                rirCount++;
+              let rirSum = 0;
+              let rirCount = 0;
+              for (const s of completedSets) {
+                if (s.rir !== undefined && s.rir !== null) {
+                  rirSum += Number(s.rir);
+                  rirCount++;
+                } else if (s.rpe !== undefined && s.rpe !== null) {
+                  rirSum += 10 - Number(s.rpe);
+                  rirCount++;
+                }
               }
+              const avgRIR = rirCount > 0 ? Math.round((rirSum / rirCount) * 10) / 10 : 2;
+
+              const parts = (log.date || '').split('-');
+              const shortDate = parts.length === 3 ? `${parts[1]}/${parts[2]}` : log.date;
+
+              sessions.push({
+                date: log.date,
+                shortDate,
+                topWeight,
+                maxReps,
+                oneRM,
+                avgRIR,
+                sets: completedSets,
+              });
             }
-            const avgRIR = rirCount > 0 ? Math.round((rirSum / rirCount) * 10) / 10 : 2;
-
-            const parts = (log.date || '').split('-');
-            const shortDate = parts.length === 3 ? `${parts[1]}/${parts[2]}` : log.date;
-
-            sessions.push({
-              date: log.date,
-              shortDate,
-              topWeight,
-              maxReps,
-              oneRM,
-              avgRIR,
-              sets: completedSets,
-            });
           }
         }
       }
-    }
-    return sessions;
+      return sessions;
+    });
   }, [gymLogs, selectedExercise]);
 
   // All-time best 1RM for selected exercise

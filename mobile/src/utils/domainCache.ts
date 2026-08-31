@@ -17,6 +17,7 @@
  * Cache clear: called on logout — stale data from a previous user never bleeds.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { clearDomainHotCache } from './hotCacheStore';
 
 // ─── Cache Keys ───────────────────────────────────────────────────────────────
 export const DOMAIN_CACHE_KEYS = {
@@ -206,9 +207,9 @@ export interface CreativeCache {
 export const readCreativeCache  = () => readDomainCache<CreativeCache>(CREATIVE_KEY_MAP);
 export const writeCreativeCache = (data: Partial<CreativeCache>, immediate = false) => writeDomainCache(data, CREATIVE_KEY_MAP, immediate);
 
-// ─── Clear ALL domain caches on logout ────────────────────────────────────────
 export async function clearAllDomainCaches(): Promise<void> {
   try {
+    clearDomainHotCache();
     await AsyncStorage.multiRemove(Object.values(DOMAIN_CACHE_KEYS));
   } catch { /* silent */ }
 }

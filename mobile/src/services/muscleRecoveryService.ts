@@ -10,6 +10,7 @@
 
 import { GymDayLog } from '../types/gym.types';
 import { inferAutomaticRIR } from './effortEngine';
+import { computeOrGetHotCache, generateDatasetFingerprint } from '../utils/hotCacheStore';
 
 export const MUSCLES = [
   'trapezius',
@@ -236,39 +237,42 @@ export function calculateMuscleLoad(
   anchorDateStr?: string,
   onlyHardSets: boolean = false
 ): Record<MuscleSlug, number> {
-  const load: Record<MuscleSlug, number> = {} as any;
-  MUSCLES.forEach(m => (load[m] = 0));
+  const cacheKey = `muscle_load_${generateDatasetFingerprint(logs, `${windowDays}_${anchorDateStr || ''}_${onlyHardSets}`)}`;
+  return computeOrGetHotCache(cacheKey, () => {
+    const load: Record<MuscleSlug, number> = {} as any;
+    MUSCLES.forEach(m => (load[m] = 0));
 
-  const now = anchorDateStr ? new Date(anchorDateStr).getTime() : Date.now();
-  const windowMs = windowDays === 0 ? Infinity : windowDays * 86400000;
+    const now = anchorDateStr ? new Date(anchorDateStr).getTime() : Date.now();
+    const windowMs = windowDays === 0 ? Infinity : windowDays * 86400000;
 
-  for (const log of logs || []) {
-    if (!log.date) continue;
-    const logTime = new Date(log.date).getTime();
-    if (windowMs !== Infinity && (now - logTime > windowMs || logTime > now + 86400000)) {
-      continue;
-    }
+    for (const log of logs || []) {
+      if (!log.date) continue;
+      const logTime = new Date(log.date).getTime();
+      if (windowMs !== Infinity && (now - logTime > windowMs || logTime > now + 86400000)) {
+        continue;
+      }
 
-    for (const ex of log.exercises || []) {
-      if (ex.skipped) continue;
-      const completedSets = (ex.setsLog || []).filter((s: any) => {
-        if (!s.completed || s.isWarmup) return false;
-        if (!onlyHardSets) return true;
-        const rir = inferAutomaticRIR(s, ex.setsLog);
-        return rir <= 3;
-      }).length;
-      if (!completedSets) continue;
+      for (const ex of log.exercises || []) {
+        if (ex.skipped) continue;
+        const completedSets = (ex.setsLog || []).filter((s: any) => {
+          if (!s.completed || s.isWarmup) return false;
+          if (!onlyHardSets) return true;
+          const rir = inferAutomaticRIR(s, ex.setsLog);
+          return rir <= 3;
+        }).length;
+        if (!completedSets) continue;
 
-      const weights = getExerciseMuscleWeights(ex);
-      for (const [slug, w] of Object.entries(weights)) {
-        if (slug in load) {
-          load[slug as MuscleSlug] += (w || 0) * completedSets;
+        const weights = getExerciseMuscleWeights(ex);
+        for (const [slug, w] of Object.entries(weights)) {
+          if (slug in load) {
+            load[slug as MuscleSlug] += (w || 0) * completedSets;
+          }
         }
       }
     }
-  }
 
-  return load;
+    return load;
+  });
 }
 
 /**
@@ -309,75 +313,78 @@ export function calculateMuscleFatigue(
   logs: GymDayLog[],
   anchorDateStr?: string
 ): Record<MuscleSlug, MuscleRecoveryData> {
-  const out: Record<MuscleSlug, MuscleRecoveryData> = {} as any;
-  const now = anchorDateStr ? new Date(anchorDateStr).getTime() : Date.now();
+  const cacheKey = `muscle_fatigue_${generateDatasetFingerprint(logs, anchorDateStr || '')}`;
+  return computeOrGetHotCache(cacheKey, () => {
+    const out: Record<MuscleSlug, MuscleRecoveryData> = {} as any;
+    const now = anchorDateStr ? new Date(anchorDateStr).getTime() : Date.now();
 
-  const muscleHistory: Record<MuscleSlug, { sets: number; time: number }[]> = {} as any;
-  MUSCLES.forEach(m => (muscleHistory[m] = []));
+    const muscleHistory: Record<MuscleSlug, { sets: number; time: number }[]> = {} as any;
+    MUSCLES.forEach(m => (muscleHistory[m] = []));
 
-  // Collect all set timestamps per muscle
-  for (const log of logs || []) {
-    if (!log.date) continue;
-    const logTime = new Date(log.date).getTime();
-    if (logTime > now + 86400000) continue;
+    // Collect all set timestamps per muscle
+    for (const log of logs || []) {
+      if (!log.date) continue;
+      const logTime = new Date(log.date).getTime();
+      if (logTime > now + 86400000) continue;
 
-    for (const ex of log.exercises || []) {
-      if (ex.skipped) continue;
-      const completedSets = (ex.setsLog || []).filter((s: any) => s.completed).length;
-      if (!completedSets) continue;
+      for (const ex of log.exercises || []) {
+        if (ex.skipped) continue;
+        const completedSets = (ex.setsLog || []).filter((s: any) => s.completed).length;
+        if (!completedSets) continue;
 
-      const weights = getExerciseMuscleWeights(ex);
-      for (const [slug, w] of Object.entries(weights)) {
-        if (slug in muscleHistory) {
-          muscleHistory[slug as MuscleSlug].push({
-            sets: completedSets * (w || 1),
-            time: logTime,
-          });
+        const weights = getExerciseMuscleWeights(ex);
+        for (const [slug, w] of Object.entries(weights)) {
+          if (slug in muscleHistory) {
+            muscleHistory[slug as MuscleSlug].push({
+              sets: completedSets * (w || 1),
+              time: logTime,
+            });
+          }
         }
       }
     }
-  }
 
-  // Calculate fatigue decay
-  MUSCLES.forEach(m => {
-    const hits = muscleHistory[m];
-    let totalFatigue = 0;
-    let mostRecentTime: number | null = null;
-    let totalSetsInWindow = 0;
+    // Calculate fatigue decay
+    MUSCLES.forEach(m => {
+      const hits = muscleHistory[m];
+      let totalFatigue = 0;
+      let mostRecentTime: number | null = null;
+      let totalSetsInWindow = 0;
 
-    for (const hit of hits) {
-      if (!mostRecentTime || hit.time > mostRecentTime) {
-        mostRecentTime = hit.time;
+      for (const hit of hits) {
+        if (!mostRecentTime || hit.time > mostRecentTime) {
+          mostRecentTime = hit.time;
+        }
+        const daysAgo = Math.max(0, (now - hit.time) / 86400000);
+        if (daysAgo <= 7) {
+          totalSetsInWindow += hit.sets;
+        }
+        // Half-life recovery decay (~36 hours / 1.5 days)
+        const decay = Math.exp(-daysAgo / 1.5);
+        const intensityWeight = Math.min(1.5, 0.25 + hit.sets * 0.08);
+        totalFatigue += intensityWeight * decay;
       }
-      const daysAgo = Math.max(0, (now - hit.time) / 86400000);
-      if (daysAgo <= 7) {
-        totalSetsInWindow += hit.sets;
-      }
-      // Half-life recovery decay (~36 hours / 1.5 days)
-      const decay = Math.exp(-daysAgo / 1.5);
-      const intensityWeight = Math.min(1.5, 0.25 + hit.sets * 0.08);
-      totalFatigue += intensityWeight * decay;
-    }
 
-    const daysAgo = mostRecentTime ? Math.max(0, Math.floor((now - mostRecentTime) / 86400000)) : null;
-    const fLevel = Math.min(4, Math.max(0, Math.ceil(totalFatigue * 3.5)));
-    const state: FatigueState = fLevel >= 3 ? 'fatigued' : fLevel >= 1 ? 'recovering' : 'ready';
+      const daysAgo = mostRecentTime ? Math.max(0, Math.floor((now - mostRecentTime) / 86400000)) : null;
+      const fLevel = Math.min(4, Math.max(0, Math.ceil(totalFatigue * 3.5)));
+      const state: FatigueState = fLevel >= 3 ? 'fatigued' : fLevel >= 1 ? 'recovering' : 'ready';
 
-    // Exponential strength recovery curve
-    const hoursSince = mostRecentTime ? (now - mostRecentTime) / 3600000 : 999;
-    const strengthScore = Math.min(1.0, 0.65 + 0.35 * (1 - Math.exp(-hoursSince / 36)));
+      // Exponential strength recovery curve
+      const hoursSince = mostRecentTime ? (now - mostRecentTime) / 3600000 : 999;
+      const strengthScore = Math.min(1.0, 0.65 + 0.35 * (1 - Math.exp(-hoursSince / 36)));
 
-    out[m] = {
-      fatigueScore: Math.round(totalFatigue * 100) / 100,
-      fatigueLevel: fLevel,
-      state,
-      strengthScore: Math.round(strengthScore * 100) / 100,
-      lastTrainedDaysAgo: daysAgo,
-      totalSets: Math.round(totalSetsInWindow),
-    };
+      out[m] = {
+        fatigueScore: Math.round(totalFatigue * 100) / 100,
+        fatigueLevel: fLevel,
+        state,
+        strengthScore: Math.round(strengthScore * 100) / 100,
+        lastTrainedDaysAgo: daysAgo,
+        totalSets: Math.round(totalSetsInWindow),
+      };
+    });
+
+    return out;
   });
-
-  return out;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -414,54 +421,57 @@ export function calculateMacroVolumeLoad(
   windowDays: number = 30,
   anchorDateStr?: string
 ): Record<MuscleSlug, MacroMuscleVolume> {
-  const out: Record<MuscleSlug, MacroMuscleVolume> = {} as any;
-  MUSCLES.forEach(m => (out[m] = { sets: 0, volumeKg: 0, level: 0, percentage: 0 }));
+  const cacheKey = `macro_vol_${generateDatasetFingerprint(logs, `${windowDays}_${anchorDateStr || ''}`)}`;
+  return computeOrGetHotCache(cacheKey, () => {
+    const out: Record<MuscleSlug, MacroMuscleVolume> = {} as any;
+    MUSCLES.forEach(m => (out[m] = { sets: 0, volumeKg: 0, level: 0, percentage: 0 }));
 
-  const now = anchorDateStr ? new Date(anchorDateStr).getTime() : Date.now();
-  const windowMs = windowDays === 0 ? Infinity : windowDays * 86400000;
+    const now = anchorDateStr ? new Date(anchorDateStr).getTime() : Date.now();
+    const windowMs = windowDays === 0 ? Infinity : windowDays * 86400000;
 
-  let totalKgAll = 0;
+    let totalKgAll = 0;
 
-  for (const log of logs || []) {
-    if (!log.date) continue;
-    const logTime = new Date(log.date).getTime();
-    if (windowMs !== Infinity && (now - logTime > windowMs || logTime > now + 86400000)) {
-      continue;
-    }
+    for (const log of logs || []) {
+      if (!log.date) continue;
+      const logTime = new Date(log.date).getTime();
+      if (windowMs !== Infinity && (now - logTime > windowMs || logTime > now + 86400000)) {
+        continue;
+      }
 
-    for (const ex of log.exercises || []) {
-      if (ex.skipped) continue;
-      const weights = getExerciseMuscleWeights(ex);
+      for (const ex of log.exercises || []) {
+        if (ex.skipped) continue;
+        const weights = getExerciseMuscleWeights(ex);
 
-      for (const s of ex.setsLog || []) {
-        if (!s.completed) continue;
-        const w = Number(s.weight) || 0;
-        const r = Number(s.reps) || 0;
-        const setVol = w * r;
+        for (const s of ex.setsLog || []) {
+          if (!s.completed) continue;
+          const w = Number(s.weight) || 0;
+          const r = Number(s.reps) || 0;
+          const setVol = w * r;
 
-        for (const [slug, mWeight] of Object.entries(weights)) {
-          if (slug in out) {
-            const muscleKey = slug as MuscleSlug;
-            out[muscleKey].sets += mWeight || 1;
-            out[muscleKey].volumeKg += setVol * (mWeight || 1);
-            totalKgAll += setVol * (mWeight || 1);
+          for (const [slug, mWeight] of Object.entries(weights)) {
+            if (slug in out) {
+              const muscleKey = slug as MuscleSlug;
+              out[muscleKey].sets += mWeight || 1;
+              out[muscleKey].volumeKg += setVol * (mWeight || 1);
+              totalKgAll += setVol * (mWeight || 1);
+            }
           }
         }
       }
     }
-  }
 
-  const maxVol = Math.max(0, ...Object.values(out).map(v => v.volumeKg));
+    const maxVol = Math.max(0, ...Object.values(out).map(v => v.volumeKg));
 
-  MUSCLES.forEach(m => {
-    const item = out[m];
-    item.sets = Math.round(item.sets * 10) / 10;
-    item.volumeKg = Math.round(item.volumeKg);
-    item.percentage = totalKgAll > 0 ? Math.round((item.volumeKg / totalKgAll) * 100) : 0;
-    item.level = maxVol > 0 && item.volumeKg > 0 ? Math.max(1, Math.min(4, Math.ceil((item.volumeKg / maxVol) * 4))) : 0;
+    MUSCLES.forEach(m => {
+      const item = out[m];
+      item.sets = Math.round(item.sets * 10) / 10;
+      item.volumeKg = Math.round(item.volumeKg);
+      item.percentage = totalKgAll > 0 ? Math.round((item.volumeKg / totalKgAll) * 100) : 0;
+      item.level = maxVol > 0 && item.volumeKg > 0 ? Math.max(1, Math.min(4, Math.ceil((item.volumeKg / maxVol) * 4))) : 0;
+    });
+
+    return out;
   });
-
-  return out;
 }
 
 /**
@@ -472,105 +482,108 @@ export function calculateMuscleGrowthProgression(
   windowDays: number = 30,
   anchorDateStr?: string
 ): Record<MuscleSlug, MacroMuscleGrowth> {
-  const out: Record<MuscleSlug, MacroMuscleGrowth> = {} as any;
-  MUSCLES.forEach(m => (out[m] = {
-    gainPct: 0,
-    status: 'untrained',
-    color: '#232128',
-    bestExercise: null,
-    loadDeltaKg: 0,
-  }));
+  const cacheKey = `macro_growth_${generateDatasetFingerprint(logs, `${windowDays}_${anchorDateStr || ''}`)}`;
+  return computeOrGetHotCache(cacheKey, () => {
+    const out: Record<MuscleSlug, MacroMuscleGrowth> = {} as any;
+    MUSCLES.forEach(m => (out[m] = {
+      gainPct: 0,
+      status: 'untrained',
+      color: '#232128',
+      bestExercise: null,
+      loadDeltaKg: 0,
+    }));
 
-  const now = anchorDateStr ? new Date(anchorDateStr).getTime() : Date.now();
-  const windowMs = windowDays === 0 ? Infinity : windowDays * 86400000;
+    const now = anchorDateStr ? new Date(anchorDateStr).getTime() : Date.now();
+    const windowMs = windowDays === 0 ? Infinity : windowDays * 86400000;
 
-  // Filter logs in window & sort chronologically
-  const filtered = (logs || [])
-    .filter(l => {
-      if (!l.date) return false;
-      const t = new Date(l.date).getTime();
-      return windowMs === Infinity || (now - t <= windowMs && t <= now + 86400000);
-    })
-    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    // Filter logs in window & sort chronologically
+    const filtered = (logs || [])
+      .filter(l => {
+        if (!l.date) return false;
+        const t = new Date(l.date).getTime();
+        return windowMs === Infinity || (now - t <= windowMs && t <= now + 86400000);
+      })
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
-  if (filtered.length === 0) return out;
+    if (filtered.length === 0) return out;
 
-  // Group exercise top loads by muscle over time
-  const muscleExerciseLoads: Record<MuscleSlug, Record<string, { baseline1RM: number; latest1RM: number }>> = {} as any;
-  MUSCLES.forEach(m => (muscleExerciseLoads[m] = {}));
+    // Group exercise top loads by muscle over time
+    const muscleExerciseLoads: Record<MuscleSlug, Record<string, { baseline1RM: number; latest1RM: number }>> = {} as any;
+    MUSCLES.forEach(m => (muscleExerciseLoads[m] = {}));
 
-  for (const log of filtered) {
-    for (const ex of log.exercises || []) {
-      if (ex.skipped || !ex.name) continue;
-      const completed = (ex.setsLog || []).filter((s: any) => s.completed);
-      if (!completed.length) continue;
+    for (const log of filtered) {
+      for (const ex of log.exercises || []) {
+        if (ex.skipped || !ex.name) continue;
+        const completed = (ex.setsLog || []).filter((s: any) => s.completed);
+        if (!completed.length) continue;
 
-      const topW = Math.max(0, ...completed.map((s: any) => Number(s.weight) || 0));
-      const topR = completed.find((s: any) => Number(s.weight) === topW)?.reps || 1;
-      const rm = topW * (1 + topR / 30); // Epley 1RM
+        const topW = Math.max(0, ...completed.map((s: any) => Number(s.weight) || 0));
+        const topR = completed.find((s: any) => Number(s.weight) === topW)?.reps || 1;
+        const rm = topW * (1 + topR / 30); // Epley 1RM
 
-      const weights = getExerciseMuscleWeights(ex);
-      for (const slug of Object.keys(weights)) {
-        if (slug in muscleExerciseLoads) {
-          const mKey = slug as MuscleSlug;
-          if (!muscleExerciseLoads[mKey][ex.name]) {
-            muscleExerciseLoads[mKey][ex.name] = { baseline1RM: rm, latest1RM: rm };
-          } else {
-            muscleExerciseLoads[mKey][ex.name].latest1RM = rm;
+        const weights = getExerciseMuscleWeights(ex);
+        for (const slug of Object.keys(weights)) {
+          if (slug in muscleExerciseLoads) {
+            const mKey = slug as MuscleSlug;
+            if (!muscleExerciseLoads[mKey][ex.name]) {
+              muscleExerciseLoads[mKey][ex.name] = { baseline1RM: rm, latest1RM: rm };
+            } else {
+              muscleExerciseLoads[mKey][ex.name].latest1RM = rm;
+            }
           }
         }
       }
     }
-  }
 
-  // Calculate percentage delta
-  MUSCLES.forEach(m => {
-    const exercises = Object.entries(muscleExerciseLoads[m]);
-    if (exercises.length === 0) return;
+    // Calculate percentage delta
+    MUSCLES.forEach(m => {
+      const exercises = Object.entries(muscleExerciseLoads[m]);
+      if (exercises.length === 0) return;
 
-    let totalBase = 0;
-    let totalLatest = 0;
-    let bestEx = '';
-    let maxExGain = -Infinity;
+      let totalBase = 0;
+      let totalLatest = 0;
+      let bestEx = '';
+      let maxExGain = -Infinity;
 
-    for (const [exName, loads] of exercises) {
-      totalBase += loads.baseline1RM;
-      totalLatest += loads.latest1RM;
-      const gain = loads.latest1RM - loads.baseline1RM;
-      if (gain > maxExGain) {
-        maxExGain = gain;
-        bestEx = exName;
-      }
-    }
-
-    if (totalBase > 0) {
-      const delta = totalLatest - totalBase;
-      const pct = Math.round((delta / totalBase) * 1000) / 10;
-      let status: MacroMuscleGrowth['status'] = 'maintained';
-      let color = '#89dceb'; // Ice blue maintained
-
-      if (pct >= 8) {
-        status = 'high_gain';
-        color = '#ffd32a'; // 🔥 Gold
-      } else if (pct >= 2.5) {
-        status = 'steady_gain';
-        color = '#5eda9e'; // 🟢 Green
-      } else if (pct < 0) {
-        status = 'maintained';
-        color = '#8e8e93';
+      for (const [exName, loads] of exercises) {
+        totalBase += loads.baseline1RM;
+        totalLatest += loads.latest1RM;
+        const gain = loads.latest1RM - loads.baseline1RM;
+        if (gain > maxExGain) {
+          maxExGain = gain;
+          bestEx = exName;
+        }
       }
 
-      out[m] = {
-        gainPct: pct,
-        status,
-        color,
-        bestExercise: bestEx || null,
-        loadDeltaKg: Math.round(delta * 10) / 10,
-      };
-    }
+      if (totalBase > 0) {
+        const delta = totalLatest - totalBase;
+        const pct = Math.round((delta / totalBase) * 1000) / 10;
+        let status: MacroMuscleGrowth['status'] = 'maintained';
+        let color = '#89dceb'; // Ice blue maintained
+
+        if (pct >= 8) {
+          status = 'high_gain';
+          color = '#ffd32a'; // 🔥 Gold
+        } else if (pct >= 2.5) {
+          status = 'steady_gain';
+          color = '#5eda9e'; // 🟢 Green
+        } else if (pct < 0) {
+          status = 'maintained';
+          color = '#8e8e93';
+        }
+
+        out[m] = {
+          gainPct: pct,
+          status,
+          color,
+          bestExercise: bestEx || null,
+          loadDeltaKg: Math.round(delta * 10) / 10,
+        };
+      }
+    });
+
+    return out;
   });
-
-  return out;
 }
 
 /**
@@ -581,66 +594,69 @@ export function calculateSymmetryAndBalance(
   windowDays: number = 30,
   anchorDateStr?: string
 ): Record<MuscleSlug, MacroMuscleBalance> {
-  const volumeMap = calculateMacroVolumeLoad(logs, windowDays, anchorDateStr);
-  const out: Record<MuscleSlug, MacroMuscleBalance> = {} as any;
+  const cacheKey = `macro_symmetry_${generateDatasetFingerprint(logs, `${windowDays}_${anchorDateStr || ''}`)}`;
+  return computeOrGetHotCache(cacheKey, () => {
+    const volumeMap = calculateMacroVolumeLoad(logs, windowDays, anchorDateStr);
+    const out: Record<MuscleSlug, MacroMuscleBalance> = {} as any;
 
-  // Key Pair Ratios
-  const quadsVol = volumeMap.quadriceps.volumeKg || 1;
-  const hamsVol = volumeMap.hamstring.volumeKg || 0;
-  const glutesVol = volumeMap.gluteal.volumeKg || 0;
-  const chestVol = volumeMap.chest.volumeKg || 1;
-  const backVol = volumeMap['upper-back'].volumeKg || 0;
-  const biVol = volumeMap.biceps.volumeKg || 1;
-  const triVol = volumeMap.triceps.volumeKg || 0;
+    // Key Pair Ratios
+    const quadsVol = volumeMap.quadriceps.volumeKg || 1;
+    const hamsVol = volumeMap.hamstring.volumeKg || 0;
+    const glutesVol = volumeMap.gluteal.volumeKg || 0;
+    const chestVol = volumeMap.chest.volumeKg || 1;
+    const backVol = volumeMap['upper-back'].volumeKg || 0;
+    const biVol = volumeMap.biceps.volumeKg || 1;
+    const triVol = volumeMap.triceps.volumeKg || 0;
 
-  // Leg Posterior / Anterior Ratio
-  const legRatio = (hamsVol + glutesVol) / quadsVol;
-  // Push / Pull Ratio
-  const backChestRatio = backVol / chestVol;
-  // Arm Ratio
-  const armRatio = triVol / biVol;
+    // Leg Posterior / Anterior Ratio
+    const legRatio = (hamsVol + glutesVol) / quadsVol;
+    // Push / Pull Ratio
+    const backChestRatio = backVol / chestVol;
+    // Arm Ratio
+    const armRatio = triVol / biVol;
 
-  MUSCLES.forEach(m => {
-    const vol = volumeMap[m].volumeKg;
-    if (vol <= 0) {
-      out[m] = { status: 'untrained', ratio: 0, color: '#232128', recommendation: 'No sets logged in this timeframe.' };
-      return;
-    }
+    MUSCLES.forEach(m => {
+      const vol = volumeMap[m].volumeKg;
+      if (vol <= 0) {
+        out[m] = { status: 'untrained', ratio: 0, color: '#232128', recommendation: 'No sets logged in this timeframe.' };
+        return;
+      }
 
-    if (m === 'hamstring' || m === 'gluteal') {
-      if (legRatio < 0.7) {
-        out[m] = { status: 'lagging', ratio: Math.round(legRatio * 100) / 100, color: '#ff6961', recommendation: 'Posterior chain lagging behind Quads. Add RDLs or Hip Thrusts.' };
+      if (m === 'hamstring' || m === 'gluteal') {
+        if (legRatio < 0.7) {
+          out[m] = { status: 'lagging', ratio: Math.round(legRatio * 100) / 100, color: '#ff6961', recommendation: 'Posterior chain lagging behind Quads. Add RDLs or Hip Thrusts.' };
+        } else {
+          out[m] = { status: 'optimal', ratio: Math.round(legRatio * 100) / 100, color: '#5eda9e', recommendation: 'Excellent quad/hamstring structural balance.' };
+        }
+      } else if (m === 'quadriceps') {
+        if (legRatio < 0.7) {
+          out[m] = { status: 'dominant', ratio: Math.round(1 / legRatio * 100) / 100, color: '#ff9f4d', recommendation: 'Quad dominant. Balance with more hamstring volume.' };
+        } else {
+          out[m] = { status: 'optimal', ratio: 1.0, color: '#5eda9e', recommendation: 'Balanced leg hypertrophy stimulus.' };
+        }
+      } else if (m === 'chest') {
+        if (backChestRatio < 0.8) {
+          out[m] = { status: 'dominant', ratio: Math.round(1 / (backChestRatio || 0.1) * 100) / 100, color: '#ff9f4d', recommendation: 'Push volume exceeding pull volume. Add more rowing.' };
+        } else {
+          out[m] = { status: 'optimal', ratio: 1.0, color: '#5eda9e', recommendation: 'Symmetrical push / pull development.' };
+        }
+      } else if (m === 'upper-back' || m === 'trapezius') {
+        if (backChestRatio < 0.8) {
+          out[m] = { status: 'lagging', ratio: Math.round(backChestRatio * 100) / 100, color: '#ff6961', recommendation: 'Pull volume lagging behind pressing. Add 4 sets of lat work.' };
+        } else {
+          out[m] = { status: 'optimal', ratio: Math.round(backChestRatio * 100) / 100, color: '#5eda9e', recommendation: 'Strong back-to-chest volume posture support.' };
+        }
+      } else if (m === 'triceps' || m === 'biceps') {
+        if (armRatio < 0.75 || armRatio > 1.4) {
+          out[m] = { status: 'dominant', ratio: Math.round(armRatio * 100) / 100, color: '#ff9f4d', recommendation: 'Arm agonist/antagonist ratio slightly skewed.' };
+        } else {
+          out[m] = { status: 'optimal', ratio: Math.round(armRatio * 100) / 100, color: '#5eda9e', recommendation: 'Harmonious bicep/tricep volume balance.' };
+        }
       } else {
-        out[m] = { status: 'optimal', ratio: Math.round(legRatio * 100) / 100, color: '#5eda9e', recommendation: 'Excellent quad/hamstring structural balance.' };
+        out[m] = { status: 'optimal', ratio: 1.0, color: '#5eda9e', recommendation: 'Consistent stimulus applied.' };
       }
-    } else if (m === 'quadriceps') {
-      if (legRatio < 0.7) {
-        out[m] = { status: 'dominant', ratio: Math.round(1 / legRatio * 100) / 100, color: '#ff9f4d', recommendation: 'Quad dominant. Balance with more hamstring volume.' };
-      } else {
-        out[m] = { status: 'optimal', ratio: 1.0, color: '#5eda9e', recommendation: 'Balanced leg hypertrophy stimulus.' };
-      }
-    } else if (m === 'chest') {
-      if (backChestRatio < 0.8) {
-        out[m] = { status: 'dominant', ratio: Math.round(1 / (backChestRatio || 0.1) * 100) / 100, color: '#ff9f4d', recommendation: 'Push volume exceeding pull volume. Add more rowing.' };
-      } else {
-        out[m] = { status: 'optimal', ratio: 1.0, color: '#5eda9e', recommendation: 'Symmetrical push / pull development.' };
-      }
-    } else if (m === 'upper-back' || m === 'trapezius') {
-      if (backChestRatio < 0.8) {
-        out[m] = { status: 'lagging', ratio: Math.round(backChestRatio * 100) / 100, color: '#ff6961', recommendation: 'Pull volume lagging behind pressing. Add 4 sets of lat work.' };
-      } else {
-        out[m] = { status: 'optimal', ratio: Math.round(backChestRatio * 100) / 100, color: '#5eda9e', recommendation: 'Strong back-to-chest volume posture support.' };
-      }
-    } else if (m === 'triceps' || m === 'biceps') {
-      if (armRatio < 0.75 || armRatio > 1.4) {
-        out[m] = { status: 'dominant', ratio: Math.round(armRatio * 100) / 100, color: '#ff9f4d', recommendation: 'Arm agonist/antagonist ratio slightly skewed.' };
-      } else {
-        out[m] = { status: 'optimal', ratio: Math.round(armRatio * 100) / 100, color: '#5eda9e', recommendation: 'Harmonious bicep/tricep volume balance.' };
-      }
-    } else {
-      out[m] = { status: 'optimal', ratio: 1.0, color: '#5eda9e', recommendation: 'Consistent stimulus applied.' };
-    }
+    });
+
+    return out;
   });
-
-  return out;
 }

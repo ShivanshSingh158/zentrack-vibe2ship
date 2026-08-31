@@ -23,6 +23,7 @@ import { usePlannerData } from '../contexts/domains/PlannerContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
 import { useTheme } from "../contexts/ThemeContext";
 import AnalyticsSkeleton from '../components/Analytics/AnalyticsSkeleton';
+import { computeOrGetHotCache, generateDatasetFingerprint } from '../utils/hotCacheStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CHART_H = 90;
@@ -609,101 +610,104 @@ export default function AnalyticsScreen() {
   const prevStart = daysAgoStr(days * 2 - 1);
   const prevEnd   = daysAgoStr(days);
 
-  // ── Computed stats (Single-pass O(N) optimization) ──────────────────────
+  // ── Computed stats (Hot-Cached) ──────────────────────────────────────────
   const stats = useMemo(() => {
-    let curTasks = 0;
-    let prevTasks = 0;
-    let curFocus = 0;
-    let prevFocus = 0;
+    const cacheKey = `analytics_stats_${period}_${generateDatasetFingerprint(tasks)}_${generateDatasetFingerprint(habitLogs)}_${generateDatasetFingerprint(gymLogs)}_${generateDatasetFingerprint(attendanceLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      let curTasks = 0;
+      let prevTasks = 0;
+      let curFocus = 0;
+      let prevFocus = 0;
 
-    for (const t of tasks) {
-      if (t.status !== 'completed') continue;
-      const d = t.completedAt || t.date || '';
-      if (d >= curStart) {
-        curTasks++;
-        curFocus += (t.actualMinutes || 0);
-      } else if (d >= prevStart && d <= prevEnd) {
-        prevTasks++;
-        prevFocus += (t.actualMinutes || 0);
+      for (const t of tasks) {
+        if (t.status !== 'completed') continue;
+        const d = t.completedAt || t.date || '';
+        if (d >= curStart) {
+          curTasks++;
+          curFocus += (t.actualMinutes || 0);
+        } else if (d >= prevStart && d <= prevEnd) {
+          prevTasks++;
+          prevFocus += (t.actualMinutes || 0);
+        }
       }
-    }
 
-    let curHabits = 0;
-    let prevHabits = 0;
-    for (const l of habitLogs) {
-      if (l.date >= curStart) curHabits++;
-      else if (l.date >= prevStart && l.date <= prevEnd) prevHabits++;
-    }
-
-    let curGym = 0;
-    let prevGym = 0;
-    for (const g of gymLogs) {
-      if (g.date >= curStart) curGym++;
-      else if (g.date >= prevStart && g.date <= prevEnd) prevGym++;
-    }
-
-    let curAttended = 0;
-    let curMissed = 0;
-    let prevAttended = 0;
-    let prevMissed = 0;
-
-    for (const l of attendanceLogs) {
-      if (l.date >= curStart) {
-        if (l.action === 'attended') curAttended++;
-        else if (l.action === 'missed') curMissed++;
-      } else if (l.date >= prevStart && l.date <= prevEnd) {
-        if (l.action === 'attended') prevAttended++;
-        else if (l.action === 'missed') prevMissed++;
+      let curHabits = 0;
+      let prevHabits = 0;
+      for (const l of habitLogs) {
+        if (l.date >= curStart) curHabits++;
+        else if (l.date >= prevStart && l.date <= prevEnd) prevHabits++;
       }
-    }
 
-    const totalAtt = curAttended + curMissed;
-    const attendancePct = totalAtt > 0 ? (curAttended / totalAtt) * 100 : 100;
-
-    const D = PERIOD_DAYS[period] || 7;
-    const targetTasks = D * 3;
-    const targetGym = Math.round(D * (4 / 7));
-    const targetFocus = D * 30;
-    const targetHabits = D * 2;
-
-    const calcScore = (tasksCount: number, gymCount: number, focusMins: number, habitsCount: number, totAtt: number, attPct: number) => {
-      const tScore = Math.min(25, (tasksCount / targetTasks) * 25);
-      const gScore = targetGym > 0 ? Math.min(30, (gymCount / targetGym) * 30) : 30;
-      const fScore = Math.min(25, (focusMins / targetFocus) * 25);
-      const hScore = Math.min(20, (habitsCount / targetHabits) * 20);
-
-      let base = tScore + gScore + fScore + hScore;
-      let attMod = 0;
-      if (totAtt > 0) {
-        if (attPct >= 90) attMod = 5;
-        else if (attPct < 50) attMod = -10;
+      let curGym = 0;
+      let prevGym = 0;
+      for (const g of gymLogs) {
+        if (g.date >= curStart) curGym++;
+        else if (g.date >= prevStart && g.date <= prevEnd) prevGym++;
       }
-      return Math.max(0, Math.min(100, Math.round(base + attMod)));
-    };
 
-    // Zen Score - Real Data Formula
-    const zenScore = calcScore(curTasks, curGym, curFocus, curHabits, totalAtt, attendancePct);
+      let curAttended = 0;
+      let curMissed = 0;
+      let prevAttended = 0;
+      let prevMissed = 0;
 
-    // Prev Zen
-    const prevTotalAtt = prevAttended + prevMissed;
-    const prevAttendancePct = prevTotalAtt > 0 ? (prevAttended / prevTotalAtt) * 100 : 100;
-    const prevZen = calcScore(prevTasks, prevGym, prevFocus, prevHabits, prevTotalAtt, prevAttendancePct);
+      for (const l of attendanceLogs) {
+        if (l.date >= curStart) {
+          if (l.action === 'attended') curAttended++;
+          else if (l.action === 'missed') curMissed++;
+        } else if (l.date >= prevStart && l.date <= prevEnd) {
+          if (l.action === 'attended') prevAttended++;
+          else if (l.action === 'missed') prevMissed++;
+        }
+      }
 
-    // Best streak - pre-index active dates into a Set for O(1) lookup
-    const activeDates = new Set<string>();
-    for (const t of tasks) {
-      if (t.status === 'completed' && t.completedAt) activeDates.add(t.completedAt.slice(0, 10));
-    }
-    for (const g of gymLogs) { if (g.date) activeDates.add(g.date); }
-    for (const l of habitLogs) { if (l.date) activeDates.add(l.date); }
+      const totalAtt = curAttended + curMissed;
+      const attendancePct = totalAtt > 0 ? (curAttended / totalAtt) * 100 : 100;
 
-    let best = 0, run = 0;
-    for (let i = 0; i < 90; i++) {
-      const d = daysAgoStr(i);
-      if (activeDates.has(d)) { run++; best = Math.max(best, run); } else { run = 0; }
-    }
+      const D = PERIOD_DAYS[period] || 7;
+      const targetTasks = D * 3;
+      const targetGym = Math.round(D * (4 / 7));
+      const targetFocus = D * 30;
+      const targetHabits = D * 2;
 
-    return { curTasks, prevTasks, curHabits, prevHabits, curGym, prevGym, curFocus, prevFocus, zenScore, prevZen, bestStreak: best, curAttended };
+      const calcScore = (tasksCount: number, gymCount: number, focusMins: number, habitsCount: number, totAtt: number, attPct: number) => {
+        const tScore = Math.min(25, (tasksCount / targetTasks) * 25);
+        const gScore = targetGym > 0 ? Math.min(30, (gymCount / targetGym) * 30) : 30;
+        const fScore = Math.min(25, (focusMins / targetFocus) * 25);
+        const hScore = Math.min(20, (habitsCount / targetHabits) * 20);
+
+        let base = tScore + gScore + fScore + hScore;
+        let attMod = 0;
+        if (totAtt > 0) {
+          if (attPct >= 90) attMod = 5;
+          else if (attPct < 50) attMod = -10;
+        }
+        return Math.max(0, Math.min(100, Math.round(base + attMod)));
+      };
+
+      // Zen Score - Real Data Formula
+      const zenScore = calcScore(curTasks, curGym, curFocus, curHabits, totalAtt, attendancePct);
+
+      // Prev Zen
+      const prevTotalAtt = prevAttended + prevMissed;
+      const prevAttendancePct = prevTotalAtt > 0 ? (prevAttended / prevTotalAtt) * 100 : 100;
+      const prevZen = calcScore(prevTasks, prevGym, prevFocus, prevHabits, prevTotalAtt, prevAttendancePct);
+
+      // Best streak - pre-index active dates into a Set for O(1) lookup
+      const activeDates = new Set<string>();
+      for (const t of tasks) {
+        if (t.status === 'completed' && t.completedAt) activeDates.add(t.completedAt.slice(0, 10));
+      }
+      for (const g of gymLogs) { if (g.date) activeDates.add(g.date); }
+      for (const l of habitLogs) { if (l.date) activeDates.add(l.date); }
+
+      let best = 0, run = 0;
+      for (let i = 0; i < 90; i++) {
+        const d = daysAgoStr(i);
+        if (activeDates.has(d)) { run++; best = Math.max(best, run); } else { run = 0; }
+      }
+
+      return { curTasks, prevTasks, curHabits, prevHabits, curGym, prevGym, curFocus, prevFocus, zenScore, prevZen, bestStreak: best, curAttended };
+    });
   }, [tasks, habitLogs, gymLogs, attendanceLogs, period, curStart, prevStart, prevEnd]);
 
   // ── Zen Score ring ──
