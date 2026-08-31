@@ -43,6 +43,7 @@ import {
 } from '../../services/weeklyGymAnalysisEngine';
 import type { GymDayLog, GymPlanDay, UserGymPlanDoc } from '../../types/gym.types';
 import { makeStyles } from './weeklyGymReportStyles';
+import { computeOrGetHotCache, generateDatasetFingerprint } from '../../utils/hotCacheStore';
 
 
 
@@ -282,8 +283,15 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
     return map;
   }
 
-  const thisWeekMuscle = useMemo(() => computeMuscleStats(weekLogs), [weekLogs]);
-  const prevWeekMuscle = useMemo(() => computeMuscleStats(prevLogs), [prevLogs]);
+  const thisWeekMuscle = useMemo(() => {
+    const cacheKey = `weekly_muscle_cur_${weekAnchorDate}_${generateDatasetFingerprint(weekLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => computeMuscleStats(weekLogs));
+  }, [weekLogs, weekAnchorDate]);
+
+  const prevWeekMuscle = useMemo(() => {
+    const cacheKey = `weekly_muscle_prev_${weekAnchorDate}_${generateDatasetFingerprint(prevLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => computeMuscleStats(prevLogs));
+  }, [prevLogs, weekAnchorDate]);
 
   // ── Global KPI Totals ──────────────────────────────────────────────────────
   const totalSets = useMemo(
@@ -316,68 +324,74 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
 
   // ── Weekly Highlights: Heaviest Lift & Top Volume Exercise ─────────────────
   const weeklyHighlights = useMemo(() => {
-    let topLift = { name: '', weight: 0, reps: 0 };
-    const exerciseVolMap: Record<string, { volume: number; name: string }> = {};
+    const cacheKey = `weekly_highlights_${weekAnchorDate}_${generateDatasetFingerprint(weekLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      let topLift = { name: '', weight: 0, reps: 0 };
+      const exerciseVolMap: Record<string, { volume: number; name: string }> = {};
 
-    for (const log of weekLogs) {
-      for (const ex of log.exercises ?? []) {
-        if (ex.skipped) continue;
-        for (const s of ex.setsLog ?? []) {
-          if (s.completed && s.weight && s.weight > 0) {
-            if (s.weight > topLift.weight) {
-              topLift = { name: ex.name, weight: s.weight, reps: s.reps || 0 };
+      for (const log of weekLogs) {
+        for (const ex of log.exercises ?? []) {
+          if (ex.skipped) continue;
+          for (const s of ex.setsLog ?? []) {
+            if (s.completed && s.weight && s.weight > 0) {
+              if (s.weight > topLift.weight) {
+                topLift = { name: ex.name, weight: s.weight, reps: s.reps || 0 };
+              }
+              const vol = s.weight * (s.reps || 1);
+              if (!exerciseVolMap[ex.name]) {
+                exerciseVolMap[ex.name] = { name: ex.name, volume: 0 };
+              }
+              exerciseVolMap[ex.name].volume += vol;
             }
-            const vol = s.weight * (s.reps || 1);
-            if (!exerciseVolMap[ex.name]) {
-              exerciseVolMap[ex.name] = { name: ex.name, volume: 0 };
-            }
-            exerciseVolMap[ex.name].volume += vol;
           }
         }
       }
-    }
 
-    const topVolumeExercise = Object.values(exerciseVolMap).sort(
-      (a, b) => b.volume - a.volume,
-    )[0] || null;
+      const topVolumeExercise = Object.values(exerciseVolMap).sort(
+        (a, b) => b.volume - a.volume,
+      )[0] || null;
 
-    return { topLift: topLift.weight > 0 ? topLift : null, topVolumeExercise };
-  }, [weekLogs]);
+      return { topLift: topLift.weight > 0 ? topLift : null, topVolumeExercise };
+    });
+  }, [weekLogs, weekAnchorDate]);
 
   // ── Cardio Recap ───────────────────────────────────────────────────────────
   const cardioSummary = useMemo(() => {
-    let totalMinutes = 0;
-    let totalKm = 0;
-    let sessions = 0;
-    let loggedCalories = 0;
+    const cacheKey = `weekly_cardio_${weekAnchorDate}_${generateDatasetFingerprint(weekLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      let totalMinutes = 0;
+      let totalKm = 0;
+      let sessions = 0;
+      let loggedCalories = 0;
 
-    for (const log of weekLogs) {
-      for (const c of log.cardio ?? []) {
-        if (c.completed) {
-          sessions++;
-          totalMinutes += Number(c.durationMinutes) || 0;
-          totalKm += Number(c.distanceKm) || 0;
-          loggedCalories += Number(c.caloriesBurned) || 0;
+      for (const log of weekLogs) {
+        for (const c of log.cardio ?? []) {
+          if (c.completed) {
+            sessions++;
+            totalMinutes += Number(c.durationMinutes) || 0;
+            totalKm += Number(c.distanceKm) || 0;
+            loggedCalories += Number(c.caloriesBurned) || 0;
+          }
         }
       }
-    }
 
-    const roundedKm = Math.round(totalKm * 10) / 10;
-    const estCalories = loggedCalories > 0 ? loggedCalories : Math.round(totalMinutes * 8.5);
-    const avgDuration = sessions > 0 ? Math.round(totalMinutes / sessions) : 0;
-    const avgSpeedKmh = totalMinutes > 0 && roundedKm > 0 ? Math.round((roundedKm / (totalMinutes / 60)) * 10) / 10 : 0;
-    const avgPaceMinKm = roundedKm > 0 && totalMinutes > 0 ? Math.round((totalMinutes / roundedKm) * 10) / 10 : 0;
+      const roundedKm = Math.round(totalKm * 10) / 10;
+      const estCalories = loggedCalories > 0 ? loggedCalories : Math.round(totalMinutes * 8.5);
+      const avgDuration = sessions > 0 ? Math.round(totalMinutes / sessions) : 0;
+      const avgSpeedKmh = totalMinutes > 0 && roundedKm > 0 ? Math.round((roundedKm / (totalMinutes / 60)) * 10) / 10 : 0;
+      const avgPaceMinKm = roundedKm > 0 && totalMinutes > 0 ? Math.round((totalMinutes / roundedKm) * 10) / 10 : 0;
 
-    return {
-      totalMinutes,
-      totalKm: roundedKm,
-      sessions,
-      estCalories,
-      avgDuration,
-      avgSpeedKmh,
-      avgPaceMinKm,
-    };
-  }, [weekLogs]);
+      return {
+        totalMinutes,
+        totalKm: roundedKm,
+        sessions,
+        estCalories,
+        avgDuration,
+        avgSpeedKmh,
+        avgPaceMinKm,
+      };
+    });
+  }, [weekLogs, weekAnchorDate]);
 
   // ── Muscle List for Display ────────────────────────────────────────────────
   const displayMuscles = useMemo(() => {
