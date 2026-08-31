@@ -386,7 +386,7 @@ export default function GymProgressScreen() {
         ))}
       </View>
 
-      {!isMounted || (!gymLogsReady && (!gymLogs || gymLogs.length === 0)) ? (
+      {!isMounted ? (
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <GymProgressSkeleton />
         </ScrollView>

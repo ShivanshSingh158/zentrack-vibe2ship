@@ -882,7 +882,7 @@ export default function AnalyticsScreen() {
           <PeriodSelector value={period} onChange={setPeriod} />
         </Animated.View>
 
-        {!isMounted || (!tasksReady && tasks.length === 0) ? (
+        {!isMounted ? (
           <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
             <AnalyticsSkeleton />
           </ScrollView>

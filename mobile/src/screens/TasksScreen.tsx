@@ -343,7 +343,7 @@ export default function TasksScreen() {
       )}
 
       {/* VIEWS */}
-      {!isMounted || (!tasksReady && tasks.length === 0) ? (
+      {!isMounted ? (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
           <TasksSkeleton />
         </ScrollView>
@@ -394,15 +394,13 @@ export default function TasksScreen() {
           ] as any}
           keyExtractor={(item: any) => item.id}
           ListEmptyComponent={
-            tasksReady ? (
-              <EmptyState
-                mascot="running"
-                title="All clear!"
-                subtitle="No tasks for today. Add one to stay on track."
-                mascotSize={110}
-                style={{ marginTop: 0, paddingVertical: 10 }}
-              />
-            ) : null
+            <EmptyState
+              mascot="running"
+              title="All clear!"
+              subtitle="No tasks for today. Add one to stay on track."
+              mascotSize={110}
+              style={{ marginTop: 0, paddingVertical: 10 }}
+            />
           }
           renderSectionHeader={({ section: { title } }: any) => (
             <View style={styles.listSectionHeader}>

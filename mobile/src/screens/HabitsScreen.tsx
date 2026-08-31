@@ -993,7 +993,7 @@ export default function HabitsScreen() {
       </Animated.View>
 
       {/* —————————————————————————————————————————————————————————————————————— */}
-      {!isMounted || (loading && allHabits.length === 0) ? (
+      {!isMounted ? (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
           <HabitsSkeleton />
         </ScrollView>

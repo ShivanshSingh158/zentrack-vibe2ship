@@ -733,10 +733,7 @@ export default function AttendanceScreen() {
           />
         )}
 
-        {/* FIX (Bug D): Skeleton trigger was `!user` which is always false for authenticated users.
-            Now uses `!attendanceReady` — true during the window between app launch and first
-            Firestore attendance snapshot. Shows skeleton until real data (even empty) arrives. */}
-        {!isMounted || (!attendanceReady && subjects.length === 0) ? (
+        {!isMounted ? (
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 120, paddingTop: insets.top + 54 }}

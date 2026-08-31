@@ -16,7 +16,7 @@ import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates } from 
 import { auth, db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { Task, Habit, HabitLog } from "../MobileDataContext";
-import { writeCoreCacheMulti, clearCoreCache } from "../../utils/coreCache";
+import { writeCoreCacheMulti, readCoreCacheMulti, clearCoreCache } from "../../utils/coreCache";
 import { loadBootManifest, getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
 import { clearAllDomainCaches } from "../../utils/domainCache";
 import { registerForPushNotificationsAsync } from "../../services/notifications";
@@ -155,19 +155,28 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       loadBootManifest().catch(() => null),
       auth.authStateReady().catch(() => null),
       AsyncStorage.getItem('@zentrack_optimistic_user').catch(() => null),
-    ]).then(([manifest, _, rawUser]) => {
+      readCoreCacheMulti().catch(() => null),
+    ]).then(([manifest, _, rawUser, coreCache]) => {
       if (cancelled) return;
 
       unstable_batchedUpdates(() => {
-        // 1. Hydrate manifest data if needed
-        if (manifest) {
-          setTasks(prev => (prev.length === 0 && (manifest.tasks?.length ?? 0) > 0) ? manifest.tasks : prev);
-          setHabits(prev => (prev.length === 0 && (manifest.habits?.length ?? 0) > 0) ? manifest.habits : prev);
-          setHabitLogs(prev => (prev.length === 0 && (manifest.habitLogs?.length ?? 0) > 0) ? manifest.habitLogs : prev);
-          if ((manifest.tasks?.length ?? 0) > 0 || (manifest.habits?.length ?? 0) > 0) {
-            hasCachedDataRef.current = true;
-            setFirestoreReady(true);
-          }
+        // 1. Hydrate manifest / core cache data if needed
+        const cachedTasks = (manifest?.tasks && manifest.tasks.length > 0) ? manifest.tasks : (coreCache?.tasks || []);
+        const cachedHabits = (manifest?.habits && manifest.habits.length > 0) ? manifest.habits : (coreCache?.habits || []);
+        const cachedLogs = (manifest?.habitLogs && manifest.habitLogs.length > 0) ? manifest.habitLogs : (coreCache?.habitLogs || []);
+
+        if (cachedTasks.length > 0) {
+          setTasks(prev => prev.length === 0 ? cachedTasks : prev);
+        }
+        if (cachedHabits.length > 0) {
+          setHabits(prev => prev.length === 0 ? cachedHabits : prev);
+        }
+        if (cachedLogs.length > 0) {
+          setHabitLogs(prev => prev.length === 0 ? cachedLogs : prev);
+        }
+        if (cachedTasks.length > 0 || cachedHabits.length > 0 || cachedLogs.length > 0) {
+          hasCachedDataRef.current = true;
+          setFirestoreReady(true);
         }
 
         // 2. Resolve user from auth state or optimistic storage
@@ -381,7 +390,8 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const optimisticAddTask = (task: Task) => {
     setTasks(prev => {
       const next = [task, ...prev];
-      writeCoreCacheMulti({ tasks: next });
+      writeCoreCacheMulti({ tasks: next }, true);
+      updateL1Cache('tasks', next);
       return next;
     });
   };
@@ -389,14 +399,16 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     setTasks(prev => {
       const next = prev.map(t => t.id === taskId ? { ...t, ...partial } : t);
       // Write-through to AsyncStorage: survives offline app kill+restart
-      writeCoreCacheMulti({ tasks: next });
+      writeCoreCacheMulti({ tasks: next }, true);
+      updateL1Cache('tasks', next);
       return next;
     });
   };
   const optimisticDeleteTask = (taskId: string) => {
     setTasks(prev => {
       const next = prev.filter(t => t.id !== taskId);
-      writeCoreCacheMulti({ tasks: next });
+      writeCoreCacheMulti({ tasks: next }, true);
+      updateL1Cache('tasks', next);
       return next;
     });
   };
@@ -404,7 +416,8 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     lockHabits();
     setHabits(prev => {
       const next = prev.map(h => h.id === habitId ? { ...h, ...partial } : h);
-      writeCoreCacheMulti({ habits: next });
+      writeCoreCacheMulti({ habits: next }, true);
+      updateL1Cache('habits', next);
       return next;
     });
   };
@@ -412,7 +425,8 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     lockHabitLogs();
     setHabitLogs(prev => {
       const next = [...prev, log];
-      writeCoreCacheMulti({ habitLogs: next });
+      writeCoreCacheMulti({ habitLogs: next }, true);
+      updateL1Cache('habitLogs', next);
       return next;
     });
   };
@@ -420,7 +434,8 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     lockHabitLogs();
     setHabitLogs(prev => {
       const next = prev.map(l => l.id === logId ? { ...l, ...partial } : l);
-      writeCoreCacheMulti({ habitLogs: next });
+      writeCoreCacheMulti({ habitLogs: next }, true);
+      updateL1Cache('habitLogs', next);
       return next;
     });
   };
@@ -428,7 +443,8 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     lockHabitLogs();
     setHabitLogs(prev => {
       const next = prev.filter(l => !(l.habitId === habitId && l.date === date));
-      writeCoreCacheMulti({ habitLogs: next });
+      writeCoreCacheMulti({ habitLogs: next }, true);
+      updateL1Cache('habitLogs', next);
       return next;
     });
   };
