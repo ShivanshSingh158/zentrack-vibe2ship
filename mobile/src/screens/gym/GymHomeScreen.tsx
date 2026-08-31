@@ -27,6 +27,7 @@ import GymWorkoutBanner from '../../components/Gym/GymWorkoutBanner';
 import WeeklyGymReport from '../../components/Gym/WeeklyGymReport';
 import { useGymPlanPreCache } from '../../hooks/useGymPlanPreCache';
 import GymHomeSkeleton from '../../components/Gym/GymHomeSkeleton';
+import { useDeferredScreenMount } from '../../hooks/useDeferredScreenMount';
 
 // ─── Heavy Modals: Lazy-loaded on demand (skips parsing ~9,750 LOC on cold boot) ───
 const AddExerciseModal = React.lazy(() => import('../../components/Gym/AddExerciseModal').then(m => ({ default: m.AddExerciseModal })));
@@ -58,6 +59,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const isMounted = useDeferredScreenMount();
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [weekOffset, setWeekOffset] = useState(0);
 
@@ -610,7 +612,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
           {/* FIX (Bug E): Triple AND gate was too strict — a user who has a plan but no
               logs (!userGymPlan = false) or a user with cached logs (gymLogs.length > 0)
               would never see the skeleton. Relaxed to the standard 2-condition pattern. */}
-          {!gymLogsReady && gymLogs.length === 0 ? (
+          {!isMounted || (!gymLogsReady && gymLogs.length === 0) ? (
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 80 }}>
               <GymHomeSkeleton />
             </ScrollView>

@@ -612,123 +612,129 @@ export default function GradesScreen() {
       />
 
       {/* ── New Semester BottomSheet ── */}
-      <BottomSheet visible={semModalVisible} onClose={() => setSemModalVisible(false)}>
-        <View style={styles.sheetContent}>
-          <Text style={styles.modalTitle}>New Semester</Text>
-          <Text style={styles.modalSub}>Add a new academic term to your calculator.</Text>
-          
-          <TextInput
-            style={styles.input}
-            placeholder="E.g., Semester 1, Fall 2026"
-            placeholderTextColor={colors.textMuted}
-            value={semName}
-            onChangeText={setSemName}
-            autoFocus
-          />
-          
-          <View style={styles.modalActions}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setSemModalVisible(false)}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.saveBtn} onPress={handleAddSem} disabled={saving}>
-              <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Create'}</Text>
-            </TouchableOpacity>
+      {semModalVisible && (
+        <BottomSheet visible={semModalVisible} onClose={() => setSemModalVisible(false)}>
+          <View style={styles.sheetContent}>
+            <Text style={styles.modalTitle}>New Semester</Text>
+            <Text style={styles.modalSub}>Add a new academic term to your calculator.</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="E.g., Semester 1, Fall 2026"
+              placeholderTextColor={colors.textMuted}
+              value={semName}
+              onChangeText={setSemName}
+              autoFocus
+            />
+            
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setSemModalVisible(false)}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleAddSem} disabled={saving}>
+                <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Create'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </BottomSheet>
+        </BottomSheet>
+      )}
 
       {/* ── Add Subject BottomSheet ── */}
-      <BottomSheet visible={subModalVisible} onClose={() => setSubModalVisible(false)}>
-        <View style={styles.sheetContent}>
-          <Text style={styles.modalTitle}>Add Subject</Text>
-          <Text style={styles.modalSub}>Enter the course details, credit value, and achieved grade.</Text>
-          
-          <Text style={styles.modalInputLabel}>Subject Name</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="E.g., Data Structures & Algorithms"
-            placeholderTextColor={colors.textMuted}
-            value={subName}
-            onChangeText={setSubName}
-          />
+      {subModalVisible && (
+        <BottomSheet visible={subModalVisible} onClose={() => setSubModalVisible(false)}>
+          <View style={styles.sheetContent}>
+            <Text style={styles.modalTitle}>Add Subject</Text>
+            <Text style={styles.modalSub}>Enter the course details, credit value, and achieved grade.</Text>
+            
+            <Text style={styles.modalInputLabel}>Subject Name</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="E.g., Data Structures & Algorithms"
+              placeholderTextColor={colors.textMuted}
+              value={subName}
+              onChangeText={setSubName}
+            />
 
-          <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.modalInputLabel}>Credits</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="4"
-                placeholderTextColor={colors.textMuted}
-                value={subCredits}
-                onChangeText={setSubCredits}
-                keyboardType="number-pad"
-              />
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalInputLabel}>Credits</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="4"
+                  placeholderTextColor={colors.textMuted}
+                  value={subCredits}
+                  onChangeText={setSubCredits}
+                  keyboardType="number-pad"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalInputLabel}>Grade (A+, A, B+, etc.)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="A+"
+                  placeholderTextColor={colors.textMuted}
+                  value={subGrade}
+                  onChangeText={setSubGrade}
+                  autoCapitalize="characters"
+                />
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.modalInputLabel}>Grade (A+, A, B+, etc.)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="A+"
-                placeholderTextColor={colors.textMuted}
-                value={subGrade}
-                onChangeText={setSubGrade}
-                autoCapitalize="characters"
-              />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setSubModalVisible(false)}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleAddSub} disabled={saving}>
+                <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Add Subject'}</Text>
+              </TouchableOpacity>
             </View>
           </View>
-
-          <View style={styles.modalActions}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setSubModalVisible(false)}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.saveBtn} onPress={handleAddSub} disabled={saving}>
-              <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Add Subject'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </BottomSheet>
+        </BottomSheet>
+      )}
 
       {/* ── Direct SGPA BottomSheet ── */}
-      <BottomSheet visible={directModalVisible} onClose={() => setDirectModalVisible(false)}>
-        <View style={styles.sheetContent}>
-          <Text style={styles.modalTitle}>Direct SGPA Mode</Text>
-          <Text style={styles.modalSub}>Skip adding individual courses by directly setting your final SGPA and total credits.</Text>
-          
-          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.modalInputLabel}>Final SGPA</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="8.50"
-                placeholderTextColor={colors.textMuted}
-                value={directSGPA}
-                onChangeText={setDirectSGPA}
-                keyboardType="decimal-pad"
-              />
+      {directModalVisible && (
+        <BottomSheet visible={directModalVisible} onClose={() => setDirectModalVisible(false)}>
+          <View style={styles.sheetContent}>
+            <Text style={styles.modalTitle}>Direct SGPA Mode</Text>
+            <Text style={styles.modalSub}>Skip adding individual courses by directly setting your final SGPA and total credits.</Text>
+            
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalInputLabel}>Final SGPA</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="8.50"
+                  placeholderTextColor={colors.textMuted}
+                  value={directSGPA}
+                  onChangeText={setDirectSGPA}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalInputLabel}>Total Credits</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="24"
+                  placeholderTextColor={colors.textMuted}
+                  value={directCredits}
+                  onChangeText={setDirectCredits}
+                  keyboardType="number-pad"
+                />
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.modalInputLabel}>Total Credits</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="24"
-                placeholderTextColor={colors.textMuted}
-                value={directCredits}
-                onChangeText={setDirectCredits}
-                keyboardType="number-pad"
-              />
-            </View>
-          </View>
 
-          <View style={styles.modalActions}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setDirectModalVisible(false)}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.saveBtn} onPress={handleSaveDirect} disabled={saving}>
-              <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save SGPA'}</Text>
-            </TouchableOpacity>
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setDirectModalVisible(false)}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveDirect} disabled={saving}>
+                <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save SGPA'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </BottomSheet>
+        </BottomSheet>
+      )}
 
     </SafeAreaView>
   );

@@ -404,7 +404,7 @@ export default function DashboardScreen() {
             </View>
           </Animated.View>
 
-          {!data.tasksReady && data.tasks.length === 0 ? (
+          {!data.user && !data.tasksReady ? (
             <DashboardSkeleton />
           ) : (
             <>

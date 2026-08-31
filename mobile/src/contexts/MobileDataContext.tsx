@@ -20,17 +20,16 @@
  * per domain, so a gym snapshot update ONLY re-renders WellnessContext consumers.
  */
 
-import React, { createContext, useContext, useEffect, useMemo, useRef } from "react";
-import { InteractionManager } from "react-native";
+import React from "react";
 import { User } from "firebase/auth";
 import { UserGymPlanDoc, GymPlanDay } from "../types/gym.types";
-import { scheduleAllNotifications } from "../services/notifications";
 
 import { CoreDataProvider, useCoreData }     from "./domains/CoreDataContext";
 import { WellnessProvider, useWellnessData } from "./domains/WellnessContext";
 import { AcademicProvider, useAcademicData } from "./domains/AcademicContext";
 import { CreativeProvider, useCreativeData } from "./domains/CreativeContext";
 import { PlannerProvider, usePlannerData }   from "./domains/PlannerContext";
+import { BackgroundNotificationWatcher }     from "../components/BackgroundNotificationWatcher";
 import { handleSyncError } from '../utils/errorUtils';
 
 // Export domain hooks for fine-grained, zero-overhead subscriptions
@@ -257,172 +256,7 @@ interface MobileDataContextType {
   optimisticUpdateGoal: (goalId: string, partial: Partial<Goal>) => void;
 }
 
-const MobileDataShimContext = createContext<MobileDataContextType | null>(null);
-
-// ─── Shim Provider ─────────────────────────────────────────────────────────────
-// Assembles all 5 domain contexts into one backward-compat value object.
-// Also triggers demand-based subscriptions after a short idle delay
-// (matches previous 1500ms lazy strategy, but now domain-isolated).
-function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
-  const core     = useCoreData();
-  const wellness = useWellnessData();
-  const academic = useAcademicData();
-  const creative = useCreativeData();
-  const planner  = usePlannerData();
-
-  // DEMAND-BASED SUBSCRIPTION PIPELINE (Zero-Freeze & Zero-Waste):
-  // 1. Frame 0: CoreDataContext (tasks, habits, habitLogs) connects immediately to render Home.
-  // 2. All other domains (Gym, Attendance, Calendar, Notes, Learning) connect on demand
-  //    the moment the user navigates to that screen via ensureSubscribed().
-  //    This saves ~80% of unnecessary Firestore reads and eliminates background CPU spikes.
-
-
-
-  const value = useMemo<MobileDataContextType>(() => ({
-    // Core domain
-    user:              core.user,
-    tasks:             core.tasks,
-    habits:            core.habits,
-    allHabits:         core.allHabits,
-    habitLogs:         core.habitLogs,
-    loading:           core.loading,
-    pendingTaskCount:  core.pendingTaskCount,
-    todayHabits:       core.todayHabits,
-    pinnedModules:     core.pinnedModules,
-    setPinnedModules:  core.setPinnedModules,
-    googleAccessToken: core.googleAccessToken,
-    // Wellness domain
-    gymLogs:              wellness.gymLogs,
-    gymLogsReady:         wellness.gymLogsReady,
-    gymEnsureSubscribed:  wellness.ensureSubscribed,
-    userGymPlan:          wellness.userGymPlan,
-    updateMasterPlan:     wellness.updateMasterPlan,
-    updateFullMasterPlan: wellness.updateFullMasterPlan,
-    applyMasterTemplate:  wellness.applyMasterTemplate,
-    waterLogs:            wellness.waterLogs,
-    sleepLogs:            wellness.sleepLogs,
-    weightLogs:           wellness.weightLogs,
-    // Academic domain
-    attendance:        academic.attendance,
-    attendanceLogs:    academic.attendanceLogs,
-    assignments:       academic.assignments,
-    semesters:         academic.semesters,
-    semesterSubjects:  academic.semesterSubjects,
-    // Creative domain
-    storageNodes:      creative.storageNodes,
-    notes:             creative.notes,
-    contentLogs:       creative.contentLogs,
-    learningTopics:    creative.learningTopics,
-    jobs:              creative.jobs,
-    // Planner domain
-    customEvents:      planner.customEvents,
-    goals:             planner.goals,
-    weeklyReviews:     planner.weeklyReviews,
-
-    // Optimistic functions — Core
-    optimisticAddTask: core.optimisticAddTask,
-    optimisticUpdateTask: core.optimisticUpdateTask,
-    optimisticDeleteTask: core.optimisticDeleteTask,
-    optimisticUpdateHabit: core.optimisticUpdateHabit,
-    optimisticAddHabitLog: core.optimisticAddHabitLog,
-    optimisticUpdateHabitLog: core.optimisticUpdateHabitLog,
-    optimisticRemoveHabitLog: core.optimisticRemoveHabitLog,
-    // Optimistic functions — Wellness
-    optimisticAddGymLog: wellness.optimisticAddGymLog,
-    optimisticUpdateGymLog: wellness.optimisticUpdateGymLog,
-    optimisticAddWaterLog: wellness.optimisticAddWaterLog,
-    // Optimistic functions — Academic
-    optimisticAddSubject: academic.optimisticAddSubject,
-    optimisticDeleteSubject: academic.optimisticDeleteSubject,
-    optimisticUpdateAttendance: academic.optimisticUpdateAttendance,
-    optimisticAddAttendanceLog: academic.optimisticAddAttendanceLog,
-    optimisticRemoveAttendanceLog: academic.optimisticRemoveAttendanceLog,
-    optimisticAddAssignment: academic.optimisticAddAssignment,
-    optimisticUpdateAssignment: academic.optimisticUpdateAssignment,
-    optimisticDeleteAssignment: academic.optimisticDeleteAssignment,
-    // Optimistic functions — Planner
-    optimisticAddEvent: planner.optimisticAddEvent,
-    optimisticUpdateEvent: planner.optimisticUpdateEvent,
-    optimisticDeleteEvent: planner.optimisticDeleteEvent,
-    optimisticAddGoal: planner.optimisticAddGoal,
-    optimisticUpdateGoal: planner.optimisticUpdateGoal,
-  }), [
-    // KEY: core.user?.uid (stable string) not core.user (new object on every token refresh).
-    // Firebase fires onAuthStateChanged with a NEW User object every 60min on token refresh.
-    // If core.user is in the deps array, the ENTIRE shim object recreates on every token refresh,
-    // causing all 30+ useMobileData() consumers to re-render simultaneously.
-    // The user property in the VALUE above still passes the full User object — only the dep changes.
-    core.user?.uid, core.tasks, core.habits, core.allHabits, core.habitLogs,
-    core.loading, core.pendingTaskCount, core.todayHabits,
-    core.pinnedModules, core.setPinnedModules, core.googleAccessToken,
-    core.optimisticAddTask, core.optimisticUpdateTask, core.optimisticDeleteTask,
-    core.optimisticUpdateHabit, core.optimisticAddHabitLog, core.optimisticUpdateHabitLog, core.optimisticRemoveHabitLog,
-    wellness.gymLogs, wellness.gymLogsReady, wellness.ensureSubscribed, wellness.userGymPlan, wellness.updateMasterPlan, wellness.updateFullMasterPlan, wellness.applyMasterTemplate, wellness.waterLogs, wellness.sleepLogs, wellness.weightLogs,
-    wellness.optimisticAddGymLog, wellness.optimisticUpdateGymLog, wellness.optimisticAddWaterLog,
-    academic.attendance, academic.attendanceLogs, academic.assignments, academic.semesters, academic.semesterSubjects,
-    academic.optimisticUpdateAttendance, academic.optimisticAddAttendanceLog, academic.optimisticRemoveAttendanceLog, academic.optimisticAddAssignment, academic.optimisticUpdateAssignment, academic.optimisticDeleteAssignment,
-    creative.storageNodes, creative.notes, creative.learningTopics, creative.jobs, creative.contentLogs,
-    planner.customEvents, planner.goals, planner.weeklyReviews,
-    planner.optimisticAddEvent, planner.optimisticUpdateEvent, planner.optimisticDeleteEvent, planner.optimisticAddGoal, planner.optimisticUpdateGoal,
-  ]);
-
-  // Debounced notification scheduling — prevents burst reschedules
-  // When Firestore fires 3 snapshots in 5s (common after writes), this ensures
-  // scheduleAllNotifications is only called ONCE, after the burst settles.
-  // Previously used a plain setTimeout which caused up to 3 overlapping
-  // Notifications.cancelAllScheduledNotificationsAsync() calls per write.
-  // PERF: isFirstNotifMount skips the first trigger (mount-time, all deps change at once).
-  // On cold boot the cache data is already scheduled; on first login Firestore fires
-  // within seconds and will trigger a real schedule run. Eliminates ~3.5s startup timer.
-  const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isFirstNotifMount = useRef(true);
-  useEffect(() => {
-    // Skip the very first effect invocation (mount-time deps change burst)
-    if (isFirstNotifMount.current) {
-      isFirstNotifMount.current = false;
-      return;
-    }
-    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
-    notifTimerRef.current = setTimeout(() => {
-      // PERF FIX (Issue E): Add requestAnimationFrame wrapper.
-      // scheduleAllNotifications calls Expo Notifications cancelAll + multiple scheduleAsync.
-      // These are native bridge calls that can collectively block the JS thread for 30\u2013100ms.
-      // Wrapping in rAF ensures the work happens BETWEEN frames (after a paint completes),
-      // not DURING a frame, eliminating a visible scroll stutter at the 3.5s mark.
-      InteractionManager.runAfterInteractions(() => {
-        requestAnimationFrame(() => {
-          scheduleAllNotifications({
-            tasks: core.tasks,
-            customEvents: planner.customEvents,
-            gymLogs: wellness.gymLogs,
-            attendance: academic.attendance,
-            attendanceLogs: academic.attendanceLogs,
-            habitLogs: core.habitLogs,
-            allHabits: core.allHabits,
-            assignments: academic.assignments,
-            waterLogs: wellness.waterLogs,
-            sleepLogs: wellness.sleepLogs,
-            userGymPlan: wellness.userGymPlan,
-          }).catch(console.warn);
-        });
-      });
-    }, 8000); // 8s debounce window absorbs burst writes and runs strictly off-interaction
-    return () => {
-      if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
-    };
-  }, [
-    core.tasks, planner.customEvents, wellness.gymLogs, academic.attendance,
-    academic.attendanceLogs,
-    core.habitLogs, core.allHabits, academic.assignments,
-    wellness.waterLogs,
-    wellness.sleepLogs,
-    wellness.userGymPlan,
-  ]);
-
-  return <MobileDataShimContext.Provider value={value}>{children}</MobileDataShimContext.Provider>;
-}
-
-// ─── Public API ───────────────────────────────────────────────────────────────
+// ─── Legacy Fallback ─────────────────────────────────────────────────────────
 
 const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
   user: null,
@@ -484,18 +318,15 @@ const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
   weeklyReviews: [],
 };
 
+/**
+ * @deprecated All screens should import fine-grained domain hooks directly:
+ * `useCoreData`, `useWellnessData`, `useAcademicData`, `useCreativeData`, `usePlannerData`.
+ */
 export function useMobileData(): MobileDataContextType {
-  const ctx = useContext(MobileDataShimContext);
-  return ctx || DEFAULT_FALLBACK_CTX;
+  return DEFAULT_FALLBACK_CTX;
 }
 
 // Internal bridge: reads user from CoreDataContext, passes to demand-based providers.
-// NOTE: React.memo cannot be used here — children is an unstable prop that would
-// bypass memo on every render. Instead, user stability is handled upstream:
-// - user object reference is stabilized in CoreDataContext (setUser uses uid guard)
-// - all domain providers use [user?.uid] deps, not [user] object deps
-// This means domain providers' effects don't re-run when CoreDataContext updates
-// tasks/habits/habitLogs — they only react to real user session changes.
 function _DomainProviders({ children }: { children: React.ReactNode }) {
   const { user } = useCoreData();
   return (
@@ -503,9 +334,8 @@ function _DomainProviders({ children }: { children: React.ReactNode }) {
       <AcademicProvider user={user}>
         <CreativeProvider user={user}>
           <PlannerProvider user={user}>
-            <MobileDataShimProvider>
-              {children}
-            </MobileDataShimProvider>
+            <BackgroundNotificationWatcher />
+            {children}
           </PlannerProvider>
         </CreativeProvider>
       </AcademicProvider>
@@ -514,8 +344,8 @@ function _DomainProviders({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * MobileDataProvider ΓÇö drop-in replacement for the old single-context provider.
- * Wraps all 5 domain providers. No call-site changes needed anywhere.
+ * MobileDataProvider — drop-in replacement for the old single-context provider.
+ * Wraps all 5 isolated domain providers and background watchers without a monolithic shim.
  */
 export function MobileDataProvider({ children }: { children: React.ReactNode }) {
   return (

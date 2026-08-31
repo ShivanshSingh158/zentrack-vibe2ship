@@ -15,6 +15,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useSaraSurface } from '../hooks/useSaraSurface';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
 
+import { useDeferredScreenMount } from '../hooks/useDeferredScreenMount';
 // --- NEW ATTENDANCE MODULE IMPORTS ---
 import { 
   SCHEMA_VERSION, defaultSchedule, DAY_NAMES, DAY_SHORT, 
@@ -473,6 +474,7 @@ export default function AttendanceScreen() {
   }, [pillAnim]);
 
   // 1. Core Data & State Hook
+  const isMounted = useDeferredScreenMount();
   const academic = useAcademicData();
   const { attendanceReady } = academic;
   const data = useAttendanceData();
@@ -734,7 +736,7 @@ export default function AttendanceScreen() {
         {/* FIX (Bug D): Skeleton trigger was `!user` which is always false for authenticated users.
             Now uses `!attendanceReady` — true during the window between app launch and first
             Firestore attendance snapshot. Shows skeleton until real data (even empty) arrives. */}
-        {!attendanceReady && subjects.length === 0 ? (
+        {!isMounted || (!attendanceReady && subjects.length === 0) ? (
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 120, paddingTop: insets.top + 54 }}

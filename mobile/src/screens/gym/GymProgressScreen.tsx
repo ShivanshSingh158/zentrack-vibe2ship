@@ -39,6 +39,7 @@ import AnatomicalBodyMapCard from '../../components/Gym/AnatomicalBodyMapCard';
 import EffortDistributionCard from '../../components/Gym/Charts/EffortDistributionCard';
 import GymProgressCardio from '../../components/Gym/GymProgressCardio';
 import GymProgressSkeleton from '../../components/Gym/GymProgressSkeleton';
+import { useDeferredScreenMount } from '../../hooks/useDeferredScreenMount';
 import { estimate1RM, calculateRepMaxTable } from '../../services/oneRepMaxEngine';
 import { calculateEffortSummary } from '../../services/effortEngine';
 import { computeOrGetHotCache, generateDatasetFingerprint } from '../../utils/hotCacheStore';
@@ -66,6 +67,7 @@ export default function GymProgressScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeGymProgressStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
+  const isMounted = useDeferredScreenMount();
   const { gymLogs, gymLogsReady } = useWellnessData();
 
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
@@ -384,7 +386,7 @@ export default function GymProgressScreen() {
         ))}
       </View>
 
-      {!gymLogsReady && (!gymLogs || gymLogs.length === 0) ? (
+      {!isMounted || (!gymLogsReady && (!gymLogs || gymLogs.length === 0)) ? (
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <GymProgressSkeleton />
         </ScrollView>
