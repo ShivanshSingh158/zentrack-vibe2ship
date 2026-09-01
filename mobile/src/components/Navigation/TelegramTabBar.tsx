@@ -10,7 +10,6 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY } from '../../theme/tokens';
@@ -85,7 +84,6 @@ const TabItem = React.memo(function TabItem({
   }));
 
   const handlePress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const event = navigation.emit({
       type: 'tabPress',
       target: route.key,
