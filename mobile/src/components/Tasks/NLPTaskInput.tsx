@@ -49,6 +49,9 @@ const getTokenColors = (isDark: boolean): Record<NLPToken['type'], { bg: string;
   duration: isDark
     ? { bg: '#2a2a1a', text: '#fbbf24', border: '#f59e0b' }
     : { bg: 'rgba(217, 119, 6, 0.08)', text: '#D97706', border: 'rgba(217, 119, 6, 0.25)' },
+  reminder: isDark
+    ? { bg: '#3a2010', text: '#f59e0b', border: '#d97706' }
+    : { bg: 'rgba(245, 158, 11, 0.08)', text: '#D97706', border: 'rgba(245, 158, 11, 0.25)' },
 });
 
 // Priority → accent color map for the priority chip icon

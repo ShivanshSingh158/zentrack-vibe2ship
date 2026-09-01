@@ -1,8 +1,9 @@
 /**
  * HabitsSkeleton.tsx — ZenTrack Mobile
  *
- * 1:1 Layout-matched Skeleton Screen for HabitsScreen.
- * Renders instant pulsating placeholder cards while user habits and streak logs hydrate.
+ * 1:1 Pixel-Matched Skeleton Screen for HabitsScreen.
+ * Perfectly mirrors the HabitCard list underneath the sticky header:
+ * - 5 Habit Cards with Icon, Title, Streak pill, Action Toggle Circle, and 7-Day clean rolling mini week dots
  */
 
 import React from 'react';
@@ -18,36 +19,19 @@ import {
 export default function HabitsSkeleton() {
   return (
     <ShimmerHost style={styles.container}>
-      {/* ── Top Header Title & Action Badge ────────────────────────────────── */}
-      <View style={styles.headerRow}>
-        <SkeletonBox width={100} height={24} borderRadius={6} />
-        <View style={styles.headerRight}>
-          <SkeletonCircle size={36} />
-          <SkeletonPill width={55} height={28} />
-        </View>
-      </View>
-
-      {/* ── Streak & Overview Banner ───────────────────────────────────────── */}
-      <SkeletonCard style={styles.overviewCard} borderRadius={20}>
-        <View style={styles.overviewInner}>
-          <View style={{ flex: 1 }}>
-            <SkeletonPill width={70} height={20} />
-            <SkeletonBox width={140} height={22} borderRadius={5} style={{ marginTop: 8 }} />
-            <SkeletonBox width={110} height={12} borderRadius={3} style={{ marginTop: 6 }} />
-          </View>
-          <SkeletonCircle size={52} />
-        </View>
-      </SkeletonCard>
-
       {/* ── Habits List Cards ──────────────────────────────────────────────── */}
       <View style={styles.habitsList}>
-        {Array.from({ length: 4 }).map((_, i) => (
+        {Array.from({ length: 5 }).map((_, i) => (
           <SkeletonCard key={i} style={styles.habitCard} borderRadius={18}>
             {/* Top row: Icon, Name, Streak, Check button */}
             <View style={styles.habitTop}>
               <SkeletonCircle size={38} />
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <SkeletonBox width="60%" height={16} borderRadius={4} />
+                <SkeletonBox
+                  width={i === 0 ? "65%" : (i === 1 ? "80%" : (i === 2 ? "50%" : (i === 3 ? "75%" : "60%")))}
+                  height={16}
+                  borderRadius={4}
+                />
                 <SkeletonBox width="35%" height={12} borderRadius={3} style={{ marginTop: 5 }} />
               </View>
               <SkeletonCircle size={36} />
@@ -57,7 +41,7 @@ export default function HabitsSkeleton() {
             <View style={styles.weekStrip}>
               {Array.from({ length: 7 }).map((_, dayIdx) => (
                 <View key={dayIdx} style={styles.dayCol}>
-                  <SkeletonBox width={16} height={9} borderRadius={2} />
+                  <SkeletonBox width={14} height={9} borderRadius={2} />
                   <SkeletonCircle size={22} style={{ marginTop: 5 }} />
                 </View>
               ))}
@@ -74,26 +58,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 40,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  overviewCard: {
-    padding: 16,
-    marginBottom: 16,
-  },
-  overviewInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   habitsList: {
     gap: 12,

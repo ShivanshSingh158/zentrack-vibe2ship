@@ -456,6 +456,71 @@ export const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.cr
     borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E1EA',
   },
 
+  // ── History Filter Tabs & Section Headers ──────────────────────────────────
+  historyFilterTabs: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    paddingHorizontal: SPACE.md,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  historyFilterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#EAE9F2',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E1EA',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+  },
+  historyFilterPillActive: {
+    backgroundColor: isDark ? 'rgba(255,255,255,0.16)' : '#FFFFFF',
+    borderColor: isDark ? 'rgba(255,255,255,0.30)' : '#CBD5E1',
+  },
+  historyFilterPillActiveClass: {
+    backgroundColor: isDark ? 'rgba(129, 140, 248, 0.22)' : 'rgba(99, 102, 241, 0.15)',
+    borderColor: isDark ? 'rgba(129, 140, 248, 0.45)' : 'rgba(99, 102, 241, 0.40)',
+  },
+  historyFilterPillActiveLab: {
+    backgroundColor: isDark ? 'rgba(251, 191, 36, 0.22)' : 'rgba(217, 119, 6, 0.15)',
+    borderColor: isDark ? 'rgba(251, 191, 36, 0.45)' : 'rgba(217, 119, 6, 0.40)',
+  },
+  historyFilterPillText: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.medium,
+    color: colors.textMuted,
+  },
+  historyFilterPillTextActive: {
+    fontFamily: FONT_FAMILY.bold,
+    color: colors.textPrimary,
+  },
+  historyFilterPillTextActiveClass: {
+    fontFamily: FONT_FAMILY.bold,
+    color: isDark ? '#a5b4fc' : '#4f46e5',
+  },
+  historyFilterPillTextActiveLab: {
+    fontFamily: FONT_FAMILY.bold,
+    color: isDark ? '#fcd34d' : '#d97706',
+  },
+  historySectionHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  historySectionTitle: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.bold,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.8,
+    color: colors.textSecondary,
+  },
+
   overlayBg: {
     flex: 1,
     justifyContent: 'flex-end' as const,
@@ -592,12 +657,14 @@ export const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.cr
   headerActions: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: 2,
+    gap: 1,
   },
   morphBtn: {
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-    minWidth: 36,
+    minWidth: 34,
+    maxWidth: 38,
+    paddingHorizontal: 0,
   },
   morphBtnIconWrap: {
     width: 32,
@@ -622,11 +689,131 @@ export const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.cr
     backgroundColor: isDark ? 'rgba(251,191,36,0.14)' : 'rgba(245,158,11,0.15)',
     borderColor: isDark ? 'rgba(251,191,36,0.35)' : '#D97706',
   },
-  headerBtnText: {
+  morphBtnPillUnlogged: {
+    backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(220,38,38,0.12)',
+    borderColor: isDark ? 'rgba(239,68,68,0.38)' : 'rgba(220,38,38,0.30)',
+  },
+  morphBtnBadge: {
+    position: 'absolute' as const,
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#EF4444',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: 3.5,
+    zIndex: 10,
+    borderWidth: 1.5,
+    borderColor: isDark ? '#060509' : '#FFFFFF',
+  },
+  morphBtnBadgeText: {
+    color: '#FFFFFF',
     fontSize: 8.5,
+    fontFamily: FONT_FAMILY.bold,
+    lineHeight: 10,
+    textAlign: 'center' as const,
+  },
+  headerBtnText: {
+    fontSize: 8,
     color: colors.textTertiary,
     fontFamily: FONT_FAMILY.medium,
-    marginTop: 1,
+    marginTop: 1.5,
     textAlign: 'center' as const,
+    letterSpacing: -0.2,
+  },
+
+  // ── Unlogged Sessions Drawer Styles ────────────────────────────────────────
+  unloggedCard: {
+    backgroundColor: isDark ? '#141416' : '#FFFFFF',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.07)' : '#E2E1EA',
+  },
+  unloggedHeaderRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    marginBottom: 6,
+  },
+  unloggedSubjectName: {
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.bold,
+    color: colors.textPrimary,
+    flex: 1,
+    marginRight: 8,
+  },
+  unloggedMetaRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flexWrap: 'wrap' as const,
+    gap: 8,
+  },
+  unloggedDateBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#EAE9F2',
+  },
+  unloggedDateBadgeText: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.bold,
+    color: colors.textSecondary,
+  },
+  unloggedTimeText: {
+    fontSize: 11.5,
+    fontFamily: FONT_FAMILY.medium,
+    color: colors.textMuted,
+  },
+  unloggedActionsRow: {
+    flexDirection: 'row' as const,
+    gap: 8,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#F0EFF5',
+  },
+  unloggedActionBtn: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 4,
+    paddingVertical: 6.5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  unloggedActionBtnPresent: {
+    backgroundColor: isDark ? 'rgba(52, 211, 153, 0.12)' : 'rgba(5, 150, 105, 0.10)',
+    borderColor: isDark ? 'rgba(52, 211, 153, 0.28)' : 'rgba(5, 150, 105, 0.22)',
+  },
+  unloggedActionBtnAbsent: {
+    backgroundColor: isDark ? 'rgba(248, 113, 113, 0.12)' : 'rgba(220, 38, 38, 0.10)',
+    borderColor: isDark ? 'rgba(248, 113, 113, 0.28)' : 'rgba(220, 38, 38, 0.22)',
+  },
+  unloggedActionBtnCancel: {
+    backgroundColor: isDark ? 'rgba(251, 191, 36, 0.12)' : 'rgba(217, 119, 6, 0.10)',
+    borderColor: isDark ? 'rgba(251, 191, 36, 0.28)' : 'rgba(217, 119, 6, 0.22)',
+  },
+  unloggedActionTextPresent: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.bold,
+    color: isDark ? '#34D399' : '#059669',
+  },
+  unloggedActionTextAbsent: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.bold,
+    color: isDark ? '#F87171' : '#DC2626',
+  },
+  unloggedActionTextCancel: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.bold,
+    color: isDark ? '#FBBF24' : '#D97706',
   },
 });

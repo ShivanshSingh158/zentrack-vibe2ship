@@ -1,9 +1,8 @@
 /**
  * AttendanceSkeleton.tsx — ZenTrack Mobile
  *
- * 1:1 Layout-matched Skeleton Screen for AttendanceScreen.
- * Exactly mirrors the real Attendance screen structure:
- * - Top header with title & 3 action buttons
+ * 1:1 Pixel-Matched Skeleton Screen for AttendanceScreen.
+ * Exactly mirrors the real Attendance screen structure beneath the sticky header:
  * - Semester Overview card with percentage & horizontal progress bar
  * - 7-Day Week Strip with day letters & date pills
  * - "TODAY'S CLASSES" header + "Extra class +" button
@@ -24,20 +23,7 @@ import {
 export default function AttendanceSkeleton() {
   return (
     <ShimmerHost style={styles.container}>
-      {/* ── 1. Top Header Row (Title + 3 Action Icons) ───────────────────────── */}
-      <View style={styles.headerRow}>
-        <View>
-          <SkeletonBox width={140} height={26} borderRadius={6} />
-          <SkeletonBox width={100} height={13} borderRadius={4} style={{ marginTop: 5 }} />
-        </View>
-        <View style={styles.headerActions}>
-          <SkeletonCircle size={36} />
-          <SkeletonCircle size={36} />
-          <SkeletonCircle size={36} />
-        </View>
-      </View>
-
-      {/* ── 2. Semester Overview Card (Horizontal Progress Bar Layout) ──────── */}
+      {/* ── 1. Semester Overview Card (Horizontal Progress Bar Layout) ──────── */}
       <SkeletonCard style={styles.overviewCard} borderRadius={20}>
         <View style={styles.overviewHeader}>
           <SkeletonBox width={130} height={15} borderRadius={4} />
@@ -51,7 +37,7 @@ export default function AttendanceSkeleton() {
         </View>
       </SkeletonCard>
 
-      {/* ── 3. Swipeable 7-Day Horizontal Week Strip ───────────────────────── */}
+      {/* ── 2. Swipeable 7-Day Horizontal Week Strip ───────────────────────── */}
       <View style={styles.weekStripCard}>
         {Array.from({ length: 7 }).map((_, i) => (
           <View key={i} style={styles.dayColumn}>
@@ -62,13 +48,13 @@ export default function AttendanceSkeleton() {
         ))}
       </View>
 
-      {/* ── 4. "TODAY'S CLASSES" Section Header ─────────────────────────────── */}
+      {/* ── 3. "TODAY'S CLASSES" Section Header ─────────────────────────────── */}
       <View style={styles.sectionHeaderRow}>
         <SkeletonBox width={110} height={13} borderRadius={3} />
         <SkeletonBox width={75} height={13} borderRadius={3} />
       </View>
 
-      {/* ── 5. Session Cards with Segmented [Present | Absent | ✕] Toggles ──── */}
+      {/* ── 4. Session Cards with Segmented [Present | Absent | ✕] Toggles ──── */}
       <View style={styles.sessionsList}>
         {Array.from({ length: 3 }).map((_, i) => (
           <SkeletonCard key={i} style={styles.sessionCard} borderRadius={16}>
@@ -91,13 +77,13 @@ export default function AttendanceSkeleton() {
         ))}
       </View>
 
-      {/* ── 6. "BY SUBJECT" Section Header ─────────────────────────────────── */}
+      {/* ── 5. "BY SUBJECT" Section Header ─────────────────────────────────── */}
       <View style={[styles.sectionHeaderRow, { marginTop: 22 }]}>
         <SkeletonBox width={90} height={13} borderRadius={3} />
         <SkeletonBox width={45} height={13} borderRadius={3} />
       </View>
 
-      {/* ── 7. By-Subject Summary Cards (Decoupled Class/Lab + Bunk Badge) ──── */}
+      {/* ── 6. By-Subject Summary Cards (Decoupled Class/Lab + Bunk Badge) ──── */}
       <View style={styles.bySubjectList}>
         {Array.from({ length: 2 }).map((_, i) => (
           <SkeletonCard key={i} style={styles.bySubjectCard} borderRadius={16}>
@@ -136,20 +122,9 @@ export default function AttendanceSkeleton() {
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingHorizontal: 0,
+    paddingTop: 0,
     paddingBottom: 40,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
   },
   overviewCard: {
     padding: 16,
@@ -241,4 +216,3 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 });
-

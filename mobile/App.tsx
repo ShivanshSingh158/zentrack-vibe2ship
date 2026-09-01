@@ -239,8 +239,27 @@ export default function App() {
       }
 
       // ── ACTION: "Start Workout" button on gym_reminder & location_gym_arrival ─
-      if (actionIdentifier === 'start_workout' || actionIdentifier === 'START_WORKOUT' || actionIdentifier === 'SAVE_SUMMARY') {
-        nav('Gym');
+      if (actionIdentifier === 'start_workout' || actionIdentifier === 'START_WORKOUT') {
+        if (navigationRef.isReady()) {
+          navigationRef.navigate('MainTabs', { screen: 'Gym' } as any);
+          setTimeout(() => {
+            if (navigationRef.isReady()) {
+              navigationRef.navigate('ActiveLogging', { date: formatLocalDateStr(), initialIndex: 0 } as any);
+            }
+          }, 300);
+        }
+        return;
+      }
+
+      if (actionIdentifier === 'SAVE_SUMMARY') {
+        if (navigationRef.isReady()) {
+          navigationRef.navigate('MainTabs', { screen: 'Gym' } as any);
+          setTimeout(() => {
+            if (navigationRef.isReady()) {
+              navigationRef.navigate('WorkoutSummary', { date: formatLocalDateStr() } as any);
+            }
+          }, 300);
+        }
         return;
       }
 
@@ -475,6 +494,40 @@ export default function App() {
           }).catch(() => {});
         } else {
           nav('Attendance');
+        }
+        return;
+      }
+
+      // ── BODY TAP: Gym Arrival / Departure Geofence ─────────────────────────
+      if (
+        notifType === 'GYM_ARRIVAL' ||
+        notifType === 'location_gym_arrival' ||
+        notification.request.content.title?.includes('Arrived at')
+      ) {
+        if (navigationRef.isReady()) {
+          navigationRef.navigate('MainTabs', { screen: 'Gym' } as any);
+          setTimeout(() => {
+            if (navigationRef.isReady()) {
+              navigationRef.navigate('ActiveLogging', { date: formatLocalDateStr(), initialIndex: 0 } as any);
+            }
+          }, 400);
+        }
+        return;
+      }
+
+      if (
+        notifType === 'GYM_DEPARTURE' ||
+        notifType === 'location_gym_departure' ||
+        notification.request.content.title?.includes('Finished at') ||
+        notification.request.content.title?.includes('Workout Saved')
+      ) {
+        if (navigationRef.isReady()) {
+          navigationRef.navigate('MainTabs', { screen: 'Gym' } as any);
+          setTimeout(() => {
+            if (navigationRef.isReady()) {
+              navigationRef.navigate('WorkoutSummary', { date: formatLocalDateStr() } as any);
+            }
+          }, 400);
         }
         return;
       }

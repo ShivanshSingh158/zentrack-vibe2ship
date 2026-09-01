@@ -9,7 +9,21 @@
       "android": {
         "buildType": "apk"
       },
-      "channel": "development"
+      "channel": "development",
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCWZ_tUzZynf60lxC3-RweGfZRGlcHBz_s",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "job-tracker-6b672.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "job-tracker-6b672",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "job-tracker-6b672.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "336719988763",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:336719988763:web:7da94195ccd2272d6990be",
+        "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-FF0W5YR1CM",
+        "EXPO_PUBLIC_FIREBASE_VAPID_KEY": "BIt2pkWP54tAYxUN_U1Hbs4ZyQjgJRQ8h8rN0l0QWxJsmJaOWCRb_ywr1W8xcJ2LMdjGJdkT0wihc57CS6VwEOE",
+        "EXPO_PUBLIC_GOOGLE_CALENDAR_CLIENT_ID": "336719988763-a8l7noum7dapki5st6uoqvscnnlkid7e.apps.googleusercontent.com",
+        "EXPO_PUBLIC_BACKEND_URL": "https://zentrack-vibe2ship.onrender.com",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "drc8jwyjf",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "aoaogtkw"
+      }
     },
     "preview": {
       "distribution": "internal",
@@ -19,7 +33,21 @@
       "ios": {
         "simulator": true
       },
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCWZ_tUzZynf60lxC3-RweGfZRGlcHBz_s",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "job-tracker-6b672.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "job-tracker-6b672",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "job-tracker-6b672.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "336719988763",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:336719988763:web:7da94195ccd2272d6990be",
+        "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-FF0W5YR1CM",
+        "EXPO_PUBLIC_FIREBASE_VAPID_KEY": "BIt2pkWP54tAYxUN_U1Hbs4ZyQjgJRQ8h8rN0l0QWxJsmJaOWCRb_ywr1W8xcJ2LMdjGJdkT0wihc57CS6VwEOE",
+        "EXPO_PUBLIC_GOOGLE_CALENDAR_CLIENT_ID": "336719988763-a8l7noum7dapki5st6uoqvscnnlkid7e.apps.googleusercontent.com",
+        "EXPO_PUBLIC_BACKEND_URL": "https://zentrack-vibe2ship.onrender.com",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "drc8jwyjf",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "aoaogtkw"
+      }
     },
     "preview-debug": {
       "extends": "preview",
@@ -34,13 +62,41 @@
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease -PreactNativeArchitectures=arm64-v8a"
       },
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCWZ_tUzZynf60lxC3-RweGfZRGlcHBz_s",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "job-tracker-6b672.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "job-tracker-6b672",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "job-tracker-6b672.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "336719988763",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:336719988763:web:7da94195ccd2272d6990be",
+        "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-FF0W5YR1CM",
+        "EXPO_PUBLIC_FIREBASE_VAPID_KEY": "BIt2pkWP54tAYxUN_U1Hbs4ZyQjgJRQ8h8rN0l0QWxJsmJaOWCRb_ywr1W8xcJ2LMdjGJdkT0wihc57CS6VwEOE",
+        "EXPO_PUBLIC_GOOGLE_CALENDAR_CLIENT_ID": "336719988763-a8l7noum7dapki5st6uoqvscnnlkid7e.apps.googleusercontent.com",
+        "EXPO_PUBLIC_BACKEND_URL": "https://zentrack-vibe2ship.onrender.com",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "drc8jwyjf",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "aoaogtkw"
+      }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
       },
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCWZ_tUzZynf60lxC3-RweGfZRGlcHBz_s",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "job-tracker-6b672.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "job-tracker-6b672",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "job-tracker-6b672.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "336719988763",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:336719988763:web:7da94195ccd2272d6990be",
+        "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-FF0W5YR1CM",
+        "EXPO_PUBLIC_FIREBASE_VAPID_KEY": "BIt2pkWP54tAYxUN_U1Hbs4ZyQjgJRQ8h8rN0l0QWxJsmJaOWCRb_ywr1W8xcJ2LMdjGJdkT0wihc57CS6VwEOE",
+        "EXPO_PUBLIC_GOOGLE_CALENDAR_CLIENT_ID": "336719988763-a8l7noum7dapki5st6uoqvscnnlkid7e.apps.googleusercontent.com",
+        "EXPO_PUBLIC_BACKEND_URL": "https://zentrack-vibe2ship.onrender.com",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "drc8jwyjf",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "aoaogtkw"
+      }
     }
   },
   "submit": {

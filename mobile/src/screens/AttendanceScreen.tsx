@@ -1,6 +1,6 @@
-import React, { useRef, useCallback, useMemo } from 'react';
+import React, { useRef, useCallback, useMemo, useState, useEffect } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, ScrollView,
+  View, Text, FlatList, SectionList, TouchableOpacity, ScrollView,
   Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Animated
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -434,6 +434,119 @@ const AttendanceHistoryRow = React.memo(function AttendanceHistoryRow({
   );
 });
 
+interface UnloggedSessionRowProps {
+  item: {
+    id: string;
+    subject: AttendanceSubject;
+    date: string;
+    type: 'class' | 'lab';
+    idx: number;
+    timeMins: number;
+    timeStr: string;
+  };
+  colors: any;
+  isDark: boolean;
+  styles: any;
+  onSelectDate: (date: string) => void;
+  onLog: (
+    subject: AttendanceSubject,
+    type: 'class' | 'lab',
+    action: 'attended' | 'missed' | 'cancelled',
+    existingLogId?: string,
+    sessionIdx?: number,
+    logDate?: string,
+    isExtra?: boolean
+  ) => void;
+}
+
+const UnloggedSessionRow = React.memo(function UnloggedSessionRow({
+  item,
+  colors,
+  isDark,
+  styles,
+  onSelectDate,
+  onLog,
+}: UnloggedSessionRowProps) {
+  const isLab = item.type === 'lab';
+  const dateInfo = formatAttendanceHistoryDate(item.date);
+
+  const handlePressCard = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onSelectDate(item.date);
+  }, [item.date, onSelectDate]);
+
+  const handlePresent = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onLog(item.subject, item.type, 'attended', undefined, item.idx, item.date, false);
+  }, [item.subject, item.type, item.idx, item.date, onLog]);
+
+  const handleAbsent = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onLog(item.subject, item.type, 'missed', undefined, item.idx, item.date, false);
+  }, [item.subject, item.type, item.idx, item.date, onLog]);
+
+  const handleCancelled = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onLog(item.subject, item.type, 'cancelled', undefined, item.idx, item.date, false);
+  }, [item.subject, item.type, item.idx, item.date, onLog]);
+
+  return (
+    <View style={styles.unloggedCard}>
+      <TouchableOpacity activeOpacity={0.7} onPress={handlePressCard}>
+        <View style={styles.unloggedHeaderRow}>
+          <Text style={styles.unloggedSubjectName} numberOfLines={1}>
+            {item.subject.name}
+          </Text>
+          <View style={[styles.historyTypePill, isLab ? styles.historyTypePillLab : styles.historyTypePillClass]}>
+            <Text style={[styles.historyTypeText, isLab ? styles.historyTypeTextLab : styles.historyTypeTextClass]}>
+              {isLab ? 'LAB' : 'CLASS'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.unloggedMetaRow}>
+          <View style={styles.unloggedDateBadge}>
+            <Ionicons name="calendar-outline" size={11} color={colors.textSecondary} />
+            <Text style={styles.unloggedDateBadgeText}>
+              {dateInfo.dayLabel ? `${dateInfo.dayLabel}, ` : ''}{formatDisplayDate(item.date)}
+            </Text>
+          </View>
+          <Text style={styles.unloggedTimeText}>
+            ⏱️ {item.timeStr}
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      {/* Quick 1-Tap Logging Actions */}
+      <View style={styles.unloggedActionsRow}>
+        <TouchableOpacity
+          style={[styles.unloggedActionBtn, styles.unloggedActionBtnPresent]}
+          onPress={handlePresent}
+        >
+          <Ionicons name="checkmark" size={13} color={isDark ? '#34D399' : '#059669'} />
+          <Text style={styles.unloggedActionTextPresent}>Present</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.unloggedActionBtn, styles.unloggedActionBtnAbsent]}
+          onPress={handleAbsent}
+        >
+          <Ionicons name="close" size={13} color={isDark ? '#F87171' : '#DC2626'} />
+          <Text style={styles.unloggedActionTextAbsent}>Absent</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.unloggedActionBtn, styles.unloggedActionBtnCancel]}
+          onPress={handleCancelled}
+        >
+          <Ionicons name="ban" size={12} color={isDark ? '#FBBF24' : '#D97706'} />
+          <Text style={styles.unloggedActionTextCancel}>Cancelled</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+});
+
 export default function AttendanceScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
@@ -486,6 +599,8 @@ export default function AttendanceScreen() {
     showClassNotifModal, setShowClassNotifModal,
     selectedHistorySubject, setSelectedHistorySubject,
     isExtraOpen, setIsExtraOpen,
+    isUnloggedOpen, setIsUnloggedOpen,
+    unloggedSessions,
     showAddModal, setShowAddModal,
     editSubject, setEditSubject,
     extraSubjectId, setExtraSubjectId,
@@ -518,24 +633,82 @@ export default function AttendanceScreen() {
     handleApplyOverride, handleResetSemester
   } = firestoreActions;
 
-  // Memoized & strictly sorted history logs (Today -> Oldest, timestamp secondary)
+  // Memoized & strictly sorted history logs (Today -> Oldest, timestamp secondary, deduplicated)
   const sortedHistoryLogs = React.useMemo(() => {
     if (!selectedHistorySubject) return [];
-    const filtered = logs.filter(l => l.subjectId === selectedHistorySubject.id);
+    const filtered = logs.filter(l =>
+      (selectedHistorySubject.id && l.subjectId === selectedHistorySubject.id) ||
+      (selectedHistorySubject.name && (l.subjectName === selectedHistorySubject.name || l.subjectId === selectedHistorySubject.name))
+    );
 
-    return [...filtered].sort((a, b) => {
-      // 1. Primary: Sort by ISO date string descending (newest date first, e.g. "2026-08-28" > "2026-08-26" > "2026-07-31")
+    const sorted = [...filtered].sort((a, b) => {
+      // 1. Primary: Sort by ISO date string descending (newest date first)
       const dateA = a.date || '';
       const dateB = b.date || '';
       if (dateA !== dateB) {
         return dateB.localeCompare(dateA);
       }
-      // 2. Secondary: Sort by timestamp descending (newest time first on same date)
+      // 2. Secondary: Sort by timestamp descending
       const timeA = typeof a.timestamp === 'number' ? a.timestamp : 0;
       const timeB = typeof b.timestamp === 'number' ? b.timestamp : 0;
       return timeB - timeA;
     });
+
+    // In-memory deduplication guard: for scheduled non-extra logs, keep ONLY the latest log per slot
+    const seen = new Set<string>();
+    const deduplicated: typeof sorted = [];
+
+    for (let i = 0; i < sorted.length; i++) {
+      const l = sorted[i];
+      if (l.isExtra) {
+        deduplicated.push(l);
+      } else {
+        const slotKey = `${(l.date || '').slice(0, 10)}_${l.type === 'lab' ? 'lab' : 'class'}_${l.idx ?? 0}`;
+        if (!seen.has(slotKey)) {
+          seen.add(slotKey);
+          deduplicated.push(l);
+        }
+      }
+    }
+
+    return deduplicated;
   }, [selectedHistorySubject, logs]);
+
+  const [historyFilterType, setHistoryFilterType] = useState<'all' | 'class' | 'lab'>('all');
+
+  // Reset filter tab whenever a different subject history modal is opened
+  useEffect(() => {
+    if (selectedHistorySubject) {
+      setHistoryFilterType('all');
+    }
+  }, [selectedHistorySubject?.id]);
+
+  const classHistoryLogs = useMemo(
+    () => sortedHistoryLogs.filter(l => l.type !== 'lab'),
+    [sortedHistoryLogs]
+  );
+  const labHistoryLogs = useMemo(
+    () => sortedHistoryLogs.filter(l => l.type === 'lab'),
+    [sortedHistoryLogs]
+  );
+
+  const historySections = useMemo(() => {
+    if (historyFilterType === 'class') {
+      return [{ title: 'Classes', type: 'class' as const, count: classHistoryLogs.length, data: classHistoryLogs }];
+    }
+    if (historyFilterType === 'lab') {
+      return [{ title: 'Labs', type: 'lab' as const, count: labHistoryLogs.length, data: labHistoryLogs }];
+    }
+    // 'all' view — Classes first, then Labs
+    const list: { title: string; type: 'class' | 'lab'; count: number; data: typeof sortedHistoryLogs }[] = [];
+    if (classHistoryLogs.length > 0) {
+      list.push({ title: 'Classes', type: 'class', count: classHistoryLogs.length, data: classHistoryLogs });
+    }
+    if (labHistoryLogs.length > 0) {
+      list.push({ title: 'Labs', type: 'lab', count: labHistoryLogs.length, data: labHistoryLogs });
+    }
+    return list;
+  }, [historyFilterType, classHistoryLogs, labHistoryLogs, sortedHistoryLogs]);
 
   const handleAddSubject = () => {
     setEditSubject(null);
@@ -692,6 +865,41 @@ export default function AttendanceScreen() {
                 <Text style={styles.headerBtnText}>Date</Text>
               </TouchableOpacity>
 
+              {/* Unlogged / Pending Classes & Labs Drawer Trigger */}
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setIsUnloggedOpen(true);
+                }}
+                style={styles.morphBtn}
+                activeOpacity={0.7}
+              >
+                <View style={styles.morphBtnIconWrap}>
+                  <Animated.View
+                    style={[
+                      styles.morphBtnPill,
+                      unloggedSessions.length > 0 && styles.morphBtnPillUnlogged,
+                      { opacity: pillAnim },
+                    ]}
+                  />
+                  {unloggedSessions.length > 0 && (
+                    <View style={styles.morphBtnBadge}>
+                      <Text style={styles.morphBtnBadgeText}>
+                        {unloggedSessions.length > 99 ? '99+' : unloggedSessions.length}
+                      </Text>
+                    </View>
+                  )}
+                  <Ionicons
+                    name="time-outline"
+                    size={16}
+                    color={unloggedSessions.length > 0 ? (isDark ? '#F87171' : '#DC2626') : colors.textMuted}
+                  />
+                </View>
+                <Text style={[styles.headerBtnText, unloggedSessions.length > 0 && { color: isDark ? '#F87171' : '#DC2626' }]}>
+                  Due
+                </Text>
+              </TouchableOpacity>
+
               {/* Holiday Toggle */}
               <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleToggleHoliday(isSelectedHoliday); }} style={styles.morphBtn} activeOpacity={0.7}>
                 <View style={styles.morphBtnIconWrap}>
@@ -830,7 +1038,7 @@ export default function AttendanceScreen() {
 
             {/* Subject Attendance Stats Overview Strip */}
             {(() => {
-              const sub = selectedHistorySubject;
+              const sub = subjects.find(s => (selectedHistorySubject.id && s.id === selectedHistorySubject.id) || s.name === selectedHistorySubject.name) || selectedHistorySubject;
               const att = (sub.classesAttended || 0) + (sub.labsAttended || 0);
               const tot = (sub.classesTotal || 0) + (sub.labsTotal || 0);
               const pct = tot > 0 ? (att / tot) * 100 : 100;
@@ -872,11 +1080,103 @@ export default function AttendanceScreen() {
               );
             })()}
 
-            {/* List */}
-            <FlatList
-              data={sortedHistoryLogs}
-              keyExtractor={l => l.id || `${l.date}_${l.timestamp}_${l.action}`}
+            {/* Filter Tabs if both classes and labs exist */}
+            {classHistoryLogs.length > 0 && labHistoryLogs.length > 0 && (
+              <View style={styles.historyFilterTabs}>
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setHistoryFilterType('all');
+                  }}
+                  style={[
+                    styles.historyFilterPill,
+                    historyFilterType === 'all' && styles.historyFilterPillActive,
+                  ]}
+                >
+                  <Text style={[
+                    styles.historyFilterPillText,
+                    historyFilterType === 'all' && styles.historyFilterPillTextActive,
+                  ]}>
+                    All ({sortedHistoryLogs.length})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setHistoryFilterType('class');
+                  }}
+                  style={[
+                    styles.historyFilterPill,
+                    historyFilterType === 'class' && styles.historyFilterPillActiveClass,
+                  ]}
+                >
+                  <Ionicons 
+                    name="book-outline" 
+                    size={12} 
+                    color={historyFilterType === 'class' ? (isDark ? '#a5b4fc' : '#4f46e5') : colors.textMuted} 
+                    style={{ marginRight: 4 }} 
+                  />
+                  <Text style={[
+                    styles.historyFilterPillText,
+                    historyFilterType === 'class' && styles.historyFilterPillTextActiveClass,
+                  ]}>
+                    Classes ({classHistoryLogs.length})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setHistoryFilterType('lab');
+                  }}
+                  style={[
+                    styles.historyFilterPill,
+                    historyFilterType === 'lab' && styles.historyFilterPillActiveLab,
+                  ]}
+                >
+                  <Ionicons 
+                    name="flask-outline" 
+                    size={12} 
+                    color={historyFilterType === 'lab' ? (isDark ? '#fcd34d' : '#d97706') : colors.textMuted} 
+                    style={{ marginRight: 4 }} 
+                  />
+                  <Text style={[
+                    styles.historyFilterPillText,
+                    historyFilterType === 'lab' && styles.historyFilterPillTextActiveLab,
+                  ]}>
+                    Labs ({labHistoryLogs.length})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* List with Dedicated Classes & Labs Sections */}
+            <SectionList
+              sections={historySections}
+              keyExtractor={l => l.id || `${l.date}_${l.timestamp}_${l.action}_${l.type}`}
               contentContainerStyle={{ padding: SPACE.md, paddingBottom: 60 }}
+              stickySectionHeadersEnabled={false}
+              renderSectionHeader={({ section }) => {
+                // Only show section header if both classes & labs exist or in 'all' view
+                if (classHistoryLogs.length === 0 || labHistoryLogs.length === 0) return null;
+                const isLab = section.type === 'lab';
+                return (
+                  <View style={[styles.historySectionHeader, isLab && { marginTop: 14 }]}>
+                    <Ionicons
+                      name={isLab ? 'flask' : 'book'}
+                      size={13}
+                      color={isLab ? (isDark ? '#fcd34d' : '#d97706') : (isDark ? '#a5b4fc' : '#4f46e5')}
+                    />
+                    <Text style={[
+                      styles.historySectionTitle,
+                      { color: isLab ? (isDark ? '#fcd34d' : '#d97706') : (isDark ? '#a5b4fc' : '#4f46e5') }
+                    ]}>
+                      {section.title} ({section.count})
+                    </Text>
+                  </View>
+                );
+              }}
               renderItem={({ item: l }) => (
                 <AttendanceHistoryRow
                   log={l}
@@ -893,13 +1193,65 @@ export default function AttendanceScreen() {
                     No Logs Found
                   </Text>
                   <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
-                    Classes and labs you mark will appear here sorted from newest to oldest.
+                    {historyFilterType === 'class'
+                      ? 'No class logs recorded for this subject.'
+                      : historyFilterType === 'lab'
+                      ? 'No lab logs recorded for this subject.'
+                      : 'Classes and labs you mark will appear here sorted from newest to oldest.'}
                   </Text>
                 </View>
               }
             />
           </SafeAreaView>
         </Modal>
+      )}
+
+      {/* Unlogged / Pending Classes & Labs Drawer */}
+      {isUnloggedOpen && (
+        <BottomSheet visible={isUnloggedOpen} onClose={() => setIsUnloggedOpen(false)}>
+          <View style={{ width: '100%', maxHeight: 480 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <View style={{ flex: 1, marginRight: 10 }}>
+                <Text style={styles.sheetTitle}>Unlogged Classes & Labs</Text>
+                <Text style={{ fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
+                  {unloggedSessions.length} {unloggedSessions.length === 1 ? 'past session' : 'past sessions'} pending • Newest first
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsUnloggedOpen(false)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {unloggedSessions.length === 0 ? (
+              <View style={{ paddingVertical: 36, alignItems: 'center', gap: 10 }}>
+                <Ionicons name="checkmark-done-circle-outline" size={48} color={isDark ? '#34D399' : '#059669'} />
+                <Text style={{ fontSize: 16, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
+                  All Caught Up! 🎉
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', paddingHorizontal: 20 }}>
+                  No unlogged classes or labs found in the past 30 days. Everything is up to date.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView style={{ marginTop: 12, marginBottom: 8 }} showsVerticalScrollIndicator={false}>
+                {unloggedSessions.map(item => (
+                  <UnloggedSessionRow
+                    key={item.id}
+                    item={item}
+                    colors={colors}
+                    isDark={isDark}
+                    styles={styles}
+                    onSelectDate={date => {
+                      setSelectedDate(date);
+                      setIsUnloggedOpen(false);
+                    }}
+                    onLog={handleLog}
+                  />
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </BottomSheet>
       )}
 
       {/* Extra Class Modal */}

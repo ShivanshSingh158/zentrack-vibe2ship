@@ -129,14 +129,14 @@ mobile/
     │   ├── Analytics/                    # Academic & Productivity Predictors
     │   ├── Calendar/                     # Event Modal, Week Pager & Agenda Strips
     │   ├── Dashboard/                    # Life Ring, Agenda, Vitality, QuickCapture Sheets
-    │   ├── Gym/                          # Set Loggers, Rest Timers, GYM-GPT FAB/Modal, Heatmaps
+    │   ├── Gym/                          # Set Loggers, Rest Timers, GYM-GPT FAB/Modal, GymLocationModal, Heatmaps
     │   │   └── Charts/                   # Muscle Donut, Consistency, Volume & PR Charts
     │   ├── Habits/                       # Habit Reminder & Streak Modals
     │   ├── Learning/                     # Video Player, Flashcards, VSCode Highlighting, MindMaps
     │   ├── Navigation/                   # Telegram-Style Floating Glass Tab Bar
     │   ├── PlacementHub/                 # LeetCode Tracker, DSA Heatmap, Pattern Vault, Panic Modal
     │   ├── SARA/                         # Voice Orb, Bubbles, Action Confirmation, Reasoning Feed
-    │   ├── Tasks/                        # Task Rows, Timeline, Matrix, Kanban, Pomodoro Sheets
+    │   ├── Tasks/                        # Task Rows, Timeline, Matrix, Kanban, LocationPickerModal, Pomodoro Sheets
     │   ├── Vault/                        # Local Offline Document Viewer & Download HUD
     │   ├── ui/                           # BottomSheet, FloatingActionButton, GlassCard, EmptyState
     │   ├── AnimatedPressable.tsx         # Haptic-Enabled Animated Touch Wrapper
@@ -221,6 +221,8 @@ mobile/
     │   ├── exerciseVideoResolver.ts      # YouTube Exercise Demo Resolver
     │   ├── progressiveOverload.ts        # Dynamic Gym Progressive Overload Calculator
     │   ├── weeklyGymAnalysisEngine.ts    # Sunday Deep Gym Analytics & Volume Engine
+    │   ├── savedPlacesService.ts         # User Saved Places (Gym, Campus Lab, Library, Home) & Geocoding
+    │   ├── geofenceService.ts            # Headless Background Geofence Engine (Gym & Task Triggers)
     │   ├── leetcode.ts                   # LeetCode Public GraphQL Profile Scraper
     │   ├── agentHistory.ts               # SARA Action History Persistence
     │   ├── backgroundTasks.ts            # Expo TaskManager Background Tasks
@@ -231,7 +233,12 @@ mobile/
     │   ├── animations.ts                 # Reanimated Micro-Interaction Presets
     │   └── motion.ts                     # Timing & Spring Easing Curves
     ├── types/
-    │   └── gym.types.ts                  # Gym Sets, Exercises, Plans & History TypeScript Interfaces
+    │   ├── gym.types.ts                  # Gym Sets, Exercises, Plans & History TypeScript Interfaces
+    │   ├── locationReminder.types.ts     # Saved Places, Geofence Triggers & Gym Geofence Config
+    │   └── widget.types.ts               # Android Home Screen Agenda Widget TypeScript Interfaces
+    ├── widgets/
+    │   ├── TodayAgendaWidget.tsx         # Android Home Screen Widget (Obsidian Cosmos Theme)
+    │   └── widgetTaskHandler.tsx         # Headless Background JS Task Handler for Widget Actions
     └── utils/
         ├── safeWrite.ts                  # Resilient Offline-First Firestore Write Wrapper
         ├── bootManifest.ts               # Atomic Cold Boot Manifest (0ms Bridge Access)
@@ -366,6 +373,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/services/backgroundTasks.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/backgroundTasks.ts) | `registerWeeklyReviewTask` | `() => Promise<void>` | Registers Expo TaskManager task for Sunday review reminder notifications. |
 | [`src/services/backgroundProactiveAgent.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/backgroundProactiveAgent.ts) | `registerBackgroundProactiveAgent` | `() => Promise<void>` | Background task evaluating critical academic and task risks when app is suspended. |
 | [`src/services/webScraper.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/webScraper.ts) | `executeWebSearch` | `(query: string) => Promise<string>` | DuckDuckGo search integration for SARA DAG queries. |
+| [`src/services/widgetSyncService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/widgetSyncService.ts) | `buildTodayAgendaData`, `saveCachedWidgetData`, `handleWidgetClickAction`, `updateTodayAgendaWidget` | Functions | Android Widget synchronization engine: aggregates chronological agenda (classes + tasks), saves to `@zentrack_widget_agenda_data`, handles headless button clicks (Present, Absent, Task Done/Undone), and writes to Firestore with deterministic doc IDs. |
 
 ### 4.6. Navigation Layer (`src/navigation/`)
 | File Path | Component / Function | Purpose & Implementation Details |
@@ -577,6 +585,13 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/hooks/useCachedFirestoreCollection.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useCachedFirestoreCollection.ts) | `useCachedFirestoreCollection` | `<T>(collection: string, cacheKey: string, parser: (d: any) => T) => { data: T[], loading: boolean }` | Generic hook providing instant AsyncStorage stale-while-revalidate cache hydration followed by live Firestore updates. |
 | [`src/hooks/useDeferredMemo.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useDeferredMemo.ts) | `useDeferredMemo` | `<T>(factory: () => T, deps: any[]) => T` | Defers expensive computations to `InteractionManager.runAfterInteractions` to preserve 60/120fps UI animations. |
 | [`src/hooks/useSafeTimeout.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useSafeTimeout.ts) | `useSafeTimeout` | `() => { setSafeTimeout: (fn: () => void, ms: number) => void }` | Memory-safe timeout wrapper automatically clearing pending handles on component unmount. |
+| [`src/hooks/useWidgetSync.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useWidgetSync.tsx) | `useWidgetSync` | `(params: { user, tasks, subjects, attendanceLogs }) => void` | Keeps the Android Home Screen Widget in continuous synchronization with in-app task and attendance changes via debounced background writes. |
+
+### 4.10.1. Android Home Screen Widgets (`src/widgets/`)
+| File Path | Component / Handler | Description & Responsibilities |
+|---|---|---|
+| [`src/widgets/TodayAgendaWidget.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/widgets/TodayAgendaWidget.tsx) | `TodayAgendaWidget` | Obsidian Cosmos styled Android home screen widget rendering today's timetable classes and tasks chronologically sorted by time, with interactive Present/Absent and Task Done/Undone buttons. |
+| [`src/widgets/widgetTaskHandler.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/widgets/widgetTaskHandler.tsx) | `widgetTaskHandler` | Headless JS background task handler registered in `index.ts` via `registerWidgetTaskHandler`. Processes widget placement, resize, and click events without launching the main app. |
 
 ### 4.11. Utilities & Algorithmic Engines (`src/utils/`)
 | File Path | Exported Function | Signature / Type | Description & Purpose |
@@ -630,7 +645,8 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | File Path | Exported Constant | Structure / Description |
 |---|---|---|
 | [`src/data/gymPlan.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/data/gymPlan.ts) | `GYM_PLAN`, `GYM_PLAN_PPL`, `GYM_PLAN_ARNOLD`, `WEEKDAY_TO_PLAN` | Master 6-day Push/Pull/Legs and Arnold Split routine templates with target sets/reps and YouTube demo IDs. |
-| [`src/data/exerciseDatabase.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/data/exerciseDatabase.ts) | `EXERCISE_CATALOGUE`, `EXERCISE_ALTERNATIVES` | Comprehensive 100+ exercise library with anatomical muscle mappings and equipment requirements. |
+| [`src/data/exerciseDatabase.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/data/exerciseDatabase.ts) | `EXERCISE_DATABASE` | Curated canonical exercise library with calibrated tiers (S/A+/A/B) and deduplicated aliases mapping synonyms, legacy IDs, and variations into single canonical movements. |
+| [`src/data/exerciseAliasMap.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/data/exerciseAliasMap.ts) | `EXERCISE_ALIAS_MAP`, `getCanonicalExerciseKey` | Universal 764-entry bidirectional alias dictionary resolving all variations, colloquial names, and legacy workout names to canonical master keys for 100% historical preloading. |
 | [`src/data/brutalQuotes.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/data/brutalQuotes.ts) | `BRUTAL_QUOTES` | Curated psychological discipline and accountability quotes pool used by SARA on Dashboard. |
 
 ### 4.14. TypeScript Type Definitions (`src/types/`)

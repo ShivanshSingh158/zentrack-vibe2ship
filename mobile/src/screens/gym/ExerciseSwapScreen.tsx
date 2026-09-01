@@ -14,7 +14,7 @@ import { useGymLog, todayStr, planDayIndexForDate, getCustomPlanDay } from '../.
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { GYM_PLAN, GYM_PLAN_PPL, GYM_PLAN_ARNOLD } from '../../data/gymPlan';
 import { EXERCISE_DATABASE } from '../../data/exerciseDatabase';
-import { resolveMuscleColor, hexToRgba, canonicalizeMuscle, resolveExerciseTargetMuscle, getExerciseSwapAlternatives } from '../../utils/gymUtils';
+import { resolveMuscleColor, hexToRgba, canonicalizeMuscle, resolveExerciseTargetMuscle, getExerciseSwapAlternatives, getPreviousExerciseSession } from '../../utils/gymUtils';
 import { hapticMedium, hapticSuccess, hapticLight } from '../../utils/haptics';
 import { callProxy } from '../../services/geminiProxy';
 import { autoResolveExerciseVideoId } from '../../services/exerciseVideoResolver';
@@ -80,7 +80,7 @@ export default function ExerciseSwapScreen() {
   const date = route.params?.date || todayStr();
 
   const { log, updateExercise } = useGymLog(date);
-  const { userGymPlan, updateMasterPlan } = useWellnessData();
+  const { userGymPlan, updateMasterPlan, gymLogs } = useWellnessData();
 
   const [activeTab, setActiveTab] = useState<'ai' | 'all'>('ai');
   const [search, setSearch] = useState('');
@@ -354,6 +354,9 @@ Return ONLY a raw valid JSON array of 6 objects:
       resolvedVideoId = (await autoResolveExerciseVideoId(newExDef.name)) || '';
     }
 
+    const lastSession = getPreviousExerciseSession(newExDef.name, gymLogs);
+    const lastSets = lastSession?.sets;
+
     const updatedExercise = {
       ...existingLog,
       exerciseId: newExDef.id || `swap_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -363,12 +366,16 @@ Return ONLY a raw valid JSON array of 6 objects:
       targetSets,
       targetReps,
       restTimeSecs,
-      setsLog: Array.from({ length: targetSets }, (_, i) => ({
-        setNumber: i + 1,
-        reps: null,
-        weight: null,
-        completed: false,
-      })),
+      lastSessionSets: lastSets ?? undefined,
+      setsLog: Array.from({ length: targetSets }, (_, i) => {
+        const prev = lastSets?.[i];
+        return {
+          setNumber: i + 1,
+          reps: prev?.reps ?? null,
+          weight: prev?.weight ?? null,
+          completed: false,
+        };
+      }),
       isCustom: false,
     };
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo, memo, useCallback, Suspense } from 'react';
-import { View, Text, TouchableOpacity, Platform, Alert, Animated, LayoutAnimation, ScrollView, InteractionManager } from 'react-native';
+import { View, Text, TouchableOpacity, Platform, Alert, Animated, LayoutAnimation, ScrollView, InteractionManager, DeviceEventEmitter } from 'react-native';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,6 +39,7 @@ const SwapRoutineModal = React.lazy(() => import('../../components/Gym/SwapRouti
 const GymProfileModal = React.lazy(() => import('../../components/Gym/GymProfileModal').then(m => ({ default: m.GymProfileModal })));
 const GymTemplateModal = React.lazy(() => import('../../components/Gym/GymTemplateModal').then(m => ({ default: m.GymTemplateModal })));
 const GymScheduleSettingsModal = React.lazy(() => import('../../components/Gym/GymScheduleSettingsModal').then(m => ({ default: m.GymScheduleSettingsModal })));
+const GymLocationModal = React.lazy(() => import('../../components/Gym/GymLocationModal').then(m => ({ default: m.GymLocationModal })));
 const BodyMetricsSheet = React.lazy(() => import('../../components/Gym/BodyMetricsSheet'));
 const PRHallOfFameSheet = React.lazy(() => import('../../components/Gym/PRHallOfFameSheet'));
 
@@ -89,6 +90,17 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     });
     return () => handle.cancel();
   }, [gymLogs, userGymPlan]);
+
+  // Autonomous Geofence Arrival: auto-routes to ActiveLogging focused on the first exercise
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('gym_workout_auto_started', (event: any) => {
+      navigation.navigate('ActiveLogging', {
+        date: event?.date || todayStr(),
+        initialIndex: 0,
+      });
+    });
+    return () => sub.remove();
+  }, [navigation]);
 
   const handleGymNotifSaved = useCallback(() => {
     clearScheduleCache();
@@ -142,6 +154,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   const [exerciseMenuFor, setExerciseMenuFor] = useState<any | null>(null);
   const [supersetPickerFor, setSupersetPickerFor] = useState<any | null>(null);
   const [cardioMenuFor, setCardioMenuFor] = useState<GymCardioLog | null>(null);
+  const [showLocationModal, setShowLocationModal] = useState(false);
 
   // Progressive Overload Toast
   const [overloadToast, setOverloadToast] = useState<{
@@ -589,6 +602,14 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
                 <Text style={s.headerBtnText}>Body</Text>
               </TouchableOpacity>
 
+              <TouchableOpacity onPress={() => { hapticMedium(); setShowLocationModal(true); }} style={s.morphBtn} activeOpacity={0.7}>
+                <View style={s.morphBtnIconWrap}>
+                  <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
+                  <Ionicons name="location-outline" size={16} color={COLORS.textMuted} />
+                </View>
+                <Text style={s.headerBtnText}>GPS</Text>
+              </TouchableOpacity>
+
               <TouchableOpacity onPress={() => { hapticMedium(); navigation.navigate('GymProgress'); }} style={s.morphBtn} activeOpacity={0.7}>
                 <View style={s.morphBtnIconWrap}>
                   <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
@@ -610,7 +631,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
 
         <View style={{ flex: 1 }}>
           {!isMounted ? (
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 80 }}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[s.scrollContent, { paddingTop: insets.top + 58 }]}>
               <GymHomeSkeleton />
             </ScrollView>
           ) : (
@@ -776,6 +797,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
 
             {showBodyMetrics && <BodyMetricsSheet visible={showBodyMetrics} onClose={() => setShowBodyMetrics(false)} />}
             {showPRHallOfFame && <PRHallOfFameSheet visible={showPRHallOfFame} onClose={() => setShowPRHallOfFame(false)} />}
+            {showLocationModal && <GymLocationModal visible={showLocationModal} onClose={() => setShowLocationModal(false)} />}
 
             {showWeeklyRecap && (
               <Modal

@@ -17,7 +17,7 @@ import { COLLECTION } from '../../config/constants';
 import { handleSyncError } from '../../utils/errorUtils';
 import { safeWrite } from '../../utils/safeWrite';
 import { queueWrite } from '../../services/offlineSync';
-import { DAY_NAMES } from './attendanceConstants';
+import { DAY_NAMES, getScheduledAttendanceLogDocId } from './attendanceConstants';
 import { awardXP } from '../../services/xpSystem';
 
 // Set the notification handler once at module level (previously in AttendanceScreen top-level)
@@ -72,23 +72,42 @@ export function useAttendanceFirestore({
     const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
     const cleanLogDate = (logDate || selectedDate || '').slice(0, 10);
 
-    // Check if we are updating an existing log — first try explicit ID, then match by subject+type+idx+date
+    // Deterministic unique ID for scheduled non-extra sessions
+    const deterministicId = !isExtra && subject.id && user?.uid
+      ? getScheduledAttendanceLogDocId(user.uid, subject.id, cleanLogDate, type, sessionIdx)
+      : undefined;
+
+    // Check if we are updating an existing log — first try explicit ID, then deterministic ID, then memory match
     const existingLog = existingLogId
       ? logs.find(l => l.id === existingLogId)
-      : logs.find(l =>
+      : (deterministicId ? logs.find(l => l.id === deterministicId) : null) ||
+        logs.find(l =>
           (l.subjectId === subject.id || l.subjectId === subject.name || l.subjectName === subject.name) &&
           (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)) &&
           (l.date || '').slice(0, 10) === cleanLogDate &&
           (!isExtra ? !l.isExtra : l.isExtra) &&
-          // Exact session slot match — prevents log for session 1 being found when tapping session 0
+          // Exact session slot match
           (l.idx === sessionIdx || (l.idx === undefined && sessionIdx === 0))
         );
+
+    // Find any duplicate/stale logs for this exact same slot to clean them up simultaneously
+    const duplicateLogsToDelete = !isExtra
+      ? logs.filter(l =>
+          (!existingLog || l.id !== existingLog.id) &&
+          (deterministicId ? l.id !== deterministicId : true) &&
+          (l.subjectId === subject.id || l.subjectId === subject.name || l.subjectName === subject.name) &&
+          (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)) &&
+          (l.date || '').slice(0, 10) === cleanLogDate &&
+          !l.isExtra &&
+          (l.idx === sessionIdx || (l.idx === undefined && sessionIdx === 0))
+        )
+      : [];
 
     let newAttended: number;
     let newTotal: number;
 
     if (existingLog) {
-      if (existingLog.action === action) return;
+      if (existingLog.action === action && duplicateLogsToDelete.length === 0) return;
 
       const oldAction = existingLog.action;
       const oldAttContribution = oldAction === 'attended' ? 1 : 0;
@@ -109,12 +128,27 @@ export function useAttendanceFirestore({
     const subjectUpdates = { [attendedKey]: newAttended, [totalKey]: newTotal };
 
     try {
+      const targetDocId = existingLog?.id || deterministicId || doc(collection(db, COLLECTION.ATTENDANCE_LOGS)).id;
+      const targetLog = {
+        id: targetDocId,
+        userId: user.uid,
+        subjectId: subject.id,
+        subjectName: subject.name,
+        type,
+        action,
+        date: cleanLogDate,
+        isExtra,
+        timestamp: Date.now(),
+        idx: sessionIdx,
+      };
+
       if (existingLog) {
         // Optimistically update UI
         optimisticUpdateAttendance(subject.id, subjectUpdates);
         if (optimisticUpdateAttendanceLog) {
           optimisticUpdateAttendanceLog(existingLog.id, { action, timestamp: Date.now() });
         }
+        duplicateLogsToDelete.forEach(dup => optimisticRemoveAttendanceLog(dup.id));
 
         if (action === 'attended' && existingLog.action !== 'attended') {
           awardXP('ATTENDANCE_LOG').catch(() => {});
@@ -125,7 +159,10 @@ export function useAttendanceFirestore({
           async () => {
             const batch = writeBatch(db);
             batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), subjectUpdates);
-            batch.update(doc(db, COLLECTION.ATTENDANCE_LOGS, existingLog.id), { action, timestamp: Date.now() });
+            batch.set(doc(db, COLLECTION.ATTENDANCE_LOGS, existingLog.id), { action, timestamp: Date.now() }, { merge: true });
+            duplicateLogsToDelete.forEach(dup => {
+              batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, dup.id));
+            });
             await batch.commit();
           },
           COLLECTION.ATTENDANCE,
@@ -138,17 +175,11 @@ export function useAttendanceFirestore({
           }
         }).catch(handleSyncError);
       } else {
-        const logRef = doc(collection(db, COLLECTION.ATTENDANCE_LOGS));
-        const newLog = {
-          id: logRef.id,
-          userId: user.uid, subjectId: subject.id, subjectName: subject.name,
-          type, action, date: cleanLogDate, isExtra, timestamp: Date.now(),
-          idx: sessionIdx, // ← session slot index: ensures exact card binding on every re-render
-        };
-        
         // Optimistically update UI
         optimisticUpdateAttendance(subject.id, subjectUpdates);
-        optimisticAddAttendanceLog(newLog);
+        optimisticAddAttendanceLog(targetLog);
+        duplicateLogsToDelete.forEach(dup => optimisticRemoveAttendanceLog(dup.id));
+
         if (action === 'attended') {
           awardXP('ATTENDANCE_LOG').catch(() => {});
         }
@@ -158,7 +189,10 @@ export function useAttendanceFirestore({
           async () => {
             const batch = writeBatch(db);
             batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), subjectUpdates);
-            batch.set(logRef, newLog);
+            batch.set(doc(db, COLLECTION.ATTENDANCE_LOGS, targetDocId), targetLog, { merge: true });
+            duplicateLogsToDelete.forEach(dup => {
+              batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, dup.id));
+            });
             await batch.commit();
           },
           COLLECTION.ATTENDANCE,
@@ -167,7 +201,7 @@ export function useAttendanceFirestore({
           subject.id
         ).then(async (online) => {
           if (!online) {
-            await queueWrite(COLLECTION.ATTENDANCE_LOGS, 'set', newLog, newLog.id);
+            await queueWrite(COLLECTION.ATTENDANCE_LOGS, 'set', targetLog, targetDocId);
           }
         }).catch(handleSyncError);
       }
@@ -267,10 +301,11 @@ export function useAttendanceFirestore({
           const classCount = sch.classes?.length || sch.classCount || 0;
           const labCount   = sch.labs?.length   || sch.labCount   || 0;
 
-          const createCancelLog = (type: 'class' | 'lab') => {
-            const logRef = doc(collection(db, COLLECTION.ATTENDANCE_LOGS));
+          const createCancelLog = (type: 'class' | 'lab', idx: number) => {
+            const logId = getScheduledAttendanceLogDocId(user.uid, subject.id!, selectedDate, type, idx);
+            const logRef = doc(db, COLLECTION.ATTENDANCE_LOGS, logId);
             const newLog = {
-              id: logRef.id,
+              id: logId,
               userId: user.uid,
               subjectId: subject.id,
               subjectName: subject.name,
@@ -279,16 +314,21 @@ export function useAttendanceFirestore({
               date: selectedDate,
               isExtra: false,
               timestamp: Date.now(),
+              idx,
             };
             optimisticAddAttendanceLog(newLog);
-            batch.set(logRef, newLog);
+            batch.set(logRef, newLog, { merge: true });
           };
 
           for (let i = 0; i < classCount; i++) {
-            if (!classLogs[i]) createCancelLog('class');
+            if (!classLogs.some((l: any) => l.idx === i || (l.idx === undefined && i === 0))) {
+              createCancelLog('class', i);
+            }
           }
           for (let i = 0; i < labCount; i++) {
-            if (!labLogs[i]) createCancelLog('lab');
+            if (!labLogs.some((l: any) => l.idx === i || (l.idx === undefined && i === 0))) {
+              createCancelLog('lab', i);
+            }
           }
         });
 

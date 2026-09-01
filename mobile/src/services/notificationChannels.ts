@@ -38,10 +38,23 @@ export async function requestNotificationPermissions() {
       });
       await Notifications.setNotificationChannelAsync('reminders', {
         name: 'Task Reminders',
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 500, 200, 500],
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 500, 250, 500],
         lightColor: '#a599ff',
         sound: 'default',
+        enableLights: true,
+        enableVibrate: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+      await Notifications.setNotificationChannelAsync('location_reminders', {
+        name: 'Location & Arrival Reminders',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 500, 200, 500, 200, 500],
+        lightColor: '#8B5CF6',
+        sound: 'default',
+        enableLights: true,
+        enableVibrate: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
       await Notifications.setNotificationChannelAsync('habits', {
         name: 'Habit Streak',
@@ -70,6 +83,18 @@ export async function requestNotificationPermissions() {
     await Notifications.setNotificationCategoryAsync('task_reminder', [
       { identifier: 'mark_task_done', buttonTitle: '✅ Mark Done', options: { opensAppToForeground: false } },
       { identifier: 'open_tasks', buttonTitle: '📋 Open Tasks', options: { opensAppToForeground: true } },
+    ]);
+    await Notifications.setNotificationCategoryAsync('location_gym_arrival', [
+      { identifier: 'START_WORKOUT', buttonTitle: '🏋️ Start Workout', options: { opensAppToForeground: true } },
+      { identifier: 'DISMISS', buttonTitle: '✕ Dismiss', options: { opensAppToForeground: false, isDestructive: true } },
+    ]);
+    await Notifications.setNotificationCategoryAsync('location_gym_departure', [
+      { identifier: 'SAVE_SUMMARY', buttonTitle: '✓ Save Summary', options: { opensAppToForeground: true } },
+      { identifier: 'DISMISS', buttonTitle: '✕ Dismiss', options: { opensAppToForeground: false, isDestructive: true } },
+    ]);
+    await Notifications.setNotificationCategoryAsync('location_task_reminder', [
+      { identifier: 'MARK_DONE', buttonTitle: '✓ Mark Done', options: { opensAppToForeground: false } },
+      { identifier: 'OPEN_TASK', buttonTitle: '📋 Open Task', options: { opensAppToForeground: true } },
     ]);
     await Notifications.setNotificationCategoryAsync('habit_reminder', [
       { identifier: 'log_habit', buttonTitle: '🔥 Log It', options: { opensAppToForeground: false } },

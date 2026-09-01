@@ -28,7 +28,7 @@ import { handleSyncError } from '../../utils/errorUtils';
 import { makeAddExerciseStyles } from './addExerciseStyles';
 import ExerciseSearchDropdown, { ExerciseCatalogEntry } from './ExerciseSearchDropdown';
 import ExerciseCustomFields from './ExerciseCustomFields';
-import { getBiomechanicalPrescription } from '../../utils/gymUtils';
+import { getBiomechanicalPrescription, normalizeExerciseKey } from '../../utils/gymUtils';
 
 /** Build a full deduplicated exercise catalogue from our database + plan + dataset with calibrated tiers. */
 function buildCatalogue(): ExerciseCatalogEntry[] {
@@ -36,13 +36,19 @@ function buildCatalogue(): ExerciseCatalogEntry[] {
   const result: ExerciseCatalogEntry[] = [];
 
   const add = (e: ExerciseCatalogEntry) => {
-    const key = e.name.toLowerCase().trim();
-    if (seen.has(key)) return;
+    const key = normalizeExerciseKey(e.name);
+    if (!key || seen.has(key)) return;
     seen.add(key);
+    if (Array.isArray(e.aliases)) {
+      for (const a of e.aliases) {
+        const aKey = normalizeExerciseKey(a);
+        if (aKey) seen.add(aKey);
+      }
+    }
     result.push(e);
   };
 
-  // 1. EXERCISE_DATABASE (Primary source with 492 scientifically audited entries & tiers)
+  // 1. EXERCISE_DATABASE (Primary source with scientifically audited entries, unified aliases & tiers)
   for (const dbEntry of EXERCISE_DATABASE) {
     const rx = getBiomechanicalPrescription(dbEntry.name, dbEntry.muscle);
     add({
@@ -75,7 +81,7 @@ function buildCatalogue(): ExerciseCatalogEntry[] {
     }
   }
 
-  // 3. 1,324 Exercises Dataset integration
+  // 3. 1,324 Exercises Dataset integration (only appends genuinely new exercises)
   const datasetExercises = searchExercises('', 'all', 2000);
   for (const ex of datasetExercises) {
     const rawMuscle = ex.target || ex.bodyPart || 'Mixed';
@@ -265,15 +271,18 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
 
   const getLastSessionSets = (exerciseId: string, exerciseName: string) => {
     if (!gymLogs) return null;
+    const targetKey = normalizeExerciseKey(exerciseName);
     const logsWithEx = [...gymLogs]
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .filter(log => log.exercises?.some((ex: any) =>
-        ex.exerciseId === exerciseId || ex.name?.toLowerCase() === exerciseName.toLowerCase()
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .filter(log => Array.isArray(log.exercises) && log.exercises.some((ex: any) =>
+        (ex.exerciseId && ex.exerciseId === exerciseId) ||
+        (ex.name && normalizeExerciseKey(ex.name) === targetKey)
       ));
     if (logsWithEx.length === 0) return null;
     const latestLog = logsWithEx[0];
     const ex = latestLog.exercises!.find((ex: any) =>
-      ex.exerciseId === exerciseId || ex.name?.toLowerCase() === exerciseName.toLowerCase()
+      (ex.exerciseId && ex.exerciseId === exerciseId) ||
+      (ex.name && normalizeExerciseKey(ex.name) === targetKey)
     );
     return ex?.setsLog ?? null;
   };

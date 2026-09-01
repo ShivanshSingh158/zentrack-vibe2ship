@@ -1,14 +1,12 @@
 /**
  * GymHomeSkeleton.tsx — ZenTrack Mobile
  *
- * 1:1 Layout-matched Skeleton Screen for GymHomeScreen.
- * Exactly mirrors the real ZenGym Home screen structure:
- * - Top header with title & action buttons (AI Coach, Settings, Profile)
- * - 7-Day Calendar Strip with left/right chevrons, day letters, and day number capsules
- * - START WORKOUT hero banner / Active workout timer banner
+ * 1:1 Pixel-Matched Skeleton Screen for GymHomeScreen.
+ * Perfectly mirrors the exact layout geometry, spacing, and component heights:
+ * - 7-Day Calendar Strip with left/right nav chevrons, day letters, and day number circle pills
+ * - Workout Banner (Hero card with title, duration/streak subtitle, and action pill)
  * - "EXERCISES" section header
- * - Draggable exercise rows with checkbox circles, exercise titles, sets/reps subtitles, and history/menu icon buttons
- * - "CARDIO" section header and cardio activity rows
+ * - 5 Draggable Exercise rows with checkbox circle, title & sets/reps bars, and clock/menu icons
  */
 
 import React from 'react';
@@ -24,171 +22,137 @@ import {
 export default function GymHomeSkeleton() {
   return (
     <ShimmerHost style={styles.container}>
-      {/* ── 1. Top Header Row (Greeting + AI Coach FAB + Profile) ─────────────── */}
-      <View style={styles.topHeaderRow}>
-        <View>
-          <SkeletonBox width={110} height={26} borderRadius={6} />
-          <SkeletonBox width={140} height={13} borderRadius={4} style={{ marginTop: 5 }} />
-        </View>
-        <View style={styles.topHeaderRight}>
-          <SkeletonPill width={70} height={32} />
-          <SkeletonCircle size={36} />
-          <SkeletonCircle size={36} />
-        </View>
-      </View>
-
-      {/* ── 2. 7-Day Calendar Strip with Nav Chevrons ────────────────────────── */}
+      {/* ── 1. 7-Day Calendar Strip (M T W T F S S) ─────────────────────────── */}
       <View style={styles.weekStrip}>
-        <SkeletonCircle size={24} />
-        <View style={styles.weekDaysRow}>
+        <SkeletonCircle size={16} />
+        <View style={styles.weekDaysContainer}>
           {Array.from({ length: 7 }).map((_, i) => (
             <View key={i} style={styles.dayCol}>
-              <SkeletonBox width={12} height={11} borderRadius={3} />
-              <View style={[styles.dayPillPlaceholder, i === 3 && styles.dayPillActive]}>
-                <SkeletonBox width={16} height={14} borderRadius={3} />
+              <SkeletonBox width={10} height={10} borderRadius={2} style={{ marginBottom: 3 }} />
+              <View style={[styles.dayPill, i === 1 && styles.dayPillActive]}>
+                <SkeletonBox width={14} height={14} borderRadius={3} />
               </View>
             </View>
           ))}
         </View>
-        <SkeletonCircle size={24} />
+        <SkeletonCircle size={16} />
       </View>
 
-      {/* ── 3. Main START WORKOUT Hero Action Banner ─────────────────────────── */}
-      <View style={styles.bannerSection}>
-        <SkeletonBox width="100%" height={50} borderRadius={14} />
+      {/* ── 2. Workout Action / Status Hero Banner ──────────────────────────── */}
+      <View style={styles.workoutSection}>
+        <SkeletonCard style={styles.bannerCard} borderRadius={16}>
+          <View style={styles.bannerLeft}>
+            <SkeletonBox width={140} height={16} borderRadius={4} />
+            <SkeletonBox width={90} height={12} borderRadius={3} style={{ marginTop: 5 }} />
+          </View>
+          <SkeletonPill width={80} height={34} />
+        </SkeletonCard>
       </View>
 
-      {/* ── 4. "EXERCISES" Section Header ───────────────────────────────────── */}
-      <View style={styles.sectionHeader}>
-        <SkeletonBox width={85} height={13} borderRadius={3} />
+      {/* ── 3. "EXERCISES" Section Label ────────────────────────────────────── */}
+      <View style={styles.sectionHeaderRow}>
+        <SkeletonBox width={75} height={11} borderRadius={3} />
       </View>
 
-      {/* ── 5. Exercise Rows with Checkbox Circles & Action Buttons ─────────── */}
-      <View style={styles.exercisesList}>
-        {Array.from({ length: 4 }).map((_, i) => (
-          <SkeletonCard key={i} style={styles.exerciseRow} borderRadius={14}>
+      {/* ── 4. Exercise Rows (Checkbox + Title/Subtitle + Clock/Menu) ────────── */}
+      <View style={styles.exercisesSection}>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <SkeletonCard key={i} style={styles.exerciseRow} borderRadius={16}>
             {/* Left Checkbox Circle */}
-            <SkeletonCircle size={22} />
+            <SkeletonCircle size={20} />
 
-            {/* Middle Title & Sets/Reps Subtitle */}
+            {/* Title & Sets/Reps Subtitle */}
             <View style={styles.exerciseTextCol}>
-              <View style={styles.exerciseTitleRow}>
-                <SkeletonBox width={i === 0 ? "75%" : (i === 1 ? "60%" : (i === 2 ? "85%" : "70%"))} height={16} borderRadius={4} />
-                {i === 1 && <SkeletonPill width={58} height={18} />}
-              </View>
-              <SkeletonBox width="50%" height={12} borderRadius={3} style={{ marginTop: 6 }} />
+              <SkeletonBox
+                width={i === 0 ? "70%" : (i === 1 ? "85%" : (i === 2 ? "60%" : (i === 3 ? "75%" : "65%")))}
+                height={15}
+                borderRadius={4}
+              />
+              <SkeletonBox width="45%" height={12} borderRadius={3} style={{ marginTop: 6 }} />
             </View>
 
-            {/* Right Action Icons (History Clock + 3-Dot Menu) */}
+            {/* Right Action Icons (Clock + 3-Dot Menu) */}
             <View style={styles.exerciseActions}>
-              <SkeletonCircle size={22} />
-              <SkeletonCircle size={22} />
+              <SkeletonCircle size={18} />
+              <SkeletonCircle size={18} />
             </View>
           </SkeletonCard>
         ))}
       </View>
-
-      {/* ── 6. "CARDIO" Section Header ───────────────────────────────────────── */}
-      <View style={[styles.sectionHeader, { marginTop: 22 }]}>
-        <SkeletonBox width={65} height={13} borderRadius={3} />
-      </View>
-
-      {/* ── 7. Cardio Activity Row ──────────────────────────────────────────── */}
-      <SkeletonCard style={styles.exerciseRow} borderRadius={14}>
-        <SkeletonCircle size={22} />
-        <View style={styles.exerciseTextCol}>
-          <SkeletonBox width="50%" height={16} borderRadius={4} />
-          <SkeletonBox width="40%" height={12} borderRadius={3} style={{ marginTop: 6 }} />
-        </View>
-        <View style={styles.exerciseActions}>
-          <SkeletonCircle size={22} />
-        </View>
-      </SkeletonCard>
     </ShimmerHost>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingHorizontal: 8,
+    paddingTop: 0,
     paddingBottom: 40,
-  },
-  topHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  topHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
   },
   weekStrip: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.04)',
-    marginBottom: 14,
+    paddingHorizontal: 4,
+    marginTop: 2,
+    marginBottom: 8,
   },
-  weekDaysRow: {
+  weekDaysContainer: {
     flexDirection: 'row',
     flex: 1,
-    justifyContent: 'space-around',
-    marginHorizontal: 6,
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
   },
   dayCol: {
     alignItems: 'center',
+    gap: 2,
   },
-  dayPillPlaceholder: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  dayPill: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 6,
   },
   dayPillActive: {
-    backgroundColor: 'rgba(165, 153, 255, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(165, 153, 255, 0.3)',
+    backgroundColor: 'rgba(165, 153, 255, 0.16)',
   },
-  bannerSection: {
-    marginBottom: 16,
+  workoutSection: {
+    paddingHorizontal: 0,
+    marginBottom: 8,
   },
-  sectionHeader: {
+  bannerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    height: 68,
+  },
+  bannerLeft: {
+    gap: 2,
+  },
+  sectionHeaderRow: {
     paddingHorizontal: 4,
+    marginTop: 8,
     marginBottom: 10,
   },
-  exercisesList: {
-    gap: 10,
+  exercisesSection: {
+    gap: 8,
   },
   exerciseRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    padding: 16,
+    borderRadius: 16,
   },
   exerciseTextCol: {
     flex: 1,
-    marginLeft: 12,
-    marginRight: 8,
-  },
-  exerciseTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    marginLeft: 16,
+    marginRight: 12,
   },
   exerciseActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
   },
 });
-

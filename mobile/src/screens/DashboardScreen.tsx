@@ -427,9 +427,10 @@ export default function DashboardScreen() {
                   <Pressable
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      data.shuffleQuote();
+                      data.shuffleQuote(true);
                     }}
-                    hitSlop={10}
+                    style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
+                    hitSlop={12}
                   >
                     <Text style={s.quoteText}>"{data.quote.text}"</Text>
                     <Text style={s.quoteAuthor}>— {data.quote.author}</Text>

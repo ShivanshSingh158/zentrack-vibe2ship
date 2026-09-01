@@ -59,6 +59,10 @@ export interface Task {
   actualMinutes?: number;
   /** The time the user actually sat down to work (e.g. "6:30 AM") */
   actualStartTime?: string;
+  /** Optional geofence location trigger */
+  locationReminder?: any;
+  /** Flag indicating high-priority scheduled reminder */
+  isReminder?: boolean;
 }
 
 export interface TaskTemplate {

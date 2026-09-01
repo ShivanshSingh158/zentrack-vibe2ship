@@ -465,7 +465,7 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
             base.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
 
             const tBuffer = new Date(base.getTime() - taskBufferMin * 60 * 1000);
-            if (tBuffer > now) {
+            if (tBuffer > now && taskBufferMin > 15) {
               enqueue(
                 PRIORITY.HIGH,
                 `Mission Approaching in ${taskBufferMin}m 🎯`,
@@ -477,19 +477,31 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
               );
             }
 
-            if (taskBufferMin > 15) {
-              const t15 = new Date(base.getTime() - 15 * 60 * 1000);
-              if (t15 > now) {
-                enqueue(
-                  PRIORITY.HIGH,
-                  'Bas 15 Minute Baki Hain ⚡',
-                  getRandomMessage(TASK_T15_POOLS(task.title)),
-                  t15,
-                  { taskId: task.id, taskTitle: task.title },
-                  'reminders',
-                  actionableNotifs ? 'task_reminder' : undefined
-                );
-              }
+            // ── 5 Minutes Before Alert ──────────────────────────────────────
+            const t5 = new Date(base.getTime() - 5 * 60 * 1000);
+            if (t5 > now) {
+              enqueue(
+                PRIORITY.HIGH,
+                `⏰ In 5 Minutes: ${task.title}`,
+                `Get ready! Your scheduled mission starts in 5 minutes.`,
+                t5,
+                { taskId: task.id, taskTitle: task.title },
+                'reminders',
+                actionableNotifs ? 'task_reminder' : undefined
+              );
+            }
+
+            // ── Exact Time Alert (Full Screen & Heads-Up) ───────────────────
+            if (base > now) {
+              enqueue(
+                PRIORITY.CRITICAL,
+                `🔔 Reminder: ${task.title}`,
+                `Time's up! Ready to tackle this now?`,
+                base,
+                { taskId: task.id, taskTitle: task.title },
+                'reminders',
+                actionableNotifs ? 'task_reminder' : undefined
+              );
             }
           } else if (task.date === todayStr) {
             base.setHours(defaultTime.hours, defaultTime.minutes, 0, 0);
@@ -1187,12 +1199,12 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_SYNC_TASK, async () => {
     let db;
     if (!getApps().length) {
       const firebaseConfig = {
-        apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY as string,
-        authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN as string,
-        projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID as string,
-        storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET as string,
-        messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID as string,
-        appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID as string,
+        apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'AIzaSyCWZ_tUzZynf60lxC3-RweGfZRGlcHBz_s',
+        authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || 'job-tracker-6b672.firebaseapp.com',
+        projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || 'job-tracker-6b672',
+        storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || 'job-tracker-6b672.firebasestorage.app',
+        messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '336719988763',
+        appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || '1:336719988763:web:7da94195ccd2272d6990be',
       };
       const app = initializeApp(firebaseConfig);
       db = getFirestore(app);

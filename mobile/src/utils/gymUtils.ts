@@ -1,4 +1,5 @@
 import { EXERCISE_DATABASE } from '../data/exerciseDatabase';
+import { getCanonicalExerciseKey } from '../data/exerciseAliasMap';
 import { GymExerciseLog, GymDayLog } from '../types/gym.types';
 
 export const MUSCLE_COLORS: Record<string, string> = {
@@ -324,12 +325,13 @@ export interface PreviousExerciseSession {
 }
 
 /**
- * Normalizes an exercise name for strict identity matching (e.g. "Incline Dumbbell Press" -> "inclinedumbbellpress").
- * Preserves distinct exercise identities while ignoring casing, spaces, hyphens, and punctuation.
+ * Normalizes an exercise name for strict identity matching & alias resolution.
+ * Maps synonyms, legacy database names, machine variations, and typos to a single canonical master key.
+ * (e.g. "pec deck", "Pec Deck Fly", "Machine Chest Fly" -> "pecdeckfly").
  */
 export function normalizeExerciseKey(name?: string | null): string {
   if (!name) return '';
-  return name.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+  return getCanonicalExerciseKey(name);
 }
 
 /**

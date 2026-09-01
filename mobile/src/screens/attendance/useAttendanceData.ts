@@ -28,7 +28,8 @@ export interface ConfirmConfig {
 
 export function useAttendanceData() {
   const { user } = useCoreData();
-  const { attendance: subjects, attendanceLogs: logs, holidays = [], ensureSubscribed } = useAcademicData();
+  const academic = useAcademicData();
+  const { attendance: subjects, attendanceLogs: logs, holidays = [], ensureSubscribed } = academic;
 
   useEffect(() => {
     // Defer Firestore subscription until after the tab-switch animation completes.
@@ -73,29 +74,123 @@ export function useAttendanceData() {
     });
   }, [user?.uid, subjects]);
 
+  // ── Automatic Attendance Deduplication & Reconciliation Routine ────────────
+  // Eliminates duplicate logs created by legacy concurrent writes and recalculates
+  // exact subject counters (classesAttended/classesTotal/labsAttended/labsTotal)
+  const hasDeduplicatedRef = useRef(false);
+  useEffect(() => {
+    if (!user || subjects.length === 0 || !logs || logs.length === 0 || hasDeduplicatedRef.current) return;
+    hasDeduplicatedRef.current = true;
+
+    InteractionManager.runAfterInteractions(async () => {
+      try {
+        const nonExtraLogs = logs.filter(l => !l.isExtra);
+        const groups: Record<string, any[]> = {};
+
+        for (let i = 0; i < nonExtraLogs.length; i++) {
+          const l = nonExtraLogs[i];
+          const key = `${l.subjectId || l.subjectName}_${(l.date || '').slice(0, 10)}_${l.type === 'lab' ? 'lab' : 'class'}_${l.idx ?? 0}`;
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(l);
+        }
+
+        const duplicateLogIdsToDelete: string[] = [];
+        let foundDuplicates = false;
+
+        Object.values(groups).forEach(group => {
+          if (group.length > 1) {
+            foundDuplicates = true;
+            // Sort newest first
+            group.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            // Keep index 0 (newest), mark older duplicates for deletion
+            for (let i = 1; i < group.length; i++) {
+              duplicateLogIdsToDelete.push(group[i].id);
+            }
+          }
+        });
+
+        // If duplicate logs exist, delete from Firestore and reconcile subject stats
+        if (foundDuplicates || duplicateLogIdsToDelete.length > 0) {
+          const batch = writeBatch(db);
+          duplicateLogIdsToDelete.forEach(id => {
+            batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, id));
+            academic.optimisticRemoveAttendanceLog?.(id);
+          });
+
+          // Reconcile subject counts from clean deduplicated logs
+          const cleanLogs = logs.filter(l => l.id ? !duplicateLogIdsToDelete.includes(l.id) : true);
+
+          subjects.forEach(subject => {
+            const subLogs = cleanLogs.filter(l => l.subjectId === subject.id || l.subjectName === subject.name);
+            const classLogs = subLogs.filter(l => l.type === 'class' || !l.type);
+            const labLogs   = subLogs.filter(l => l.type === 'lab');
+
+            const trueClassesAttended = classLogs.filter(l => l.action === 'attended').length;
+            const trueClassesTotal    = classLogs.filter(l => l.action !== 'cancelled').length;
+            const trueLabsAttended    = labLogs.filter(l => l.action === 'attended').length;
+            const trueLabsTotal       = labLogs.filter(l => l.action !== 'cancelled').length;
+
+            if (
+              subject.classesAttended !== trueClassesAttended ||
+              subject.classesTotal    !== trueClassesTotal ||
+              subject.labsAttended    !== trueLabsAttended ||
+              subject.labsTotal       !== trueLabsTotal
+            ) {
+              const updates = {
+                classesAttended: trueClassesAttended,
+                classesTotal: trueClassesTotal,
+                labsAttended: trueLabsAttended,
+                labsTotal: trueLabsTotal,
+              };
+              batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), updates);
+              academic.optimisticUpdateAttendance?.(subject.id!, updates);
+            }
+          });
+
+          await batch.commit();
+        }
+      } catch (err) {
+        handleSyncError(err);
+      }
+    });
+  }, [user?.uid, subjects, logs, academic]);
+
   // ── Derived values ─────────────────────────────────────────────────────────
-  // ── logsBySubjectId — indexed map (sorted newest first in a single pass) ──
+  // ── logsBySubjectId — indexed map (strictly deduplicated, sorted newest first) ──
   const logsBySubjectId = useMemo(() => {
     const map: Record<string, any[]> = {};
     if (!logs || logs.length === 0) return map;
 
-    // Single upfront sort by timestamp descending (much faster than N individual bucket sorts)
+    // Single upfront sort by timestamp descending
     const sorted = logs.length > 1
       ? [...logs].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
       : logs;
+
+    const seenPerSubject: Record<string, Set<string>> = {};
 
     for (let i = 0; i < sorted.length; i++) {
       const log = sorted[i];
       const key1 = log.subjectId;
       const key2 = log.subjectName;
-      if (key1) {
-        if (!map[key1]) map[key1] = [];
-        map[key1].push(log);
-      }
-      if (key2 && key2 !== key1) {
-        if (!map[key2]) map[key2] = [];
-        map[key2].push(log);
-      }
+
+      const addToBucket = (subjKey: string) => {
+        if (!map[subjKey]) {
+          map[subjKey] = [];
+          seenPerSubject[subjKey] = new Set<string>();
+        }
+        if (log.isExtra) {
+          map[subjKey].push(log);
+        } else {
+          const slotKey = `${(log.date || '').slice(0, 10)}_${log.type === 'lab' ? 'lab' : 'class'}_${log.idx ?? 0}`;
+          if (!seenPerSubject[subjKey].has(slotKey)) {
+            seenPerSubject[subjKey].add(slotKey);
+            map[subjKey].push(log);
+          }
+        }
+      };
+
+      if (key1) addToBucket(key1);
+      if (key2 && key2 !== key1) addToBucket(key2);
     }
     return map;
   }, [logs]);
@@ -203,6 +298,111 @@ export function useAttendanceData() {
     return sessions.sort((a, b) => a.timeMins - b.timeMins);
   }, [todayScheduledSubjects, selectedDayOfWeek, selectedDate, isSelectedHoliday]);
 
+  const [isUnloggedOpen, setIsUnloggedOpen] = useState(false);
+
+  // ── Unlogged Past Classes & Labs (Scans past 30 days for scheduled sessions without logs) ──
+  const unloggedSessions = useMemo(() => {
+    if (!subjects || subjects.length === 0) return [];
+    const list: Array<{
+      id: string;
+      subject: AttendanceSubject;
+      date: string;
+      type: 'class' | 'lab';
+      idx: number;
+      timeMins: number;
+      timeStr: string;
+    }> = [];
+    const todayDate = new Date();
+
+    // Scan past 30 days (offset 1 = yesterday back to 30 days ago)
+    for (let offset = 1; offset <= 30; offset++) {
+      const pastDate = new Date(todayDate.getTime() - offset * 86400000);
+      const dateStr = getLocalDateString(pastDate);
+
+      // Skip dates explicitly marked as holidays
+      if (holidays.includes(dateStr)) continue;
+
+      const dayOfWeekNum = pastDate.getDay();
+      const dayOfWeekStr = dayOfWeekNum.toString();
+      const dayName = DAY_NAMES[dayOfWeekNum];
+      const dayNameLower = dayName.toLowerCase();
+
+      for (let sIdx = 0; sIdx < subjects.length; sIdx++) {
+        const subject = subjects[sIdx];
+        if (!subject.id) continue;
+
+        const sch =
+          subject.schedule?.[dayOfWeekStr] ||
+          subject.schedule?.[dayOfWeekNum] ||
+          subject.schedule?.[dayName] ||
+          subject.schedule?.[dayNameLower];
+
+        if (!sch) continue;
+
+        const classCount = sch.classes?.length || sch.classCount || 0;
+        const labCount   = sch.labs?.length   || sch.labCount   || 0;
+
+        const subLogs = logsBySubjectId[subject.id] || logsBySubjectId[subject.name] || [];
+
+        // Check Classes
+        for (let i = 0; i < classCount; i++) {
+          const session = sch.classes?.[i];
+          const hasLog = subLogs.some(l =>
+            (l.date || '').slice(0, 10) === dateStr &&
+            !l.isExtra &&
+            (l.type === 'class' || !l.type) &&
+            (l.idx === i || (l.idx === undefined && i === 0))
+          );
+
+          if (!hasLog) {
+            const timeStr = session?.time ? [session.time, session.room].filter(Boolean).join(' • ') : `Class #${i + 1}`;
+            list.push({
+              id: `${subject.id}-unlogged-class-${i}-${dateStr}`,
+              subject,
+              date: dateStr,
+              type: 'class',
+              idx: i,
+              timeMins: parseTimeToMinutes(session?.time),
+              timeStr,
+            });
+          }
+        }
+
+        // Check Labs
+        for (let i = 0; i < labCount; i++) {
+          const session = sch.labs?.[i];
+          const hasLog = subLogs.some(l =>
+            (l.date || '').slice(0, 10) === dateStr &&
+            !l.isExtra &&
+            l.type === 'lab' &&
+            (l.idx === i || (l.idx === undefined && i === 0))
+          );
+
+          if (!hasLog) {
+            const timeStr = session?.time ? [session.time, session.room].filter(Boolean).join(' • ') : `Lab #${i + 1}`;
+            list.push({
+              id: `${subject.id}-unlogged-lab-${i}-${dateStr}`,
+              subject,
+              date: dateStr,
+              type: 'lab',
+              idx: i,
+              timeMins: parseTimeToMinutes(session?.time),
+              timeStr,
+            });
+          }
+        }
+      }
+    }
+
+    // Sort: Newest date first, then earliest class/lab time
+    return list.sort((a, b) => {
+      if (a.date !== b.date) {
+        return b.date.localeCompare(a.date);
+      }
+      return a.timeMins - b.timeMins;
+    });
+  }, [subjects, holidays, logsBySubjectId]);
+
   const { globalAttended, globalTotal, globalPct, globalSafe } = useMemo(() => {
     const attended = subjects.reduce((s, x) => s + (x.classesAttended || 0) + (x.labsAttended || 0), 0);
     const total    = subjects.reduce((s, x) => s + (x.classesTotal   || 0) + (x.labsTotal    || 0), 0);
@@ -220,6 +420,8 @@ export function useAttendanceData() {
     showClassNotifModal, setShowClassNotifModal,
     selectedHistorySubject, setSelectedHistorySubject,
     isExtraOpen, setIsExtraOpen,
+    isUnloggedOpen, setIsUnloggedOpen,
+    unloggedSessions,
     showAddModal, setShowAddModal,
     editSubject, setEditSubject,
     extraSubjectId, setExtraSubjectId,

@@ -53,7 +53,7 @@ const ALL_MONTH_FORMS = Object.keys(MONTH_ALIASES).sort((a,b) => b.length - a.le
 
 /** A single detected token in the raw text (for inline highlighting) */
 export interface NLPToken {
-  type: 'date' | 'time' | 'priority' | 'recurrence' | 'tag' | 'duration';
+  type: 'date' | 'time' | 'priority' | 'recurrence' | 'tag' | 'duration' | 'reminder';
   start: number;
   end: number;
   display: string;
@@ -73,6 +73,8 @@ export interface ParsedTask {
   tags?: string[];
   /** Parsed duration in minutes (e.g. "for 45m" → 45, "1h30m" → 90) */
   durationMinutes?: number | null;
+  /** Flag indicating high-priority scheduled reminder */
+  isReminder?: boolean;
   tokens: NLPToken[];
 }
 
@@ -165,6 +167,21 @@ export function parseNLTask(raw: string): ParsedTask {
     for (let i = tagMatches.length - 1; i >= 0; i--) {
       const t = tagMatches[i];
       text = text.slice(0, t.start) + ' '.repeat(t.full.length) + text.slice(t.start + t.full.length);
+    }
+  }
+
+  // ── 0b. REMINDER INTENT ("remind", "remind me to", "reminder", "alarm", etc.) ───
+  let isReminder = false;
+  const reminderPatterns = [
+    /\b(?:remind(?:\s+me)?(?:\s+(?:to|about|for|at))?|reminder(?:\s+(?:for|to|about|at))?|set\s+(?:a\s+)?reminder(?:\s+(?:to|for|about|at))?|alarm(?:\s+(?:for|at))?)\b/i,
+    /\b(?:mujhe\s+yaad\s+dilana|yaad\s+dilana|yaad\s+rakhna)\b/i,
+  ];
+  for (const pat of reminderPatterns) {
+    const m = text.match(pat);
+    if (m) {
+      isReminder = true;
+      registerToken('reminder', m[0], '⏰ Reminder');
+      break;
     }
   }
 
@@ -913,6 +930,7 @@ export function parseNLTask(raw: string): ParsedTask {
     multiDays,
     tags: extractedTags,
     durationMinutes,
+    isReminder,
     tokens,
   };
 }

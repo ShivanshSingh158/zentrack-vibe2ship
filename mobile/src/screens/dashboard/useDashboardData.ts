@@ -189,12 +189,9 @@ export function useDashboardData() {
     return () => handle.cancel();
   }, []);
 
-  const shuffleQuote = React.useCallback(async () => {
-    // PERF FIX (P3): Cache quote by date. Quote only changes once per day.
-    // Previously called on every tab focus → getFingerprint + getDailyQuote async
-    // on every Dashboard visit. Now skipped if already fetched today.
+  const shuffleQuote = React.useCallback(async (force = false) => {
     const todayKey = formatLocalDateStr(new Date());
-    if (quoteCacheRef.current?.date === todayKey) {
+    if (!force && quoteCacheRef.current?.date === todayKey) {
       setQuote(quoteCacheRef.current.quote);
       return;
     }

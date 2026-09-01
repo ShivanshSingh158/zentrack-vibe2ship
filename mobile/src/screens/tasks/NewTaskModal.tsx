@@ -28,6 +28,9 @@ import VoiceDictationOverlay from '../../components/Tasks/VoiceDictationOverlay'
 import RecurrencePickerModal from '../../components/Tasks/RecurrencePickerModal';
 import UniversalCalendarModal from '../../components/UniversalCalendarModal';
 import AnimatedPressable from '../../components/AnimatedPressable';
+import { LocationPickerModal } from '../../components/Tasks/LocationPickerModal';
+import { saveTaskLocationReminder } from '../../services/geofenceService';
+import type { TaskLocationTrigger } from '../../types/locationReminder.types';
 import { parseNLTask, ParsedTask, NLPToken, parseLocalDate, toYMD } from '../../utils/dateUtils';
 import { isSilenceOrNoise } from '../../services/voiceEngine';
 import {
@@ -107,6 +110,13 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   const [taskDate, setTaskDate] = useState(selectedDate);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
+  // Location Reminder
+  const [locationTrigger, setLocationTrigger] = useState<TaskLocationTrigger | null>(null);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+
+  // Reminder / Alarm Mode
+  const [isReminder, setIsReminder] = useState(false);
+
   useEffect(() => { setTaskDate(selectedDate); }, [selectedDate, visible]);
 
   const nlpDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -133,6 +143,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       }
       if (parsed.tokens.some(t => t.type === 'priority') && parsed.priority !== priority) setPriority(parsed.priority);
       if (parsed.isRecurring && parsed.recurrenceRule && parsed.tokens.some(t => t.type === 'recurrence')) setRecurrenceRule(parsed.recurrenceRule);
+      if (parsed.isReminder) setIsReminder(true);
       // Auto-apply extracted #tags to the tag selection
       if (parsed.tags && parsed.tags.length > 0) {
         parsed.tags.forEach(tag => addTag(tag));
@@ -149,6 +160,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     if (type === 'priority')   { setPriority('low'); }
     if (type === 'recurrence') { setRecurrenceRule(null); }
     if (type === 'duration')   { setNlpDuration(null); }
+    if (type === 'reminder')   { setIsReminder(false); }
     if (type === 'tag')        { removeSelectedTag(display.replace(/^#/, '')); }
     // Splice the matched span out of the raw title and re-parse
     const cleaned = (title.slice(0, start) + title.slice(end)).replace(/\s{2,}/g, ' ').trim();
@@ -209,6 +221,8 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     setSubtasks([]); setSubtaskInput(''); setShowSubtasks(false);
     setIsCalendarOpen(false); setNlpParsed(null); setNlpDuration(null);
     setSelectedTags([]); setNewTagInput(''); setShowTagInput(false);
+    setLocationTrigger(null);
+    setIsReminder(false);
   }, []);
 
   const resetAndClose = useCallback(() => {
@@ -347,15 +361,32 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     } else {
       const newDocRef = doc(collection(db, COLLECTION.TASKS));
       const taskId = newDocRef.id;
+      const finalIsReminder = saveParsed?.isReminder ?? isReminder;
 
-      optimisticAddTask({
+      const taskPayload: any = {
         id: taskId,
         userId, title: finalTitle, status: 'pending',
         priority: finalPriority, date: finalDate, timeSlot: ts || undefined,
         estimatedMinutes: est, isRecurring: false, recurrenceRule: undefined,
         recurringSourceId: undefined, subject: undefined, tags: selectedTags,
         order: listCount, subtasks: subtaskObjects,
-      });
+        locationReminder: locationTrigger || undefined,
+        isReminder: finalIsReminder || undefined,
+      };
+
+      optimisticAddTask(taskPayload);
+
+      if (locationTrigger) {
+        saveTaskLocationReminder({
+          taskId,
+          taskTitle: finalTitle,
+          placeName: locationTrigger.placeName,
+          latitude: locationTrigger.latitude,
+          longitude: locationTrigger.longitude,
+          radius: locationTrigger.radius,
+          triggerType: locationTrigger.triggerType,
+        }).catch(console.warn);
+      }
 
       resetAndClose();
 
@@ -368,6 +399,8 @@ export const NewTaskModal = React.memo(function NewTaskModal({
             estimatedMinutes: est, isRecurring: false, recurrenceRule: null,
             recurringSourceId: null, subject: null, tags: selectedTags,
             order: listCount, subtasks: subtaskObjects,
+            locationReminder: locationTrigger || null,
+            isReminder: finalIsReminder || false,
             createdAt: serverTimestamp(),
           };
 
@@ -509,6 +542,37 @@ export const NewTaskModal = React.memo(function NewTaskModal({
                 {selectedTags.length > 0 ? `${selectedTags.length} label${selectedTags.length > 1 ? 's' : ''}` : 'Labels'}
               </Text>
             </AnimatedPressable>
+
+            {/* Location Reminder Quick Chip */}
+            <AnimatedPressable
+              style={[
+                styles.quickChip,
+                !!locationTrigger && { backgroundColor: 'rgba(139, 92, 246, 0.12)', borderColor: 'rgba(167, 139, 250, 0.4)' }
+              ]}
+              onPress={() => setShowLocationPicker(true)}
+            >
+              <Ionicons name="location-outline" size={13} color={locationTrigger ? '#A78BFA' : '#8e8e93'} />
+              <Text style={[styles.quickChipText, locationTrigger && { color: '#A78BFA', fontWeight: '600' }]}>
+                {locationTrigger ? `${locationTrigger.placeName} (${locationTrigger.radius}m)` : 'Location'}
+              </Text>
+            </AnimatedPressable>
+
+            {/* Reminder Mode Quick Chip */}
+            <AnimatedPressable
+              style={[
+                styles.quickChip,
+                isReminder && { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.4)' }
+              ]}
+              onPress={() => {
+                import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Light));
+                setIsReminder(v => !v);
+              }}
+            >
+              <Ionicons name={isReminder ? "notifications" : "notifications-outline"} size={13} color={isReminder ? '#f59e0b' : '#8e8e93'} />
+              <Text style={[styles.quickChipText, isReminder && { color: '#f59e0b', fontWeight: '600' }]}>
+                {isReminder ? 'Alarm ON' : 'Reminder'}
+              </Text>
+            </AnimatedPressable>
           </View>
         </ScrollView>
 
@@ -641,6 +705,14 @@ export const NewTaskModal = React.memo(function NewTaskModal({
         initialRule={recurrenceRule}
         onSave={setRecurrenceRule}
       />
+      {showLocationPicker && (
+        <LocationPickerModal
+          visible={showLocationPicker}
+          onClose={() => setShowLocationPicker(false)}
+          initialValue={locationTrigger}
+          onSelect={setLocationTrigger}
+        />
+      )}
       <VoiceDictationOverlay 
         visible={showDictationOverlay}
         onClose={() => setShowDictationOverlay(false)}

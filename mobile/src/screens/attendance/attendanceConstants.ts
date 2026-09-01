@@ -23,6 +23,22 @@ export const defaultSchedule = {
 export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 export const DAY_SHORT  = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+// ─── Deterministic Log ID Generator ──────────────────────────────────────────
+/**
+ * Generates a deterministic unique document ID for scheduled (non-extra) class/lab logs.
+ * Guarantees at the database level that only 1 document can ever exist for a given session.
+ */
+export function getScheduledAttendanceLogDocId(
+  userId: string,
+  subjectId: string,
+  dateStr: string,
+  type: 'class' | 'lab',
+  sessionIdx: number = 0
+): string {
+  const cleanDate = (dateStr || '').slice(0, 10);
+  return `${userId}_${subjectId}_${cleanDate}_${type}_${sessionIdx}`;
+}
+
 // ─── Date Helpers ─────────────────────────────────────────────────────────────
 export function getLocalDateString(d: Date): string {
   const y   = d.getFullYear();
