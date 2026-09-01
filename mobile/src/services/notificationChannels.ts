@@ -73,7 +73,27 @@ export async function requestNotificationPermissions() {
         bypassDnd: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
+      await Notifications.setNotificationChannelAsync('active_workout', {
+        name: 'Active Workout HUD & Rest Timer',
+        importance: Notifications.AndroidImportance.LOW,
+        sound: undefined,
+        enableLights: false,
+        enableVibrate: false,
+        showBadge: false,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
     }
+
+    await Notifications.setNotificationCategoryAsync('active_workout_ongoing', [
+      { identifier: 'WORKOUT_DONE_SET', buttonTitle: '✓ Done Set', options: { opensAppToForeground: false } },
+      { identifier: 'WORKOUT_ADD_WEIGHT', buttonTitle: '+2.5kg', options: { opensAppToForeground: false } },
+      { identifier: 'WORKOUT_NEXT_EXERCISE', buttonTitle: '⏭ Next', options: { opensAppToForeground: false } },
+    ]);
+    await Notifications.setNotificationCategoryAsync('active_rest_timer', [
+      { identifier: 'REST_SKIP', buttonTitle: '⏩ Skip Rest', options: { opensAppToForeground: false } },
+      { identifier: 'REST_ADD_30S', buttonTitle: '+30s Rest', options: { opensAppToForeground: false } },
+      { identifier: 'OPEN_WORKOUT', buttonTitle: '🏋️ Open HUD', options: { opensAppToForeground: true } },
+    ]);
 
     await Notifications.setNotificationCategoryAsync('class_reminder', [
       { identifier: 'mark_present', buttonTitle: '✅ Present', options: { opensAppToForeground: false } },

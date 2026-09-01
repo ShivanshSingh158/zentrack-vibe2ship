@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   View, Text, SafeAreaView, TouchableOpacity, Alert, TextInput,
   Platform, KeyboardAvoidingView, ScrollView, ActivityIndicator, AppState,
-  Keyboard
+  Keyboard, DeviceEventEmitter
 } from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
@@ -33,6 +33,7 @@ import ActiveSwapModal from '../../components/Gym/ActiveSwapModal';
 import AnimatedRestTimer from '../../components/Gym/AnimatedRestTimer';
 import { insertWarmupLadder } from '../../utils/warmupGenerator';
 import { saveCachedLiveWorkoutData, updateLiveWorkoutWidget } from '../../services/widgetSyncService';
+import { updateActiveWorkoutNotification, dismissActiveWorkoutNotification } from '../../services/activeWorkoutNotificationService';
 import type { LiveWorkoutWidgetData } from '../../types/widget.types';
 
 interface SetInputState {
@@ -239,8 +240,39 @@ export default function ActiveLoggingScreen() {
 
       saveCachedLiveWorkoutData(widgetData);
       updateLiveWorkoutWidget(widgetData);
+
+      // Lock Screen Active Workout HUD Notification Sync
+      if (!log?.completed) {
+        const uncompletedSetIdx = (currentEx.setsLog || []).findIndex((s: any) => !s.completed);
+        const curSet = uncompletedSetIdx >= 0 ? currentEx.setsLog[uncompletedSetIdx] : currentEx.setsLog[0];
+        const targetWeight = Number(curSet?.weight) || Number(currentEx.setsLog?.[0]?.weight) || 20;
+        const targetReps = Number(curSet?.reps) || 10;
+        const isRestActive = Boolean(restTimerStartTime && restTimerDurationSecs);
+        const restSecsRemaining = (isRestActive && restTimerDurationSecs && restTimerStartTime)
+          ? Math.max(0, Math.ceil(restTimerDurationSecs - (Date.now() - restTimerStartTime) / 1000))
+          : 0;
+
+        updateActiveWorkoutNotification({
+          exerciseName: currentEx.name,
+          currentSet: (uncompletedSetIdx >= 0 ? uncompletedSetIdx : 0) + 1,
+          totalSets: currentEx.setsLog?.length || 4,
+          weight: targetWeight,
+          reps: targetReps,
+          isResting: isRestActive,
+          restSecondsRemaining: restSecsRemaining,
+          nextExerciseName: nextEx?.name,
+        });
+      }
     }
-  }, [activeExercises, safeIdx, log?.completed, log?.workoutDurationMinutes]);
+  }, [activeExercises, safeIdx, log?.completed, log?.workoutDurationMinutes, restTimerStartTime, restTimerDurationSecs]);
+
+  // Clean up lock screen notification on unmount or workout completion
+  useEffect(() => {
+    return () => {
+      dismissActiveWorkoutNotification();
+    };
+  }, []);
+
   const exercises = activeExercises;
 
   const realExerciseIndex = useMemo(() => {
@@ -641,6 +673,25 @@ export default function ActiveLoggingScreen() {
     updateExercise(realExerciseIndex, newEx);
     setSetInputs(prev => prev.filter((_, i) => i !== idx));
   }, [exercise, realExerciseIndex, updateExercise]);
+
+  // Handle interactive lock screen notification actions (Done Set, Add Weight, Next Exercise, Skip Rest)
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('ACTIVE_WORKOUT_ACTION', (payload: any) => {
+      if (payload.action === 'DONE_SET') {
+        const targetIdx = activeSetIndex !== -1 ? activeSetIndex : 0;
+        handleSwipeCompleteSet(targetIdx);
+      } else if (payload.action === 'ADD_WEIGHT') {
+        handleAdjustWeight(payload.delta || 2.5);
+      } else if (payload.action === 'NEXT_EXERCISE') {
+        handleNextExercise();
+      } else if (payload.action === 'SKIP_REST') {
+        clearRestTimer();
+      } else if (payload.action === 'ADD_REST_SECONDS') {
+        setRestTimerDuration(restTimerInitial + (payload.seconds || 30));
+      }
+    });
+    return () => sub.remove();
+  }, [activeSetIndex, handleSwipeCompleteSet, handleAdjustWeight, handleNextExercise, clearRestTimer, setRestTimerDuration, restTimerInitial]);
 
   const warmupSets = useMemo(() => exercise?.setsLog.filter(s => s.isWarmup) || [], [exercise?.setsLog]);
   const hasWarmups = warmupSets.length > 0;

@@ -28,6 +28,7 @@ import { auth } from '../services/firebase';
 import { performSignOut } from '../contexts/domains/CoreDataContext';
 import { cacheAwareLazy, startPrefetching } from '../utils/ModulePrefetcher';
 import { loadBootManifest, getBootManifestSync, updateL1Cache, clearBootManifest } from '../utils/bootManifest';
+import { registerActiveWorkoutNotificationListeners } from '../services/activeWorkoutNotificationService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
@@ -305,6 +306,11 @@ function RootNavigatorWithSara() {
   const [saraVisible, setSaraVisible] = useState(false);
 
   const [showSara, setShowSara] = useState(SARA_VISIBLE_ROUTES.has('Home'));
+
+  useEffect(() => {
+    const unsub = registerActiveWorkoutNotificationListeners();
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('route_changed', (routeName: string) => {
