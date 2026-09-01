@@ -19,7 +19,13 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
     case 'WIDGET_UPDATE':
     case 'WIDGET_RESIZED': {
       const data = await getCachedWidgetData();
-      props.renderWidget(React.createElement(TodayAgendaWidget, { data }));
+      props.renderWidget(
+        React.createElement(TodayAgendaWidget, { 
+          data, 
+          width: widgetInfo.width, 
+          height: widgetInfo.height 
+        })
+      );
       break;
     }
 

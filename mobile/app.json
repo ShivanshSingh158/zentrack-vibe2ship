@@ -92,11 +92,14 @@
             {
               "name": "TodayAgenda",
               "label": "ZenTrack Today's Agenda",
-              "minWidth": "320dp",
-              "minHeight": "180dp",
+              "minWidth": "160dp",
+              "minHeight": "90dp",
               "targetCellWidth": 4,
-              "targetCellHeight": 3,
-              "description": "Today's classes, tasks, and habits on your home screen",
+              "targetCellHeight": 2,
+              "maxResizeWidth": "600dp",
+              "maxResizeHeight": "600dp",
+              "resizeMode": "horizontal|vertical",
+              "description": "Adaptive Obsidian Cosmos schedule, live classes, and tasks",
               "updatePeriodMillis": 1800000
             }
           ]
