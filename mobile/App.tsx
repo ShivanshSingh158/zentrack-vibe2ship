@@ -129,6 +129,11 @@ export default function App() {
         registerBackgroundNotificationFetch();
         registerBackgroundProactiveAgent();
         registerWeeklyReviewTask();
+        try {
+          require('./src/services/geofenceService');
+        } catch (e: any) {
+          console.warn('[Boot] Geofence service registration skipped:', e?.message);
+        }
       }, 6000);
       return () => clearTimeout(timer);
     });

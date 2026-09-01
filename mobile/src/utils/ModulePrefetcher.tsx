@@ -51,23 +51,28 @@ const processNext = (): void => {
   const next = prefetchQueue.shift();
   if (!next) return;
 
-  // requestAnimationFrame keeps UI thread free during imports
-  requestAnimationFrame(() => {
-    if (moduleCache.has(next.id)) {
-      // Already loaded by the user navigating to it ΓÇö skip, do next
-      processNext();
-      return;
-    }
-    next.importer()
-      .then(mod => {
-        moduleCache.set(next.id, mod);
-        InteractionManager.runAfterInteractions(() => requestAnimationFrame(processNext));
-      })
-      .catch(err => {
-        console.warn(`[ModulePrefetcher] Failed to prefetch ${next.id}:`, err);
-        InteractionManager.runAfterInteractions(() => requestAnimationFrame(processNext));
-      });
-  });
+  if (moduleCache.has(next.id)) {
+    // Already loaded by user navigation — skip to next after idle delay
+    setTimeout(() => {
+      InteractionManager.runAfterInteractions(processNext);
+    }, 600);
+    return;
+  }
+
+  next.importer()
+    .then(mod => {
+      moduleCache.set(next.id, mod);
+      // Wait 800ms between modules so UI thread stays 100% responsive
+      setTimeout(() => {
+        InteractionManager.runAfterInteractions(processNext);
+      }, 800);
+    })
+    .catch(err => {
+      console.warn(`[ModulePrefetcher] Failed to prefetch ${next.id}:`, err);
+      setTimeout(() => {
+        InteractionManager.runAfterInteractions(processNext);
+      }, 800);
+    });
 };
 
 /**
@@ -88,8 +93,10 @@ export const startPrefetching = (pinnedModules: string[] = []): void => {
     return 0;
   });
 
-  // Wait for interactions (navigation animations) to complete before loading
-  InteractionManager.runAfterInteractions(processNext);
+  // Defer 3.5s so initial Home paint, fonts, and animations complete in <1.5s
+  setTimeout(() => {
+    InteractionManager.runAfterInteractions(processNext);
+  }, 3500);
 };
 
 /**
