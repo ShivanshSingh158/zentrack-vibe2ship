@@ -30,12 +30,6 @@ import { cacheAwareLazy, startPrefetching } from '../utils/ModulePrefetcher';
 import { loadBootManifest, getBootManifestSync, updateL1Cache, clearBootManifest } from '../utils/bootManifest';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// DEBUG BOOT TIMING — REMOVE AFTER DIAGNOSIS
-// ═══════════════════════════════════════════════════════════════════════════════
-const _BOOT_T0_NAV = (global as any).__BOOT_T0 || Date.now();
-console.log(`[BOOT-DIAG] AppNavigator.tsx module evaluated at dt=${Date.now() - _BOOT_T0_NAV}ms`);
-// ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── PRE-WARM BOOT MANIFEST ────────────────────────────────────────────────
 // Kick off the single AsyncStorage.multiGet() call the moment this JS module
@@ -377,8 +371,6 @@ function RootNavigatorWithSara() {
 //   the login screen during a routine token refresh.
 
 export default function AppNavigator() {
-  // DEBUG — REMOVE AFTER DIAGNOSIS
-  console.log(`[BOOT-DIAG] AppNavigator() render at dt=${Date.now() - _BOOT_T0_NAV}ms`);
   // ── Synchronous Frame 0 seed from L1 cache ──────────────────────────────
   // getBootManifestSync() returns the in-memory cache populated by the
   // module-level loadBootManifest() call above. For returning users this is
@@ -400,6 +392,15 @@ export default function AppNavigator() {
   const wasLoggedInRef = useRef(_sync?.optimisticUser != null);
   // Abort controller for the 8-second dead-session recovery window.
   const deadSessionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // FAILSAFE: If NavigationContainer.onReady() never fires (e.g. a lazy import hangs),
+  // force-hide the splash after 3 seconds so the app never permanently freezes.
+  useEffect(() => {
+    const failsafe = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 3000);
+    return () => clearTimeout(failsafe);
+  }, []);
 
   useEffect(() => {
     const boot = async () => {
@@ -657,9 +658,6 @@ export default function AppNavigator() {
         theme={isDark ? ZEN_DARK_THEME : ZEN_LIGHT_THEME}
         onStateChange={onNavStateChange}
         onReady={() => {
-          // DEBUG — REMOVE AFTER DIAGNOSIS
-          console.log(`[BOOT-DIAG] NavigationContainer onReady at dt=${Date.now() - _BOOT_T0_NAV}ms`);
-          // Hide splash ONLY after React Native has fully painted the final tree!
           SplashScreen.hideAsync().catch(() => {});
         }}
       >

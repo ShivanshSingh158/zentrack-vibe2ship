@@ -21,6 +21,13 @@
       },
       "channel": "preview"
     },
+    "preview-debug": {
+      "extends": "preview",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug"
+      }
+    },
     "preview-arm64": {
       "distribution": "internal",
       "android": {

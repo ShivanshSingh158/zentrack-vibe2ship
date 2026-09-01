@@ -12,9 +12,15 @@ import { requestNotificationPermissions, registerBackgroundNotificationFetch } f
 import * as SplashScreen from 'expo-splash-screen';
 import { enableScreens, enableFreeze } from 'react-native-screens';
 
+// CRITICAL: Must be called at module level (global scope) BEFORE any React renders.
+// Without this, Android auto-hides the native splash screen before JS finishes loading,
+// causing the black screen freeze. AppNavigator's NavigationContainer.onReady() calls
+// hideAsync() as the single source of truth for when to reveal the app.
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
 // Fix for React Native New Architecture (Fabric) grey screen bug.
 // A system notification/overlay triggers an onPause, and React Freeze catastrophically fails
-// to render the frame during this state transition, causing the grey screen. 
+// to render the frame during this state transition, causing the grey screen.
 // We MUST keep this false permanently and accept the CPU tradeoff.
 enableFreeze(false);
 
@@ -35,8 +41,6 @@ import { formatLocalDateStr } from './src/utils/dateUtils';
 import { COLLECTION } from './src/config/constants';
 import { awardXP } from './src/services/xpSystem';
 
-// Keep the native splash screen visible until fonts are loaded
-SplashScreen.preventAutoHideAsync();
 
 // Expo SDK 53+ removed remote push from Expo Go, but local notifications still work.
 // expo-av is deprecated in SDK 54 but still functional until SDK 55.
@@ -73,12 +77,6 @@ console.error = (...args) => {
 
 import { StatusBar } from 'expo-status-bar';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// DEBUG BOOT TIMING — REMOVE AFTER DIAGNOSIS
-// ═══════════════════════════════════════════════════════════════════════════════
-const _BOOT_T0 = (global as any).__BOOT_T0 || Date.now();
-console.log(`[BOOT-DIAG] App.tsx module evaluated at dt=${Date.now() - _BOOT_T0}ms`);
-// ═══════════════════════════════════════════════════════════════════════════════
 
 import { PomodoroProvider } from './src/contexts/PomodoroContext';
 
@@ -108,28 +106,18 @@ function ThemedAppContainer() {
 }
 
 export default function App() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
   });
 
-  const [manifestReady, setManifestReady] = React.useState(false);
-
+  // Pre-warm the boot manifest as early as possible so AppNavigator
+  // has cached data by the time it mounts. Fire-and-forget — we don't
+  // block rendering on it. AppNavigator has its own 8s auth timeout.
   React.useEffect(() => {
-    let isMounted = true;
-    // Pre-warm the unified boot manifest with a 150ms hard timeout guard.
-    // The native splash screen remains visible (preventAutoHideAsync) so the user
-    // experiences a 100% seamless transition directly to the ready Dashboard.
-    Promise.race([
-      loadBootManifest(),
-      new Promise<void>(resolve => setTimeout(resolve, 150)),
-    ]).finally(() => {
-      if (isMounted) setManifestReady(true);
-    });
-
-    return () => { isMounted = false; };
+    loadBootManifest().catch(() => {});
   }, []);
 
   // PERF: Background service registrations deferred to 6.0s.
@@ -217,9 +205,8 @@ export default function App() {
       }
 
       // ── ACTION: "Mark Done" button on task_reminder ────────────────────────
-      // FIX: Removed nav('Tasks') so the app stays in the background.
-      // A silent confirmation banner fires 1s later as feedback.
-      if (actionIdentifier === 'mark_task_done') {
+      // ── ACTION: "✓ Mark Done" button on task_reminder & location_task_reminder ─
+      if (actionIdentifier === 'mark_task_done' || actionIdentifier === 'MARK_DONE') {
         const taskId   = data?.taskId    as string | undefined;
         const taskTitle = data?.taskTitle as string | undefined;
         let success = false;
@@ -246,15 +233,19 @@ export default function App() {
             trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: Date.now() + 1000 } as any,
           }).catch(() => {});
         } else {
-          // Write failed — open the app so user can act manually
           nav('Tasks');
         }
         return;
       }
 
-      // ── ACTION: "Open Tasks" button on task_reminder ───────────────────────
-      // This is an intentional "open app" secondary button — nav() stays.
-      if (actionIdentifier === 'open_tasks') {
+      // ── ACTION: "Start Workout" button on gym_reminder & location_gym_arrival ─
+      if (actionIdentifier === 'start_workout' || actionIdentifier === 'START_WORKOUT' || actionIdentifier === 'SAVE_SUMMARY') {
+        nav('Gym');
+        return;
+      }
+
+      // ── ACTION: "Open Tasks" button on task_reminder & location_task_reminder ─
+      if (actionIdentifier === 'open_tasks' || actionIdentifier === 'OPEN_TASK') {
         nav('Tasks');
         return;
       }
@@ -579,10 +570,6 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  // Native splash screen stays visible until fonts AND manifest are 100% warm
-  if (!fontsLoaded || !manifestReady) {
-    return null;
-  }
 
   return (
     <ThemeProvider>
