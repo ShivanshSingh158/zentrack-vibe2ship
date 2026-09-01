@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { View, StyleSheet } from "react-native";
 
 interface PortalContextType {
@@ -44,7 +44,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
 export function Portal({ children, name }: { children: ReactNode; name: string }) {
   const { mount, unmount } = usePortal();
 
-  React.useEffect(() => {
+  useEffect(() => {
     mount(children, name);
     return () => unmount(name);
   }, [children, name, mount, unmount]);

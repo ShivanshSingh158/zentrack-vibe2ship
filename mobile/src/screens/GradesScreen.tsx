@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, Alert, Dimensions, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,7 +38,7 @@ export default function GradesScreen() {
   const { semesters, semesterSubjects, ensureSubscribed } = useAcademicData();
   const { user } = useCoreData();
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
     return () => handle.cancel();
   }, [ensureSubscribed]);

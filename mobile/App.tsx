@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, ActivityIndicator, LogBox, AppState, AppStateStatus, InteractionManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
@@ -116,13 +116,13 @@ export default function App() {
   // Pre-warm the boot manifest as early as possible so AppNavigator
   // has cached data by the time it mounts. Fire-and-forget — we don't
   // block rendering on it. AppNavigator has its own 8s auth timeout.
-  React.useEffect(() => {
+  useEffect(() => {
     loadBootManifest().catch(() => {});
   }, []);
 
   // PERF: Background service registrations deferred to 6.0s.
   // These have zero effect on startup frames and setting them late keeps the C++ bridge 100% free.
-  React.useEffect(() => {
+  useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => {
       const timer = setTimeout(() => {
         requestNotificationPermissions();
@@ -143,7 +143,7 @@ export default function App() {
 
 
   // Drain ALL queued offline writes & register deferred background OTA updates
-  React.useEffect(() => {
+  useEffect(() => {
     const unsubscribeNet = setupNetworkListener();
     const unsubscribeLifecycle = setupLifecycleHygiene();
     const unsubscribeOta = registerDeferredOtaSync();
@@ -158,7 +158,7 @@ export default function App() {
   // Central listener for ALL actionable notification taps.
   // Handles all 13 notification types → correct module navigation + Firestore writes.
   // Uses navigationRef for imperative navigation that works even on cold-start.
-  React.useEffect(() => {
+  useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(async (response) => {
       const { notification, actionIdentifier } = response;
       const data = notification.request.content.data as any;

@@ -245,7 +245,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
   const greetingGeneratedRef = useRef(false);
 
   // Dynamic personalized starter prompts based on live user data
-  const starterPrompts = React.useMemo(() => {
+  const starterPrompts = useMemo(() => {
     const list: { title: string; subtitle: string; command: string; icon: string; accent: string }[] = [];
     const now = new Date();
     const hour = now.getHours();

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -136,7 +136,7 @@ export default function AssignmentsScreen() {
   } = useAcademicData();
   const { user } = useCoreData();
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
     return () => handle.cancel();
   }, [ensureSubscribed]);

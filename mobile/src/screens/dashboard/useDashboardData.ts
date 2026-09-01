@@ -11,7 +11,7 @@
  * note, or academic update. Eliminates 6–8 spurious useMemo recomputes per
  * unrelated Firestore update.
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { InteractionManager } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -79,12 +79,12 @@ export function useDashboardData() {
 
   // PERF: Quote cache — only re-fetch once per day, not on every tab switch.
   // Stores {date: YYYY-MM-DD, quote: QuoteItem} so returning to Dashboard is instant.
-  const quoteCacheRef = React.useRef<{ date: string; quote: typeof BRUTAL_QUOTES[0] } | null>(null);
+  const quoteCacheRef = useRef<{ date: string; quote: typeof BRUTAL_QUOTES[0] } | null>(null);
 
   // PERF FIX (Issue A): Fingerprint cache — getFingerprint(uid) does AsyncStorage.getItem
   // on every Dashboard focus. Streak personality changes at most once per day.
   // Cache it per-UID for the entire app session (cleared when user changes).
-  const fingerprintCacheRef = React.useRef<{ uid: string; fp: any } | null>(null);
+  const fingerprintCacheRef = useRef<{ uid: string; fp: any } | null>(null);
 
   const setLayout = (newLayout: LayoutItem[]) => {
     setLayoutState(newLayout);
@@ -189,7 +189,7 @@ export function useDashboardData() {
     return () => handle.cancel();
   }, []);
 
-  const shuffleQuote = React.useCallback(async (force = false) => {
+  const shuffleQuote = useCallback(async (force = false) => {
     const todayKey = formatLocalDateStr(new Date());
     if (!force && quoteCacheRef.current?.date === todayKey) {
       setQuote(quoteCacheRef.current.quote);
@@ -237,7 +237,7 @@ export function useDashboardData() {
   // and kept live by `subscribeXPChanges` below. Reading AsyncStorage again on every
   // tab switch was a duplicate bridge call (2–5ms) that never changed the displayed value.
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       shuffleQuote();
     }, [shuffleQuote])
   );

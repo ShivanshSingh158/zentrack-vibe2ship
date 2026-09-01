@@ -219,7 +219,7 @@ function MainTabNavigator() {
   }, [effectivePinned.join(',')]);
 
   // PERF FIX: Throttle AsyncStorage saves
-  const lastTabSaveRef = React.useRef<number>(0);
+  const lastTabSaveRef = useRef<number>(0);
   const onTabFocus = useCallback((routeName: string) => {
     if (!ALLOWED_SAVE_ROUTES.has(routeName)) return;
     const now = Date.now();

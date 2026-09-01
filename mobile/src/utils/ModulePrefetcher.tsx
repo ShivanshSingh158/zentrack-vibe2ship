@@ -14,7 +14,7 @@
  * grey or wrong-colour flash when returning from background.
  */
 
-import React, { ComponentType } from 'react';
+import React, { ComponentType, useState, useEffect } from 'react';
 import { InteractionManager, View } from 'react-native';
 
 // ΓöÇΓöÇΓöÇ Module Registry ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -144,11 +144,11 @@ export const cacheAwareLazy = (id: string, importer: Importer): ComponentType<an
   const Wrapper = (props: any) => {
     // If already in moduleCache (pre-fetched in background), initialize synchronously.
     // This is the key fix: the component renders on frame 1, zero blank screen.
-    const [Comp, setComp] = React.useState<ComponentType<any> | null>(
+    const [Comp, setComp] = useState<ComponentType<any> | null>(
       () => moduleCache.get(id)?.default ?? null
     );
 
-    React.useEffect(() => {
+    useEffect(() => {
       // Already resolved synchronously above — nothing to do.
       if (Comp) return;
 

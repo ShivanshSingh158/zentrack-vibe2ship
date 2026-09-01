@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pressable, Platform, StatusBar } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -118,8 +118,8 @@ export default function TasksScreen() {
     todayDateStr,
   });
 
-  const lastScrollY = React.useRef(0);
-  const handleScroll = React.useCallback((e: any) => {
+  const lastScrollY = useRef(0);
+  const handleScroll = useCallback((e: any) => {
     const offsetY = e?.nativeEvent?.contentOffset?.y ?? 0;
     // Auto-hiding bottom navigation bar on scroll (fast & smooth)
     if (offsetY <= 35) {

@@ -59,11 +59,11 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
   const isLab = type === 'lab';
 
   // 0ms instant optimistic local state
-  const [localAction, setLocalAction] = React.useState<'attended' | 'missed' | 'cancelled' | null>(
+  const [localAction, setLocalAction] = useState<'attended' | 'missed' | 'cancelled' | null>(
     log?.action ?? null
   );
 
-  React.useEffect(() => {
+  useEffect(() => {
     setLocalAction(log?.action ?? null);
   }, [log?.action, log?.id]);
 
@@ -616,7 +616,7 @@ export default function AttendanceScreen() {
   } = data;
 
   // --- SARA Surface ---
-  const surfaceData = React.useMemo(() => ({ subjects, logs }), [subjects, logs]);
+  const surfaceData = useMemo(() => ({ subjects, logs }), [subjects, logs]);
   const { surfaceMessage, surfaceActionLabel, dismissBanner } = useSaraSurface("AttendanceScreen", surfaceData as any, user?.uid);
 
   const firestoreActions = useAttendanceFirestore({
@@ -634,7 +634,7 @@ export default function AttendanceScreen() {
   } = firestoreActions;
 
   // Memoized & strictly sorted history logs (Today -> Oldest, timestamp secondary, deduplicated)
-  const sortedHistoryLogs = React.useMemo(() => {
+  const sortedHistoryLogs = useMemo(() => {
     if (!selectedHistorySubject) return [];
     const filtered = logs.filter(l =>
       (selectedHistorySubject.id && l.subjectId === selectedHistorySubject.id) ||
