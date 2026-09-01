@@ -68,6 +68,10 @@ export async function requestNotificationPermissions() {
         vibrationPattern: [0, 600, 200, 600, 200, 600],
         lightColor: '#ff3b30',
         sound: 'default',
+        enableLights: true,
+        enableVibrate: true,
+        bypassDnd: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
     }
 
