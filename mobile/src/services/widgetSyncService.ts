@@ -201,12 +201,13 @@ export async function updateTodayAgendaWidget(data?: TodayAgendaWidgetData | nul
     await requestWidgetUpdate({
       widgetName: 'TodayAgenda',
       renderWidget: () => React.createElement(TodayAgendaWidget, { data: widgetData }),
-      widgetNotFound: () => {
-        // Widget is not placed on the user's home screen yet; silently ignore
-      },
+      widgetNotFound: () => {},
     });
-  } catch (e) {
-    console.warn('[WidgetSync] Failed to update Android widget:', e);
+  } catch (e: any) {
+    // Only log if not the expected unlinked warning in pre-rebuild dev environment
+    if (!e?.message?.includes('not seem to be linked')) {
+      console.warn('[WidgetSync] Failed to update Android widget:', e);
+    }
   }
 }
 
@@ -246,8 +247,10 @@ export async function updateLiveWorkoutWidget(data?: LiveWorkoutWidgetData | nul
       renderWidget: () => React.createElement(LiveWorkoutWidget, { data: widgetData }),
       widgetNotFound: () => {},
     });
-  } catch (e) {
-    console.warn('[WidgetSync] Failed to update LiveWorkout widget:', e);
+  } catch (e: any) {
+    if (!e?.message?.includes('not seem to be linked')) {
+      console.warn('[WidgetSync] Failed to update LiveWorkout widget:', e);
+    }
   }
 }
 
