@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pr
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import Svg, { Circle } from 'react-native-svg';
 
@@ -91,6 +91,13 @@ export default function TasksScreen() {
     setIsTimeSpentOpen, setEditingTask, setConflicts,
     toggleTaskSelection,
   } = useTasksData(tasks);
+
+  const route = useRoute<any>();
+  useEffect(() => {
+    if (route.params?.openAddTask) {
+      setIsNewTaskOpen(true);
+    }
+  }, [route.params?.openAddTask, route.params?.timestamp]);
 
   // 3. Firestore Hook
   const {

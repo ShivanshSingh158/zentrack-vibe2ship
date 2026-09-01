@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -477,6 +478,13 @@ export default function NotesScreen() {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
 
   const [showFabMenu, setShowFabMenu] = useState(false);
+  const route = useRoute<any>();
+
+  useEffect(() => {
+    if (route.params?.openUpload) {
+      setShowFabMenu(true);
+    }
+  }, [route.params?.openUpload, route.params?.timestamp]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadSize, setUploadSize] = useState('0 MB');

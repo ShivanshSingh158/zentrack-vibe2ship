@@ -71,6 +71,7 @@ const SaraScreen = cacheAwareLazy('Sara', () => import('../screens/SaraScreen'))
 import { usePomodoro } from '../contexts/PomodoroContext';
 import PomodoroFloatingPill from '../components/Tasks/PomodoroFloatingPill';
 import PomodoroSheet from '../components/Tasks/PomodoroSheet';
+import { useQuickActions } from '../hooks/useQuickActions';
 
 // --- Navigators --------------------------------------------------------------
 const Stack = createNativeStackNavigator();
@@ -382,6 +383,9 @@ export default function AppNavigator() {
   const [user,       setUser]       = useState<User | null>(_sync?.optimisticUser ?? null);
   const [onboarded,  setOnboarded]  = useState(_sync?.onboarded ?? true);
   const [initialTab, setInitialTab] = useState('Home');
+
+  // Register and handle App Icon Quick Shortcuts (New Task, Attendance, Workout, Vault)
+  useQuickActions();
 
   const firstAuthAt = useRef<number>(_sync?.optimisticUser ? Date.now() : 0);
   // If we already have a cached user, mark as resolved immediately so the Firebase
