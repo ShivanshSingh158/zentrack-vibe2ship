@@ -322,17 +322,17 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
             if (width > 0) setRowWidth(width);
           }}
         >
-          {/* Telegram Gliding Indicator Pill (GPU worklet) */}
+          {/* Telegram Gliding Indicator Capsule (GPU worklet) */}
           {tabWidth > 0 && (
             <Animated.View
               pointerEvents="none"
               style={[
                 styles.glidingPill,
                 {
-                  width: Math.max(0, tabWidth - 6),
-                  left: 3,
-                  backgroundColor: isDark ? 'rgba(165, 153, 255, 0.12)' : 'rgba(165, 153, 255, 0.15)',
-                  borderColor: isDark ? 'rgba(165, 153, 255, 0.22)' : 'rgba(165, 153, 255, 0.30)',
+                  width: Math.min(56, Math.max(36, tabWidth - 4)),
+                  left: (tabWidth - Math.min(56, Math.max(36, tabWidth - 4))) / 2,
+                  backgroundColor: isDark ? 'rgba(165, 153, 255, 0.16)' : 'rgba(165, 153, 255, 0.20)',
+                  borderColor: isDark ? 'rgba(165, 153, 255, 0.28)' : 'rgba(165, 153, 255, 0.38)',
                 },
                 indicatorAnimatedStyle,
               ]}
@@ -393,9 +393,9 @@ const styles = StyleSheet.create({
   },
   glidingPill: {
     position: 'absolute',
-    top: 2,
-    bottom: 2,
-    borderRadius: 14,
+    top: 3,
+    height: 30,
+    borderRadius: 15,
     borderWidth: 1,
     zIndex: 0,
   },
