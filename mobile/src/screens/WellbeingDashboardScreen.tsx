@@ -13,6 +13,10 @@ import {
   TouchableOpacity,
   Animated,
   InteractionManager,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -145,6 +149,23 @@ export default function WellbeingDashboardScreen() {
 
   const { steps, stepGoal, history: stepHistory, updateGoal, refreshSteps } = useStepCounter();
   const { waterLogs, ensureSubscribed } = useWellnessData();
+
+  const [showCustomGoalModal, setShowCustomGoalModal] = useState(false);
+  const [customGoalInput, setCustomGoalInput] = useState(String(stepGoal));
+
+  const handleOpenCustomGoal = () => {
+    setCustomGoalInput(String(stepGoal));
+    setShowCustomGoalModal(true);
+  };
+
+  const handleSaveCustomGoal = () => {
+    const parsed = parseInt(customGoalInput.replace(/[^0-9]/g, ''), 10);
+    if (!isNaN(parsed) && parsed >= 500 && parsed <= 100000) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      updateGoal(parsed);
+      setShowCustomGoalModal(false);
+    }
+  };
 
   useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
@@ -468,7 +489,14 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
             </GlassCard>
 
             {/* Daily Target Goal Selector */}
-            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Adjust Daily Step Target</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.sm, marginLeft: SPACE.xs, marginRight: SPACE.xs }}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 0 }]}>Adjust Daily Step Target</Text>
+              <TouchableOpacity onPress={handleOpenCustomGoal} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name="pencil" size={13} color="#f59e0b" />
+                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 12, color: '#f59e0b' }}>Custom</Text>
+              </TouchableOpacity>
+            </View>
+
             <View style={styles.goalPillsRow}>
               {[6000, 8000, 10000, 12000, 15000].map((goalVal) => {
                 const isSelected = stepGoal === goalVal;
@@ -502,9 +530,176 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
                   </TouchableOpacity>
                 );
               })}
+              <TouchableOpacity
+                style={[
+                  styles.goalPill,
+                  {
+                    backgroundColor: ![6000, 8000, 10000, 12000, 15000].includes(stepGoal)
+                      ? '#f59e0b'
+                      : isDark
+                      ? '#1c1b29'
+                      : '#FFFFFF',
+                    borderColor: ![6000, 8000, 10000, 12000, 15000].includes(stepGoal) ? '#f59e0b' : colors.border,
+                  },
+                ]}
+                onPress={handleOpenCustomGoal}
+              >
+                <Text
+                  style={[
+                    styles.goalPillText,
+                    { color: ![6000, 8000, 10000, 12000, 15000].includes(stepGoal) ? '#000000' : colors.textPrimary },
+                  ]}
+                >
+                  {![6000, 8000, 10000, 12000, 15000].includes(stepGoal) ? `${(stepGoal / 1000).toFixed(1)}k` : '✏️'}
+                </Text>
+              </TouchableOpacity>
             </View>
           </Animated.View>
         )}
+
+        {/* ── Custom Goal Modal ── */}
+        <Modal
+          visible={showCustomGoalModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowCustomGoalModal(false)}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: 24,
+            }}
+          >
+            <View
+              style={{
+                width: '100%',
+                maxWidth: 340,
+                backgroundColor: isDark ? '#181724' : '#FFFFFF',
+                borderRadius: 20,
+                padding: 22,
+                borderWidth: 1,
+                borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: 0.3,
+                shadowRadius: 20,
+                elevation: 15,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                <Text style={{ fontSize: 20, marginRight: 8 }}>🎯</Text>
+                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary }}>
+                  Set Custom Step Goal
+                </Text>
+              </View>
+
+              <Text style={{ fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textMuted, marginBottom: 16 }}>
+                Enter your personalized daily target for active walking and wellness:
+              </Text>
+
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: isDark ? '#100f1a' : '#F5F4F9',
+                  borderRadius: 14,
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  marginBottom: 16,
+                  borderWidth: 1,
+                  borderColor: '#f59e0b',
+                }}
+              >
+                <TextInput
+                  style={{
+                    flex: 1,
+                    fontFamily: FONT_FAMILY.bold,
+                    fontSize: 22,
+                    color: colors.textPrimary,
+                  }}
+                  keyboardType="number-pad"
+                  value={customGoalInput}
+                  onChangeText={setCustomGoalInput}
+                  placeholder="e.g. 7500"
+                  placeholderTextColor={colors.textMuted}
+                  autoFocus
+                  selectTextOnFocus
+                />
+                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 14, color: '#f59e0b' }}>
+                  STEPS
+                </Text>
+              </View>
+
+              {/* Quick Stepper Controls */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, gap: 8 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    backgroundColor: isDark ? '#232136' : '#ECEBF2',
+                    borderRadius: 10,
+                    paddingVertical: 8,
+                    alignItems: 'center',
+                  }}
+                  onPress={() => {
+                    const cur = parseInt(customGoalInput.replace(/[^0-9]/g, ''), 10) || stepGoal;
+                    setCustomGoalInput(String(Math.max(500, cur - 1000)));
+                  }}
+                >
+                  <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary }}>-1,000</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    backgroundColor: isDark ? '#232136' : '#ECEBF2',
+                    borderRadius: 10,
+                    paddingVertical: 8,
+                    alignItems: 'center',
+                  }}
+                  onPress={() => {
+                    const cur = parseInt(customGoalInput.replace(/[^0-9]/g, ''), 10) || stepGoal;
+                    setCustomGoalInput(String(Math.min(100000, cur + 1000)));
+                  }}
+                >
+                  <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary }}>+1,000</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    backgroundColor: isDark ? '#232136' : '#E8E7EE',
+                    alignItems: 'center',
+                  }}
+                  onPress={() => setShowCustomGoalModal(false)}
+                >
+                  <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 14, color: colors.textMuted }}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    backgroundColor: '#f59e0b',
+                    alignItems: 'center',
+                  }}
+                  onPress={handleSaveCustomGoal}
+                >
+                  <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 14, color: '#000000' }}>Save Target</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
 
         {/* ── Tab 2: Hydration Intake ── */}
         {activeTab === 'water' && (

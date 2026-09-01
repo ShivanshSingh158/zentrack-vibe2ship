@@ -477,7 +477,7 @@ export default function DashboardScreen() {
                     onPressStreak={handlePressStreak}
                     onPressHabits={handlePressHabits}
                     onPressWater={handlePressWater}
-                    onPressSteps={() => navigation.navigate('WellbeingDashboard')}
+                    onPressSteps={() => navigation.navigate('MoreStack', { screen: 'WellbeingDashboard', params: { initialTab: 'steps' } })}
                     onPressAttendance={handlePressAttendance}
                     onPressXP={handlePressXP}
                     onPressRing={handlePressRing}
