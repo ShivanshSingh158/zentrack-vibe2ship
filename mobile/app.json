@@ -74,6 +74,23 @@
         {
           "locationAlwaysAndWhenInUsePermission": "ZenTrack needs location access to remind you to log workouts when you arrive at the gym."
         }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "TodayAgenda",
+              "label": "ZenTrack Today's Agenda",
+              "minWidth": "320dp",
+              "minHeight": "180dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 3,
+              "description": "Today's classes, tasks, and habits on your home screen",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
       ]
     ],
     "extra": {

@@ -30,6 +30,7 @@ import { ActiveRecallBanner } from '../components/Dashboard/ActiveRecallBanner';
 import { getDueFlashcards, Flashcard } from '../services/flashcardService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useOfflineStatus } from '../hooks/useOfflineStatus';
+import { useWidgetSync } from '../hooks/useWidgetSync';
 import { areItemsEqual } from '../utils/schemaGuards';
 import DashboardSkeleton from '../components/Dashboard/DashboardSkeleton';
 
@@ -41,6 +42,12 @@ export default function DashboardScreen() {
   const { isOffline, queueCount, recentlySynced } = useOfflineStatus();
 
   const data = useDashboardData();
+  useWidgetSync({
+    tasks: data.tasks,
+    subjects: data.attendance,
+    attendanceLogs: data.attendanceLogs,
+    zenScore: data.overallAttendancePct,
+  });
   const paddingBottom = insets.bottom + 80;
   const levelInfo = getLevel(data.xp);
 
