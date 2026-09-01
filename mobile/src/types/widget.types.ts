@@ -39,7 +39,11 @@ export type WidgetClickActionType =
   | 'mark_task_undone'
   | 'mark_class_present'
   | 'mark_class_absent'
-  | 'open_app';
+  | 'open_app'
+  | 'log_workout_set'
+  | 'adjust_workout_weight'
+  | 'next_workout_exercise'
+  | 'start_workout_session';
 
 export interface WidgetClickActionPayload {
   action: WidgetClickActionType;
@@ -49,4 +53,45 @@ export interface WidgetClickActionPayload {
   sessionIdx?: number;
   dateStr?: string;
   type?: 'class' | 'lab';
+  target?: string;
+  // Workout specific
+  exerciseId?: string;
+  setIndex?: number;
+  weightDelta?: number;
+  weight?: number;
+  reps?: number;
 }
+
+// ── Live Workout Widget Types ────────────────────────────────────────────────
+export interface WidgetExerciseSet {
+  setNumber: number;
+  weight: number;
+  reps: number;
+  completed: boolean;
+}
+
+export interface WidgetActiveExercise {
+  id: string;
+  name: string;
+  targetSets: number;
+  currentSetIndex: number;
+  sets: WidgetExerciseSet[];
+  targetReps?: number;
+  targetWeight?: number;
+  notes?: string;
+}
+
+export interface LiveWorkoutWidgetData {
+  isActive: boolean;
+  splitTitle: string; // e.g. "Push Day A"
+  workoutDurationMinutes?: number;
+  currentExerciseIndex: number;
+  totalExercises: number;
+  currentExercise?: WidgetActiveExercise;
+  nextExerciseName?: string;
+  restTimerSecondsRemaining?: number;
+  completedSetsCount: number;
+  totalSetsCount: number;
+  lastUpdated: number;
+}
+

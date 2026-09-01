@@ -6,8 +6,10 @@
 import React from 'react';
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
 import { TodayAgendaWidget } from './TodayAgendaWidget';
+import { LiveWorkoutWidget } from './LiveWorkoutWidget';
 import { 
   getCachedWidgetData, 
+  getCachedLiveWorkoutData,
   handleWidgetClickAction 
 } from '../services/widgetSyncService';
 
@@ -18,14 +20,25 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
     case 'WIDGET_ADDED':
     case 'WIDGET_UPDATE':
     case 'WIDGET_RESIZED': {
-      const data = await getCachedWidgetData();
-      props.renderWidget(
-        React.createElement(TodayAgendaWidget, { 
-          data, 
-          width: widgetInfo.width, 
-          height: widgetInfo.height 
-        })
-      );
+      if (widgetInfo.widgetName === 'LiveWorkout') {
+        const workoutData = await getCachedLiveWorkoutData();
+        props.renderWidget(
+          React.createElement(LiveWorkoutWidget, {
+            data: workoutData,
+            width: widgetInfo.width,
+            height: widgetInfo.height,
+          })
+        );
+      } else {
+        const data = await getCachedWidgetData();
+        props.renderWidget(
+          React.createElement(TodayAgendaWidget, { 
+            data, 
+            width: widgetInfo.width, 
+            height: widgetInfo.height 
+          })
+        );
+      }
       break;
     }
 

@@ -32,6 +32,8 @@ import SupersetPickerModal from '../../components/Gym/SupersetPickerModal';
 import ActiveSwapModal from '../../components/Gym/ActiveSwapModal';
 import AnimatedRestTimer from '../../components/Gym/AnimatedRestTimer';
 import { insertWarmupLadder } from '../../utils/warmupGenerator';
+import { saveCachedLiveWorkoutData, updateLiveWorkoutWidget } from '../../services/widgetSyncService';
+import type { LiveWorkoutWidgetData } from '../../types/widget.types';
 
 interface SetInputState {
   weight: string;
@@ -191,6 +193,54 @@ export default function ActiveLoggingScreen() {
   const activeExercises = useMemo(() => log?.exercises?.filter(ex => !ex.skipped) || [], [log]);
   const safeIdx = Math.min(activeExIndex, Math.max(0, activeExercises.length - 1));
   const exercise = activeExercises[safeIdx];
+
+  // ── Sync Live Workout State with Android Home Screen Widget ───────────────
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    if (activeExercises && activeExercises.length > 0) {
+      const currentEx = activeExercises[safeIdx] || activeExercises[0];
+      const nextEx = activeExercises[safeIdx + 1];
+      const completedSets = activeExercises.reduce(
+        (sum, ex) => sum + (ex.setsLog || []).filter((s: any) => s.completed).length,
+        0
+      );
+      const totalSets = activeExercises.reduce(
+        (sum, ex) => sum + (ex.setsLog || []).length,
+        0
+      );
+
+      const widgetData: LiveWorkoutWidgetData = {
+        isActive: !log?.completed,
+        splitTitle: log?.dayPlanIndex !== undefined ? `Routine • Ex ${safeIdx + 1}/${activeExercises.length}` : "Active Workout",
+        workoutDurationMinutes: log?.workoutDurationMinutes,
+        currentExerciseIndex: safeIdx,
+        totalExercises: activeExercises.length,
+        currentExercise: {
+          id: currentEx.id || currentEx.name,
+          name: currentEx.name,
+          targetSets: currentEx.setsLog?.length || currentEx.targetSets || 4,
+          currentSetIndex: (currentEx.setsLog || []).findIndex((s: any) => !s.completed) >= 0
+            ? (currentEx.setsLog || []).findIndex((s: any) => !s.completed)
+            : 0,
+          sets: (currentEx.setsLog || []).map((s: any, idx: number) => ({
+            setNumber: idx + 1,
+            weight: Number(s.weight) || 0,
+            reps: Number(s.reps) || 10,
+            completed: Boolean(s.completed),
+          })),
+          targetWeight: Number(currentEx.setsLog?.[0]?.weight) || 20,
+          targetReps: Number(currentEx.setsLog?.[0]?.reps) || 10,
+        },
+        nextExerciseName: nextEx?.name,
+        completedSetsCount: completedSets,
+        totalSetsCount: totalSets,
+        lastUpdated: Date.now(),
+      };
+
+      saveCachedLiveWorkoutData(widgetData);
+      updateLiveWorkoutWidget(widgetData);
+    }
+  }, [activeExercises, safeIdx, log?.completed, log?.workoutDurationMinutes]);
   const exercises = activeExercises;
 
   const realExerciseIndex = useMemo(() => {

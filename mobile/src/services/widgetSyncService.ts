@@ -7,11 +7,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 import React from 'react';
 import { TodayAgendaWidget } from '../widgets/TodayAgendaWidget';
+import { LiveWorkoutWidget } from '../widgets/LiveWorkoutWidget';
 import { 
   TodayAgendaWidgetData, 
   WidgetAgendaClass, 
   WidgetAgendaTask, 
-  WidgetClickActionPayload 
+  WidgetClickActionPayload,
+  LiveWorkoutWidgetData,
 } from '../types/widget.types';
 import type { Task, AttendanceSubject, AttendanceLog } from '../contexts/MobileDataContext';
 import { safeUpdate, safeAdd } from '../utils/safeWrite';
@@ -20,6 +22,7 @@ import { COLLECTION } from '../config/constants';
 import { doc, updateDoc, collection, addDoc } from 'firebase/firestore';
 
 const WIDGET_STORAGE_KEY = '@zentrack_widget_agenda_data';
+const LIVE_WORKOUT_STORAGE_KEY = '@zentrack_widget_live_workout_data';
 
 /**
  * Builds TodayAgendaWidgetData from live application state
@@ -151,10 +154,52 @@ export async function updateTodayAgendaWidget(data?: TodayAgendaWidgetData | nul
 }
 
 /**
+ * Saves Live Workout data to AsyncStorage cache
+ */
+export async function saveCachedLiveWorkoutData(data: LiveWorkoutWidgetData): Promise<void> {
+  try {
+    await AsyncStorage.setItem(LIVE_WORKOUT_STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.warn('[WidgetSync] Failed to save live workout cache:', e);
+  }
+}
+
+/**
+ * Reads Live Workout data from AsyncStorage cache
+ */
+export async function getCachedLiveWorkoutData(): Promise<LiveWorkoutWidgetData | null> {
+  try {
+    const raw = await AsyncStorage.getItem(LIVE_WORKOUT_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.warn('[WidgetSync] Failed to read live workout cache:', e);
+    return null;
+  }
+}
+
+/**
+ * Re-renders the Live Workout HUD widget with fresh data
+ */
+export async function updateLiveWorkoutWidget(data?: LiveWorkoutWidgetData | null): Promise<void> {
+  try {
+    const widgetData = data || (await getCachedLiveWorkoutData());
+    await requestWidgetUpdate({
+      widgetName: 'LiveWorkout',
+      renderWidget: () => React.createElement(LiveWorkoutWidget, { data: widgetData }),
+      widgetNotFound: () => {},
+    });
+  } catch (e) {
+    console.warn('[WidgetSync] Failed to update LiveWorkout widget:', e);
+  }
+}
+
+/**
  * Handles headless background click actions from the Android Home Screen Widget
  */
 export async function handleWidgetClickAction(payload: WidgetClickActionPayload): Promise<void> {
   const currentData = await getCachedWidgetData();
+  const currentWorkout = await getCachedLiveWorkoutData();
   const user = auth.currentUser;
   const dateStr = payload.dateStr || new Date().toISOString().split('T')[0];
 
@@ -216,6 +261,63 @@ export async function handleWidgetClickAction(payload: WidgetClickActionPayload)
         await saveCachedWidgetData(currentData);
         await updateTodayAgendaWidget(currentData);
       }
+      break;
+    }
+
+    // ── Live Workout Actions ──────────────────────────────────────────────────
+    case 'log_workout_set': {
+      if (!currentWorkout || !currentWorkout.currentExercise) return;
+      const ex = currentWorkout.currentExercise;
+      const setIdx = payload.setIndex ?? ex.currentSetIndex;
+
+      if (ex.sets && ex.sets[setIdx]) {
+        ex.sets[setIdx].completed = true;
+        if (payload.weight) ex.sets[setIdx].weight = payload.weight;
+        if (payload.reps) ex.sets[setIdx].reps = payload.reps;
+      }
+
+      currentWorkout.completedSetsCount += 1;
+
+      // Advance to next set or next exercise
+      if (setIdx + 1 < ex.targetSets) {
+        ex.currentSetIndex = setIdx + 1;
+      } else {
+        // All sets for this exercise completed
+        currentWorkout.currentExerciseIndex += 1;
+        ex.currentSetIndex = ex.targetSets - 1;
+      }
+
+      currentWorkout.lastUpdated = Date.now();
+      await saveCachedLiveWorkoutData(currentWorkout);
+      await updateLiveWorkoutWidget(currentWorkout);
+      break;
+    }
+
+    case 'adjust_workout_weight': {
+      if (!currentWorkout || !currentWorkout.currentExercise) return;
+      const ex = currentWorkout.currentExercise;
+      const setIdx = payload.setIndex ?? ex.currentSetIndex;
+      const delta = payload.weightDelta || 0;
+
+      if (ex.sets && ex.sets[setIdx]) {
+        ex.sets[setIdx].weight = Math.max(0, Math.round(((ex.sets[setIdx].weight || 20) + delta) * 10) / 10);
+      }
+      if (ex.targetWeight !== undefined) {
+        ex.targetWeight = Math.max(0, Math.round((ex.targetWeight + delta) * 10) / 10);
+      }
+
+      currentWorkout.lastUpdated = Date.now();
+      await saveCachedLiveWorkoutData(currentWorkout);
+      await updateLiveWorkoutWidget(currentWorkout);
+      break;
+    }
+
+    case 'next_workout_exercise': {
+      if (!currentWorkout) return;
+      currentWorkout.currentExerciseIndex += 1;
+      currentWorkout.lastUpdated = Date.now();
+      await saveCachedLiveWorkoutData(currentWorkout);
+      await updateLiveWorkoutWidget(currentWorkout);
       break;
     }
 
