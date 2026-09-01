@@ -213,30 +213,6 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
       ? moreRouteIndex
       : 0;
 
-  // ── Telegram-Grade Gliding Indicator Pill (GPU worklet) ────────────────────
-  const [rowWidth, setRowWidth] = useState(0);
-  const tabCount = visibleRoutes.length;
-  const tabWidth = rowWidth > 0 && tabCount > 0 ? rowWidth / tabCount : 0;
-
-  const indicatorTranslateX = useSharedValue(0);
-  const indicatorOpacity = useSharedValue(0);
-
-  useEffect(() => {
-    if (tabWidth > 0 && activeIndex >= 0) {
-      indicatorTranslateX.value = withSpring(activeIndex * tabWidth, {
-        damping: 24,
-        stiffness: 380,
-        mass: 0.55,
-      });
-      indicatorOpacity.value = withTiming(1, { duration: 150 });
-    }
-  }, [activeIndex, tabWidth]);
-
-  const indicatorAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: indicatorTranslateX.value }],
-    opacity: indicatorOpacity.value,
-  }));
-
   // Screen options hide (only when a full-screen modal explicitly requests tabBarStyle: { display: 'none' })
   const focusedOptions = descriptors[state.routes[state.index].key]?.options || {};
   const isScreenOptionsHidden =
@@ -315,30 +291,7 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
           { paddingBottom: bottomPadding },
         ]}
       >
-        <View
-          style={styles.tabsRow}
-          onLayout={(e) => {
-            const width = e.nativeEvent.layout.width;
-            if (width > 0) setRowWidth(width);
-          }}
-        >
-          {/* Telegram Gliding Indicator Capsule (GPU worklet) */}
-          {tabWidth > 0 && (
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.glidingPill,
-                {
-                  width: Math.min(56, Math.max(36, tabWidth - 4)),
-                  left: (tabWidth - Math.min(56, Math.max(36, tabWidth - 4))) / 2,
-                  backgroundColor: isDark ? 'rgba(165, 153, 255, 0.16)' : 'rgba(165, 153, 255, 0.20)',
-                  borderColor: isDark ? 'rgba(165, 153, 255, 0.28)' : 'rgba(165, 153, 255, 0.38)',
-                },
-                indicatorAnimatedStyle,
-              ]}
-            />
-          )}
-
+        <View style={styles.tabsRow}>
           {visibleRoutes.map((route, index) => {
             const isVisuallyFocused = activeIndex === index;
             const isActuallyFocused = state.routes[state.index].key === route.key;
@@ -390,14 +343,6 @@ const styles = StyleSheet.create({
     height: 48,
     backgroundColor: 'transparent',
     paddingHorizontal: 2,
-  },
-  glidingPill: {
-    position: 'absolute',
-    top: 3,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    zIndex: 0,
   },
   tabButton: {
     flex: 1,
