@@ -32,7 +32,6 @@ import EmptyState from '../components/ui/EmptyState';
 import { formatLocalDateStr } from '../utils/dateUtils';
 import BottomSheet from '../components/ui/BottomSheet';
 import HabitsSkeleton from '../components/Habits/HabitsSkeleton';
-import { useDeferredScreenMount } from '../hooks/useDeferredScreenMount';
 
 const getTodayStr = () => formatLocalDateStr(new Date());
 // IMPORTANT: never use a module-level `today` constant here — it gets frozen at app launch
@@ -548,8 +547,8 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
 export default function HabitsScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-  const isMounted = useDeferredScreenMount();
   const { allHabits, habitLogs, user, loading, optimisticUpdateHabit, optimisticAddHabitLog, optimisticRemoveHabitLog, optimisticUpdateHabitLog } = useCoreData();
+  const isInitialLoading = loading && (!allHabits || allHabits.length === 0);
   const [createVisible, setCreateVisible] = useState(false);
   const [showReminderModal, setShowReminderModal] = useState(false);
   
@@ -993,7 +992,7 @@ export default function HabitsScreen() {
       </Animated.View>
 
       {/* —————————————————————————————————————————————————————————————————————— */}
-      {!isMounted ? (
+      {isInitialLoading ? (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
           <HabitsSkeleton />
         </ScrollView>

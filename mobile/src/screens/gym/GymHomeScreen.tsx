@@ -27,7 +27,6 @@ import GymWorkoutBanner from '../../components/Gym/GymWorkoutBanner';
 import WeeklyGymReport from '../../components/Gym/WeeklyGymReport';
 import { useGymPlanPreCache } from '../../hooks/useGymPlanPreCache';
 import GymHomeSkeleton from '../../components/Gym/GymHomeSkeleton';
-import { useDeferredScreenMount } from '../../hooks/useDeferredScreenMount';
 
 // ─── Heavy Modals: Lazy-loaded on demand (skips parsing ~9,750 LOC on cold boot) ───
 const AddExerciseModal = React.lazy(() => import('../../components/Gym/AddExerciseModal').then(m => ({ default: m.AddExerciseModal })));
@@ -60,7 +59,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const isMounted = useDeferredScreenMount();
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [weekOffset, setWeekOffset] = useState(0);
 
@@ -76,6 +74,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   );
 
   const { gymLogs, gymLogsReady, waterLogs, sleepLogs, applyMasterTemplate, userGymPlan, updateMasterPlan, updateFullMasterPlan } = useWellnessData();
+  const isInitialLoading = !gymLogsReady && !userGymPlan && (!gymLogs || gymLogs.length === 0);
   const { user } = useCoreData();
 
   // Background exercise GIF pre-caching for 100% offline gym workouts
@@ -630,7 +629,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </View>
 
         <View style={{ flex: 1 }}>
-          {!isMounted ? (
+          {isInitialLoading ? (
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[s.scrollContent, { paddingTop: insets.top + 58 }]}>
               <GymHomeSkeleton />
             </ScrollView>

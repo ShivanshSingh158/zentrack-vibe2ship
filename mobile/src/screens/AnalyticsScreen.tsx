@@ -23,7 +23,6 @@ import { usePlannerData } from '../contexts/domains/PlannerContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
 import { useTheme } from "../contexts/ThemeContext";
 import AnalyticsSkeleton from '../components/Analytics/AnalyticsSkeleton';
-import { useDeferredScreenMount } from '../hooks/useDeferredScreenMount';
 import { computeOrGetHotCache, generateDatasetFingerprint } from '../utils/hotCacheStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -588,12 +587,12 @@ const ActivityHeatmap = React.memo(function ActivityHeatmap({ tasks, gymLogs, ha
 export default function AnalyticsScreen() {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation<any>();
-  const isMounted = useDeferredScreenMount();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   // ── Granular domain hooks (replaces useMobileData() monolith) ─────────────
   // PERF: Each hook only re-renders this screen when ITS domain's Firestore
   // snapshot fires — not every domain update like the composite facade did.
   const { tasks, habitLogs, allHabits, tasksReady } = useCoreData();
+  const isInitialLoading = !tasksReady && (!tasks || tasks.length === 0);
   const { gymLogs } = useWellnessData();
   const { attendance, attendanceLogs, semesters } = useAcademicData();
   const { goals } = usePlannerData();
@@ -882,7 +881,7 @@ export default function AnalyticsScreen() {
           <PeriodSelector value={period} onChange={setPeriod} />
         </Animated.View>
 
-        {!isMounted ? (
+        {isInitialLoading ? (
           <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
             <AnalyticsSkeleton />
           </ScrollView>

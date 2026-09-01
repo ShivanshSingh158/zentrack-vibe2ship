@@ -15,7 +15,6 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useSaraSurface } from '../hooks/useSaraSurface';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
 
-import { useDeferredScreenMount } from '../hooks/useDeferredScreenMount';
 // --- NEW ATTENDANCE MODULE IMPORTS ---
 import { 
   SCHEMA_VERSION, defaultSchedule, DAY_NAMES, DAY_SHORT, 
@@ -587,7 +586,6 @@ export default function AttendanceScreen() {
   }, [pillAnim]);
 
   // 1. Core Data & State Hook
-  const isMounted = useDeferredScreenMount();
   const academic = useAcademicData();
   const { attendanceReady } = academic;
   const data = useAttendanceData();
@@ -941,7 +939,7 @@ export default function AttendanceScreen() {
           />
         )}
 
-        {!isMounted ? (
+        {!attendanceReady && (!subjects || subjects.length === 0) ? (
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 120, paddingTop: insets.top + 54 }}

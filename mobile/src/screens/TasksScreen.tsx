@@ -18,7 +18,6 @@ import { today } from './tasks/taskConstants';
 import { makeTasksStyles } from './tasks/tasksStyles';
 import { useTasksData } from './tasks/useTasksData';
 import { useTasksFirestore } from './tasks/useTasksFirestore';
-import { useDeferredScreenMount } from '../hooks/useDeferredScreenMount';
 import { useRecurringSpawn } from './tasks/useRecurringSpawn';
 import { parseTimeFloat } from './tasks/taskConstants';
 
@@ -70,8 +69,8 @@ export default function TasksScreen() {
   // Guaranteed synchronous status bar clearance on Frame 0 — prevents upward jump under Android status bar
   const topInset = Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0);
   
-  const isMounted = useDeferredScreenMount();
   const { tasks, user, habits, habitLogs, tasksReady, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
+  const isInitialLoading = !tasksReady && (!tasks || tasks.length === 0);
   const { openPomodoro } = usePomodoro();
   const todayDateStr = useMemo(() => formatLocalDateStr(new Date()), []);
 
@@ -343,7 +342,7 @@ export default function TasksScreen() {
       )}
 
       {/* VIEWS */}
-      {!isMounted ? (
+      {isInitialLoading ? (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
           <TasksSkeleton />
         </ScrollView>
