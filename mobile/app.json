@@ -1,6 +1,9 @@
 {
   "expo": {
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "newArchEnabled": true,
     "jsEngine": "hermes",
     "name": "ZenTrack",
@@ -41,7 +44,8 @@
         "android.permission.USE_EXACT_ALARM",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.ACTIVITY_RECOGNITION"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -97,7 +101,9 @@
             }
           ]
         }
-      ]
+      ],
+      "expo-quick-actions",
+      "expo-sqlite"
     ],
     "extra": {
       "eas": {
