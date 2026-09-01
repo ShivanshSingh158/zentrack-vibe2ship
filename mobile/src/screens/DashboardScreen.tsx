@@ -31,6 +31,7 @@ import { getDueFlashcards, Flashcard } from '../services/flashcardService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useOfflineStatus } from '../hooks/useOfflineStatus';
 import { useWidgetSync } from '../hooks/useWidgetSync';
+import { useStepCounter } from '../hooks/useStepCounter';
 import { areItemsEqual } from '../utils/schemaGuards';
 import DashboardSkeleton from '../components/Dashboard/DashboardSkeleton';
 
@@ -40,6 +41,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { isOffline, queueCount, recentlySynced } = useOfflineStatus();
+  const { steps, stepGoal } = useStepCounter();
 
   const data = useDashboardData();
   useWidgetSync({
@@ -458,6 +460,8 @@ export default function DashboardScreen() {
                     habitsTotal={data.allHabits.length}
                     waterCompleted={waterCompleted}
                     waterTotal={data.waterTotal}
+                    steps={steps}
+                    stepGoal={stepGoal}
                     classesAttendedToday={data.classesAttendedToday}
                     classesTotalToday={data.classesTotalToday}
                     overallAttendancePct={data.overallAttendancePct}
@@ -473,6 +477,7 @@ export default function DashboardScreen() {
                     onPressStreak={handlePressStreak}
                     onPressHabits={handlePressHabits}
                     onPressWater={handlePressWater}
+                    onPressSteps={() => navigation.navigate('WellbeingDashboard')}
                     onPressAttendance={handlePressAttendance}
                     onPressXP={handlePressXP}
                     onPressRing={handlePressRing}

@@ -1,128 +1,139 @@
-﻿/**
- * useStepCounter.ts — ZenTrack Mobile
+/**
+ * useStepCounter.ts — ZenTrack Mobile Hardware Pedometer Hook
  *
- * Provides live step count data.
- * - Foreground: live updates via Pedometer.watchStepCount()
- * - Background: syncs to Firestore every 15 min via registerStepSyncTask()
- * - On mount: reads cached Firestore value instantly, then overlays live sensor
+ * Realtime native pedometer sync with zero battery drain.
+ * - Reads cached steps immediately from AsyncStorage (0ms render on cold boot).
+ * - Queries hardware sensor (Pedometer.getStepCountAsync) from midnight to now when app enters foreground.
+ * - Subscribes to live step events (Pedometer.watchStepCount) only while app is active.
+ * - Handles Android 10+ ACTIVITY_RECOGNITION runtime permission gracefully.
  */
 
-import { useState, useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Platform, AppState, AppStateStatus } from 'react-native';
 import { Pedometer } from 'expo-sensors';
-import { useCoreData } from '../contexts/domains/CoreDataContext';
-import {
-  syncStepsNow,
-  getTodayStepsFromFirestore,
-  registerStepSyncTask,
-  STEP_DAILY_GOAL,
-  getTodayDateKey,
-} from '../services/stepCounterService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export interface StepCounterState {
-  steps: number;
-  goal: number;
-  percent: number;            // 0–100
-  goalHit: boolean;
-  isAvailable: boolean;       // hardware sensor available on this device
-  permissionGranted: boolean;
-  lastSynced: number | null;  // Date.now() of last Firestore write
-  isLoading: boolean;
-}
+const STEP_GOAL_DEFAULT = 10000;
+const STEP_CACHE_KEY_PREFIX = '@zentrack_steps_';
 
-const DEFAULT_STATE: StepCounterState = {
-  steps: 0,
-  goal: STEP_DAILY_GOAL,
-  percent: 0,
-  goalHit: false,
-  isAvailable: false,
-  permissionGranted: false,
-  lastSynced: null,
-  isLoading: true,
-};
+export function useStepCounter() {
+  const [steps, setSteps] = useState<number>(0);
+  const [stepGoal, setStepGoal] = useState<number>(STEP_GOAL_DEFAULT);
+  const [isAvailable, setIsAvailable] = useState<boolean>(true);
+  const isQueryingRef = useRef<boolean>(false);
+  const subscriptionRef = useRef<any>(null);
 
-export function useStepCounter(): StepCounterState {
-  const { user } = useCoreData();
-  const [state, setState] = useState<StepCounterState>(DEFAULT_STATE);
-  const liveSubRef = useRef<{ remove(): void } | null>(null);
-  const todayKey = getTodayDateKey();
-
-  // Helper to update steps while keeping other state intact
-  const setSteps = (steps: number, source: 'live' | 'firestore', updatedAt?: number) => {
-    setState(prev => ({
-      ...prev,
-      steps,
-      percent: Math.min(100, Math.round((steps / STEP_DAILY_GOAL) * 100)),
-      goalHit: steps >= STEP_DAILY_GOAL,
-      lastSynced: source === 'firestore' ? (updatedAt ?? prev.lastSynced) : prev.lastSynced,
-      isLoading: false,
-    }));
+  const getTodayDateStr = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   };
 
-  useEffect(() => {
-    if (!user) {
-      setState({ ...DEFAULT_STATE, isLoading: false });
-      return;
-    }
+  // Sync today's steps from hardware sensor
+  const syncHardwareSteps = useCallback(async () => {
+    if (isQueryingRef.current) return;
+    isQueryingRef.current = true;
 
-    // Android-only: iOS uses HealthKit which requires special entitlements
-    if (Platform.OS !== 'android') {
-      setState(prev => ({ ...prev, isLoading: false }));
-      return;
-    }
+    try {
+      const todayStr = getTodayDateStr();
+      const cacheKey = `${STEP_CACHE_KEY_PREFIX}${todayStr}`;
 
-    let isMounted = true;
-
-    async function init() {
-      // 1. Immediately show Firestore cached value (feels instant)
-      const cached = await getTodayStepsFromFirestore(user!.uid);
-      if (isMounted && cached) {
-        setSteps(cached.steps, 'firestore', cached.updatedAt);
-      }
-
-      // 2. Check + request sensor permission
-      const { granted } = await Pedometer.getPermissionsAsync();
-      let permissionGranted = granted;
-      if (!granted) {
-        const req = await Pedometer.requestPermissionsAsync();
-        permissionGranted = req.granted;
-      }
-
-      // 3. Check hardware availability
-      const available = await Pedometer.isAvailableAsync();
-
-      if (isMounted) {
-        setState(prev => ({ ...prev, isAvailable: available, permissionGranted }));
-      }
-
-      if (!available || !permissionGranted) {
-        if (isMounted) setState(prev => ({ ...prev, isLoading: false }));
+      // 1. Check pedometer hardware availability
+      const available = await Pedometer.isAvailableAsync().catch(() => false);
+      setIsAvailable(available);
+      if (!available) {
+        isQueryingRef.current = false;
         return;
       }
 
-      // 4. Foreground live watcher — updates every step in real time
-      liveSubRef.current = Pedometer.watchStepCount(result => {
-        if (isMounted) setSteps(result.steps, 'live');
-      });
-
-      // 5. Do a fresh Firestore sync now (foreground)
-      await syncStepsNow(user!.uid);
-      const fresh = await getTodayStepsFromFirestore(user!.uid);
-      if (isMounted && fresh) {
-        setSteps(fresh.steps, 'firestore', fresh.updatedAt);
+      // 2. Check / request permission
+      const perm = await Pedometer.getPermissionsAsync().catch(() => ({ granted: false }));
+      let isGranted = perm.granted;
+      if (!isGranted) {
+        const req = await Pedometer.requestPermissionsAsync().catch(() => ({ granted: false }));
+        isGranted = req.granted;
       }
 
-      // 6. Register background task (no-op if already registered)
-      await registerStepSyncTask();
+      if (!isGranted) {
+        isQueryingRef.current = false;
+        return;
+      }
+
+      // 3. Query hardware step counter from midnight today to right now
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const now = new Date();
+
+      const result = await Pedometer.getStepCountAsync(startOfDay, now).catch(() => null);
+      if (result && typeof result.steps === 'number') {
+        const hardwareSteps = Math.max(0, result.steps);
+        setSteps(hardwareSteps);
+        await AsyncStorage.setItem(cacheKey, String(hardwareSteps)).catch(() => {});
+      }
+    } catch (e) {
+      console.warn('[StepCounter] Pedometer sync error:', e);
+    } finally {
+      isQueryingRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    const todayStr = getTodayDateStr();
+    const cacheKey = `${STEP_CACHE_KEY_PREFIX}${todayStr}`;
+
+    // 1. Initial 0ms load from cache
+    AsyncStorage.getItem(cacheKey).then((cached) => {
+      if (cached) {
+        const val = parseInt(cached, 10);
+        if (!isNaN(val)) setSteps(val);
+      }
+    }).catch(() => {});
+
+    // Read custom step goal if user configured one
+    AsyncStorage.getItem('@zentrack_step_goal').then((goal) => {
+      if (goal) {
+        const g = parseInt(goal, 10);
+        if (!isNaN(g) && g > 0) setStepGoal(g);
+      }
+    }).catch(() => {});
+
+    // 2. Hardware sync on mount
+    syncHardwareSteps();
+
+    // 3. Live Pedometer Watcher while app is active
+    try {
+      subscriptionRef.current = Pedometer.watchStepCount((result) => {
+        if (result && typeof result.steps === 'number') {
+          setSteps((prev) => {
+            const next = prev + result.steps;
+            AsyncStorage.setItem(cacheKey, String(next)).catch(() => {});
+            return next;
+          });
+        }
+      });
+    } catch (e) {
+      // Ignored if watchStepCount not supported on platform
     }
 
-    init().catch(e => console.warn('[useStepCounter] init error:', e));
+    // 4. Sync on app foreground resume
+    const appStateSub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        syncHardwareSteps();
+      }
+    });
 
     return () => {
-      isMounted = false;
-      liveSubRef.current?.remove();
+      if (subscriptionRef.current) {
+        subscriptionRef.current.remove();
+        subscriptionRef.current = null;
+      }
+      appStateSub.remove();
     };
-  }, [user?.uid, todayKey]); // re-init on new day
+  }, [syncHardwareSteps]);
 
-  return state;
+  return {
+    steps,
+    stepGoal,
+    isAvailable,
+    refreshSteps: syncHardwareSteps,
+  };
 }

@@ -41,6 +41,8 @@ interface UnifiedLifeWidgetProps {
   habitsTotal: number;
   waterCompleted: number;
   waterTotal: number;
+  steps?: number;
+  stepGoal?: number;
   classesAttendedToday?: number;
   classesTotalToday?: number;
   overallAttendancePct?: number;
@@ -58,6 +60,7 @@ interface UnifiedLifeWidgetProps {
   onPressStreak: () => void;
   onPressHabits: () => void;
   onPressWater: () => void;
+  onPressSteps?: () => void;
   onPressAttendance?: () => void;
   onPressXP?: () => void;
   onPressRing?: () => void;
@@ -77,6 +80,8 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
   habitsTotal,
   waterCompleted,
   waterTotal,
+  steps = 0,
+  stepGoal = 10000,
   classesAttendedToday = 0,
   classesTotalToday = 0,
   overallAttendancePct = 0,
@@ -94,6 +99,7 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
   onPressStreak,
   onPressHabits,
   onPressWater,
+  onPressSteps,
   onPressAttendance,
   onPressXP,
   onPressRing,
@@ -254,31 +260,44 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
             <Text style={[styles.valuePillText, { color: colors.accentBlue }]}>{displayWater}/{displayWaterTarget}L</Text>
           </AnimatedPressable>
 
-          {/* CLASSES (Replaced Library) */}
+          {/* STEPS (Replaced Classes) */}
           <AnimatedPressable
             style={[
               styles.compactMetricRow, 
               { 
-                backgroundColor: isDark ? '#1C1C20' : 'rgba(217, 119, 6, 0.08)', 
+                backgroundColor: isDark ? '#1C1C20' : 'rgba(245, 158, 11, 0.08)', 
                 borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border, 
-                borderWidth: 1 
+                borderWidth: 1,
+                overflow: 'hidden',
               }
             ]}
             activeOpacity={0.75}
             onPress={() => { 
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
-              if (onPressAttendance) onPressAttendance();
+              if (onPressSteps) {
+                onPressSteps();
+              } else if (onPressAttendance) {
+                onPressAttendance();
+              }
             }}
           >
+            {/* Subtle Progress Fill */}
+            <View
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: 0,
+                width: `${Math.min(100, ((steps || 0) / (stepGoal || 10000)) * 100)}%`,
+                backgroundColor: isDark ? 'rgba(245, 158, 11, 0.16)' : 'rgba(245, 158, 11, 0.12)',
+              }}
+            />
             <View style={styles.compactLeftGroup}>
-              <Text style={styles.compactEmoji}>🎓</Text>
-              <Text style={[styles.compactLabel, { color: colors.accentAmber }]}>Classes</Text>
+              <Text style={styles.compactEmoji}>🚶</Text>
+              <Text style={[styles.compactLabel, { color: '#f59e0b' }]}>Steps</Text>
             </View>
-            <Text style={[styles.valuePillText, { color: colors.accentAmber }]}>
-              {classesTotalToday > 0 
-                ? `${classesAttendedToday}/${classesTotalToday} Done`
-                : (overallAttendancePct > 0 ? `${overallAttendancePct}% Avg` : '0/0 Done')
-              }
+            <Text style={[styles.valuePillText, { color: '#f59e0b' }]}>
+              {steps >= 1000 ? `${(steps / 1000).toFixed(1)}k` : steps}/{stepGoal >= 1000 ? `${Math.round(stepGoal / 1000)}k` : stepGoal}
             </Text>
           </AnimatedPressable>
         </View>
