@@ -240,7 +240,7 @@ function MainTabNavigator() {
       detachInactiveScreens={false}
       screenOptions={{
         headerShown: false,
-        animation: 'none',
+        animation: 'fade',
         sceneStyle:  { backgroundColor: colors.background },
         lazy: true,
         freezeOnBlur: true,

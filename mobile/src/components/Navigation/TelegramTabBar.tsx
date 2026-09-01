@@ -10,6 +10,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY } from '../../theme/tokens';
@@ -84,6 +85,7 @@ const TabItem = React.memo(function TabItem({
   }));
 
   const handlePress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const event = navigation.emit({
       type: 'tabPress',
       target: route.key,
@@ -213,6 +215,30 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
       ? moreRouteIndex
       : 0;
 
+  // ── Telegram-Grade Gliding Indicator Pill (GPU worklet) ────────────────────
+  const [rowWidth, setRowWidth] = useState(0);
+  const tabCount = visibleRoutes.length;
+  const tabWidth = rowWidth > 0 && tabCount > 0 ? rowWidth / tabCount : 0;
+
+  const indicatorTranslateX = useSharedValue(0);
+  const indicatorOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (tabWidth > 0 && activeIndex >= 0) {
+      indicatorTranslateX.value = withSpring(activeIndex * tabWidth, {
+        damping: 24,
+        stiffness: 380,
+        mass: 0.55,
+      });
+      indicatorOpacity.value = withTiming(1, { duration: 150 });
+    }
+  }, [activeIndex, tabWidth]);
+
+  const indicatorAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: indicatorTranslateX.value }],
+    opacity: indicatorOpacity.value,
+  }));
+
   // Screen options hide (only when a full-screen modal explicitly requests tabBarStyle: { display: 'none' })
   const focusedOptions = descriptors[state.routes[state.index].key]?.options || {};
   const isScreenOptionsHidden =
@@ -291,7 +317,30 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
           { paddingBottom: bottomPadding },
         ]}
       >
-        <View style={styles.tabsRow}>
+        <View
+          style={styles.tabsRow}
+          onLayout={(e) => {
+            const width = e.nativeEvent.layout.width;
+            if (width > 0) setRowWidth(width);
+          }}
+        >
+          {/* Telegram Gliding Indicator Pill (GPU worklet) */}
+          {tabWidth > 0 && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.glidingPill,
+                {
+                  width: Math.max(0, tabWidth - 6),
+                  left: 3,
+                  backgroundColor: isDark ? 'rgba(165, 153, 255, 0.12)' : 'rgba(165, 153, 255, 0.15)',
+                  borderColor: isDark ? 'rgba(165, 153, 255, 0.22)' : 'rgba(165, 153, 255, 0.30)',
+                },
+                indicatorAnimatedStyle,
+              ]}
+            />
+          )}
+
           {visibleRoutes.map((route, index) => {
             const isVisuallyFocused = activeIndex === index;
             const isActuallyFocused = state.routes[state.index].key === route.key;
@@ -343,6 +392,14 @@ const styles = StyleSheet.create({
     height: 48,
     backgroundColor: 'transparent',
     paddingHorizontal: 2,
+  },
+  glidingPill: {
+    position: 'absolute',
+    top: 2,
+    bottom: 2,
+    borderRadius: 14,
+    borderWidth: 1,
+    zIndex: 0,
   },
   tabButton: {
     flex: 1,
