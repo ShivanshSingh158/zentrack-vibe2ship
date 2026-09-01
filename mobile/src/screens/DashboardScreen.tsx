@@ -165,6 +165,10 @@ export default function DashboardScreen() {
     navigation.navigate('Attendance');
   }, [navigation]);
 
+  const handlePressSteps = useCallback(() => {
+    navigation.navigate('MoreStack', { screen: 'WellbeingDashboard', params: { initialTab: 'steps' } });
+  }, [navigation]);
+
   const handlePressXP = useCallback(() => {
     navigation.navigate('MoreStack', { screen: 'XPConstellation' });
   }, [navigation]);
@@ -477,7 +481,7 @@ export default function DashboardScreen() {
                     onPressStreak={handlePressStreak}
                     onPressHabits={handlePressHabits}
                     onPressWater={handlePressWater}
-                    onPressSteps={() => navigation.navigate('MoreStack', { screen: 'WellbeingDashboard', params: { initialTab: 'steps' } })}
+                    onPressSteps={handlePressSteps}
                     onPressAttendance={handlePressAttendance}
                     onPressXP={handlePressXP}
                     onPressRing={handlePressRing}
