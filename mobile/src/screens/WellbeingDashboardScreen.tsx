@@ -1,9 +1,10 @@
 /**
- * WellbeingDashboardScreen.tsx — ZenTrack Physical Vitality & Daily Movement Hub
- * Features: Real-time native Step Counter, 7-Day movement graphs, Hydration tracking, and S.A.R.A Intelligence.
+ * WellbeingDashboardScreen.tsx — ZenTrack Physical Vitality & Movement Hub
+ * High-performance, edge-to-edge Obsidian Cosmos design with native Step Counter,
+ * 7-Day movement trends, Hydration tracking, and on-demand S.A.R.A Intelligence.
  */
 
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,12 +12,12 @@ import {
   ScrollView,
   Dimensions,
   TouchableOpacity,
-  Animated,
   InteractionManager,
   Modal,
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,7 +32,6 @@ import Svg, {
   Line,
   Circle,
 } from 'react-native-svg';
-import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
@@ -46,13 +46,13 @@ import {
   formatStepsDistance,
   formatStepsCalories,
   formatStepsActiveTime,
-  DayStepData,
 } from '../hooks/useStepCounter';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_PAD = 16;
-const CHART_W = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD * 2;
-const CHART_H = 130;
+const SCREEN_PAD = 6;
+const CARD_PAD = 14;
+const CHART_W = SCREEN_WIDTH - SCREEN_PAD * 2 - CARD_PAD * 2;
+const CHART_H = 135;
 
 // ─── Smooth Bezier Helper for Water Chart ──────────────────────────────────────
 function smoothPath(pts: { x: number; y: number }[]): string {
@@ -84,9 +84,8 @@ function getDayLabel(dateStr: string): string {
   return days[d.getDay()];
 }
 
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-
-function GlassCard({
+// ─── Lag-Free High Performance Obsidian Card ─────────────────────────────────
+function ObsidianCard({
   children,
   style,
   isDark,
@@ -97,37 +96,20 @@ function GlassCard({
   isDark: boolean;
   colors: any;
 }) {
-  if (isDark) {
-    return (
-      <BlurView
-        intensity={55}
-        tint="dark"
-        style={[
-          {
-            borderRadius: RADIUS.xl,
-            padding: CARD_PAD,
-            borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.08)',
-            overflow: 'hidden',
-            backgroundColor: 'rgba(18, 17, 26, 0.65)',
-          },
-          style,
-        ]}
-      >
-        {children}
-      </BlurView>
-    );
-  }
   return (
     <View
       style={[
         {
-          borderRadius: RADIUS.xl,
+          borderRadius: 20,
           padding: CARD_PAD,
           borderWidth: 1,
-          borderColor: colors.border,
-          overflow: 'hidden',
-          backgroundColor: colors.surface,
+          borderColor: isDark ? 'rgba(165, 153, 255, 0.12)' : colors.border,
+          backgroundColor: isDark ? '#13121D' : colors.surface,
+          shadowColor: '#000000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: isDark ? 0.25 : 0.05,
+          shadowRadius: 10,
+          elevation: 3,
         },
         style,
       ]}
@@ -153,6 +135,27 @@ export default function WellbeingDashboardScreen() {
   const [showCustomGoalModal, setShowCustomGoalModal] = useState(false);
   const [customGoalInput, setCustomGoalInput] = useState(String(stepGoal));
 
+  // SARA AI On-Demand Coaching State
+  const [aiTip, setAiTip] = useState<string | null>(null);
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
+    return () => handle.cancel();
+  }, [ensureSubscribed]);
+
+  const days = useMemo(() => getPast7Days(), []);
+  const todayStr = days[days.length - 1];
+
+  // Load cached AI tip on mount
+  useEffect(() => {
+    AsyncStorage.getItem(`@zentrack_daily_tip_${todayStr}_${activeTab}`)
+      .then((cached) => {
+        if (cached) setAiTip(cached);
+      })
+      .catch(() => {});
+  }, [todayStr, activeTab]);
+
   const handleOpenCustomGoal = () => {
     setCustomGoalInput(String(stepGoal));
     setShowCustomGoalModal(true);
@@ -167,24 +170,59 @@ export default function WellbeingDashboardScreen() {
     }
   };
 
-  useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
-    return () => handle.cancel();
-  }, [ensureSubscribed]);
+  // ─── S.A.R.A On-Demand Analysis Trigger ──────────────────────────────────────
+  const triggerAiAnalysis = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsAiThinking(true);
+    const cacheKey = `@zentrack_daily_tip_${todayStr}_${activeTab}`;
 
-  // Mount animation
-  const mountAnim = useRef(new Animated.Value(0)).current;
-  const pathAnim = useRef(new Animated.Value(0)).current;
+    try {
+      const prompt =
+        activeTab === 'steps'
+          ? `You are S.A.R.A, a high-performance biohacking & movement AI coach.
+Analyze the user's daily movement: ${steps} steps taken out of a ${stepGoal} daily goal.
+Respond with a strict single JSON object format:
+{"coaching_tip": "Your punchy 1-2 sentence actionable coaching advice here"}
+Do NOT output markdown code fences or other text.`
+          : `You are S.A.R.A, a wellness coach AI.
+Analyze the user's hydration.
+Respond with a strict single JSON object format:
+{"coaching_tip": "Your punchy 1-2 sentence hydration advice here"}
+Do NOT output markdown code fences or other text.`;
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(mountAnim, { toValue: 1, duration: 450, useNativeDriver: true }),
-      Animated.timing(pathAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-    ]).start();
-  }, [activeTab]);
+      const resp = await callProxy({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json' },
+      });
 
-  const days = useMemo(() => getPast7Days(), []);
-  const todayStr = days[days.length - 1];
+      const rawText = resp.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (rawText) {
+        let extractedTip = '';
+        try {
+          const clean = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+          const parsed = JSON.parse(clean);
+          extractedTip = parsed.coaching_tip || parsed.tip || parsed.text || clean;
+        } catch {
+          const match = rawText.match(/"coaching_tip"\s*:\s*"([^"]+)"/);
+          extractedTip = match ? match[1] : rawText.replace(/[{}"\\]/g, '').trim();
+        }
+
+        if (extractedTip) {
+          setAiTip(extractedTip);
+          await AsyncStorage.setItem(cacheKey, extractedTip).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.warn('[Wellbeing] AI Analysis error:', e);
+      setAiTip(
+        steps >= stepGoal
+          ? '🔥 Target achieved! Active walking keeps your metabolic rate elevated.'
+          : `🏃 ${(stepGoal - steps).toLocaleString()} steps remaining to hit your daily goal.`
+      );
+    } finally {
+      setIsAiThinking(false);
+    }
+  }, [todayStr, activeTab, steps, stepGoal]);
 
   // ─── Water Metrics ────────────────────────────────────────────────────────
   const waterData = useMemo(() => {
@@ -219,70 +257,24 @@ export default function WellbeingDashboardScreen() {
   const stepAvg = Math.round(stepHistoryDays.reduce((a, b) => a + b.steps, 0) / 7);
   const stepProgress = Math.min(1, steps / (stepGoal || 10000));
 
-  // AI Movement & Hydration Insights
-  const [aiTip, setAiTip] = useState<string | null>(null);
-  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
-
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchAiInsights() {
-      const cacheKey = `@zentrack_daily_wellbeing_tip_${todayStr}_${activeTab}`;
-      try {
-        const cached = await AsyncStorage.getItem(cacheKey);
-        if (cached && isMounted) {
-          setAiTip(cached);
-          return;
-        }
-      } catch {}
-
-      setIsAiThinking(true);
-      try {
-        const prompt =
-          activeTab === 'steps'
-            ? `You are S.A.R.A, a high-performance biohacking & athletic movement AI.
-Analyze the user's daily steps (${steps}/${stepGoal}) and provide one punchy, motivational coaching tip under 120 characters.`
-            : `You are S.A.R.A, a high-performance wellness coach AI.
-Analyze the user's last 7 days of water logs and provide one short, punchy hydration tip under 120 characters.`;
-
-        const resp = await callProxy({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json' },
-        });
-
-        const rawText = resp.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (rawText && isMounted) {
-          const parsed = JSON.parse(rawText);
-          const tipText = parsed.tip || parsed.waterTip || parsed.text || rawText;
-          setAiTip(tipText);
-          AsyncStorage.setItem(cacheKey, tipText).catch(() => {});
-        }
-      } catch (e) {
-      } finally {
-        if (isMounted) setIsAiThinking(false);
-      }
-    }
-    fetchAiInsights();
-    return () => {
-      isMounted = false;
-    };
-  }, [todayStr, activeTab, steps, stepGoal]);
-
-  const defaultStepTip =
-    steps >= stepGoal
-      ? '🔥 Daily goal crushed! Active walking accelerates muscle recovery and optimizes REM sleep.'
-      : `🏃 ${Math.max(0, stepGoal - steps).toLocaleString()} steps remaining to hit your 10k target before evening.`;
-
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
       <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
 
-      {/* ── Top Header Bar ── */}
+      {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} hitSlop={12}>
           <Ionicons name="chevron-back" size={26} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Physical Vitality</Text>
-        <TouchableOpacity style={styles.refreshBtn} onPress={() => refreshSteps()}>
+        <TouchableOpacity
+          style={styles.refreshBtn}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            refreshSteps();
+          }}
+          hitSlop={12}
+        >
           <Ionicons name="refresh-outline" size={20} color={colors.accentPrimary} />
         </TouchableOpacity>
       </View>
@@ -292,16 +284,22 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Segmented Tab Switcher (Steps vs Hydration) ── */}
-        <View style={[styles.tabBar, { backgroundColor: isDark ? '#161522' : '#F2F1F8' }]}>
+        {/* ── Segmented Tab Switcher (Full Width) ── */}
+        <View style={[styles.tabBar, { backgroundColor: isDark ? '#171622' : '#EFEFF4' }]}>
           <TouchableOpacity
-            style={[styles.tabItem, activeTab === 'steps' && [styles.tabItemActive, { backgroundColor: isDark ? '#262438' : '#FFFFFF' }]]}
+            style={[
+              styles.tabItem,
+              activeTab === 'steps' && [
+                styles.tabItemActive,
+                { backgroundColor: isDark ? '#262438' : '#FFFFFF' },
+              ],
+            ]}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setActiveTab('steps');
             }}
           >
-            <Text style={{ fontSize: 13, marginRight: 5 }}>🚶</Text>
+            <Text style={{ fontSize: 14, marginRight: 6 }}>🚶</Text>
             <Text
               style={[
                 styles.tabText,
@@ -314,13 +312,19 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.tabItem, activeTab === 'water' && [styles.tabItemActive, { backgroundColor: isDark ? '#262438' : '#FFFFFF' }]]}
+            style={[
+              styles.tabItem,
+              activeTab === 'water' && [
+                styles.tabItemActive,
+                { backgroundColor: isDark ? '#262438' : '#FFFFFF' },
+              ],
+            ]}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setActiveTab('water');
             }}
           >
-            <Text style={{ fontSize: 13, marginRight: 5 }}>💧</Text>
+            <Text style={{ fontSize: 14, marginRight: 6 }}>💧</Text>
             <Text
               style={[
                 styles.tabText,
@@ -333,11 +337,11 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
           </TouchableOpacity>
         </View>
 
-        {/* ── Tab 1: Steps & Daily Movement ── */}
+        {/* ── TAB 1: STEPS & MOVEMENT ── */}
         {activeTab === 'steps' && (
-          <Animated.View style={{ opacity: mountAnim }}>
+          <View>
             {/* Hero Radial Ring Card */}
-            <GlassCard isDark={isDark} colors={colors} style={styles.card}>
+            <ObsidianCard isDark={isDark} colors={colors} style={styles.card}>
               <View style={styles.heroRingContainer}>
                 <Svg width={180} height={180} viewBox="0 0 180 180">
                   <Defs>
@@ -410,11 +414,11 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
                   <Text style={[styles.subMetricLabel, { color: colors.textMuted }]}>Active Move</Text>
                 </View>
               </View>
-            </GlassCard>
+            </ObsidianCard>
 
             {/* 7-Day Movement Bar Chart */}
             <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>7-Day Movement Trend</Text>
-            <GlassCard isDark={isDark} colors={colors} style={styles.card}>
+            <ObsidianCard isDark={isDark} colors={colors} style={styles.card}>
               <View style={styles.statRow}>
                 <View>
                   <Text style={[styles.statLabel, { color: colors.textTertiary }]}>7-Day Average</Text>
@@ -424,7 +428,7 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={[styles.statLabel, { color: colors.textTertiary }]}>Pace Status</Text>
-                  <Text style={[styles.statValue, { color: '#30D158', fontSize: 18, marginTop: 4 }]}>
+                  <Text style={[styles.statValue, { color: '#30D158', fontSize: 16, marginTop: 4 }]}>
                     {steps >= stepGoal ? '⚡ Goal Crushed' : '🏃 On Track'}
                   </Text>
                 </View>
@@ -446,10 +450,11 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
                   />
 
                   {stepHistoryDays.map((item, i) => {
-                    const barW = CHART_W / 7 - 10;
-                    const barX = i * (CHART_W / 7) + 5;
-                    const barH = Math.max(6, (item.steps / (maxStepsInWeek || 12000)) * (CHART_H - 24));
-                    const barY = CHART_H - barH - 18;
+                    const colW = CHART_W / 7;
+                    const barW = colW - 8;
+                    const barX = i * colW + 4;
+                    const barH = Math.max(6, (item.steps / (maxStepsInWeek || 12000)) * (CHART_H - 26));
+                    const barY = CHART_H - barH - 20;
                     const isToday = i === 6;
                     const isGoalMet = item.steps >= stepGoal;
 
@@ -461,7 +466,15 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
                           width={barW}
                           height={barH}
                           rx={5}
-                          fill={isToday ? '#f59e0b' : isGoalMet ? '#30D158' : isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)'}
+                          fill={
+                            isToday
+                              ? '#f59e0b'
+                              : isGoalMet
+                              ? '#30D158'
+                              : isDark
+                              ? 'rgba(255,255,255,0.18)'
+                              : 'rgba(0,0,0,0.12)'
+                          }
                         />
                         <SvgText
                           x={barX + barW / 2}
@@ -479,17 +492,56 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
                 </Svg>
               </View>
 
-              {/* SARA AI Tip */}
-              <View style={[styles.tipBox, { backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : colors.surface2, borderColor: colors.border }]}>
-                <Ionicons name="sparkles" size={16} color="#f59e0b" />
-                <Text style={[styles.tipText, { color: colors.textPrimary }]}>
-                  {isAiThinking ? 'S.A.R.A is analyzing your movement...' : aiTip || defaultStepTip}
-                </Text>
-              </View>
-            </GlassCard>
+              {/* ── S.A.R.A On-Demand Intelligence Button / Card ── */}
+              {aiTip ? (
+                <View style={[styles.tipBox, { backgroundColor: isDark ? '#1C1B2B' : '#F6F5FB', borderColor: isDark ? 'rgba(165,153,255,0.2)' : colors.border }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="sparkles" size={15} color="#f59e0b" />
+                      <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 12, color: '#f59e0b' }}>S.A.R.A Coaching</Text>
+                    </View>
+                    <TouchableOpacity onPress={triggerAiAnalysis} hitSlop={10} disabled={isAiThinking}>
+                      {isAiThinking ? (
+                        <ActivityIndicator size="small" color="#f59e0b" />
+                      ) : (
+                        <Ionicons name="refresh" size={14} color={colors.textMuted} />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={[styles.tipText, { color: colors.textPrimary }]}>
+                    "{aiTip}"
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[
+                    styles.aiAnalyzeBtn,
+                    { backgroundColor: isDark ? '#1C1A2E' : '#F2F1FA', borderColor: isDark ? 'rgba(165,153,255,0.25)' : colors.border },
+                  ]}
+                  onPress={triggerAiAnalysis}
+                  disabled={isAiThinking}
+                >
+                  {isAiThinking ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <ActivityIndicator size="small" color="#f59e0b" />
+                      <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 13, color: '#f59e0b' }}>
+                        Analyzing movement biomechanics...
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Ionicons name="sparkles" size={16} color="#f59e0b" />
+                      <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary }}>
+                        Ask S.A.R.A for Movement Analysis
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
+            </ObsidianCard>
 
             {/* Daily Target Goal Selector */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.sm, marginLeft: SPACE.xs, marginRight: SPACE.xs }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.sm, marginLeft: 2, marginRight: 2 }}>
               <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 0 }]}>Adjust Daily Step Target</Text>
               <TouchableOpacity onPress={handleOpenCustomGoal} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Ionicons name="pencil" size={13} color="#f59e0b" />
@@ -511,7 +563,7 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
                           : isDark
                           ? '#1c1b29'
                           : '#FFFFFF',
-                        borderColor: isSelected ? '#f59e0b' : colors.border,
+                        borderColor: isSelected ? '#f59e0b' : isDark ? 'rgba(255,255,255,0.08)' : colors.border,
                       },
                     ]}
                     onPress={() => {
@@ -539,7 +591,7 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
                       : isDark
                       ? '#1c1b29'
                       : '#FFFFFF',
-                    borderColor: ![6000, 8000, 10000, 12000, 15000].includes(stepGoal) ? '#f59e0b' : colors.border,
+                    borderColor: ![6000, 8000, 10000, 12000, 15000].includes(stepGoal) ? '#f59e0b' : isDark ? 'rgba(255,255,255,0.08)' : colors.border,
                   },
                 ]}
                 onPress={handleOpenCustomGoal}
@@ -554,157 +606,13 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
                 </Text>
               </TouchableOpacity>
             </View>
-          </Animated.View>
+          </View>
         )}
 
-        {/* ── Custom Goal Modal ── */}
-        <Modal
-          visible={showCustomGoalModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowCustomGoalModal(false)}
-        >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={{
-              flex: 1,
-              backgroundColor: 'rgba(0, 0, 0, 0.7)',
-              justifyContent: 'center',
-              alignItems: 'center',
-              padding: 24,
-            }}
-          >
-            <View
-              style={{
-                width: '100%',
-                maxWidth: 340,
-                backgroundColor: isDark ? '#181724' : '#FFFFFF',
-                borderRadius: 20,
-                padding: 22,
-                borderWidth: 1,
-                borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 10 },
-                shadowOpacity: 0.3,
-                shadowRadius: 20,
-                elevation: 15,
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                <Text style={{ fontSize: 20, marginRight: 8 }}>🎯</Text>
-                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary }}>
-                  Set Custom Step Goal
-                </Text>
-              </View>
-
-              <Text style={{ fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textMuted, marginBottom: 16 }}>
-                Enter your personalized daily target for active walking and wellness:
-              </Text>
-
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: isDark ? '#100f1a' : '#F5F4F9',
-                  borderRadius: 14,
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                  marginBottom: 16,
-                  borderWidth: 1,
-                  borderColor: '#f59e0b',
-                }}
-              >
-                <TextInput
-                  style={{
-                    flex: 1,
-                    fontFamily: FONT_FAMILY.bold,
-                    fontSize: 22,
-                    color: colors.textPrimary,
-                  }}
-                  keyboardType="number-pad"
-                  value={customGoalInput}
-                  onChangeText={setCustomGoalInput}
-                  placeholder="e.g. 7500"
-                  placeholderTextColor={colors.textMuted}
-                  autoFocus
-                  selectTextOnFocus
-                />
-                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 14, color: '#f59e0b' }}>
-                  STEPS
-                </Text>
-              </View>
-
-              {/* Quick Stepper Controls */}
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, gap: 8 }}>
-                <TouchableOpacity
-                  style={{
-                    flex: 1,
-                    backgroundColor: isDark ? '#232136' : '#ECEBF2',
-                    borderRadius: 10,
-                    paddingVertical: 8,
-                    alignItems: 'center',
-                  }}
-                  onPress={() => {
-                    const cur = parseInt(customGoalInput.replace(/[^0-9]/g, ''), 10) || stepGoal;
-                    setCustomGoalInput(String(Math.max(500, cur - 1000)));
-                  }}
-                >
-                  <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary }}>-1,000</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={{
-                    flex: 1,
-                    backgroundColor: isDark ? '#232136' : '#ECEBF2',
-                    borderRadius: 10,
-                    paddingVertical: 8,
-                    alignItems: 'center',
-                  }}
-                  onPress={() => {
-                    const cur = parseInt(customGoalInput.replace(/[^0-9]/g, ''), 10) || stepGoal;
-                    setCustomGoalInput(String(Math.min(100000, cur + 1000)));
-                  }}
-                >
-                  <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary }}>+1,000</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Action Buttons */}
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TouchableOpacity
-                  style={{
-                    flex: 1,
-                    paddingVertical: 12,
-                    borderRadius: 12,
-                    backgroundColor: isDark ? '#232136' : '#E8E7EE',
-                    alignItems: 'center',
-                  }}
-                  onPress={() => setShowCustomGoalModal(false)}
-                >
-                  <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 14, color: colors.textMuted }}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={{
-                    flex: 1,
-                    paddingVertical: 12,
-                    borderRadius: 12,
-                    backgroundColor: '#f59e0b',
-                    alignItems: 'center',
-                  }}
-                  onPress={handleSaveCustomGoal}
-                >
-                  <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 14, color: '#000000' }}>Save Target</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
-
-        {/* ── Tab 2: Hydration Intake ── */}
+        {/* ── TAB 2: HYDRATION INTAKE ── */}
         {activeTab === 'water' && (
-          <Animated.View style={{ opacity: mountAnim }}>
-            <GlassCard style={styles.card} isDark={isDark} colors={colors}>
+          <View>
+            <ObsidianCard style={styles.card} isDark={isDark} colors={colors}>
               <View style={styles.statRow}>
                 <View>
                   <Text style={[styles.statLabel, { color: colors.textTertiary }]}>Today</Text>
@@ -746,15 +654,13 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
                   ))}
 
                   <Path d={waterAreaPath} fill="url(#waterGrad)" />
-                  <AnimatedPath
+                  <Path
                     d={waterPath}
                     fill="none"
                     stroke="url(#waterLineGrad)"
                     strokeWidth="3"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeDasharray={1000}
-                    strokeDashoffset={pathAnim.interpolate({ inputRange: [0, 1], outputRange: [1000, 0] })}
                   />
 
                   {waterPts.map((p, i) => (
@@ -771,18 +677,202 @@ Analyze the user's last 7 days of water logs and provide one short, punchy hydra
                 </View>
               </View>
 
-              <View style={[styles.tipBox, { backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : colors.surface2, borderColor: colors.border }]}>
-                <Ionicons name="sparkles" size={16} color={colors.accentPrimary} />
-                <Text style={[styles.tipText, { color: colors.textPrimary }]}>
-                  {isAiThinking ? 'S.A.R.A is analyzing your hydration...' : aiTip || 'Great job staying hydrated today!'}
-                </Text>
-              </View>
-            </GlassCard>
-          </Animated.View>
+              {/* SARA Hydration Tip */}
+              {aiTip ? (
+                <View style={[styles.tipBox, { backgroundColor: isDark ? '#1C1B2B' : '#F6F5FB', borderColor: isDark ? 'rgba(165,153,255,0.2)' : colors.border }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="sparkles" size={15} color="#0ea5e9" />
+                      <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 12, color: '#0ea5e9' }}>S.A.R.A Hydration</Text>
+                    </View>
+                    <TouchableOpacity onPress={triggerAiAnalysis} hitSlop={10} disabled={isAiThinking}>
+                      {isAiThinking ? (
+                        <ActivityIndicator size="small" color="#0ea5e9" />
+                      ) : (
+                        <Ionicons name="refresh" size={14} color={colors.textMuted} />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={[styles.tipText, { color: colors.textPrimary }]}>
+                    "{aiTip}"
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[
+                    styles.aiAnalyzeBtn,
+                    { backgroundColor: isDark ? '#1A222E' : '#F0F8FF', borderColor: isDark ? 'rgba(14,165,233,0.25)' : colors.border },
+                  ]}
+                  onPress={triggerAiAnalysis}
+                  disabled={isAiThinking}
+                >
+                  {isAiThinking ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <ActivityIndicator size="small" color="#0ea5e9" />
+                      <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 13, color: '#0ea5e9' }}>
+                        Analyzing hydration data...
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Ionicons name="sparkles" size={16} color="#0ea5e9" />
+                      <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary }}>
+                        Ask S.A.R.A for Hydration Coaching
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
+            </ObsidianCard>
+          </View>
         )}
 
-        <View style={{ height: 80 }} />
+        <View style={{ height: 60 }} />
       </ScrollView>
+
+      {/* ── Custom Goal Modal ── */}
+      <Modal
+        visible={showCustomGoalModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCustomGoalModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 340,
+              backgroundColor: isDark ? '#161524' : '#FFFFFF',
+              borderRadius: 22,
+              padding: 22,
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(165, 153, 255, 0.20)' : 'rgba(0, 0, 0, 0.08)',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.35,
+              shadowRadius: 20,
+              elevation: 15,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={{ fontSize: 20, marginRight: 8 }}>🎯</Text>
+              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary }}>
+                Set Custom Step Goal
+              </Text>
+            </View>
+
+            <Text style={{ fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textMuted, marginBottom: 16 }}>
+              Enter your personalized daily target for active walking and wellness:
+            </Text>
+
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: isDark ? '#0f0e18' : '#F5F4F9',
+                borderRadius: 14,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                marginBottom: 16,
+                borderWidth: 1,
+                borderColor: '#f59e0b',
+              }}
+            >
+              <TextInput
+                style={{
+                  flex: 1,
+                  fontFamily: FONT_FAMILY.bold,
+                  fontSize: 22,
+                  color: colors.textPrimary,
+                }}
+                keyboardType="number-pad"
+                value={customGoalInput}
+                onChangeText={setCustomGoalInput}
+                placeholder="e.g. 7500"
+                placeholderTextColor={colors.textMuted}
+                autoFocus
+                selectTextOnFocus
+              />
+              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 14, color: '#f59e0b' }}>
+                STEPS
+              </Text>
+            </View>
+
+            {/* Quick Stepper Controls */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20, gap: 8 }}>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  backgroundColor: isDark ? '#232136' : '#ECEBF2',
+                  borderRadius: 10,
+                  paddingVertical: 9,
+                  alignItems: 'center',
+                }}
+                onPress={() => {
+                  const cur = parseInt(customGoalInput.replace(/[^0-9]/g, ''), 10) || stepGoal;
+                  setCustomGoalInput(String(Math.max(500, cur - 1000)));
+                }}
+              >
+                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary }}>-1,000</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  backgroundColor: isDark ? '#232136' : '#ECEBF2',
+                  borderRadius: 10,
+                  paddingVertical: 9,
+                  alignItems: 'center',
+                }}
+                onPress={() => {
+                  const cur = parseInt(customGoalInput.replace(/[^0-9]/g, ''), 10) || stepGoal;
+                  setCustomGoalInput(String(Math.min(100000, cur + 1000)));
+                }}
+              >
+                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary }}>+1,000</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: isDark ? '#232136' : '#E8E7EE',
+                  alignItems: 'center',
+                }}
+                onPress={() => setShowCustomGoalModal(false)}
+              >
+                <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 14, color: colors.textMuted }}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: '#f59e0b',
+                  alignItems: 'center',
+                }}
+                onPress={handleSaveCustomGoal}
+              >
+                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 14, color: '#000000' }}>Save Target</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -794,21 +884,26 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: SPACE.xl,
-      paddingBottom: SPACE.md,
+      paddingHorizontal: 16,
+      paddingBottom: SPACE.sm,
       borderBottomWidth: 1,
       borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
     },
-    backBtn: { padding: SPACE.xs, marginLeft: -SPACE.xs },
-    refreshBtn: { padding: SPACE.xs, marginRight: -SPACE.xs },
+    backBtn: { padding: 4 },
+    refreshBtn: { padding: 4 },
     headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.lg },
     scroll: { flex: 1 },
-    scrollContent: { padding: SPACE.xl },
+    scrollContent: {
+      paddingHorizontal: SCREEN_PAD,
+      paddingTop: 8,
+      paddingBottom: 40,
+    },
     tabBar: {
       flexDirection: 'row',
       borderRadius: RADIUS.lg,
       padding: 4,
-      marginBottom: SPACE.lg,
+      marginBottom: 12,
+      marginHorizontal: 2,
     },
     tabItem: {
       flex: 1,
@@ -832,16 +927,16 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
     sectionTitle: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: FONT_SIZE.md,
-      marginBottom: SPACE.sm,
-      marginLeft: SPACE.xs,
+      marginBottom: 8,
+      marginLeft: 4,
     },
     card: {
-      marginBottom: SPACE.lg,
+      marginBottom: 14,
     },
     heroRingContainer: {
       alignItems: 'center',
       justifyContent: 'center',
-      marginVertical: SPACE.sm,
+      marginVertical: 4,
     },
     ringCenterOverlay: {
       position: 'absolute',
@@ -850,23 +945,23 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
     },
     ringBigCount: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 28,
+      fontSize: 32,
     },
     ringGoalLabel: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 10,
+      fontSize: 11,
       letterSpacing: 0.8,
       marginTop: 2,
     },
     ringPctText: {
       fontFamily: FONT_FAMILY.body,
-      fontSize: 11,
+      fontSize: 12,
       marginTop: 2,
     },
     subMetricsRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginTop: SPACE.md,
+      marginTop: 14,
       gap: 8,
     },
     subMetricBox: {
@@ -876,12 +971,12 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       borderRadius: RADIUS.lg,
     },
     subMetricEmoji: {
-      fontSize: 14,
-      marginBottom: 3,
+      fontSize: 15,
+      marginBottom: 2,
     },
     subMetricValue: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 13,
+      fontSize: 14,
     },
     subMetricLabel: {
       fontFamily: FONT_FAMILY.body,
@@ -891,7 +986,7 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
     statRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginBottom: SPACE.md,
+      marginBottom: 10,
     },
     statLabel: {
       fontFamily: FONT_FAMILY.medium,
@@ -902,43 +997,51 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
     },
     statValue: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 24,
+      fontSize: 22,
     },
     statUnit: {
       fontFamily: FONT_FAMILY.body,
       fontSize: FONT_SIZE.sm,
     },
     chartContainer: {
-      marginBottom: SPACE.md,
+      marginBottom: 10,
     },
     xLabels: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginTop: SPACE.xs,
+      marginTop: 2,
     },
     xLabelText: {
       fontFamily: FONT_FAMILY.body,
       fontSize: 10,
     },
     tipBox: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: SPACE.md,
+      padding: 12,
       borderRadius: RADIUS.lg,
       borderWidth: 1,
+      marginTop: 4,
     },
     tipText: {
       fontFamily: FONT_FAMILY.medium,
-      fontSize: FONT_SIZE.xs,
-      marginLeft: SPACE.sm,
-      flex: 1,
-      lineHeight: 18,
+      fontSize: 13,
+      lineHeight: 19,
+      fontStyle: 'italic',
+    },
+    aiAnalyzeBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 12,
+      borderRadius: RADIUS.lg,
+      borderWidth: 1,
+      marginTop: 4,
     },
     goalPillsRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      gap: 6,
-      marginBottom: SPACE.md,
+      gap: 5,
+      marginBottom: 16,
+      marginHorizontal: 2,
     },
     goalPill: {
       flex: 1,
