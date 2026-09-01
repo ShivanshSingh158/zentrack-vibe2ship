@@ -21,10 +21,25 @@ export interface WidgetAgendaTask {
   priority?: 'urgent' | 'high' | 'medium' | 'low';
 }
 
+export interface WidgetAgendaItem {
+  id: string;
+  type: 'class' | 'lab' | 'task' | 'gym';
+  title: string;
+  subtitle?: string;
+  timeStr: string;
+  timeMins: number;
+  status: 'attended' | 'missed' | 'cancelled' | 'completed' | 'pending';
+  subjectId?: string;
+  subjectName?: string;
+  sessionIdx?: number;
+  taskId?: string;
+}
+
 export interface TodayAgendaWidgetData {
   dateStr: string;        // YYYY-MM-DD
   displayDate: string;    // "Wed, Sep 1"
   zenScore: number;       // 0–100
+  items: WidgetAgendaItem[];
   classes: WidgetAgendaClass[];
   tasks: WidgetAgendaTask[];
   totalClasses: number;

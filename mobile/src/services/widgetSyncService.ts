@@ -24,6 +24,26 @@ import { doc, updateDoc, collection, addDoc } from 'firebase/firestore';
 const WIDGET_STORAGE_KEY = '@zentrack_widget_agenda_data';
 const LIVE_WORKOUT_STORAGE_KEY = '@zentrack_widget_live_workout_data';
 
+function parseTimeToMins(tStr?: string): number {
+  if (!tStr) return 9999;
+  const startStr = tStr.split('-')[0].trim().toLowerCase();
+  let h = 0;
+  let m = 0;
+  const isPM = startStr.includes('pm');
+  const isAM = startStr.includes('am');
+  const cleanStr = startStr.replace(/[a-z\s]/g, '');
+  const parts = cleanStr.split(':');
+  if (parts.length >= 2) {
+    h = parseInt(parts[0], 10) || 0;
+    m = parseInt(parts[1], 10) || 0;
+  } else {
+    h = parseInt(parts[0], 10) || 0;
+  }
+  if (isPM && h < 12) h += 12;
+  if (isAM && h === 12) h = 0;
+  return h * 60 + m;
+}
+
 /**
  * Builds TodayAgendaWidgetData from live application state
  */
@@ -51,6 +71,7 @@ export function buildTodayAgendaData({
 
   // 1. Build today's classes
   const classes: WidgetAgendaClass[] = [];
+  const items: any[] = [];
   const todayLogs = attendanceLogs.filter((l) => l.date === dateStr);
 
   subjects.forEach((subj) => {
@@ -61,9 +82,11 @@ export function buildTodayAgendaData({
         (l) => l.subjectId === subj.id && (l.idx === idx || (l as any).sessionIdx === idx)
       );
 
-      const status: 'attended' | 'missed' | 'pending' = log
-        ? (log.action === 'attended' ? 'attended' : log.action === 'missed' ? 'missed' : 'pending')
+      const status: 'attended' | 'missed' | 'cancelled' | 'pending' = log
+        ? (log.action === 'attended' ? 'attended' : log.action === 'missed' ? 'missed' : log.action === 'cancelled' ? 'cancelled' : 'pending')
         : 'pending';
+
+      const timeMins = parseTimeToMins(slot.time);
 
       classes.push({
         id: `${subj.id}_${idx}`,
@@ -72,26 +95,59 @@ export function buildTodayAgendaData({
         time: slot.time || 'Class',
         room: slot.room,
         type: isLab ? 'lab' : 'class',
-        status,
+        status: status === 'cancelled' ? 'pending' : status,
         idx,
+      });
+
+      items.push({
+        id: `${subj.id}_${idx}`,
+        type: isLab ? 'lab' : 'class',
+        title: subj.name,
+        subtitle: slot.room ? `[${slot.room}]` : isLab ? 'Lab' : 'Class',
+        timeStr: slot.time || 'Class',
+        timeMins,
+        status,
+        subjectId: subj.id,
+        subjectName: subj.name,
+        sessionIdx: idx,
       });
     });
   });
 
   // Sort classes by time
-  classes.sort((a, b) => a.time.localeCompare(b.time));
+  classes.sort((a, b) => parseTimeToMins(a.time) - parseTimeToMins(b.time));
 
   // 2. Build today's tasks
   const todayTasks: WidgetAgendaTask[] = tasks
     .filter((t) => !t.date || t.date === dateStr || t.status === 'pending')
     .slice(0, 10)
-    .map((t) => ({
-      id: t.id,
-      title: t.title,
-      timeSlot: (t as any).timeSlot || (t as any).dueTime,
-      status: t.status === 'completed' ? 'completed' : 'pending',
-      priority: t.priority as any,
-    }));
+    .map((t) => {
+      const timeStr = (t as any).timeSlot || (t as any).dueTime || '';
+      const timeMins = timeStr ? parseTimeToMins(timeStr) : 1439; // default end of day
+      const status: 'completed' | 'pending' = t.status === 'completed' ? 'completed' : 'pending';
+
+      items.push({
+        id: t.id,
+        type: 'task',
+        title: t.title,
+        subtitle: 'Task',
+        timeStr: timeStr || 'Today',
+        timeMins,
+        status,
+        taskId: t.id,
+      });
+
+      return {
+        id: t.id,
+        title: t.title,
+        timeSlot: timeStr,
+        status,
+        priority: t.priority as any,
+      };
+    });
+
+  // Sort unified agenda items chronologically by time
+  items.sort((a, b) => a.timeMins - b.timeMins);
 
   const attendedClasses = classes.filter((c) => c.status === 'attended').length;
   const doneTasks = todayTasks.filter((t) => t.status === 'completed').length;
@@ -100,6 +156,7 @@ export function buildTodayAgendaData({
     dateStr,
     displayDate,
     zenScore: Math.round(zenScore),
+    items,
     classes,
     tasks: todayTasks,
     totalClasses: classes.length,

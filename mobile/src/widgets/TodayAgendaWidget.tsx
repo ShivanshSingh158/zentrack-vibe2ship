@@ -1,11 +1,11 @@
 /**
  * TodayAgendaWidget.tsx — ZenTrack Android Home Screen Widget (Obsidian Cosmos Theme)
- * Adaptive, space-efficient, and dynamically resizable across small, medium, and expanded cells.
+ * Adaptive, space-efficient, and chronologically sorted matching Dashboard AgendaWidget.
  */
 
 import React from 'react';
 import { FlexWidget, TextWidget } from 'react-native-android-widget';
-import { TodayAgendaWidgetData } from '../types/widget.types';
+import { TodayAgendaWidgetData, WidgetAgendaItem } from '../types/widget.types';
 
 interface TodayAgendaWidgetProps {
   data?: TodayAgendaWidgetData | null;
@@ -16,6 +16,7 @@ interface TodayAgendaWidgetProps {
 export function TodayAgendaWidget({ data, width = 320, height = 180 }: TodayAgendaWidgetProps) {
   const displayDate = data?.displayDate || 'Today';
   const zenScore = data?.zenScore ?? 85;
+  const items = data?.items || [];
   const classes = data?.classes || [];
   const tasks = data?.tasks || [];
 
@@ -26,6 +27,11 @@ export function TodayAgendaWidget({ data, width = 320, height = 180 }: TodayAgen
 
   const isCompact = height < 135 || width < 220;
   const isExpanded = height >= 230;
+
+  // Filter items to show top chronological events
+  const timelineItems = items.length > 0
+    ? items.slice(0, isExpanded ? 5 : 3)
+    : [];
 
   return (
     <FlexWidget
@@ -43,14 +49,14 @@ export function TodayAgendaWidget({ data, width = 320, height = 180 }: TodayAgen
       clickAction="open_app"
       clickActionData={{ action: 'open_app' }}
     >
-      {/* ── Top Header: Brand, Date & Zen Score Pill ── */}
+      {/* ── Top Header: Brand, Date & Zen Score Capsule ── */}
       <FlexWidget
         style={{
           flexDirection: 'row',
           justifyContent: 'space-between',
           alignItems: 'center',
           width: 'match_parent',
-          marginBottom: isCompact ? 4 : 6,
+          marginBottom: isCompact ? 3 : 5,
         }}
       >
         <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -80,7 +86,7 @@ export function TodayAgendaWidget({ data, width = 320, height = 180 }: TodayAgen
           />
         </FlexWidget>
 
-        {/* Zen Score Glassmorphic Capsule */}
+        {/* Zen Score Capsule */}
         <FlexWidget
           style={{
             backgroundColor: 'rgba(165, 153, 255, 0.14)',
@@ -104,18 +110,18 @@ export function TodayAgendaWidget({ data, width = 320, height = 180 }: TodayAgen
         </FlexWidget>
       </FlexWidget>
 
-      {/* ── Middle: Active Class Schedule Card ── */}
+      {/* ── Primary Spotlight: Next Class / Active Event Card ── */}
       {nextClass ? (
         <FlexWidget
           style={{
             backgroundColor: '#161522',
             borderRadius: 12,
             paddingHorizontal: 10,
-            paddingVertical: isCompact ? 6 : 8,
+            paddingVertical: isCompact ? 6 : 7,
             flexDirection: 'row',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: isCompact ? 0 : 6,
+            marginBottom: isCompact ? 0 : 5,
             borderWidth: 1,
             borderColor: 'rgba(255, 255, 255, 0.07)',
           }}
@@ -152,69 +158,95 @@ export function TodayAgendaWidget({ data, width = 320, height = 180 }: TodayAgen
             />
           </FlexWidget>
 
-          {/* Present / Absent Buttons */}
-          <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {/* Action or Status Badge */}
+          {nextClass.status === 'attended' ? (
             <FlexWidget
               style={{
-                backgroundColor: nextClass.status === 'attended' ? '#30D158' : 'rgba(48, 209, 88, 0.16)',
+                backgroundColor: 'rgba(48, 209, 88, 0.16)',
                 borderRadius: 7,
-                paddingHorizontal: 7,
+                paddingHorizontal: 8,
                 paddingVertical: 4,
-                marginRight: 5,
                 borderWidth: 1,
-                borderColor: nextClass.status === 'attended' ? '#30D158' : 'rgba(48, 209, 88, 0.35)',
-              }}
-              clickAction="mark_class_present"
-              clickActionData={{
-                action: 'mark_class_present',
-                subjectId: nextClass.subjectId,
-                subjectName: nextClass.subjectName,
-                sessionIdx: nextClass.idx,
-                type: nextClass.type,
+                borderColor: 'rgba(48, 209, 88, 0.35)',
               }}
             >
               <TextWidget
-                text="✓ P"
-                style={{
-                  fontSize: 10.5,
-                  fontWeight: 'bold',
-                  color: nextClass.status === 'attended' ? '#FFFFFF' : '#30D158',
-                }}
+                text="✓ Attended"
+                style={{ fontSize: 10.5, fontWeight: 'bold', color: '#30D158' }}
               />
             </FlexWidget>
+          ) : nextClass.status === 'missed' ? (
+            <FlexWidget
+              style={{
+                backgroundColor: 'rgba(255, 69, 58, 0.16)',
+                borderRadius: 7,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderWidth: 1,
+                borderColor: 'rgba(255, 69, 58, 0.35)',
+              }}
+            >
+              <TextWidget
+                text="✕ Absent"
+                style={{ fontSize: 10.5, fontWeight: 'bold', color: '#FF453A' }}
+              />
+            </FlexWidget>
+          ) : (
+            <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <FlexWidget
+                style={{
+                  backgroundColor: 'rgba(48, 209, 88, 0.16)',
+                  borderRadius: 7,
+                  paddingHorizontal: 7,
+                  paddingVertical: 4,
+                  marginRight: 5,
+                  borderWidth: 1,
+                  borderColor: 'rgba(48, 209, 88, 0.35)',
+                }}
+                clickAction="mark_class_present"
+                clickActionData={{
+                  action: 'mark_class_present',
+                  subjectId: nextClass.subjectId,
+                  subjectName: nextClass.subjectName,
+                  sessionIdx: nextClass.idx,
+                  type: nextClass.type,
+                }}
+              >
+                <TextWidget
+                  text="✓ P"
+                  style={{ fontSize: 10.5, fontWeight: 'bold', color: '#30D158' }}
+                />
+              </FlexWidget>
 
-            <FlexWidget
-              style={{
-                backgroundColor: nextClass.status === 'missed' ? '#FF453A' : 'rgba(255, 69, 58, 0.16)',
-                borderRadius: 7,
-                paddingHorizontal: 7,
-                paddingVertical: 4,
-                borderWidth: 1,
-                borderColor: nextClass.status === 'missed' ? '#FF453A' : 'rgba(255, 69, 58, 0.35)',
-              }}
-              clickAction="mark_class_absent"
-              clickActionData={{
-                action: 'mark_class_absent',
-                subjectId: nextClass.subjectId,
-                subjectName: nextClass.subjectName,
-                sessionIdx: nextClass.idx,
-                type: nextClass.type,
-              }}
-            >
-              <TextWidget
-                text="✕ A"
+              <FlexWidget
                 style={{
-                  fontSize: 10.5,
-                  fontWeight: 'bold',
-                  color: nextClass.status === 'missed' ? '#FFFFFF' : '#FF453A',
+                  backgroundColor: 'rgba(255, 69, 58, 0.16)',
+                  borderRadius: 7,
+                  paddingHorizontal: 7,
+                  paddingVertical: 4,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255, 69, 58, 0.35)',
                 }}
-              />
+                clickAction="mark_class_absent"
+                clickActionData={{
+                  action: 'mark_class_absent',
+                  subjectId: nextClass.subjectId,
+                  subjectName: nextClass.subjectName,
+                  sessionIdx: nextClass.idx,
+                  type: nextClass.type,
+                }}
+              >
+                <TextWidget
+                  text="✕ A"
+                  style={{ fontSize: 10.5, fontWeight: 'bold', color: '#FF453A' }}
+                />
+              </FlexWidget>
             </FlexWidget>
-          </FlexWidget>
+          )}
         </FlexWidget>
       ) : null}
 
-      {/* ── Bottom Section: Priority Tasks (Hidden on ultra-compact height) ── */}
+      {/* ── Chronological Timeline Feed (Classes & Tasks Sorted by Time) ── */}
       {!isCompact && (
         <FlexWidget
           style={{
@@ -233,7 +265,7 @@ export function TodayAgendaWidget({ data, width = 320, height = 180 }: TodayAgen
             }}
           >
             <TextWidget
-              text="UPCOMING TARGETS"
+              text="TODAY'S SCHEDULE"
               style={{
                 fontSize: 9.5,
                 fontWeight: 'bold',
@@ -242,7 +274,7 @@ export function TodayAgendaWidget({ data, width = 320, height = 180 }: TodayAgen
               }}
             />
             <TextWidget
-              text={`${completedTasksCount}/${tasks.length} Done`}
+              text={`${completedTasksCount}/${tasks.length} Tasks`}
               style={{
                 fontSize: 9.5,
                 color: '#a599ff',
@@ -251,58 +283,103 @@ export function TodayAgendaWidget({ data, width = 320, height = 180 }: TodayAgen
             />
           </FlexWidget>
 
-          {pendingTasks.length > 0 ? (
-            pendingTasks.slice(0, isExpanded ? 4 : 2).map((t) => (
-              <FlexWidget
-                key={t.id}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingVertical: 3,
-                  borderBottomWidth: 1,
-                  borderColor: 'rgba(255, 255, 255, 0.04)',
-                }}
-              >
-                <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 6 }}>
-                  {/* Interactive Checkbox Circle */}
-                  <FlexWidget
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: 7,
-                      borderWidth: 1.5,
-                      borderColor: '#a599ff',
-                      marginRight: 7,
-                      backgroundColor: 'rgba(165, 153, 255, 0.08)',
-                    }}
-                    clickAction="mark_task_done"
-                    clickActionData={{
-                      action: 'mark_task_done',
-                      taskId: t.id,
-                    }}
-                  />
+          {timelineItems.length > 0 ? (
+            timelineItems.map((item) => {
+              const isDone = item.status === 'attended' || item.status === 'completed';
+              const isMissed = item.status === 'missed';
+              const isCancelled = item.status === 'cancelled';
+
+              return (
+                <FlexWidget
+                  key={item.id}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingVertical: 2.5,
+                    borderBottomWidth: 1,
+                    borderColor: 'rgba(255, 255, 255, 0.04)',
+                  }}
+                >
+                  <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 6 }}>
+                    {/* Status / Interactive Icon */}
+                    {item.type === 'task' ? (
+                      <FlexWidget
+                        style={{
+                          width: 13,
+                          height: 13,
+                          borderRadius: 6.5,
+                          borderWidth: 1.5,
+                          borderColor: isDone ? '#30D158' : '#a599ff',
+                          marginRight: 6,
+                          backgroundColor: isDone ? '#30D158' : 'rgba(165, 153, 255, 0.08)',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                        clickAction="mark_task_done"
+                        clickActionData={{
+                          action: 'mark_task_done',
+                          taskId: item.taskId,
+                        }}
+                      >
+                        {isDone ? (
+                          <TextWidget
+                            text="✓"
+                            style={{ fontSize: 8, fontWeight: 'bold', color: '#000000' }}
+                          />
+                        ) : null}
+                      </FlexWidget>
+                    ) : (
+                      /* Class / Lab Status Indicator */
+                      <FlexWidget
+                        style={{
+                          width: 13,
+                          height: 13,
+                          borderRadius: 6.5,
+                          marginRight: 6,
+                          backgroundColor: isDone
+                            ? 'rgba(48, 209, 88, 0.25)'
+                            : isMissed
+                            ? 'rgba(255, 69, 58, 0.25)'
+                            : isCancelled
+                            ? 'rgba(255, 255, 255, 0.12)'
+                            : 'rgba(165, 153, 255, 0.15)',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <TextWidget
+                          text={isDone ? '✓' : isMissed ? '✕' : isCancelled ? '⊘' : '•'}
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 'bold',
+                            color: isDone ? '#30D158' : isMissed ? '#FF453A' : isCancelled ? 'rgba(255, 255, 255, 0.4)' : '#a599ff',
+                          }}
+                        />
+                      </FlexWidget>
+                    )}
+
+                    <TextWidget
+                      text={item.title}
+                      style={{
+                        fontSize: 11,
+                        color: isDone ? 'rgba(255, 255, 255, 0.55)' : isCancelled ? 'rgba(255, 255, 255, 0.35)' : '#FFFFFF',
+                      }}
+                      maxLines={1}
+                    />
+                  </FlexWidget>
+
+                  {/* Time Badge */}
                   <TextWidget
-                    text={t.title}
+                    text={item.timeStr}
                     style={{
-                      fontSize: 11.5,
-                      color: '#FFFFFF',
+                      fontSize: 9,
+                      color: isDone ? '#30D158' : 'rgba(255, 255, 255, 0.45)',
                     }}
-                    maxLines={1}
                   />
                 </FlexWidget>
-
-                {t.timeSlot ? (
-                  <TextWidget
-                    text={t.timeSlot}
-                    style={{
-                      fontSize: 9.5,
-                      color: 'rgba(255, 255, 255, 0.45)',
-                    }}
-                  />
-                ) : null}
-              </FlexWidget>
-            ))
+              );
+            })
           ) : (
             <FlexWidget
               style={{
@@ -325,7 +402,7 @@ export function TodayAgendaWidget({ data, width = 320, height = 180 }: TodayAgen
         </FlexWidget>
       )}
 
-      {/* ── Expanded Launcher Row (Only shown when widget is tall 4x4 / 5x3) ── */}
+      {/* ── Expanded Launcher Row (Only for large 4x4 / 5x3 widgets) ── */}
       {isExpanded && (
         <FlexWidget
           style={{
