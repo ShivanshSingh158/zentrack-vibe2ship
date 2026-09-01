@@ -5,7 +5,7 @@
  * - Reads cached steps immediately from AsyncStorage (0ms render on cold boot).
  * - Queries hardware sensor (Pedometer.getStepCountAsync) from midnight to now when app enters foreground.
  * - Subscribes to live step events (Pedometer.watchStepCount) only while app is active.
- * - Handles Android 10+ ACTIVITY_RECOGNITION runtime permission gracefully.
+ * - Handles 7-day historical step data aggregation for analytics graphs.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -13,13 +13,83 @@ import { Platform, AppState, AppStateStatus } from 'react-native';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const STEP_GOAL_DEFAULT = 10000;
-const STEP_CACHE_KEY_PREFIX = '@zentrack_steps_';
+export const STEP_GOAL_DEFAULT = 10000;
+export const STEP_CACHE_KEY_PREFIX = '@zentrack_steps_';
+
+export interface DayStepData {
+  dateStr: string;
+  dayLabel: string;
+  steps: number;
+}
+
+export function formatStepsDistance(steps: number): string {
+  const km = (steps * 0.00076);
+  return `${km.toFixed(1)} km`;
+}
+
+export function formatStepsCalories(steps: number): string {
+  const kcal = Math.round(steps * 0.04);
+  return `${kcal} kcal`;
+}
+
+export function formatStepsActiveTime(steps: number): string {
+  const totalMins = Math.round(steps / 100);
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
+export async function fetch7DayStepHistory(): Promise<DayStepData[]> {
+  const result: DayStepData[] = [];
+  const now = new Date();
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dayLabel = dayNames[d.getDay()];
+    const cacheKey = `${STEP_CACHE_KEY_PREFIX}${dateStr}`;
+
+    const cached = await AsyncStorage.getItem(cacheKey).catch(() => null);
+    let stepCount = cached ? parseInt(cached, 10) : 0;
+
+    // If today or missing from cache, query hardware pedometer directly
+    if (isNaN(stepCount) || (stepCount === 0 && i === 0)) {
+      const startOfDay = new Date(d);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(d);
+      if (i === 0) {
+        endOfDay.setTime(now.getTime());
+      } else {
+        endOfDay.setHours(23, 59, 59, 999);
+      }
+
+      try {
+        const pedometerResult = await Pedometer.getStepCountAsync(startOfDay, endOfDay).catch(() => null);
+        if (pedometerResult && typeof pedometerResult.steps === 'number') {
+          stepCount = pedometerResult.steps;
+          await AsyncStorage.setItem(cacheKey, String(stepCount)).catch(() => {});
+        }
+      } catch (_) {}
+    }
+
+    result.push({
+      dateStr,
+      dayLabel,
+      steps: Math.max(0, stepCount || 0),
+    });
+  }
+
+  return result;
+}
 
 export function useStepCounter() {
   const [steps, setSteps] = useState<number>(0);
   const [stepGoal, setStepGoal] = useState<number>(STEP_GOAL_DEFAULT);
   const [isAvailable, setIsAvailable] = useState<boolean>(true);
+  const [history, setHistory] = useState<DayStepData[]>([]);
   const isQueryingRef = useRef<boolean>(false);
   const subscriptionRef = useRef<any>(null);
 
@@ -28,7 +98,7 @@ export function useStepCounter() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   };
 
-  // Sync today's steps from hardware sensor
+  // Sync today's steps and 7-day history from hardware sensor
   const syncHardwareSteps = useCallback(async () => {
     if (isQueryingRef.current) return;
     isQueryingRef.current = true;
@@ -69,11 +139,20 @@ export function useStepCounter() {
         setSteps(hardwareSteps);
         await AsyncStorage.setItem(cacheKey, String(hardwareSteps)).catch(() => {});
       }
+
+      // 4. Fetch 7-day history in background
+      const hist = await fetch7DayStepHistory();
+      setHistory(hist);
     } catch (e) {
       console.warn('[StepCounter] Pedometer sync error:', e);
     } finally {
       isQueryingRef.current = false;
     }
+  }, []);
+
+  const updateGoal = useCallback(async (newGoal: number) => {
+    setStepGoal(newGoal);
+    await AsyncStorage.setItem('@zentrack_step_goal', String(newGoal)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -88,7 +167,7 @@ export function useStepCounter() {
       }
     }).catch(() => {});
 
-    // Read custom step goal if user configured one
+    // Read custom step goal
     AsyncStorage.getItem('@zentrack_step_goal').then((goal) => {
       if (goal) {
         const g = parseInt(goal, 10);
@@ -133,7 +212,9 @@ export function useStepCounter() {
   return {
     steps,
     stepGoal,
+    history,
     isAvailable,
+    updateGoal,
     refreshSteps: syncHardwareSteps,
   };
 }
