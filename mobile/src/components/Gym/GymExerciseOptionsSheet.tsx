@@ -52,7 +52,7 @@ export const GymExerciseOptionsSheet = memo(function GymExerciseOptionsSheet({
     <>
       {/* ─── Themed Exercise Options Bottom Sheet ──────────────────────────────── */}
       {!!exerciseMenuFor && (
-        <BottomSheet visible={!!exerciseMenuFor} onClose={() => setExerciseMenuFor(null)}>
+        <BottomSheet visible={!!exerciseMenuFor} onClose={() => setExerciseMenuFor(null)} avoidKeyboard={false}>
           <View style={{ gap: 8, paddingBottom: 16 }}>
             <Text style={{ fontSize: 18, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
               {exerciseMenuFor?.name || 'Exercise Options'}
@@ -212,7 +212,7 @@ export const GymExerciseOptionsSheet = memo(function GymExerciseOptionsSheet({
 
       {/* ─── Themed Superset Partner Picker Bottom Sheet ──────────────────── */}
       {!!supersetPickerFor && (
-        <BottomSheet visible={!!supersetPickerFor} onClose={() => setSupersetPickerFor(null)}>
+        <BottomSheet visible={!!supersetPickerFor} onClose={() => setSupersetPickerFor(null)} avoidKeyboard={false}>
           <View style={{ gap: 8, paddingBottom: 16 }}>
             <Text style={{ fontSize: 18, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
               Select Superset Partner
@@ -263,7 +263,7 @@ export const GymExerciseOptionsSheet = memo(function GymExerciseOptionsSheet({
 
       {/* ─── Themed Cardio Options Bottom Sheet ───────────────────────────── */}
       {!!cardioMenuFor && (
-        <BottomSheet visible={!!cardioMenuFor} onClose={() => setCardioMenuFor(null)}>
+        <BottomSheet visible={!!cardioMenuFor} onClose={() => setCardioMenuFor(null)} avoidKeyboard={false}>
           <View style={{ gap: 8, paddingBottom: 16 }}>
             <Text style={{ fontSize: 18, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
               {cardioMenuFor?.type || 'Cardio Options'}

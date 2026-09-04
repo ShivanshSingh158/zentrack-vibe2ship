@@ -2,12 +2,21 @@
  * savedPlacesService.ts — ZenTrack Mobile
  *
  * Manages user's saved frequent locations (Gym, Campus Lab, Library, Home, Custom)
- * and provides GPS coordinate capture, smart place name resolution, and address search helpers via expo-location.
+ * and provides GPS coordinate capture, smart place name resolution, raw coordinate parsing,
+ * and address search helpers via expo-location.
+ *
+ * FULL CLOUD PERSISTENCE:
+ * All saved places and gym geofence configurations are synced to Firestore (`user_profiles/{uid}`)
+ * so they survive app reinstalls and device changes.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import type { SavedPlace, GymGeofenceConfig, PlaceCategory } from '../types/locationReminder.types';
+import { db, auth } from './firebase';
+import { COLLECTION } from '../config/constants';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { safeWrite } from '../utils/safeWrite';
 
 export const SAVED_PLACES_STORAGE_KEY = '@zentrack_saved_places';
 export const GYM_GEOFENCE_STORAGE_KEY = '@zentrack_gym_geofence_config';
@@ -19,8 +28,29 @@ const DEFAULT_PRESET_PLACES: SavedPlace[] = [];
 export async function getSavedPlaces(): Promise<SavedPlace[]> {
   try {
     const raw = await AsyncStorage.getItem(SAVED_PLACES_STORAGE_KEY);
-    if (!raw) return DEFAULT_PRESET_PLACES;
-    return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+
+    // Cloud Fallback: If local storage is empty, hydrate from Firestore
+    const user = auth.currentUser;
+    if (user?.uid) {
+      try {
+        const snap = await getDoc(doc(db, COLLECTION.USER_PROFILES, user.uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          if (Array.isArray(data?.savedPlaces) && data.savedPlaces.length > 0) {
+            await AsyncStorage.setItem(SAVED_PLACES_STORAGE_KEY, JSON.stringify(data.savedPlaces));
+            return data.savedPlaces;
+          }
+        }
+      } catch (cloudErr) {
+        console.warn('[SavedPlaces] Cloud fetch fallback error:', cloudErr);
+      }
+    }
+
+    return DEFAULT_PRESET_PLACES;
   } catch (err) {
     console.warn('[SavedPlaces] Error reading saved places:', err);
     return DEFAULT_PRESET_PLACES;
@@ -52,22 +82,70 @@ export async function savePlace(placeData: {
   const updated = current.filter(p => p.id !== id);
   updated.unshift(newPlace);
 
+  // 1. Instant local persistence
   await AsyncStorage.setItem(SAVED_PLACES_STORAGE_KEY, JSON.stringify(updated));
+
+  // 2. Cloud sync to Firestore user profile
+  const user = auth.currentUser;
+  if (user?.uid) {
+    safeWrite(
+      () => setDoc(doc(db, COLLECTION.USER_PROFILES, user.uid), { savedPlaces: updated, updatedAt: Date.now() }, { merge: true }),
+      COLLECTION.USER_PROFILES,
+      'update',
+      { savedPlaces: updated },
+      user.uid
+    ).catch(() => {});
+  }
+
   return newPlace;
 }
 
 export async function deletePlace(placeId: string): Promise<void> {
   const current = await getSavedPlaces();
   const filtered = current.filter(p => p.id !== placeId);
+
+  // 1. Instant local persistence
   await AsyncStorage.setItem(SAVED_PLACES_STORAGE_KEY, JSON.stringify(filtered));
+
+  // 2. Cloud sync to Firestore user profile
+  const user = auth.currentUser;
+  if (user?.uid) {
+    safeWrite(
+      () => setDoc(doc(db, COLLECTION.USER_PROFILES, user.uid), { savedPlaces: filtered, updatedAt: Date.now() }, { merge: true }),
+      COLLECTION.USER_PROFILES,
+      'update',
+      { savedPlaces: filtered },
+      user.uid
+    ).catch(() => {});
+  }
 }
 
 // ─── 2. Gym Geofence Config ───────────────────────────────────────────────────
 export async function getGymGeofenceConfig(): Promise<GymGeofenceConfig | null> {
   try {
     const raw = await AsyncStorage.getItem(GYM_GEOFENCE_STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+
+    // Cloud Fallback: If local storage is empty, check Firestore
+    const user = auth.currentUser;
+    if (user?.uid) {
+      try {
+        const snap = await getDoc(doc(db, COLLECTION.USER_PROFILES, user.uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data?.gymGeofenceConfig) {
+            await AsyncStorage.setItem(GYM_GEOFENCE_STORAGE_KEY, JSON.stringify(data.gymGeofenceConfig));
+            return data.gymGeofenceConfig;
+          }
+        }
+      } catch (cloudErr) {
+        console.warn('[SavedPlaces] Cloud gym config fetch error:', cloudErr);
+      }
+    }
+
+    return null;
   } catch (err) {
     console.warn('[SavedPlaces] Error reading gym geofence config:', err);
     return null;
@@ -76,7 +154,20 @@ export async function getGymGeofenceConfig(): Promise<GymGeofenceConfig | null> 
 
 export async function saveGymGeofenceConfig(config: GymGeofenceConfig): Promise<void> {
   try {
+    // 1. Instant local persistence
     await AsyncStorage.setItem(GYM_GEOFENCE_STORAGE_KEY, JSON.stringify(config));
+
+    // 2. Cloud sync to Firestore user profile
+    const user = auth.currentUser;
+    if (user?.uid) {
+      safeWrite(
+        () => setDoc(doc(db, COLLECTION.USER_PROFILES, user.uid), { gymGeofenceConfig: config, updatedAt: Date.now() }, { merge: true }),
+        COLLECTION.USER_PROFILES,
+        'update',
+        { gymGeofenceConfig: config },
+        user.uid
+      ).catch(() => {});
+    }
   } catch (err) {
     console.warn('[SavedPlaces] Error saving gym geofence config:', err);
   }
@@ -87,6 +178,17 @@ export async function deleteGymGeofenceConfig(): Promise<void> {
     await AsyncStorage.removeItem(GYM_GEOFENCE_STORAGE_KEY);
     await deletePlace('place_gym_primary');
     await deletePlace('place_gym_auto');
+
+    const user = auth.currentUser;
+    if (user?.uid) {
+      safeWrite(
+        () => setDoc(doc(db, COLLECTION.USER_PROFILES, user.uid), { gymGeofenceConfig: null, updatedAt: Date.now() }, { merge: true }),
+        COLLECTION.USER_PROFILES,
+        'update',
+        { gymGeofenceConfig: null },
+        user.uid
+      ).catch(() => {});
+    }
   } catch (err) {
     console.warn('[SavedPlaces] Error deleting gym geofence config:', err);
   }
@@ -105,20 +207,17 @@ function resolveSmartPlaceName(query: string, r?: Location.LocationGeocodedAddre
   if (!r) return capitalizeWords(query);
 
   const rawName = (r.name || '').trim();
-  // Check if rawName is a plot/house/SCO number (e.g. "205", "1-2", "#45", or very short digits)
   const isNumericOrPlot = !rawName || /^[\d\s\-#/,]+$/.test(rawName) || rawName.length <= 4 || !isNaN(Number(rawName));
 
-  // If reverse geocoding returned an actual POI / place name with letters (e.g. "Punjab Engineering College")
   if (!isNumericOrPlot && rawName.length > 4) {
     return rawName;
   }
 
-  // Otherwise, use the user's searched place name with clean capitalization
-  if (query && query.trim().length > 0) {
+  if (query && query.trim().length > 0 && !parseCoordinates(query)) {
     return capitalizeWords(query.trim());
   }
 
-  return r.street || r.district || r.city || 'My Gym';
+  return r.street || r.district || r.city || 'Saved Location';
 }
 
 function formatFullAddress(r?: Location.LocationGeocodedAddress, fallbackQuery?: string): string {
@@ -128,10 +227,12 @@ function formatFullAddress(r?: Location.LocationGeocodedAddress, fallbackQuery?:
   const isPlotOrNumber = /^[\d\s\-#/,]+$/.test(rawName) && rawName.length <= 6;
 
   const parts: string[] = [];
-  if (isPlotOrNumber && rawName) {
-    parts.push(`Plot/SCO ${rawName}`);
+  if (rawName && !isPlotOrNumber) {
+    parts.push(rawName);
+  } else if (rawName && isPlotOrNumber) {
+    parts.push(`#${rawName}`);
   }
-  if (r.street) parts.push(r.street);
+  if (r.street && r.street !== rawName) parts.push(r.street);
   if (r.district && r.district !== r.street) parts.push(r.district);
   if (r.city && r.city !== r.district) parts.push(r.city);
   if (r.region && r.region !== r.city) parts.push(r.region);
@@ -139,7 +240,41 @@ function formatFullAddress(r?: Location.LocationGeocodedAddress, fallbackQuery?:
   return parts.length > 0 ? parts.join(', ') : (fallbackQuery || '');
 }
 
-// ─── 4. GPS & Geocoding Helpers ───────────────────────────────────────────────
+// ─── 4. Coordinate Parser Helper ──────────────────────────────────────────────
+/**
+ * Parses raw GPS coordinate queries like:
+ * - "30.7654, 76.7865"
+ * - "30.7654 76.7865"
+ * - "lat: 30.7654, lng: 76.7865"
+ * - "28.6139° N, 77.2090° E"
+ * - "-33.8688, 151.2093"
+ */
+export function parseCoordinates(query: string): { latitude: number; longitude: number } | null {
+  if (!query || typeof query !== 'string') return null;
+
+  const clean = query
+    .trim()
+    .replace(/[°'"]/g, '')
+    .replace(/\b(?:lat|latitude)\s*[:=]?\s*/gi, '')
+    .replace(/\b(?:lng|long|longitude)\s*[:=]?\s*/gi, ',')
+    .replace(/[Nn]/g, '')
+    .replace(/[Ss]/g, '-')
+    .replace(/[Ee]/g, '')
+    .replace(/[Ww]/g, '-');
+
+  // Match: (sign)(digits)(optional decimal) followed by comma/space/slash followed by (sign)(digits)(optional decimal)
+  const match = clean.match(/^([+-]?\d+(?:\.\d+)?)[,\s/|;]+([+-]?\d+(?:\.\d+)?)$/);
+  if (match) {
+    const lat = parseFloat(match[1]);
+    const lng = parseFloat(match[2]);
+    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+  return null;
+}
+
+// ─── 5. GPS & Geocoding Helpers ───────────────────────────────────────────────
 export async function getCurrentDeviceCoords(): Promise<{
   name?: string;
   latitude: number;
@@ -184,20 +319,60 @@ export async function searchAddressLocations(query: string): Promise<
     address: string;
     latitude: number;
     longitude: number;
+    isCoordinates?: boolean;
   }>
 > {
   if (!query || query.trim().length < 2) return [];
 
+  const rawQuery = query.trim();
+
+  // ── A. DIRECT GPS COORDINATES INPUT ─────────────────────────────────────────
+  // Check if query is raw coordinates (e.g. "30.7654, 76.7865")
+  const coordsMatch = parseCoordinates(rawQuery);
+  if (coordsMatch) {
+    const { latitude, longitude } = coordsMatch;
+    let placeName = `GPS Pin (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+    let formattedAddress = `Coordinates: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+
+    try {
+      const rev = await Location.reverseGeocodeAsync({ latitude, longitude });
+      if (rev && rev.length > 0) {
+        const item = rev[0];
+        const smartName = resolveSmartPlaceName(rawQuery, item);
+        if (smartName && smartName !== 'Saved Location') {
+          placeName = smartName;
+        }
+        const fullAddr = formatFullAddress(item);
+        if (fullAddr) {
+          formattedAddress = `${fullAddr} (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+        }
+      }
+    } catch {
+      // Offline / remote location reverse geocode fallback
+    }
+
+    return [
+      {
+        name: placeName,
+        address: formattedAddress,
+        latitude,
+        longitude,
+        isCoordinates: true,
+      },
+    ];
+  }
+
+  // ── B. TEXT SEARCH ADDRESS / PLACE ──────────────────────────────────────────
   try {
     // 1. Query device geocoding engine for coordinates
-    const results = await Location.geocodeAsync(query.trim());
+    const results = await Location.geocodeAsync(rawQuery);
     if (!results || results.length === 0) return [];
 
     // 2. Reverse geocode the coordinates to extract the TRUE landmark/POI name & address
     const parsed = await Promise.all(
       results.slice(0, 5).map(async res => {
-        let placeName = capitalizeWords(query.trim());
-        let formattedAddress = query.trim();
+        let placeName = capitalizeWords(rawQuery);
+        let formattedAddress = rawQuery;
 
         try {
           const rev = await Location.reverseGeocodeAsync({
@@ -207,8 +382,8 @@ export async function searchAddressLocations(query: string): Promise<
 
           if (rev && rev.length > 0) {
             const r = rev[0];
-            placeName = resolveSmartPlaceName(query.trim(), r);
-            formattedAddress = formatFullAddress(r, query.trim());
+            placeName = resolveSmartPlaceName(rawQuery, r);
+            formattedAddress = formatFullAddress(r, rawQuery);
           }
         } catch {
           // fallback to query
@@ -219,6 +394,7 @@ export async function searchAddressLocations(query: string): Promise<
           address: formattedAddress,
           latitude: res.latitude,
           longitude: res.longitude,
+          isCoordinates: false,
         };
       })
     );
@@ -229,3 +405,4 @@ export async function searchAddressLocations(query: string): Promise<
     return [];
   }
 }
+

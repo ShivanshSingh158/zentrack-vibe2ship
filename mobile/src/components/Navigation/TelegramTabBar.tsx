@@ -15,6 +15,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY } from '../../theme/tokens';
 import { useTabBarBadges } from '../../hooks/useTabBarBadges';
 import { DynamicCalendarIcon } from '../ui/DynamicCalendarIcon';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
 
 // ─── Module Icons Configuration ───────────────────────────────────────────────
 export const SPOTIFY_TAB_CONFIG: Record<string, {
@@ -177,12 +178,17 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
 }: TelegramTabBarProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const { pinnedModules } = useCoreData();
   const hookBadges = useTabBarBadges();
   const badges = (passedBadges && Object.keys(passedBadges).length > 0) ? passedBadges : hookBadges;
 
+  const effectivePinned = (Array.isArray(pinnedModules) && pinnedModules.length > 0)
+    ? pinnedModules
+    : ['Tasks', 'Gym', 'Calendar', 'Attendance'];
+
   // Filter visible routes based on custom style and TabBarNullButton
   const visibleRoutes = useMemo(() => {
-    return state.routes.filter((route) => {
+    const unhidden = state.routes.filter((route) => {
       const { options } = descriptors[route.key];
       if (
         options.tabBarItemStyle &&
@@ -198,7 +204,21 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
       }
       return true;
     });
-  }, [state.routes, descriptors]);
+
+    // Guarantee strict ordering: Home -> pinned modules in user's exact order -> More
+    return unhidden.sort((a, b) => {
+      if (a.name === 'Home') return -1;
+      if (b.name === 'Home') return 1;
+      if (a.name === 'More') return 1;
+      if (b.name === 'More') return -1;
+      const indexA = effectivePinned.indexOf(a.name);
+      const indexB = effectivePinned.indexOf(b.name);
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+      return 0;
+    });
+  }, [state.routes, descriptors, effectivePinned]);
 
   const activeRouteIndex = visibleRoutes.findIndex(
     (route) => route.key === state.routes[state.index].key

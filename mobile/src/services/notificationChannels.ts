@@ -18,70 +18,97 @@ Notifications.setNotificationHandler({
 
 // ── Permission setup ──────────────────────────────────────────────────────────
 
-export async function requestNotificationPermissions() {
+export async function ensureNotificationChannels(): Promise<void> {
+  if (Platform.OS !== 'android') return;
   try {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'ZenTrack',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#cba6f7',
+      sound: 'default',
+      enableLights: true,
+      enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+    await Notifications.setNotificationChannelAsync('reminders', {
+      name: 'Task Reminders & Alarms',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 500, 250, 500],
+      lightColor: '#a599ff',
+      sound: 'default',
+      enableLights: true,
+      enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+    await Notifications.setNotificationChannelAsync('location_reminders', {
+      name: 'Location & Arrival Reminders',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 500, 200, 500, 200, 500],
+      lightColor: '#8B5CF6',
+      sound: 'default',
+      enableLights: true,
+      enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+    await Notifications.setNotificationChannelAsync('habits', {
+      name: 'Habit Streak',
+      importance: Notifications.AndroidImportance.HIGH,
+      lightColor: '#ff9f4d',
+      sound: 'default',
+      enableLights: true,
+      enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+    await Notifications.setNotificationChannelAsync('sara_critical', {
+      name: 'Critical Priority Alerts',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 600, 200, 600, 200, 600],
+      lightColor: '#ff3b30',
+      sound: 'default',
+      enableLights: true,
+      enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+    await Notifications.setNotificationChannelAsync('wellness', {
+      name: 'Hydration & Health Reminders',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#38bdf8',
+      sound: 'default',
+      enableLights: true,
+      enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+    await Notifications.setNotificationChannelAsync('active_workout', {
+      name: 'Active Workout HUD & Rest Timer',
+      importance: Notifications.AndroidImportance.LOW,
+      sound: undefined,
+      enableLights: false,
+      enableVibrate: false,
+      showBadge: false,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+  } catch (e) {
+    console.warn('[NotificationChannels] Channel creation warning:', e);
+  }
+}
+
+export async function requestNotificationPermissions(): Promise<boolean> {
+  try {
+    await ensureNotificationChannels();
+
     const { status: existing } = await Notifications.getPermissionsAsync();
     let final = existing;
     if (existing !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
+      const { status } = await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+        },
+      });
       final = status;
-    }
-    if (final !== 'granted') return false;
-
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'ZenTrack',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#cba6f7',
-        sound: 'default',
-      });
-      await Notifications.setNotificationChannelAsync('reminders', {
-        name: 'Task Reminders',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 500, 250, 500],
-        lightColor: '#a599ff',
-        sound: 'default',
-        enableLights: true,
-        enableVibrate: true,
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      });
-      await Notifications.setNotificationChannelAsync('location_reminders', {
-        name: 'Location & Arrival Reminders',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 500, 200, 500, 200, 500],
-        lightColor: '#8B5CF6',
-        sound: 'default',
-        enableLights: true,
-        enableVibrate: true,
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      });
-      await Notifications.setNotificationChannelAsync('habits', {
-        name: 'Habit Streak',
-        importance: Notifications.AndroidImportance.DEFAULT,
-        lightColor: '#ff9f4d',
-        sound: 'default',
-      });
-      await Notifications.setNotificationChannelAsync('sara_critical', {
-        name: 'Sara Critical Alerts',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 600, 200, 600, 200, 600],
-        lightColor: '#ff3b30',
-        sound: 'default',
-        enableLights: true,
-        enableVibrate: true,
-        bypassDnd: true,
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      });
-      await Notifications.setNotificationChannelAsync('active_workout', {
-        name: 'Active Workout HUD & Rest Timer',
-        importance: Notifications.AndroidImportance.LOW,
-        sound: undefined,
-        enableLights: false,
-        enableVibrate: false,
-        showBadge: false,
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      });
     }
 
     await Notifications.setNotificationCategoryAsync('active_workout_ongoing', [
@@ -124,6 +151,11 @@ export async function requestNotificationPermissions() {
       { identifier: 'log_habit', buttonTitle: '🔥 Log It', options: { opensAppToForeground: false } },
       { identifier: 'open_habits', buttonTitle: '📊 View Habits', options: { opensAppToForeground: true } },
     ]);
+
+    if (final !== 'granted') {
+      console.warn('[Notifications] Notification permission not granted:', final);
+      return false;
+    }
 
     return true;
   } catch (err: any) {

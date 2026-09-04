@@ -8,6 +8,7 @@ import Animated, {
   useAnimatedKeyboard,
   Easing,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Portal } from '../../contexts/PortalContext';
 import { useTheme } from "../../contexts/ThemeContext";
 
@@ -17,6 +18,8 @@ interface BottomSheetProps {
   children: React.ReactNode;
   contentStyle?: StyleProp<ViewStyle>;
   fullHeight?: boolean;
+  avoidKeyboard?: boolean;
+  keyboardOffset?: number;
 }
 
 export default function BottomSheet({
@@ -25,20 +28,40 @@ export default function BottomSheet({
   children,
   contentStyle,
   fullHeight = false,
+  avoidKeyboard = true,
+  keyboardOffset = 0,
 }: BottomSheetProps) {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors, isDark);
+  const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const insets = useSafeAreaInsets();
 
   const [mounted, setMounted] = useState(visible);
   const translateY = useSharedValue(600);
   const backdropOpacity = useSharedValue(0);
 
+  const safeBottom = Math.max(insets.bottom, 16);
+  const baseBottomPadding = fullHeight ? 0 : safeBottom;
+
   const keyboard = useAnimatedKeyboard();
 
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-    paddingBottom: keyboard.height.value + (fullHeight ? 0 : 32),
-  }));
+  const sheetStyle = useAnimatedStyle(() => {
+    if (!avoidKeyboard) {
+      return {
+        transform: [{ translateY: translateY.value }],
+        paddingBottom: baseBottomPadding,
+      };
+    }
+
+    const kh = Math.max(0, keyboard.height.value);
+    const dynamicBottom = kh > 0
+      ? kh + keyboardOffset + (fullHeight ? 0 : 8)
+      : baseBottomPadding;
+
+    return {
+      transform: [{ translateY: translateY.value }],
+      paddingBottom: dynamicBottom,
+    };
+  });
 
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
@@ -91,9 +114,11 @@ export default function BottomSheet({
         style={[
           styles.sheet,
           fullHeight ? styles.fullHeight : styles.wrapContent,
-          sheetStyle,
           contentStyle,
+          sheetStyle,
         ]}
+        renderToHardwareTextureAndroid={true}
+        shouldRasterizeIOS={true}
       >
         <Pressable onPress={handleClose} hitSlop={{ top: 10, bottom: 10 }}>
           <Animated.View style={styles.handle} />

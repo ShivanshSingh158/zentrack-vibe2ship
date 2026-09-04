@@ -22,8 +22,9 @@ export function setupLifecycleHygiene(): () => void {
     }
 
     if (lastState.match(/inactive|background/) && nextState === 'active') {
-      // 3. Trigger 1-read delta check on warm resume:
-      DeviceEventEmitter.emit('firestore_force_reconnect');
+      // Warm resume: Firebase native SDK automatically maintains socket connections.
+      // Do NOT tear down all 18 Firestore listeners on short switches — AppNavigator handles
+      // long dormancy (>30m) health checks deferred without freezing navigation.
     }
 
     lastState = nextState;

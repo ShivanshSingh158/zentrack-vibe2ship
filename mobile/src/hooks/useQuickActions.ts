@@ -4,6 +4,7 @@
  */
 
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import * as QuickActions from 'expo-quick-actions';
 import { navigationRef } from '../navigation/AppNavigator';
 
@@ -12,28 +13,28 @@ export const QUICK_ACTIONS_CONFIG: QuickActions.Action[] = [
     id: 'quick_add_task',
     title: 'New Task',
     subtitle: 'Instant task capture',
-    icon: 'symbol:plus',
+    icon: Platform.OS === 'ios' ? 'symbol:checkmark.circle' : 'shortcut_task',
     params: { screen: 'Tasks', openAddTask: true },
   },
   {
     id: 'quick_log_attendance',
     title: 'Log Attendance',
     subtitle: 'Timetable & radar',
-    icon: 'symbol:checkmark.circle',
+    icon: Platform.OS === 'ios' ? 'symbol:person.text.rectangle' : 'shortcut_attendance',
     params: { screen: 'Attendance' },
   },
   {
     id: 'quick_workout',
     title: 'Quick Workout',
     subtitle: "Today's gym split",
-    icon: 'symbol:figure.run',
+    icon: Platform.OS === 'ios' ? 'symbol:figure.strengthtraining.traditional' : 'shortcut_gym',
     params: { screen: 'Gym' },
   },
   {
     id: 'quick_upload_notes',
     title: 'Upload to Vault',
     subtitle: 'Cloud notes & files',
-    icon: 'symbol:arrow.up.doc',
+    icon: Platform.OS === 'ios' ? 'symbol:folder' : 'shortcut_notes',
     params: { screen: 'Notes', openUpload: true },
   },
 ];

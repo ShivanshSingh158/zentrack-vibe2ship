@@ -33,7 +33,7 @@ import { queueWrite } from '../../services/offlineSync';
 import { safeWrite } from '../../utils/safeWrite';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { Task } from '../../contexts/MobileDataContext';
-import { parseNLTask } from '../../utils/dateUtils';
+import { parseNLTask, cleanTaskTitle } from '../../utils/dateUtils';
 import { COLLECTION } from '../../config/constants';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { useTheme } from "../../contexts/ThemeContext";
@@ -41,6 +41,7 @@ import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
 import { startVADRecording, stopAndTranscribe, cancelVoiceRecording, isSilenceOrNoise, VoiceState } from '../../services/voiceEngine';
 import { Portal } from '../../contexts/PortalContext';
 import NLPTaskInput from '../Tasks/NLPTaskInput';
+import { scheduleSingleTaskReminder } from '../../services/notifications';
 
 // ─── NL Date Parser ──────────────────────────────────────────────────────────
 
@@ -163,7 +164,7 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
     try {
       if (type === 'task') {
         const prompt = `Parse this task description into JSON: "${textToSave.trim()}"
-IMPORTANT: Extract ONLY the core task name for 'title', removing any time, date, priority, or recurrence words (e.g., "dsa at 6 30 am" -> "dsa").
+IMPORTANT: Extract ONLY the clean action-oriented task name for 'title', completely removing conversational commands (e.g. "create", "add", "make", "schedule", "remind me to") and any time, date, priority, or recurrence words (e.g., "create dsa study from 10 am to 12 30 am daily" -> "Study DSA", "add buy groceries at 6pm" -> "Buy groceries").
 The user might ask for multiple tasks (e.g., "for next 5 days", "every day this week").
 If it implies multiple tasks, return an array of tasks. If it's a single task, return an array of 1 task.
 Return ONLY a JSON array: [{"title": str, "date": "YYYY-MM-DD", "timeSlot": "HH:MM or null", "priority": "P1|P2|P3", "isRecurring": bool, "frequency": "daily|weekly|monthly or null"}]
@@ -202,30 +203,37 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
         for (const t of parsedData) {
           const docRef = doc(collection(db, COLLECTION.TASKS));
           const taskId = docRef.id;
-          const taskDate = t.date || new Date().toISOString().slice(0, 10);
+          const taskDate = t.date || parsed?.date || new Date().toISOString().slice(0, 10);
+          const taskTime = t.timeSlot || parsed?.timeSlot || undefined;
+          const finalIsReminder = !!(t.isReminder || parsed?.isReminder || taskTime);
           const taskObj: Task = {
             id: taskId,
             userId: user.uid,
-            title: t.title || textToSave.trim(),
+            title: cleanTaskTitle(t.title || parsed?.title || textToSave.trim()),
             status: 'pending',
-            priority: t.priority || 'P2',
+            priority: t.priority || parsed?.priority || 'P2',
             date: taskDate,
-            timeSlot: t.timeSlot || undefined,
-            isRecurring: !!t.isRecurring,
-            recurrenceRule: t.frequency ? { type: t.frequency, interval: 1 } : undefined,
+            timeSlot: taskTime,
+            isRecurring: !!t.isRecurring || !!parsed?.isRecurring,
+            recurrenceRule: t.frequency ? { type: t.frequency, interval: 1 } : (parsed?.recurrenceRule || undefined),
+            isReminder: finalIsReminder,
           };
           optimisticAddTask(taskObj);
+          if (finalIsReminder || taskTime) {
+            scheduleSingleTaskReminder(taskObj).catch(console.warn);
+          }
 
           const firestorePayload = {
             userId: user.uid,
-            title: t.title || textToSave.trim(),
-            text: t.title || textToSave.trim(),
+            title: taskObj.title,
+            text: taskObj.title,
             status: 'pending',
-            priority: t.priority || 'P2',
+            priority: taskObj.priority,
             date: taskDate,
-            timeSlot: t.timeSlot || null,
-            isRecurring: !!t.isRecurring,
+            timeSlot: taskTime || null,
+            isRecurring: taskObj.isRecurring || false,
             frequency: t.frequency || null,
+            isReminder: finalIsReminder,
             createdAt: serverTimestamp(),
           };
 

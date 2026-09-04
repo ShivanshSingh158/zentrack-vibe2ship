@@ -53,7 +53,7 @@ const ALL_MONTH_FORMS = Object.keys(MONTH_ALIASES).sort((a,b) => b.length - a.le
 
 /** A single detected token in the raw text (for inline highlighting) */
 export interface NLPToken {
-  type: 'date' | 'time' | 'priority' | 'recurrence' | 'tag' | 'duration' | 'reminder';
+  type: 'date' | 'time' | 'priority' | 'recurrence' | 'tag' | 'duration' | 'reminder' | 'subtask' | 'location';
   start: number;
   end: number;
   display: string;
@@ -75,13 +75,19 @@ export interface ParsedTask {
   durationMinutes?: number | null;
   /** Flag indicating high-priority scheduled reminder */
   isReminder?: boolean;
+  /** Auto-extracted subtasks list */
+  subtasks?: string[];
+  /** Auto-detected location reminder configuration */
+  locationReminder?: any;
+  /** Auto-detected location name */
+  locationName?: string;
   tokens: NLPToken[];
 }
 
 function parseSingleTime(hStr: string, mStr: string, pStr: string): { hh: string; mm: string; display: string } {
   let h = parseInt(hStr, 10);
   const mins = mStr ? parseInt(mStr, 10) : 0;
-  const period = (pStr || '').toLowerCase();
+  const period = (pStr || '').toLowerCase().replace(/[^a-z]/g, '');
   if (period === 'pm' && h < 12) h += 12;
   if (period === 'am' && h === 12) h = 0;
   const hh = h.toString().padStart(2, '0');
@@ -90,6 +96,7 @@ function parseSingleTime(hStr: string, mStr: string, pStr: string): { hh: string
   const ampm = h >= 12 ? 'pm' : 'am';
   return { hh, mm, display: `${hr12}:${mm}${ampm}` };
 }
+
 
 export function toYMD(d: Date): string {
   // Use local date parts to avoid UTC timezone shift (critical for IST UTC+5:30)
@@ -127,10 +134,337 @@ function resolveMonthDay(monthStr: string, dayNum: number): Date | null {
   return candidate;
 }
 
-export function parseNLTask(raw: string): ParsedTask {
+/**
+ * Strips conversational command prefixes, carrier words, filler phrases,
+ * trailing prepositions, normalizes inverted voice grammar (e.g. "DSA study" -> "Study DSA"),
+ * capitalizes sentences, and preserves standard tech/academic acronyms.
+ */
+export function cleanTaskTitle(rawTitle: string): string {
+  if (!rawTitle) return '';
+  let t = rawTitle.trim();
+
+  // 1. Strip assistant / conversational wrappers
+  t = t.replace(/^(?:hey\s+)?sara[,:\s]+/i, '');
+  t = t.replace(/^(?:can|could|would)\s+you\s+(?:please\s+)?/i, '');
+  t = t.replace(/^please\s+(?:kindly\s+)?/i, '');
+  t = t.replace(/^kindly\s+/i, '');
+
+  // 2. Strip task creation command prefixes & conversational preambles
+  const commandPrefixes = [
+    // Create variations
+    /^create\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
+    /^create\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
+    /^create\s+(?:a\s+|an\s+)?/i,
+    // Add variations
+    /^add\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
+    /^add\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
+    /^add\s+(?:a\s+|an\s+)?/i,
+    // Make variations
+    /^make\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
+    /^make\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
+    /^make\s+(?:a\s+|an\s+)?/i,
+    // Schedule variations
+    /^schedule\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
+    /^schedule\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
+    /^schedule\s+(?:a\s+|an\s+)?/i,
+    // Set / Set up variations
+    /^set\s+(?:up\s+)?(?:a\s+|an\s+)?(?:new\s+)?(?:reminder|alarm|task|event)\s+(?:to|for|at|about)\s+/i,
+    /^set\s+(?:up\s+)?(?:a\s+|an\s+)?(?:new\s+)?(?:reminder|alarm|task|event)\s*[:\-]?\s+/i,
+    /^set\s+alarm\s+(?:for|at|to)\s+/i,
+    // Remind variations (with conversational clauses like "remind me that I have to")
+    /^remind\s+me\s+(?:that\s+(?:i|we)\s+(?:have|need|got|gotta)\s+to|that|to|for|about)?\s*/i,
+    /^remind\s+(?:that\s+(?:i|we)\s+(?:have|need|got|gotta)\s+to|that|to|for|about)?\s*/i,
+    /^reminder\s*[:\-]\s*/i,
+    /^reminder\s+(?:to|for|about)\s+/i,
+    // Remember / Don't forget / Ensure
+    /^(?:don'?t\s+forget|dont\s+forget)\s+(?:that\s+(?:i|we)\s+(?:have|need|got|gotta)\s+to|to\s+)?/i,
+    /^remember\s+(?:to\s+)?/i,
+    /^(?:make|be)\s+sure\s+to\s+/i,
+    // Conversational preambles & intentions
+    /^(?:that\s+)?(?:(?:i|we)\s+)?(?:was\s+thinking\s+(?:of|about)|was\s+planning\s+(?:to|on)|am\s+planning\s+(?:to|on)|plan\s+to|planning\s+(?:to|on))\s+/i,
+    /^(?:that\s+)?(?:(?:i|we)\s+)?(?:am\s+supposed\s+to|are\s+supposed\s+to|supposed\s+to)\s+/i,
+    /^(?:that\s+)?(?:(?:i|we)\s+)?(?:have\s+got\s+to|'ve\s+gotta|have\s+to|need\s+to|want\s+to|wanna|wish\s+to|just\s+need\s+to|got\s+to|gotta)\s+/i,
+    /^(?:that\s+)?(?:i|we)\s+(?:should|must)\s+/i,
+    /^(?:gotta|wanna|need\s+to)\s+/i,
+    /^(?:hit|do)\s+(?:the\s+)?(?=(?:chest|back|legs|biceps|triceps|shoulders|push|pull|gym|workout)\b)/i,
+    /^(?:bhai|yaar|bro|dude)[,\s]+/i,
+    // Logging / writing
+    /^(?:put|write|note|take)\s+down\s+(?:a\s+|the\s+)?(?:task\s+)?(?:to|for)?\s*/i,
+    /^(?:log|record|enter|track)\s+(?:a\s+|the\s+)?(?:task\s+)?(?:to|for)?\s*/i,
+    // Prefixes like "todo:", "task:", "new task:"
+    /^(?:to-?do|task|action\s+item|new\s+task|note)\s*[:\-]\s*/i,
+    // Hinglish command prefixes
+    /^(?:mujhe\s+)?(?:ek\s+)?task\s+(?:bana\s+(?:do|o)|add\s+(?:karo|kar\s+do)|create\s+(?:karo|kar\s+do))\s*/i,
+    /^mujhe\s+/i,
+    /^(?:yaad\s+(?:dilana|dila\s+do|rakhna))\s+(?:ki\s+)?/i,
+  ];
+
+  let changed = true;
+  let iterations = 0;
+  while (changed && iterations < 5) {
+    changed = false;
+    iterations++;
+    for (const pat of commandPrefixes) {
+      if (pat.test(t)) {
+        t = t.replace(pat, '').trim();
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  // 2b. Gerund-to-imperative action verb normalization
+  // Spoken dictation frequently starts with "-ing" verbs (e.g. "submitting lab report", "studying operating systems", "calling mom")
+  const GERUNDS: Record<string, string> = {
+    submitting: 'submit',
+    studying: 'study',
+    calling: 'call',
+    buying: 'buy',
+    paying: 'pay',
+    sending: 'send',
+    scheduling: 'schedule',
+    revising: 'revise',
+    writing: 'write',
+    reading: 'read',
+    booking: 'book',
+    cleaning: 'clean',
+    practicing: 'practice',
+    checking: 'check',
+    meeting: 'meet',
+    fixing: 'fix',
+    working: 'work',
+    cooking: 'cook',
+    attending: 'attend',
+    completing: 'complete',
+    finishing: 'finish',
+    preparing: 'prepare',
+    ordering: 'order',
+    learning: 'learn',
+    visiting: 'visit',
+    taking: 'take',
+    doing: 'do',
+    going: 'go',
+    watching: 'watch',
+    deploying: 'deploy',
+    reviewing: 'review',
+    organizing: 'organize',
+    printing: 'print',
+    updating: 'update',
+    renewing: 'renew',
+    canceling: 'cancel',
+    cancelling: 'cancel',
+    exercising: 'exercise',
+    washing: 'wash',
+    ironing: 'iron',
+    emailing: 'email',
+    messaging: 'message',
+    texting: 'text',
+    dropping: 'drop',
+    picking: 'pick',
+    collecting: 'collect',
+    downloading: 'download',
+    uploading: 'upload',
+    installing: 'install',
+    uninstalling: 'uninstall',
+    testing: 'test',
+    debugging: 'debug',
+    discussing: 'discuss',
+    presenting: 'present',
+    tracking: 'track',
+    logging: 'log',
+    registering: 'register',
+    applying: 'apply',
+    filing: 'file',
+    signing: 'sign',
+    verifying: 'verify',
+    confirming: 'confirm',
+    informing: 'inform',
+    notifying: 'notify',
+    contacting: 'contact',
+    following: 'follow',
+    researching: 'research',
+    solving: 'solve',
+    building: 'build',
+    designing: 'design',
+    drafting: 'draft',
+    editing: 'edit',
+    sharing: 'share',
+    returning: 'return',
+    reporting: 'report',
+    joining: 'join',
+    packing: 'pack',
+    charging: 'charge',
+    backing: 'back',
+    saving: 'save',
+    archiving: 'archive',
+    exporting: 'export',
+  };
+
+  const firstWordMatch = t.match(/^([a-zA-Z]+)(.*)$/s);
+  if (firstWordMatch) {
+    const fw = firstWordMatch[1].toLowerCase();
+    if (GERUNDS[fw]) {
+      t = `${GERUNDS[fw]}${firstWordMatch[2]}`;
+    }
+  }
+
+  // 3. Strip leading connector prepositions and articles left over
+  t = t.replace(/^(?:to|for|about|of|regarding|that|a|an|the)\s+/i, '').trim();
+
+  // 4. Strip trailing conversational / filler suffixes & Hinglish
+  t = t.replace(/\s+(?:please|as\s+well|also|too|for\s+me|bhai|yaar|bro)$/i, '').trim();
+  t = t.replace(/\s+(?:dena|deni|bhejna|bhejni|lena|leni|jana|aana|khatam\s+karna)\s+(?:hai|h)$/i, '').trim();
+  t = t.replace(/\s+(?:karna|krna|karni|krni)\s+(?:hai|h)$/i, '').trim();
+  t = t.replace(/\s+(?:kar\s+dena|kar\s+lena|de\s+dena|kar\s+do|karo)$/i, '').trim();
+
+  // 4b. Strip trailing am/pm, p.m., a.m., time indicators left over from speech
+  t = t.replace(/\s+(?:[ap]\.?m\.?|am|pm|o'?clock)$/i, '').trim();
+
+  // 4c. Strip trailing "task for everyday", "task to ...", "task" (e.g. "chest workout task for everyday" -> "chest workout")
+  t = t.replace(/\s+(?:task|todo|to-do|item|reminder)(?:\s+(?:for|to|at|on|about))?(?:\s+(?:everyday|daily|each\s+day|today|tomorrow))?$/i, '').trim();
+  t = t.replace(/\s+(?:for\s+everyday|for\s+daily|everyday|daily)$/i, '').trim();
+
+  // 4d. Strip trailing orphaned period-of-day words left over
+  t = t.replace(/\s+(?:in\s+the\s+)?(?:early\s+morning|morning|afternoon|evening|night|tonight|today|tomorrow|yesterday)$/i, '').trim();
+  t = t.replace(/\s+(?:shaam\s+ko|sham\s+ko|shaam|sham|subah\s+ko|subah|dopahar\s+ko|dopahar|raat\s+ko|raat)$/i, '').trim();
+
+  // 4e. Strip "with alarm", "with a reminder", "with notification", "with an alert" etc.
+  // These are the most common voice speech modifiers that bleed into titles
+  t = t.replace(/\s+with\s+(?:a(?:n)?\s+)?(?:alarm|reminder|alert|notification|buzz|ping|bell|chime|sound|vibration|notify|toast|pop.?up|snooze|push\s+notification)s?$/i, '').trim();
+  t = t.replace(/\s+(?:with\s+)?(?:set(?:\s+an?)?\s+)?(?:alarm|reminder|alert|notification)\s+(?:for|at|on|to)\s*$/i, '').trim();
+  // Strip "and remind me", "and set alarm", "and notify me" trailing clauses
+  t = t.replace(/\s+and\s+(?:remind\s+(?:me\s+)?(?:to\s+|about\s+)?|set\s+(?:a[n]?\s+)?(?:alarm|reminder)|notify\s+(?:me\s+)?)$/i, '').trim();
+  // Strip trailing "at 4:30", "at 4pm" (bare time specifiers left after token strip)
+  t = t.replace(/\s+at\s+\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm|a\.?m\.?|p\.?m\.?)?$/i, '').trim();
+  // Strip trailing "today", "tomorrow", "tonight" when lonely at end
+  t = t.replace(/\s+(?:today|tomorrow|tonight|aaj|kal|parso)$/i, '').trim();
+  // Strip trailing "high priority", "medium priority" alone at end
+  t = t.replace(/\s+(?:high|medium|low)\s+priority$/i, '').trim();
+  // Strip trailing "urgent", "asap"
+  t = t.replace(/\s+(?:urgent|asap|important)$/i, '').trim();
+
+  // 5. Strip trailing dangling prepositions and connectors
+  t = t.replace(/\s+(?:at|from|to|by|on|in|for|with|until|till|and|or|during|of|about)$/i, '').trim();
+  t = t.replace(/^[\s,.:;\-]+|[\s,.:;\-]+$/g, '').trim();
+
+  // 6. Inverted action normalization (SOV -> SVO for task intents)
+  // e.g. "dsa study" -> "study dsa", "physics study" -> "study physics"
+  const studyMatch = t.match(/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+study$/i);
+  if (studyMatch && studyMatch[1].toLowerCase() !== 'case') {
+    t = `study ${studyMatch[1]}`;
+  }
+
+  const practiceMatch = t.match(/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+practice$/i);
+  if (practiceMatch) {
+    t = `practice ${practiceMatch[1]}`;
+  }
+
+  const revisionMatch = t.match(/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+revision$/i);
+  if (revisionMatch) {
+    t = `revise ${revisionMatch[1]}`;
+  }
+
+  const prepMatch = t.match(/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:prep|preparation)$/i);
+  if (prepMatch) {
+    t = `prep for ${prepMatch[1]}`;
+  }
+
+  const subMatch = t.match(/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:submission|submit)$/i);
+  if (subMatch) {
+    t = `submit ${subMatch[1]}`;
+  }
+
+  const payMatch = t.match(/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:payment|pay)$/i);
+  if (payMatch) {
+    t = `pay ${payMatch[1]}`;
+  }
+
+  // 7. Acronym normalization & smart title capitalization
+  const ACRONYMS: Record<string, string> = {
+    'dsa': 'DSA',
+    'dbms': 'DBMS',
+    'os': 'OS',
+    'ai': 'AI',
+    'ml': 'ML',
+    'dl': 'DL',
+    'nlp': 'NLP',
+    'cn': 'CN',
+    'oop': 'OOP',
+    'oops': 'OOPs',
+    'sql': 'SQL',
+    'api': 'API',
+    'apis': 'APIs',
+    'html': 'HTML',
+    'css': 'CSS',
+    'js': 'JS',
+    'ts': 'TS',
+    'pr': 'PR',
+    'sde': 'SDE',
+    'hr': 'HR',
+    'ui': 'UI',
+    'ux': 'UX',
+    'pdf': 'PDF',
+    'llm': 'LLM',
+    'cgpa': 'CGPA',
+    'sgpa': 'SGPA',
+    'aws': 'AWS',
+    'gcp': 'GCP',
+    'toc': 'TOC',
+    'ppl': 'PPL',
+    'hiit': 'HIIT',
+    '1rm': '1RM',
+    'bmi': 'BMI',
+    'vad': 'VAD',
+    'rest': 'REST',
+    'crud': 'CRUD',
+    'leetcode': 'LeetCode',
+    'gfg': 'GFG',
+    'codeforces': 'Codeforces',
+    'codechef': 'CodeChef',
+    'nptel': 'NPTEL',
+    'neet': 'NEET',
+    'gate': 'GATE',
+    'cat': 'CAT',
+    'upsc': 'UPSC',
+    'iit': 'IIT',
+    'nit': 'NIT',
+    'bits': 'BITS',
+    'gre': 'GRE',
+    'toefl': 'TOEFL',
+  };
+
+  const MINOR_WORDS = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'for', 'nor', 'on', 'at', 'to', 'from', 'by', 'of', 'in', 'with']);
+  const words = t.split(/\s+/);
+  const formattedWords = words.map((w, idx) => {
+    const cleanWord = w.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (ACRONYMS[cleanWord]) {
+      return w.replace(new RegExp(cleanWord, 'i'), ACRONYMS[cleanWord]);
+    }
+    if (w.length > 0 && (idx === 0 || !MINOR_WORDS.has(w.toLowerCase()))) {
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    }
+    return w.toLowerCase();
+  });
+
+  t = formattedWords.join(' ').trim();
+
+  return t || rawTitle.trim();
+}
+
+export function parseNLTask(rawInput: string): ParsedTask {
   const now = new Date();
+
+  // Normalize spoken speech artifacts across the entire parser (e.g. "p.m.", "a.m.", "p. m.", "a. m.", "pm.", "am.")
+  // so that raw and text character indices align 1:1 without leaving trailing letters in the title
+  const raw = (rawInput || '')
+    .replace(/\b([ap])\s*\.\s*m\s*\.?(?=\s|[.,;:!?]|$)/gi, (m, p1) => p1.toLowerCase() + 'm')
+    .replace(/\b([ap])\s*\.\s*m\b/gi, (m, p1) => p1.toLowerCase() + 'm')
+    .replace(/\b([ap])\s*m\s*\./gi, (m, p1) => p1.toLowerCase() + 'm');
+
   let text = raw;
   const tokens: NLPToken[] = [];
+
+
   let dateResult: Date | null = null;
   let timeSlot: string | null = null;
   let endTimeSlot: string | null = null;
@@ -170,10 +504,73 @@ export function parseNLTask(raw: string): ParsedTask {
     }
   }
 
-  // ── 0b. REMINDER INTENT ("remind", "remind me to", "reminder", "alarm", etc.) ───
+  // ── 0a. SPOKEN TAGS / LABELS ("tag work", "label gym", "hashtag study") ────
+  {
+    const spokenTagRe = /\b(?:tags?|labels?|hashtag)\s*[:\-]?\s*([a-zA-Z][a-zA-Z0-9_-]*(?:\s*,\s*[a-zA-Z][a-zA-Z0-9_-]*)*)\b/gi;
+    let stm: RegExpExecArray | null;
+    while ((stm = spokenTagRe.exec(text)) !== null) {
+      const tagList = stm[1].split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      for (const t of tagList) {
+        if (!extractedTags.includes(t)) extractedTags.push(t);
+      }
+      registerToken('tag', stm[0], tagList.map(t => `#${t}`).join(' '));
+    }
+  }
+
+  // ── 0b. SUBTASKS ("with subtasks A, B, C", "subtasks: 1, 2, 3", "checklist: ...") ───
+  const extractedSubtasks: string[] = [];
+  {
+    const subtaskRe = /\b(?:with\s+subtasks?|subtasks?\s*(?:are|include)?|sub-tasks?\s*(?:are|include)?|checklist|with\s+items?)\s*[:\-]?\s*([^.]+?)(?=\s*(?:\b(?:tomorrow|today|tonight|next|every|at\s+\d|am|pm|high|medium|low|p1|p2|p3|urgent|#|\.|$)))/i;
+    const sm = text.match(subtaskRe);
+    if (sm) {
+      const rawSubtasks = sm[1].trim();
+      // Split on comma, "and", semicolon, or numbered bullets "1. ", "2) "
+      const items = rawSubtasks
+        .split(/(?:,\s*(?:and\s+)?|\s+and\s+|\s*;\s*|(?:^|\s+)\d+[\.\)]\s*)/i)
+        .map(s => s.trim().replace(/^[\-•*]\s*/, ''))
+        .filter(s => s.length > 0);
+      if (items.length > 0) {
+        extractedSubtasks.push(...items);
+        registerToken('subtask', sm[0], `${items.length} Subtask${items.length > 1 ? 's' : ''}`);
+      }
+    }
+  }
+
+  // ── 0c. LOCATION TRIGGER ("at gym", "in college", "at library", "at home", etc.) ───
+  let locationReminder: any = null;
+  let locationName: string | undefined = undefined;
+  {
+    const locRe = /\b(?:at|in|near)\s+(?:the\s+)?(gym|fitness\s+center|sports\s+complex|campus|college|university|school|classroom|lecture\s+hall|library|hostel|lab|laboratory|office|work|workplace|home|house|canteen|cafeteria|market|supermarket|grocery\s+store|mall|store|pharmacy|medical\s+store|clinic|hospital|bank|post\s+office|airport|station)\b/i;
+    const lm = text.match(locRe);
+    if (lm) {
+      const rawLoc = lm[1].trim();
+      const capitalized = rawLoc.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      locationName = capitalized;
+      locationReminder = {
+        placeName: capitalized,
+        triggerType: 'arrive',
+        radius: 150,
+      };
+      registerToken('location', lm[0], `📍 ${capitalized}`);
+    }
+  }
+
+  // ── 0d. REMINDER INTENT ("remind", "remind me to", "with alarm", "with reminder", etc.) ───
   let isReminder = false;
+  // Order matters: greedier / longer patterns first so "with alarm" is consumed
+  // before the shorter bare "alarm" pattern fires, preventing it from leaking into the title.
   const reminderPatterns = [
-    /\b(?:remind(?:\s+me)?(?:\s+(?:to|about|for|at))?|reminder(?:\s+(?:for|to|about|at))?|set\s+(?:a\s+)?reminder(?:\s+(?:to|for|about|at))?|alarm(?:\s+(?:for|at))?)\b/i,
+    // "with alarm", "with an alarm", "with a reminder", "with notification"
+    /\bwith\s+(?:a(?:n)?\s+)?(?:alarm|reminder|alert|notification|buzz|ping|bell|chime|sound|vibration|push\s+notification)s?\b/i,
+    // "set alarm", "set a reminder"
+    /\bset\s+(?:a(?:n)?\s+)?(?:alarm|reminder)(?:\s+(?:for|at|to))?\b/i,
+    // "and set alarm", "and remind me", "and notify me"
+    /\band\s+(?:set\s+(?:a[n]?\s+)?(?:alarm|reminder)|remind\s+(?:me\s+)?(?:to\s+|about\s+)?|notify\s+(?:me\s+)?)\b/i,
+    // Core remind patterns
+    /\b(?:remind(?:\s+me)?(?:\s+(?:to|about|for|at))?|reminder(?:\s+(?:for|to|about|at))?)\b/i,
+    // Bare alarm (shortest match — must be last to avoid stripping "alarm" in task names)
+    /\balarm(?:\s+(?:for|at|on))?\b/i,
+    // Hinglish
     /\b(?:mujhe\s+yaad\s+dilana|yaad\s+dilana|yaad\s+rakhna)\b/i,
   ];
   for (const pat of reminderPatterns) {
@@ -181,7 +578,8 @@ export function parseNLTask(raw: string): ParsedTask {
     if (m) {
       isReminder = true;
       registerToken('reminder', m[0], '⏰ Reminder');
-      break;
+      // Don't break — consume ALL reminder phrases so none leak into title
+      // Re-search on updated `text` (registerToken already blanked the match)
     }
   }
 
@@ -256,15 +654,51 @@ export function parseNLTask(raw: string): ParsedTask {
   };
   const dayRegexStr = '(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)s?';
 
-  if (/\b(every\s+day|daily|each\s+day)\b/i.test(text)) {
-    const m = text.match(/\b(every\s+day|daily|each\s+day)\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'daily', interval: 1 }; dateResult = new Date(now);
-    registerToken('recurrence', m[0], 'Daily');
+  // Check Day Range patterns FIRST so specific day spans take precedence over generic daily/everyday
+  // e.g. "daily from monday to friday", "monday to friday", "mon - fri", "monday through friday", "monday till friday"
+  const rangePat = new RegExp(`\\b(?:(?:daily|everyday|every)\\s+)?(?:from\\s+)?${dayRegexStr}\\s+(?:to|-|through|till|until)\\s+${dayRegexStr}\\b`, 'i');
+  const andPat   = new RegExp(`\\b(?:(?:daily|everyday|every)\\s+)?(?:from\\s+)?${dayRegexStr}\\s+(?:and|&)\\s+${dayRegexStr}\\b`, 'i');
+  const rm = text.match(rangePat);
+  const am = text.match(andPat);
+
+  if (rm) {
+    const start = getDayIdx(rm[1]);
+    const end   = getDayIdx(rm[2]);
+    if (start !== -1 && end !== -1) {
+      const days: number[] = [];
+      let curr = start;
+      while (true) {
+        days.push(curr);
+        if (curr === end) break;
+        curr = (curr + 1) % 7;
+        if (days.length > 7) break;
+      }
+      isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days.sort() };
+      dateResult = nextWeekday(start);
+      const sLbl = DAY_NAMES[start]?.charAt(0).toUpperCase() + DAY_NAMES[start]?.slice(1);
+      const eLbl = DAY_NAMES[end]?.charAt(0).toUpperCase() + DAY_NAMES[end]?.slice(1);
+      registerToken('recurrence', rm[0], `${sLbl} – ${eLbl}`);
+    }
+  } else if (am) {
+    const d1 = getDayIdx(am[1]);
+    const d2 = getDayIdx(am[2]);
+    if (d1 !== -1 && d2 !== -1) {
+      const days = [d1, d2].sort();
+      isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days };
+      dateResult = nextWeekday(days[0]);
+      const l1 = DAY_NAMES[d1]?.charAt(0).toUpperCase() + DAY_NAMES[d1]?.slice(1);
+      const l2 = DAY_NAMES[d2]?.charAt(0).toUpperCase() + DAY_NAMES[d2]?.slice(1);
+      registerToken('recurrence', am[0], `${l1} & ${l2}`);
+    }
   } else if (/\b(every\s+weekday|every\s+workday|weekdays|workdays)\b/i.test(text)) {
     const m = text.match(/\b(every\s+weekday|every\s+workday|weekdays|workdays)\b/i)!;
     isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [1,2,3,4,5] };
     dateResult = nextWeekday(1);
     registerToken('recurrence', m[0], 'Weekdays');
+  } else if (/\b(every\s*day|daily|each\s+day)\b/i.test(text)) {
+    const m = text.match(/\b(every\s*day|daily|each\s+day)\b/i)!;
+    isRecurring = true; recurrenceRule = { type: 'daily', interval: 1 }; dateResult = new Date(now);
+    registerToken('recurrence', m[0], 'Daily');
   } else if (/\b(every\s+weekend|weekends)\b/i.test(text)) {
     const m = text.match(/\b(every\s+weekend|weekends)\b/i)!;
     isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [0, 6] };
@@ -333,130 +767,185 @@ export function parseNLTask(raw: string): ParsedTask {
     }
 
     if (!isRecurring) {
-      // Day range: "monday to friday", "mon-fri"
-      const rangePat = new RegExp(`\\b(?:every\\s+)?${dayRegexStr}\\s+(?:to|-)\\s+${dayRegexStr}\\b`, 'i');
-      const andPat   = new RegExp(`\\b(?:every\\s+)?${dayRegexStr}\\s+(?:and|&)\\s+${dayRegexStr}\\b`, 'i');
-      const rm = text.match(rangePat);
-      const am = text.match(andPat);
-
-      if (rm) {
-        const start = getDayIdx(rm[1]);
-        const end   = getDayIdx(rm[2]);
-        if (start !== -1 && end !== -1) {
-          const days: number[] = [];
-          let curr = start;
-          while (true) {
-            days.push(curr);
-            if (curr === end) break;
-            curr = (curr + 1) % 7;
-            if (days.length > 7) break;
-          }
-          isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days.sort() };
-          dateResult = nextWeekday(start);
-          const sLbl = DAY_NAMES[start]?.charAt(0).toUpperCase() + DAY_NAMES[start]?.slice(1);
-          const eLbl = DAY_NAMES[end]?.charAt(0).toUpperCase() + DAY_NAMES[end]?.slice(1);
-          registerToken('recurrence', rm[0], `${sLbl} – ${eLbl}`);
-        }
-      } else if (am) {
-        const d1 = getDayIdx(am[1]);
-        const d2 = getDayIdx(am[2]);
-        if (d1 !== -1 && d2 !== -1) {
-          const days = [d1, d2].sort();
-          isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days };
-          dateResult = nextWeekday(days[0]);
-          const l1 = DAY_NAMES[d1]?.charAt(0).toUpperCase() + DAY_NAMES[d1]?.slice(1);
-          const l2 = DAY_NAMES[d2]?.charAt(0).toUpperCase() + DAY_NAMES[d2]?.slice(1);
-          registerToken('recurrence', am[0], `${l1} & ${l2}`);
-        }
-      } else {
-        for (let di = 0; di < DAY_NAMES.length; di++) {
-          const dn = DAY_NAMES[di], ds = DAY_SHORT[di];
-          const pat = new RegExp(`\\bevery\\s+(${dn}s?|${ds}s?)\\b`, 'i');
-          const m = text.match(pat);
-          if (m) {
-            isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [di] };
-            dateResult = nextWeekday(di);
-            const label = DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1);
-            registerToken('recurrence', m[0], `Every ${label}`); break;
-          }
+      for (let di = 0; di < DAY_NAMES.length; di++) {
+        const dn = DAY_NAMES[di], ds = DAY_SHORT[di];
+        const pat = new RegExp(`\\bevery\\s+(${dn}s?|${ds}s?)\\b`, 'i');
+        const m = text.match(pat);
+        if (m) {
+          isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [di] };
+          dateResult = nextWeekday(di);
+          const label = DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1);
+          registerToken('recurrence', m[0], `Every ${label}`); break;
         }
       }
     }
   }
 
-  // ── 3. TIME (NAMED ALIASES + RANGES + SINGLE) ────────────────────────
 
-  // 3a. Named time aliases: "noon", "midnight", "morning", "afternoon",
-  //     "evening", "night", "EOD", "COB", "before lunch", "after lunch",
-  //     "3 o'clock", "half past 3", "quarter to 4", "quarter past 6"
+  // ── 3. TIME (NUMERIC RANGES + SINGLE NUMERIC + HINGLISH BAJE + NAMED ALIASES) ──
+
+  // 3a. Numeric time ranges: "at 6:30 am to 8:30 am", "from 10 am to 12 30 am", "between 2pm and 4pm", "from 10:00 to 12:30"
   if (!timeSlot) {
-    // Compound named times (check before simple ones)
-    const namedTimeCompound: Array<[RegExp, string, string]> = [
-      [/\bbefore\s+lunch\b/i,                    '11:30', 'Before Lunch'],
-      [/\bafter\s+lunch\b/i,                     '13:00', 'After Lunch'],
-      [/\bhalf\s+past\s+(\d{1,2})\b/i,           '',      ''],  // handled below
-      [/\bquarter\s+to\s+(\d{1,2})\b/i,          '',      ''],  // handled below
-      [/\bquarter\s+past\s+(\d{1,2})\b/i,        '',      ''],  // handled below
-      [/(\d{1,2})\s+o'?clock\b/i,               '',      ''],  // handled below
-    ];
+    const rangePattern = /\b(?:at\s+|from\s+|between\s+)?(\d{1,2})(?:[:\s](\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)?\s*(?:to|-|until|till|and|through)\s*(\d{1,2})(?:[:\s](\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)?\b/i;
+    const rangeMatch = text.match(rangePattern);
 
-    // half past N → N:30 (smart PM: if N<8 treat as PM)
-    const halfPastM = text.match(/\bhalf\s+past\s+(\d{1,2})\b/i);
-    if (halfPastM) {
-      let h = parseInt(halfPastM[1], 10);
-      if (h < 8) h += 12; // smart PM
-      timeSlot = `${h.toString().padStart(2,'0')}:30`;
+    if (rangeMatch) {
+      const hasAmPm = rangeMatch[3] || rangeMatch[6];
+      const hasColon = rangeMatch[2] || rangeMatch[5];
+      const hasKeyword = /\b(?:at|from|between)\b/i.test(rangeMatch[0]);
+      // Guard against false positives like "chapter 1 to 2" unless time keywords, colons, or am/pm exist
+      if (hasAmPm || hasColon || hasKeyword) {
+        const rawP2 = (rangeMatch[6] || '').toLowerCase().replace(/[^a-z]/g, '');
+        const rawP1 = (rangeMatch[3] || '').toLowerCase().replace(/[^a-z]/g, '');
+        const p2 = rawP2 || rawP1 || '';
+        const p1 = rawP1 || (p2 && parseInt(rangeMatch[1], 10) < 12 ? p2 : '');
+        const t1 = parseSingleTime(rangeMatch[1], rangeMatch[2], p1);
+        const t2 = parseSingleTime(rangeMatch[4], rangeMatch[5], p2);
+        timeSlot = `${t1.hh}:${t1.mm}`;
+        endTimeSlot = `${t2.hh}:${t2.mm}`;
+        registerToken('time', rangeMatch[0], `${t1.display} - ${t2.display}`);
+      }
+    }
+  }
+
+  // 3b. Specific single numeric times: "at 5 p.m.", "5:00pm", "at 5:30", "at 5am"
+  if (!timeSlot) {
+    // Detect context period hint across whole text to disambiguate bare hours
+    const hasEveningHint = /\b(?:evening|shaam|sham|night|raat|afternoon|dopahar)\b/i.test(text);
+    const hasMorningHint = /\b(?:morning|subah)\b/i.test(text);
+
+    // Check Hinglish "N baje" or "shaam N baje" first
+    const bajeMatch = text.match(/\b(?:(?:shaam|sham|dopahar|raat|subah)\s+(?:ko\s+)?)?(\d{1,2})(?:[:\s](\d{2}))?\s*baje\b/i);
+    if (bajeMatch) {
+      let h = parseInt(bajeMatch[1], 10);
+      const mins = bajeMatch[2] ? parseInt(bajeMatch[2], 10) : 0;
+      const isPm = hasEveningHint || (h >= 1 && h <= 7 && !hasMorningHint);
+      if (isPm && h < 12) h += 12;
+      if (hasMorningHint && h === 12) h = 0;
+      const hh = h.toString().padStart(2, '0');
+      const mm = mins.toString().padStart(2, '0');
+      timeSlot = `${hh}:${mm}`;
       const hr12 = h % 12 || 12;
-      registerToken('time', halfPastM[0], `${hr12}:30${h >= 12 ? 'pm' : 'am'}`);
+      const ampm = h >= 12 ? 'pm' : 'am';
+      registerToken('time', bajeMatch[0], `${hr12}:${mm}${ampm}`);
     }
 
-    // quarter to N → (N-1):45 (smart PM)
+    if (!timeSlot) {
+      const timePatterns: RegExp[] = [
+        /\b(?:at\s+)?(\d{1,2})[:\s](\d{2})\s*(a\.?m\.?|p\.?m\.?|am|pm)\b/i,
+        /\bat\s+(\d{1,2})[:\s](\d{2})\s*(a\.?m\.?|p\.?m\.?|am|pm)?\b/i,
+        /\bat\s?(\d{1,2}):(\d{2})\s?(a\.?m\.?|p\.?m\.?|am|pm)?\b/i,
+        /\bat\s?(\d{1,2})\s?(a\.?m\.?|p\.?m\.?|am|pm)\b/i,
+        /\b(\d{1,2}):(\d{2})\s?(a\.?m\.?|p\.?m\.?|am|pm)\b/i,
+        /\b(\d{1,2})\s?(a\.?m\.?|p\.?m\.?|am|pm)\b/i,
+      ];
+      for (const pat of timePatterns) {
+        const m = text.match(pat);
+        if (!m) continue;
+        let h = parseInt(m[1], 10);
+        const secondGroup = m[2] ?? '';
+        const thirdGroup  = m[3] ?? '';
+        const mins   = /^\d+$/.test(secondGroup) ? parseInt(secondGroup, 10) : 0;
+        const rawPeriod = /^\d+$/.test(secondGroup) ? thirdGroup : secondGroup;
+        let period = (rawPeriod || '').toLowerCase().replace(/[^a-z]/g, '');
+        if (!period) {
+          if (hasEveningHint && h < 12) period = 'pm';
+          else if (hasMorningHint) period = 'am';
+        }
+        if (period === 'pm' && h < 12) h += 12;
+        if (period === 'am' && h === 12) h = 0;
+        const hh = h.toString().padStart(2, '0');
+        const mm = mins.toString().padStart(2, '00');
+        timeSlot = `${hh}:${mm}`;
+        const hr12 = h % 12 || 12;
+        const ampm = h >= 12 ? 'pm' : 'am';
+        registerToken('time', m[0], `${hr12}:${mm}${ampm}`);
+        break;
+      }
+    }
+
+    // 3c. Compound named times: "half past 3", "quarter to 4", "quarter past 6", "3 o'clock", "before lunch", "after lunch"
+    if (!timeSlot) {
+      const halfPastM = text.match(/\bhalf\s+past\s+(\d{1,2})\b/i);
+      if (halfPastM) {
+        let h = parseInt(halfPastM[1], 10);
+        if (h < 8 && !hasMorningHint) h += 12;
+        timeSlot = `${h.toString().padStart(2, '0')}:30`;
+        const hr12 = h % 12 || 12;
+        registerToken('time', halfPastM[0], `${hr12}:30${h >= 12 ? 'pm' : 'am'}`);
+      }
+    }
+
     if (!timeSlot) {
       const quarterToM = text.match(/\bquarter\s+to\s+(\d{1,2})\b/i);
       if (quarterToM) {
         let h = parseInt(quarterToM[1], 10);
-        if (h < 8) h += 12;
+        if (h < 8 && !hasMorningHint) h += 12;
         const baseH = h - 1;
-        timeSlot = `${baseH.toString().padStart(2,'00')}:45`;
+        timeSlot = `${baseH.toString().padStart(2, '00')}:45`;
         const hr12 = baseH % 12 || 12;
         registerToken('time', quarterToM[0], `${hr12}:45${baseH >= 12 ? 'pm' : 'am'}`);
       }
     }
 
-    // quarter past N → N:15 (smart PM)
     if (!timeSlot) {
       const quarterPastM = text.match(/\bquarter\s+past\s+(\d{1,2})\b/i);
       if (quarterPastM) {
         let h = parseInt(quarterPastM[1], 10);
-        if (h < 8) h += 12;
-        timeSlot = `${h.toString().padStart(2,'0')}:15`;
+        if (h < 8 && !hasMorningHint) h += 12;
+        timeSlot = `${h.toString().padStart(2, '0')}:15`;
         const hr12 = h % 12 || 12;
         registerToken('time', quarterPastM[0], `${hr12}:15${h >= 12 ? 'pm' : 'am'}`);
       }
     }
 
-    // N o'clock → smart PM
     if (!timeSlot) {
       const oclockM = text.match(/(\d{1,2})\s+o'?clock\b/i);
       if (oclockM) {
         let h = parseInt(oclockM[1], 10);
-        if (h < 8) h += 12; // smart PM: 3 o'clock → 3pm
-        timeSlot = `${h.toString().padStart(2,'0')}:00`;
+        if (h < 8 && !hasMorningHint) h += 12;
+        timeSlot = `${h.toString().padStart(2, '0')}:00`;
         const hr12 = h % 12 || 12;
         registerToken('time', oclockM[0], `${hr12}:00${h >= 12 ? 'pm' : 'am'}`);
       }
     }
 
-    // Simple named aliases
+    if (!timeSlot) {
+      if (/\bbefore\s+lunch\b/i.test(text)) {
+        const m = text.match(/\bbefore\s+lunch\b/i)!;
+        timeSlot = '11:30';
+        registerToken('time', m[0], 'Before Lunch');
+      } else if (/\bafter\s+lunch\b/i.test(text)) {
+        const m = text.match(/\bafter\s+lunch\b/i)!;
+        timeSlot = '13:00';
+        registerToken('time', m[0], 'After Lunch');
+      }
+    }
+
+    // 3d. Smart AM/PM: bare "at 3" or "@ 3"
+    if (!timeSlot) {
+      const bareAtM = text.match(/\bat\s+(\d{1,2})\b(?!\s*(?:am|pm|:\d|\s+\d{2}))/i);
+      if (bareAtM) {
+        let h = parseInt(bareAtM[1], 10);
+        if (h >= 1 && h <= 11 && !hasMorningHint) h += 12;
+        timeSlot = `${h.toString().padStart(2, '0')}:00`;
+        const hr12 = h % 12 || 12;
+        registerToken('time', bareAtM[0], `${hr12}:00pm`);
+      }
+    }
+
+    // 3e. Standalone named time aliases (Fallback ONLY when no numeric time exists)
     if (!timeSlot) {
       const namedTimes: Array<[RegExp, string, string]> = [
         [/\bnoon\b/i,                        '12:00', 'Noon'],
         [/\bmidnight\b/i,                    '00:00', 'Midnight'],
         [/\b(EOD|end\s+of\s+day|close\s+of\s+business|COB)\b/i, '17:00', 'EOD 5pm'],
+        [/\bearly\s+morning\b/i,             '07:00', 'Early Morning (7am)'],
         [/\bmorning\b(?!\s+routine)/i,       '09:00', 'Morning (9am)'],
         [/\b(midday|mid-?day)\b/i,           '12:00', 'Midday'],
         [/\bafternoon\b/i,                   '14:00', 'Afternoon (2pm)'],
         [/\b(evening|sundown)\b/i,           '18:00', 'Evening (6pm)'],
+        [/\blate\s+night\b/i,                '23:00', 'Late Night (11pm)'],
         [/\b(night|tonight)\b/i,             '21:00', 'Night (9pm)'],
       ];
       for (const [pat, slot, label] of namedTimes) {
@@ -464,61 +953,23 @@ export function parseNLTask(raw: string): ParsedTask {
         if (m) { timeSlot = slot; registerToken('time', m[0], label); break; }
       }
     }
-  }
+  } // end !timeSlot block
 
-  // 3b. Numeric time ranges: "at 6:30 am to 8:30 am", "from 6:30am - 8:30am"
-  if (!timeSlot) {
-  const rangePattern = /\b(?:at\s+|from\s+)?(\d{1,2})[:\s]?(\d{2})?\s*(am|pm)?\s*(?:to|-|until)\s*(\d{1,2})[:\s]?(\d{2})?\s*(am|pm)\b/i;
-  const rangeMatch = text.match(rangePattern);
-
-  if (rangeMatch) {
-    const p1 = rangeMatch[3] || rangeMatch[6];
-    const t1 = parseSingleTime(rangeMatch[1], rangeMatch[2], p1);
-    const t2 = parseSingleTime(rangeMatch[4], rangeMatch[5], rangeMatch[6]);
-    timeSlot = `${t1.hh}:${t1.mm}`;
-    endTimeSlot = `${t2.hh}:${t2.mm}`;
-    registerToken('time', rangeMatch[0], `${t1.display} - ${t2.display}`);
-  } else {
-    // 3c. Single numeric times with explicit am/pm
-    const timePatterns: RegExp[] = [
-      /\bat\s?(\d{1,2}):(\d{2})\s?(am|pm)?\b/i,
-      /\bat\s?(\d{1,2})\s?(am|pm)\b/i,
-      /\b(\d{1,2}):(\d{2})\s?(am|pm)\b/i,
-      /\b(\d{1,2})\s?(am|pm)\b/i,
+  // 3f. Period-of-Day Qualifier Absorption
+  // If a specific timeSlot is already set, absorb redundant period-of-day phrases
+  // so words like "evening", "morning", "in the evening" don't linger in the task title!
+  if (timeSlot) {
+    const periodQualifiers = [
+      /\b(?:in\s+the\s+)?(?:early\s+morning|morning|afternoon|evening|night)\b/i,
+      /\b(?:shaam\s+ko|sham\s+ko|shaam|sham|subah\s+ko|subah|dopahar\s+ko|dopahar|raat\s+ko|raat)\b/i,
     ];
-    for (const pat of timePatterns) {
+    for (const pat of periodQualifiers) {
       const m = text.match(pat);
-      if (!m) continue;
-      let h = parseInt(m[1], 10);
-      const secondGroup = m[2] ?? '';
-      const thirdGroup  = m[3] ?? '';
-      const mins   = /^\d+$/.test(secondGroup) ? parseInt(secondGroup, 10) : 0;
-      const period = /^\d+$/.test(secondGroup) ? thirdGroup.toLowerCase() : secondGroup.toLowerCase();
-      if (period === 'pm' && h < 12) h += 12;
-      if (period === 'am' && h === 12) h = 0;
-      const hh = h.toString().padStart(2,'0');
-      const mm = mins.toString().padStart(2,'00');
-      timeSlot = `${hh}:${mm}`;
-      const hr12 = h % 12 || 12;
-      const ampm = h >= 12 ? 'pm' : 'am';
-      registerToken('time', m[0], `${hr12}:${mm}${ampm}`); break;
-    }
-
-    // 3d. Smart AM/PM: bare "at 3" or "@ 3" without am/pm → assume PM for 1–11
-    //     Only fires if no other time was found and context word "at" is present
-    if (!timeSlot) {
-      const bareAtM = text.match(/\bat\s+(\d{1,2})\b(?!\s*(?:am|pm|:\d))/i);
-      if (bareAtM) {
-        let h = parseInt(bareAtM[1], 10);
-        // Smart PM: 1-11 without am/pm in task context → assume PM
-        if (h >= 1 && h <= 11) h += 12;
-        timeSlot = `${h.toString().padStart(2,'0')}:00`;
-        const hr12 = h % 12 || 12;
-        registerToken('time', bareAtM[0], `${hr12}:00pm`);
+      if (m) {
+        registerToken('time', m[0], m[0].trim());
       }
     }
   }
-  } // end !timeSlot numeric block
 
   // 4. DATE
   //
@@ -625,20 +1076,23 @@ export function parseNLTask(raw: string): ParsedTask {
       const n = parseInt(m[1], 10);
       const then = new Date(now.getTime() + n * 60 * 1000);
       dateResult = then;
+      isReminder = true;
       if (!timeSlot) timeSlot = `${then.getHours().toString().padStart(2,'0')}:${then.getMinutes().toString().padStart(2,'0')}`;
       registerToken('date', m[0], `In ${n}m`);
     } else if (!dateResult && /\bin\s+an?\s+hour\b/i.test(text)) {
       const m = text.match(/\bin\s+an?\s+hour\b/i)!;
       const then = new Date(now.getTime() + 60 * 60 * 1000);
       dateResult = then;
-      if (!timeSlot) timeSlot = `${then.getHours().toString().padStart(2,'0')}:${then.getMinutes().toString().padStart(2,'00')}`;
+      isReminder = true;
+      if (!timeSlot) timeSlot = `${then.getHours().toString().padStart(2,'0')}:${then.getMinutes().toString().padStart(2,'0')}`;
       registerToken('date', m[0], 'In 1h');
     } else if (!dateResult && /\bin\s+(\d+)\s*(?:hours?|hrs?)\b/i.test(text)) {
       const m = text.match(/\bin\s+(\d+)\s*(?:hours?|hrs?)\b/i)!;
       const n = parseInt(m[1], 10);
       const then = new Date(now.getTime() + n * 60 * 60 * 1000);
       dateResult = then;
-      if (!timeSlot) timeSlot = `${then.getHours().toString().padStart(2,'0')}:${then.getMinutes().toString().padStart(2,'00')}`;
+      isReminder = true;
+      if (!timeSlot) timeSlot = `${then.getHours().toString().padStart(2,'0')}:${then.getMinutes().toString().padStart(2,'0')}`;
       registerToken('date', m[0], `In ${n}h`);
     }
 
@@ -696,6 +1150,56 @@ export function parseNLTask(raw: string): ParsedTask {
       dateResult = new Date(now);
       if (!timeSlot) timeSlot = '14:00';
       registerToken('date', m[0], 'This Afternoon');
+    } else if (!dateResult && /\b(tomorrow|tmr|tmrw|tomo)\s+evening\b/i.test(text)) {
+      const m = text.match(/\b(tomorrow|tmr|tmrw|tomo)\s+evening\b/i)!;
+      dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
+      if (!timeSlot) timeSlot = '18:00';
+      registerToken('date', m[0], 'Tomorrow Evening');
+    } else if (!dateResult && /\b(tomorrow|tmr|tmrw|tomo)\s+morning\b/i.test(text)) {
+      const m = text.match(/\b(tomorrow|tmr|tmrw|tomo)\s+morning\b/i)!;
+      dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
+      if (!timeSlot) timeSlot = '09:00';
+      registerToken('date', m[0], 'Tomorrow Morning');
+    } else if (!dateResult && /\b(tomorrow|tmr|tmrw|tomo)\s+afternoon\b/i.test(text)) {
+      const m = text.match(/\b(tomorrow|tmr|tmrw|tomo)\s+afternoon\b/i)!;
+      dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
+      if (!timeSlot) timeSlot = '14:00';
+      registerToken('date', m[0], 'Tomorrow Afternoon');
+    } else if (!dateResult && /\b(tomorrow|tmr|tmrw|tomo)\s+night\b/i.test(text)) {
+      const m = text.match(/\b(tomorrow|tmr|tmrw|tomo)\s+night\b/i)!;
+      dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
+      if (!timeSlot) timeSlot = '21:00';
+      registerToken('date', m[0], 'Tomorrow Night');
+    } else if (!dateResult && /\bkal\s+(?:shaam|sham)\b/i.test(text)) {
+      const m = text.match(/\bkal\s+(?:shaam|sham)\b/i)!;
+      dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
+      if (!timeSlot) timeSlot = '18:00';
+      registerToken('date', m[0], 'Kal Shaam');
+    } else if (!dateResult && /\bkal\s+subah\b/i.test(text)) {
+      const m = text.match(/\bkal\s+subah\b/i)!;
+      dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
+      if (!timeSlot) timeSlot = '09:00';
+      registerToken('date', m[0], 'Kal Subah');
+    } else if (!dateResult && /\bkal\s+dopahar\b/i.test(text)) {
+      const m = text.match(/\bkal\s+dopahar\b/i)!;
+      dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
+      if (!timeSlot) timeSlot = '14:00';
+      registerToken('date', m[0], 'Kal Dopahar');
+    } else if (!dateResult && /\bkal\s+raat\b/i.test(text)) {
+      const m = text.match(/\bkal\s+raat\b/i)!;
+      dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
+      if (!timeSlot) timeSlot = '21:00';
+      registerToken('date', m[0], 'Kal Raat');
+    } else if (!dateResult && /\baaj\s+(?:shaam|sham)\b/i.test(text)) {
+      const m = text.match(/\baaj\s+(?:shaam|sham)\b/i)!;
+      dateResult = new Date(now);
+      if (!timeSlot) timeSlot = '18:00';
+      registerToken('date', m[0], 'Aaj Shaam');
+    } else if (!dateResult && /\baaj\s+raat\b/i.test(text)) {
+      const m = text.match(/\baaj\s+raat\b/i)!;
+      dateResult = new Date(now);
+      if (!timeSlot) timeSlot = '21:00';
+      registerToken('date', m[0], 'Aaj Raat');
     }
 
     // ── Standard relative date keywords ────────────────────────────────
@@ -916,8 +1420,40 @@ export function parseNLTask(raw: string): ParsedTask {
   for (const tok of sortedTokens) {
     title = title.slice(0, tok.start) + title.slice(tok.end);
   }
-  title = title.replace(/\s{2,}/g, ' ').replace(/^[\s,.:]+|[\s,.:]+$/g, '').trim();
-  if (!title) title = raw.trim();
+  title = cleanTaskTitle(title);
+  if (!title) title = cleanTaskTitle(raw) || raw.trim();
+
+  // 6. SMART SEMANTIC DOMAIN TAG INFERENCE
+  // If the user didn't explicitly type or say a tag (#tag or tag: ...),
+  // automatically categorize the task using high-precision domain vocabulary.
+  if (extractedTags.length === 0) {
+    const combinedContext = `${title} ${raw}`.toLowerCase();
+
+    // Academic / College
+    if (/\b(lab|report|assignment|exam|exams|lecture|lectures|professor|prof|quiz|viva|midsem|endsem|semester|syllabus|attendance|bunk|hod|faculty|coursework|homework|thesis|dissertation|classes|class|college|university|campus|operating\s+systems?|os|dbms|computer\s+networks?|cn|theory\s+of\s+computation|toc|physics|chemistry|math|mathematics|calculus|biology)\b/i.test(combinedContext)) {
+      extractedTags.push('college');
+    }
+    // Fitness / Gym
+    else if (/\b(workout|gym|chest|back|legs|biceps|triceps|shoulders|push\s+day|pull\s+day|leg\s+day|squat|squats|bench\s+press|bench|deadlift|deadlifts|cardio|treadmill|hiit|protein|creatine|sets|reps|abs|fitness)\b/i.test(combinedContext)) {
+      extractedTags.push('gym');
+    }
+    // Career / Placement / Code
+    else if (/\b(leetcode|dsa|interview|interviews|resume|cv|system\s+design|sql|dbms|coding|mock\s+interview|oops|algorithm|algorithms|codeforces|hackerrank|aptitude|offer\s+letter|hr\s+round|campus\s+placement|github|pr|bug\s+fix)\b/i.test(combinedContext)) {
+      extractedTags.push('placement');
+    }
+    // Finance / Bills
+    else if (/\b(bill|bills|electricity\s+bill|rent|recharge|fee|fees|emi|credit\s+card|salary|tax|taxes|investment|sip|bank\s+transfer|transfer\s+money|pay\s+tuition)\b/i.test(combinedContext)) {
+      extractedTags.push('finance');
+    }
+    // Health / Medical
+    else if (/\b(doctor|dentist|medicine|medicines|pills|vitamins|appointment|checkup|hospital|clinic|blood\s+test|prescription|physio)\b/i.test(combinedContext)) {
+      extractedTags.push('health');
+    }
+    // Personal / Errands / Family
+    else if (/\b(groceries|grocery|haircut|laundry|clean\s+room|call\s+(?:mom|dad|mummy|papa|mother|father|parents|bro|brother|sister)|birthday|anniversary|shopping)\b/i.test(combinedContext)) {
+      extractedTags.push('personal');
+    }
+  }
 
   return {
     title,
@@ -931,8 +1467,110 @@ export function parseNLTask(raw: string): ParsedTask {
     tags: extractedTags,
     durationMinutes,
     isReminder,
+    subtasks: extractedSubtasks.length > 0 ? extractedSubtasks : undefined,
+    locationReminder: locationReminder || undefined,
+    locationName,
     tokens,
   };
+}
+
+/**
+ * Splits complex or multi-task input (e.g. from speech dictation) into individual tasks,
+ * parsing each with full NLP capabilities.
+ *
+ * Handles:
+ * - Numbered lists: "1. Task one 2. Task two" or "(1) Task one (2) Task two"
+ * - Bullet points / newlines: "Task one\nTask two" or "• Task one • Task two"
+ * - Conjunction transitions: "and also", "also", "and then", "then", "followed by"
+ * - Compound "and" where both clauses contain actionable task verbs or time/date tokens
+ * - Semicolon separated lists: "Task one; Task two"
+ */
+export function parseNLTasks(raw: string): ParsedTask[] {
+  if (!raw || !raw.trim()) return [];
+  const text = raw.trim();
+
+  // 1. Check for numbered lists: "1. ... 2. ..." or "1) ... 2) ..."
+  if (/(?:^|\s+)(?:[1-9]\.|\([1-9]\)|[1-9]\))\s+/.test(text)) {
+    const parts = text.split(/(?:^|\s+)(?:[1-9]\.|\([1-9]\)|[1-9]\))\s+/).filter(p => p.trim().length > 1);
+    if (parts.length > 1) {
+      return parts.map(p => parseNLTask(p.trim())).filter(t => t.title.length > 0);
+    }
+  }
+
+  // 2. Check for newlines or bullet points
+  if (/[\n•*]\s*/.test(text)) {
+    const parts = text.split(/[\n•*]\s*/).filter(p => p.trim().length > 1);
+    if (parts.length > 1) {
+      return parts.map(p => parseNLTask(p.trim())).filter(t => t.title.length > 0);
+    }
+  }
+
+  // 3. Check for semicolons
+  if (/;\s*/.test(text)) {
+    const parts = text.split(/;\s*/).filter(p => p.trim().length > 1);
+    if (parts.length > 1) {
+      return parts.map(p => parseNLTask(p.trim())).filter(t => t.title.length > 0);
+    }
+  }
+
+  // 4. Check for compound transitional connectors: "and also", "and then", "additionally", "followed by"
+  const transitionRegex = /\b(?:and\s+also|and\s+then|additionally|followed\s+by)\b/i;
+  if (transitionRegex.test(text)) {
+    const parts = text.split(transitionRegex).filter(p => p.trim().length > 1);
+    if (parts.length > 1) {
+      return parts.map(p => parseNLTask(p.trim())).filter(t => t.title.length > 0);
+    }
+  }
+
+  // 5. Check for "and" / ", and " when both left and right contain task action verbs or time/date tokens
+  // E.g.: "Gym workout at 6am and study physics tomorrow 10am"
+  const taskVerbPattern = /\b(?:create|add|make|remind|buy|call|meet|submit|finish|complete|do|start|go|workout|study|prepare|clean|read|write|email|send|schedule|review|pay|attend|check|update|fix|code|order|take|cook|wash|learn|practice|visit|revise)\b/i;
+  const tokenHintPattern = /\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun|every|at\s+\d|am|pm|p1|p2|p3|urgent|high\s+priority|reminder|alarm|#)\b/i;
+
+  const andSplitParts = text.split(/,\s*and\s+|\s+and\s+/i);
+  if (andSplitParts.length > 1) {
+    // Verify that every segment looks like a distinct task (has a verb OR a token hint)
+    const allLookLikeTasks = andSplitParts.every(part => {
+      const p = part.trim();
+      return p.length >= 3 && (taskVerbPattern.test(p) || tokenHintPattern.test(p));
+    });
+
+    if (allLookLikeTasks) {
+      return andSplitParts.map(p => parseNLTask(p.trim())).filter(t => t.title.length > 0);
+    }
+  }
+
+  // Default: single task parse
+  return [parseNLTask(text)];
+}
+
+/**
+ * Formats a RecurrenceRule into a concise, human-friendly label.
+ * E.g.: "Mon – Fri", "Every Day", "Weekends", "Mon, Wed, Fri", "Weekly", "Monthly", "Every 3d".
+ */
+export function formatRecurrenceLabel(rule?: { type?: string; interval?: number; daysOfWeek?: number[] } | null): string {
+  if (!rule) return 'Repeat';
+  if (rule.type === 'daily') return 'Every Day';
+  if (rule.type === 'weekly') {
+    if (rule.daysOfWeek && rule.daysOfWeek.length > 0) {
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const sorted = [...rule.daysOfWeek].sort((a, b) => a - b);
+      if (sorted.length === 5 && sorted.every((d, i) => d === i + 1)) {
+        return 'Mon – Fri';
+      }
+      if (sorted.length === 2 && sorted[0] === 0 && sorted[1] === 6) {
+        return 'Weekends';
+      }
+      if (sorted.length <= 3) {
+        return sorted.map(d => dayNames[d]).join(', ');
+      }
+      return `${sorted.length} days/wk`;
+    }
+    return 'Weekly';
+  }
+  if (rule.type === 'monthly') return 'Monthly';
+  if (rule.type === 'custom') return `Every ${rule.interval || 1}d`;
+  return rule.type ? rule.type.charAt(0).toUpperCase() + rule.type.slice(1) : 'Repeat';
 }
 
 // Legacy compat for QuickCaptureSheet

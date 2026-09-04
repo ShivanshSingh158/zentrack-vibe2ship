@@ -65,7 +65,8 @@ export function parseTask(docData: any, docId: string): Task {
   const d = docData && typeof docData === 'object' ? docData : {};
   const id = sanitizeString(docId || d.id, 'task_' + Date.now());
   const title = sanitizeString(d.title, 'Untitled Task', 300);
-  const status = sanitizeEnum<'pending' | 'completed'>(d.status, ['pending', 'completed'], 'pending');
+  const isDocCompleted = d.status === 'completed' || d.status === 'done' || Boolean(d.completed);
+  const status: 'pending' | 'completed' = isDocCompleted ? 'completed' : 'pending';
   const priority = sanitizeEnum<'P1' | 'P2' | 'P3' | 'high' | 'medium' | 'low'>(
     d.priority,
     ['P1', 'P2', 'P3', 'high', 'medium', 'low'],

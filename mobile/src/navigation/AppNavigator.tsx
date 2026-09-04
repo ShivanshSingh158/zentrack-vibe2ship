@@ -44,21 +44,28 @@ import AnimatedPressable from '../components/AnimatedPressable';
 import { useTheme } from '../contexts/ThemeContext';
 import ErrorBoundary from '../components/ErrorBoundary';
 
+// --- Lightweight Shimmer Skeletons (Instant 0ms Fallbacks for Frame 1 Tab Switches) ---
+import TasksSkeleton from '../components/Tasks/TasksSkeleton';
+import GymHomeSkeleton from '../components/Gym/GymHomeSkeleton';
+import AttendanceSkeleton from '../components/Academic/AttendanceSkeleton';
+import HabitsSkeleton from '../components/Habits/HabitsSkeleton';
+import AnalyticsSkeleton from '../components/Analytics/AnalyticsSkeleton';
+
 // --- Core App Screens (Synchronous for 0ms Instant Tab Switching) ----------
 import LandingScreen from '../screens/LandingScreen';
 import AuthScreen from '../screens/AuthScreen';
 import OnboardingScreen, { ONBOARDING_KEY } from '../screens/OnboardingScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 
-// --- Lazy Loaded Screens -----------------------------------------------------
-const TasksScreen = cacheAwareLazy('Tasks', () => import('../screens/TasksScreen'));
+// --- Lazy Loaded Screens with Pixel-Matched Shimmer Fallbacks ------------------
+const TasksScreen = cacheAwareLazy('Tasks', () => import('../screens/TasksScreen'), TasksSkeleton);
 const CalendarScreen = cacheAwareLazy('Calendar', () => import('../screens/CalendarScreen'));
-const AttendanceScreen = cacheAwareLazy('Attendance', () => import('../screens/AttendanceScreen'));
-const GymStack = cacheAwareLazy('Gym', () => import('./GymStack'));
+const AttendanceScreen = cacheAwareLazy('Attendance', () => import('../screens/AttendanceScreen'), AttendanceSkeleton);
+const GymStack = cacheAwareLazy('Gym', () => import('./GymStack'), GymHomeSkeleton);
 const MoreScreen = cacheAwareLazy('More', () => import('../screens/MoreScreen'));
-const HabitsScreen = cacheAwareLazy('Habits', () => import('../screens/HabitsScreen'));
+const HabitsScreen = cacheAwareLazy('Habits', () => import('../screens/HabitsScreen'), HabitsSkeleton);
 const NotesScreen = cacheAwareLazy('Notes', () => import('../screens/NotesScreen'));
-const AnalyticsScreen = cacheAwareLazy('Analytics', () => import('../screens/AnalyticsScreen'));
+const AnalyticsScreen = cacheAwareLazy('Analytics', () => import('../screens/AnalyticsScreen'), AnalyticsSkeleton);
 const GradesScreen = cacheAwareLazy('Grades', () => import('../screens/GradesScreen'));
 const AssignmentsScreen = cacheAwareLazy('Assignments', () => import('../screens/AssignmentsScreen'));
 const LearningScreen = cacheAwareLazy('Learning', () => import('../screens/LearningScreen'));
@@ -68,7 +75,8 @@ const XPConstellationScreen = cacheAwareLazy('XPConstellation', () => import('..
 const StreakDetailScreen = cacheAwareLazy('StreakDetail', () => import('../screens/StreakDetailScreen'));
 const AgentHistoryScreen = cacheAwareLazy('AgentHistory', () => import('../screens/AgentHistoryScreen'));
 const WellbeingDashboardScreen = cacheAwareLazy('WellbeingDashboard', () => import('../screens/WellbeingDashboardScreen'));
-const SaraScreen = cacheAwareLazy('Sara', () => import('../screens/SaraScreen'));
+// SARA screen hidden & completely deactivated per user directive
+const NullScreen = () => null;
 import { usePomodoro } from '../contexts/PomodoroContext';
 import PomodoroFloatingPill from '../components/Tasks/PomodoroFloatingPill';
 import PomodoroSheet from '../components/Tasks/PomodoroSheet';
@@ -156,8 +164,7 @@ const ALLOWED_SAVE_ROUTES = new Set([
   'Attendance', 'Analytics', 'Notes', 'Grades', 'Assignments', 'Learning',
 ]);
 
-// --- SARA FAB visibility -----------------------------------------------------
-const SARA_VISIBLE_ROUTES = new Set(['Home', 'Tasks', 'Analytics']);
+
 
 // --- Full Component Map for Bottom Tabs --------------------------------------
 const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
@@ -172,6 +179,8 @@ const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
   Assignments:    withErrorBoundary(AssignmentsScreen, 'Assignments'),
   Learning:       withErrorBoundary(LearningScreen, 'Learning'),
 };
+
+const ALL_NAV_MODULE_IDS = Object.keys(COMPONENT_MAP);
 
 // --- Nested screen header ----------------------------------------------------
 function NestedHeader({ title }: { title: string }) {
@@ -192,8 +201,9 @@ function NestedHeader({ title }: { title: string }) {
 import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { TelegramTabBar } from '../components/Navigation/TelegramTabBar';
 
-// --- SafeDashboard (defined before MainTabNavigator that uses it) -------------
+// --- SafeDashboard & SafeMore (defined before MainTabNavigator that uses them) -------------
 const SafeDashboard = withErrorBoundary(DashboardScreen, 'Dashboard');
+const SafeMore = withErrorBoundary(MoreScreen, 'More');
 
 const TabBarNullButton = () => null;
 
@@ -209,16 +219,20 @@ function MainTabNavigator() {
     ? pinnedModules
     : ['Tasks', 'Gym', 'Calendar', 'Attendance'];
 
-  useEffect(() => {
-    startPrefetching(effectivePinned);
-  }, [effectivePinned]);
+  // State to trigger background warm-mounting of pinned tabs AFTER Home settles
+  const [warmPinnedTabs, setWarmPinnedTabs] = useState(false);
 
-  // Ordered module IDs: Pinned modules in their exact selected order first, followed by unpinned modules
-  const orderedModuleIds = useMemo(() => {
-    const pinned = effectivePinned.filter(id => COMPONENT_MAP[id]);
-    const unpinned = Object.keys(COMPONENT_MAP).filter(id => !effectivePinned.includes(id));
-    return [...pinned, ...unpinned];
-  }, [effectivePinned.join(',')]);
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      startPrefetching(effectivePinned);
+      // Wait for Home first paint and user gestures to settle (350ms), then warm-mount pinned tabs
+      const timer = setTimeout(() => {
+        setWarmPinnedTabs(true);
+      }, 350);
+      return () => clearTimeout(timer);
+    });
+    return () => handle.cancel();
+  }, [effectivePinned]);
 
   // PERF FIX: Throttle AsyncStorage saves
   const lastTabSaveRef = useRef<number>(0);
@@ -245,28 +259,31 @@ function MainTabNavigator() {
         animation: 'none',
         sceneStyle:  { backgroundColor: colors.background },
         lazy: true,
-        freezeOnBlur: true,
+        freezeOnBlur: false,
       }}
       backBehavior="history"
     >
       <Tab.Screen name="Home" component={SafeDashboard} options={{ lazy: false }} />
-      {orderedModuleIds.map((modId) => {
+      {ALL_NAV_MODULE_IDS.map((modId) => {
         const isPinned = effectivePinned.includes(modId);
         return (
           <Tab.Screen
             key={modId}
             name={modId}
             component={COMPONENT_MAP[modId]}
-            options={!isPinned ? {
-              tabBarItemStyle: { display: 'none' },
-              tabBarButton:    TabBarNullButton,
-            } : {
-              tabBarItemStyle: { paddingVertical: 10 },
+            options={{
+              lazy: isPinned ? !warmPinnedTabs : true,
+              ...(!isPinned ? {
+                tabBarItemStyle: { display: 'none' },
+                tabBarButton:    TabBarNullButton,
+              } : {
+                tabBarItemStyle: { paddingVertical: 10 },
+              }),
             }}
           />
         );
       })}
-      <Tab.Screen name="More" component={withErrorBoundary(MoreScreen, 'More')} />
+      <Tab.Screen name="More" component={SafeMore} />
     </Tab.Navigator>
   );
 }
@@ -287,9 +304,9 @@ function NestedScreens() {
       >
         <Stack.Screen name="Settings"              component={withErrorBoundary(SettingsScreen,              'Settings')} />
         <Stack.Screen name="NotificationsSettings" component={withErrorBoundary(NotificationsSettingsScreen, 'Notifications')} options={{ headerShown: false }} />
-        <Stack.Screen name="Sara"                  component={withErrorBoundary(SaraScreen,                  'Sara')}          options={{ headerShown: false, presentation: 'transparentModal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="Sara"                  component={NullScreen}                                                       options={{ headerShown: false }} />
         <Stack.Screen name="StreakDetail"           component={withErrorBoundary(StreakDetailScreen,          'StreakDetail')}   options={{ headerShown: false }} />
-        <Stack.Screen name="SaraModal"             component={withErrorBoundary(SaraScreen,                  'SaraModal')}     options={{ headerShown: false, presentation: 'transparentModal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="SaraModal"             component={NullScreen}                                                       options={{ headerShown: false }} />
         <Stack.Screen name="AgentHistory"          component={withErrorBoundary(AgentHistoryScreen,          'AgentHistory')} />
         <Stack.Screen name="Assignments"           component={withErrorBoundary(AssignmentsScreen,           'Assignments')}   options={{ headerShown: false }} />
         <Stack.Screen name="WellbeingDashboard"    component={withErrorBoundary(WellbeingDashboardScreen,    'Wellbeing')}     options={{ headerShown: false }} />
@@ -299,24 +316,14 @@ function NestedScreens() {
   );
 }
 
-// --- Root authenticated navigator + global SARA FAB + Pomodoro --------------------------
+// --- Root authenticated navigator + Pomodoro ---------------------------------
 function RootNavigatorWithSara() {
   const { colors } = useTheme();
   const { isSheetOpen, setIsSheetOpen } = usePomodoro();
-  const [saraVisible, setSaraVisible] = useState(false);
-
-  const [showSara, setShowSara] = useState(SARA_VISIBLE_ROUTES.has('Home'));
 
   useEffect(() => {
     const unsub = registerActiveWorkoutNotificationListeners();
     return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('route_changed', (routeName: string) => {
-      setShowSara(SARA_VISIBLE_ROUTES.has(routeName));
-    });
-    return () => sub.remove();
   }, []);
 
   return (
@@ -334,21 +341,6 @@ function RootNavigatorWithSara() {
       {/* Global Pomodoro Sheet (Auto-surfaces on boot when running, or on user tap) */}
       {isSheetOpen && (
         <PomodoroSheet visible={isSheetOpen} onClose={() => setIsSheetOpen(false)} />
-      )}
-
-      {showSara && (
-        <AnimatedPressable
-          style={styles.globalSaraBtn}
-          onPress={() => setSaraVisible(true)}
-          haptic="none"
-        >
-          <Image source={require('../../assets/images/sara-idle.png')} style={{ width: 40, height: 40, opacity: 1 }} resizeMode="contain" />
-        </AnimatedPressable>
-      )}
-
-      {/* Only mount SaraScreen when actually opened — prevents 63KB of hooks running at startup */}
-      {saraVisible && (
-        <SaraScreen isGlobalModal={true} visible={saraVisible} onClose={() => setSaraVisible(false)} />
       )}
     </View>
   );
@@ -479,6 +471,8 @@ export default function AppNavigator() {
         setUser(realUser);
         setAppReady(true);
         saveOptimisticUser(realUser);
+        const ob = await AsyncStorage.getItem(ONBOARDING_KEY).catch(() => null);
+        setOnboarded(ob === 'true');
         return;
       }
 
@@ -493,6 +487,9 @@ export default function AppNavigator() {
         // UID Guard: Only trigger root state update if the UID changed (prevents re-rendering entire navigation tree on routine token check)
         setUser(prev => (prev?.uid === usr.uid ? prev : usr));
         saveOptimisticUser(usr);
+        const [ob1, ob2] = await AsyncStorage.multiGet(['@zentrack_onboarding_completed', 'zentrack_onboarded_v2']).catch(() => []);
+        const isOnboarded = ob1?.[1] === 'true' || ob2?.[1] === 'true';
+        setOnboarded(isOnboarded);
       } else {
         // Firebase fired null. Three possible causes:
         // A) User explicitly signed out (performSignOut cleared @zentrack_optimistic_user)
@@ -625,10 +622,14 @@ export default function AppNavigator() {
     };
 
     const appStateSub = AppState.addEventListener('change', handleAppStateChange);
+    const resetOnboardingSub = DeviceEventEmitter.addListener('reset_onboarding', () => {
+      setOnboarded(false);
+    });
 
     return () => {
       unsubAuth();
       appStateSub.remove();
+      resetOnboardingSub.remove();
       // Cancel any pending dead-session logout timer on unmount
       if (deadSessionTimerRef.current) {
         clearTimeout(deadSessionTimerRef.current);
@@ -661,10 +662,43 @@ export default function AppNavigator() {
   // at module level in App.tsx) until NavigationContainer.onReady() fires, so there
   // is no visible flash of unmounted/remounted content.
 
+const LINKING_CONFIG = {
+  prefixes: ['zentrack://', 'exp://'],
+  config: {
+    screens: {
+      MainTabs: {
+        screens: {
+          Home: 'dashboard',
+          Tasks: 'tasks',
+          Attendance: 'attendance',
+          Habits: 'habits',
+          Gym: 'gym',
+          Calendar: 'calendar',
+          Notes: 'notes',
+          Analytics: 'analytics',
+        },
+      },
+      MoreStack: {
+        screens: {
+          Settings: 'settings',
+          NotificationsSettings: 'notifications-settings',
+          Sara: 'sara',
+          StreakDetail: 'streak',
+          AgentHistory: 'agent-history',
+          Assignments: 'assignments',
+          WellbeingDashboard: 'wellbeing',
+          XPConstellation: 'xp',
+        },
+      },
+    },
+  },
+};
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <NavigationContainer
         ref={navigationRef}
+        linking={LINKING_CONFIG}
         theme={isDark ? ZEN_DARK_THEME : ZEN_LIGHT_THEME}
         onStateChange={onNavStateChange}
         onReady={() => {
@@ -707,20 +741,4 @@ const styles = StyleSheet.create({
   },
   backBtn:     { padding: SPACE.xs },
   headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.lg },
-  globalSaraBtn: {
-    position:        'absolute',
-    bottom:           84,
-    right:            16,
-    width:            48,
-    height:           48,
-    borderRadius:     24,
-    alignItems:       'center',
-    justifyContent:   'center',
-    overflow:         'hidden',
-    shadowColor:      '#a599ff',
-    shadowOffset:     { width: 0, height: 4 },
-    shadowOpacity:    0.3,
-    shadowRadius:     8,
-    elevation:        5,
-  },
 });

@@ -10,6 +10,7 @@ export interface VoiceEngineCallbacks {
   onStateChange: (state: VoiceState) => void;
   onTranscript: (text: string) => void;
   onError: (error: string) => void;
+  onAudioReady?: (base64Audio: string) => void;
 }
 
 // ── State ───────────────────────────────────────────────────────────────────────
@@ -31,7 +32,7 @@ let _lastAudioLevel = 0;
 // VAD constants
 const VAD_POLL_INTERVAL_MS = 100;      // Check RMS every 100ms
 const VAD_SILENCE_THRESHOLD = -32;     // dB level below which = silence (real speech > -32dB)
-const VAD_SILENCE_DURATION_MS = 1500;  // 1.5s silence → auto-submit
+const VAD_SILENCE_DURATION_MS = 900;   // 900ms silence → auto-submit (Todoist-speed responsive tuning)
 
 export async function requestMicPermission(): Promise<boolean> {
   const { status } = await Audio.requestPermissionsAsync();
@@ -327,6 +328,12 @@ export async function stopAndTranscribe(
 
     // Clean up temp file
     FileSystem.deleteAsync(audioUri, { idempotent: true }).catch(() => {});
+
+    // Fast-path: If caller provides onAudioReady, directly forward base64 for One-Shot Structured Extraction
+    if (callbacks.onAudioReady) {
+      callbacks.onAudioReady(base64Audio);
+      return;
+    }
 
     // Transcribe via Gemini Proxy
     const transcript = await transcribeAudioViaProxy(base64Audio);

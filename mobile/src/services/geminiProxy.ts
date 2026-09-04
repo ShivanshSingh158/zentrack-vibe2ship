@@ -277,6 +277,8 @@ export async function transcribeAudioViaProxy(base64Audio: string): Promise<stri
   }
 }
 
+
+
 // ΓöÇΓöÇΓöÇ Convenience: quick text prompt ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export async function callGeminiProxy(

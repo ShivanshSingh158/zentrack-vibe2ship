@@ -9,7 +9,7 @@ export interface WidgetAgendaClass {
   time: string;
   room?: string;
   type: 'class' | 'lab';
-  status: 'attended' | 'missed' | 'pending';
+  status: 'attended' | 'missed' | 'cancelled' | 'pending';
   idx: number;
 }
 
@@ -39,6 +39,8 @@ export interface TodayAgendaWidgetData {
   dateStr: string;        // YYYY-MM-DD
   displayDate: string;    // "Wed, Sep 1"
   zenScore: number;       // 0–100
+  streak?: number;        // Active consistency day streak (e.g. 7)
+  isHoliday?: boolean;
   items: WidgetAgendaItem[];
   classes: WidgetAgendaClass[];
   tasks: WidgetAgendaTask[];

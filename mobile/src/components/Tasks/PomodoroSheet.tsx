@@ -31,6 +31,9 @@ import {
   calculateTaskDurationSeconds,
   formatTime,
   formatDurationLabel,
+  FOCUS_DEPTH_PRESETS,
+  FOCUS_MANTRAS,
+  FocusDepthPreset,
 } from './pomodoroTimeMath';
 import {
   RING_SIZE,
@@ -175,17 +178,17 @@ export default function PomodoroSheet({
     toggleTimer();
   };
 
-  const handleToggleDuration = useCallback((targetMode: PomodoroMode, options: number[]) => {
+  const [mantraIndex, setMantraIndex] = useState<number>(0);
+  const cycleMantra = useCallback(() => {
     feedback.tap();
-    const currentMins = Math.round(config[targetMode] / 60);
-    const currentIndex = options.indexOf(currentMins);
-    const nextMins = options[(currentIndex + 1) % options.length];
-    const newConfig = { ...config, [targetMode]: nextMins * 60 };
-    setConfig(newConfig);
-    if (mode === targetMode && status === 'idle') {
-      switchMode(targetMode);
-    }
-  }, [config, mode, status, setConfig, switchMode]);
+    setMantraIndex(i => (i + 1) % FOCUS_MANTRAS.length);
+  }, []);
+
+  const handleSelectDepth = useCallback((durationMins: number) => {
+    feedback.tap();
+    const durationSecs = durationMins * 60;
+    switchMode('focus', durationSecs);
+  }, [switchMode]);
 
   // Tasks source for task picker
   const allTasks = tasks.length > 0 ? tasks : coreTasks;
@@ -243,9 +246,9 @@ export default function PomodoroSheet({
         {/* Header */}
         <View style={s.header}>
           <View>
-            <Text style={s.headerTitle}>Pomodoro</Text>
+            <Text style={s.headerTitle}>Focus Flow</Text>
             <Text style={s.headerSub}>
-              {completedToday} {completedToday === 1 ? 'session' : 'sessions'} completed today
+              {completedToday} {completedToday === 1 ? 'session' : 'sessions'} completed today • {Math.max(0, Math.round((completedToday * config.focus) / 60))}m focused
             </Text>
           </View>
           <Pressable onPress={handleClose} style={s.closeBtn} hitSlop={12}>
@@ -254,28 +257,45 @@ export default function PomodoroSheet({
         </View>
 
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + SPACE.xxl }} showsVerticalScrollIndicator={false}>
-          {/* Segmented Mode Selector */}
-          <View style={s.segmentedCapsule}>
-            {(['focus', 'shortBreak', 'longBreak'] as PomodoroMode[]).map(m => {
-              const active = mode === m;
-              return (
-                <Pressable
-                  key={m}
-                  style={[s.segmentedTab, active && s.segmentedTabActive]}
-                  onPress={() => switchMode(m)}
-                >
-                  <Ionicons
-                    name={modeIconName(m)}
-                    size={13}
-                    color={active ? currentAccent : colors.textMuted}
-                    style={{ marginRight: 5 }}
-                  />
-                  <Text style={[s.segmentedTabText, active && { color: currentAccent, fontWeight: '700' }]}>
-                    {m === 'focus' ? 'Focus' : m === 'shortBreak' ? 'Short' : 'Long'}
-                  </Text>
-                </Pressable>
-              );
-            })}
+          {/* Best-in-Class Mode Switcher */}
+          <View style={s.modeSwitcherCapsule}>
+            <Pressable
+              style={[s.modeSwitcherTab, mode === 'focus' && s.modeSwitcherTabActive]}
+              onPress={() => switchMode('focus')}
+            >
+              <Ionicons
+                name="flame"
+                size={14}
+                color={mode === 'focus' ? currentAccent : colors.textMuted}
+              />
+              <Text
+                style={[
+                  s.modeSwitcherText,
+                  mode === 'focus' && { color: currentAccent, fontFamily: 'Inter_700Bold' },
+                ]}
+              >
+                Deep Focus
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[s.modeSwitcherTab, (mode === 'shortBreak' || mode === 'longBreak') && s.modeSwitcherTabActive]}
+              onPress={() => switchMode('shortBreak', 5 * 60)}
+            >
+              <Ionicons
+                name="leaf"
+                size={14}
+                color={mode !== 'focus' ? currentAccent : colors.textMuted}
+              />
+              <Text
+                style={[
+                  s.modeSwitcherText,
+                  mode !== 'focus' && { color: currentAccent, fontFamily: 'Inter_700Bold' },
+                ]}
+              >
+                Zen Recharge
+              </Text>
+            </Pressable>
           </View>
 
           {/* 90 FPS Circular Timer Ring */}
@@ -345,30 +365,38 @@ export default function PomodoroSheet({
             </View>
           </View>
 
-          {/* 4-Session Capsule Progress Indicator */}
-          <View style={s.pipsSection}>
-            <View style={s.pipsRow}>
-              {Array.from({ length: config.sessionsUntilLong }, (_, i) => {
-                const isCompleted = i < (sessionCount % config.sessionsUntilLong);
-                return (
-                  <View
-                    key={i}
-                    style={[
-                      s.pipCapsule,
-                      isCompleted && {
-                        backgroundColor: currentAccent,
-                        shadowColor: currentAccent,
-                        shadowOpacity: 0.6,
-                        shadowRadius: 6,
-                      },
-                    ]}
-                  />
-                );
-              })}
+          {/* Mindful Focus Mantra */}
+          <Pressable onPress={cycleMantra} style={s.mantraBox}>
+            <Ionicons name="sparkles" size={12} color={currentAccent} />
+            <Text style={s.mantraText}>"{FOCUS_MANTRAS[mantraIndex]}"</Text>
+          </Pressable>
+
+          {/* Daily Performance HUD Bar (replaces generic pips) */}
+          <View style={s.dailyHudCard}>
+            <View style={s.dailyHudRow}>
+              <View style={s.dailyHudItem}>
+                <Text style={s.dailyHudVal}>
+                  {Math.max(0, Math.round((completedToday * config.focus) / 60))}m
+                </Text>
+                <Text style={s.dailyHudLbl}>Focus Today</Text>
+              </View>
+
+              <View style={s.dailyHudDivider} />
+
+              <View style={s.dailyHudItem}>
+                <Text style={s.dailyHudVal}>{completedToday}</Text>
+                <Text style={s.dailyHudLbl}>Sessions</Text>
+              </View>
+
+              <View style={s.dailyHudDivider} />
+
+              <View style={s.dailyHudItem}>
+                <Text style={[s.dailyHudVal, { color: currentAccent }]}>
+                  {mode === 'focus' ? formatDurationLabel(config.focus) : '5m'}
+                </Text>
+                <Text style={s.dailyHudLbl}>{mode === 'focus' ? 'Flow Depth' : 'Rest'}</Text>
+              </View>
             </View>
-            <Text style={s.pipsSubtext}>
-              Session {((sessionCount % config.sessionsUntilLong) + 1)} of {config.sessionsUntilLong} until long break
-            </Text>
           </View>
 
           {/* Controls Bar: Reset • Play/Pause • Skip */}
@@ -396,14 +424,20 @@ export default function PomodoroSheet({
             </Pressable>
           </View>
 
-          {/* Quick +5 Min Extension Pill */}
-          <View style={s.quickBoostRow}>
-            <Pressable style={s.quickBoostBtn} onPress={() => extendTime(300)}>
+          {/* Quick Boost Row (+5m / +15m) */}
+          <View style={s.dualBoostRow}>
+            <Pressable style={s.boostBtn} onPress={() => extendTime(300)}>
               <Ionicons name="add" size={13} color={colors.textSecondary} />
-              <Text style={s.quickBoostText}>+5 min extend</Text>
+              <Text style={s.boostBtnText}>+5m flow</Text>
+            </Pressable>
+
+            <Pressable style={s.boostBtn} onPress={() => extendTime(900)}>
+              <Ionicons name="add" size={13} color={colors.textSecondary} />
+              <Text style={s.boostBtnText}>+15m deep</Text>
             </Pressable>
           </View>
 
+          {/* Linked Task Picker (100% UNCHANGED AND PRESERVED) */}
           <PomodoroTaskPicker
             s={s}
             colors={colors}
@@ -419,36 +453,70 @@ export default function PomodoroSheet({
             formatDurationLabel={formatDurationLabel}
           />
 
-          {/* Duration Presets Footer */}
-          <View style={s.presetsGrid}>
-            <Pressable
-              style={[s.presetItem, mode === 'focus' && s.presetItemActive]}
-              onPress={() => handleToggleDuration('focus', [25, 45, 50, 60, 120])}
-            >
-              <Text style={s.presetValue}>{formatDurationLabel(config.focus)}</Text>
-              <Text style={s.presetLabel}>Focus (tap)</Text>
-            </Pressable>
+          {/* Flow Depth Presets (replaces generic 3-box footer) */}
+          {mode === 'focus' ? (
+            <View style={s.focusDepthSection}>
+              <View style={s.focusDepthHeaderRow}>
+                <Text style={s.focusDepthTitle}>FOCUS DEPTH</Text>
+                <View style={s.focusDepthBadge}>
+                  <Ionicons name="timer-outline" size={11} color={colors.textMuted} />
+                  <Text style={s.focusDepthBadgeText}>Select your cadence</Text>
+                </View>
+              </View>
 
-            <View style={s.presetDivider} />
-
-            <Pressable
-              style={[s.presetItem, mode === 'shortBreak' && s.presetItemActive]}
-              onPress={() => handleToggleDuration('shortBreak', [5, 10, 15])}
-            >
-              <Text style={s.presetValue}>{Math.round(config.shortBreak / 60)}m</Text>
-              <Text style={s.presetLabel}>Short break</Text>
-            </Pressable>
-
-            <View style={s.presetDivider} />
-
-            <Pressable
-              style={[s.presetItem, mode === 'longBreak' && s.presetItemActive]}
-              onPress={() => handleToggleDuration('longBreak', [15, 20, 30])}
-            >
-              <Text style={s.presetValue}>{Math.round(config.longBreak / 60)}m</Text>
-              <Text style={s.presetLabel}>Long break</Text>
-            </Pressable>
-          </View>
+              <View style={s.depthGrid}>
+                {FOCUS_DEPTH_PRESETS.map(preset => {
+                  const presetSecs = preset.durationMinutes * 60;
+                  const isActive = config.focus === presetSecs && !linkedTask;
+                  return (
+                    <Pressable
+                      key={preset.id}
+                      style={[s.depthCard, isActive && s.depthCardActive]}
+                      onPress={() => handleSelectDepth(preset.durationMinutes)}
+                    >
+                      <View
+                        style={[
+                          s.depthCardIconWrap,
+                          isActive && { backgroundColor: currentAccent + '25' },
+                        ]}
+                      >
+                        <Ionicons
+                          name={preset.icon as any}
+                          size={14}
+                          color={isActive ? currentAccent : colors.textMuted}
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          s.depthCardDurationText,
+                          isActive && { color: currentAccent },
+                        ]}
+                      >
+                        {preset.tag}
+                      </Text>
+                      <Text
+                        style={[
+                          s.depthCardTitle,
+                          isActive && { color: colors.textPrimary, fontWeight: '600' },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {preset.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            <View style={s.rechargeCard}>
+              <Ionicons name="leaf-outline" size={24} color="#34D399" style={{ marginBottom: 6 }} />
+              <Text style={s.rechargeTitle}>Mindful Breather (5m)</Text>
+              <Text style={s.rechargeDesc}>
+                Step away from your screen. Inhale deeply for 4 seconds, hold for 4, and exhale for 6. Hydrate and reset your posture.
+              </Text>
+            </View>
+          )}
         </ScrollView>
       </Animated.View>
     </Modal>

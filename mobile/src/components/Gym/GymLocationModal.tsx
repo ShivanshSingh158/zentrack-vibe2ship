@@ -24,7 +24,11 @@ import {
   searchAddressLocations,
   savePlace,
 } from '../../services/savedPlacesService';
-import { syncAllActiveGeofences, requestLocationPermissions } from '../../services/geofenceService';
+import {
+  syncAllActiveGeofences,
+  requestLocationPermissions,
+  checkImmediateGymProximity,
+} from '../../services/geofenceService';
 import type { GymGeofenceConfig } from '../../types/locationReminder.types';
 
 interface Props {
@@ -38,6 +42,7 @@ export const GymLocationModal = React.memo(function GymLocationModal({ visible, 
   const { colors, isDark } = useTheme();
   const [loading, setLoading] = useState(false);
   const [locatingCurrent, setLocatingCurrent] = useState(false);
+  const isCurrentLocationRef = React.useRef(false);
 
   // Form State
   const [placeName, setPlaceName] = useState('');
@@ -89,6 +94,7 @@ export const GymLocationModal = React.memo(function GymLocationModal({ visible, 
     setLocatingCurrent(false);
 
     if (coords) {
+      isCurrentLocationRef.current = true;
       setLatitude(coords.latitude);
       setLongitude(coords.longitude);
       setAddress(coords.address || '');
@@ -102,21 +108,35 @@ export const GymLocationModal = React.memo(function GymLocationModal({ visible, 
     }
   }, []);
 
-  // 2. Search Address / Place
-  const handleSearch = useCallback(async (text: string) => {
+  const searchDebounceRef = React.useRef<any>(null);
+
+  // 2. Search Address / Place / Coordinates (Debounced 280ms)
+  const handleSearch = useCallback((text: string) => {
+    isCurrentLocationRef.current = false;
     setSearchQuery(text);
-    if (text.trim().length < 3) {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    if (text.trim().length < 2) {
       setSearchResults([]);
+      setSearching(false);
       return;
     }
 
     setSearching(true);
-    const results = await searchAddressLocations(text);
-    setSearchResults(results);
-    setSearching(false);
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const results = await searchAddressLocations(text);
+        setSearchResults(results);
+      } finally {
+        setSearching(false);
+      }
+    }, 280);
   }, []);
 
   const handleSelectSearchResult = useCallback((res: any) => {
+    isCurrentLocationRef.current = false;
     setLatitude(res.latitude);
     setLongitude(res.longitude);
     setPlaceName(res.name || 'My Gym');
@@ -150,7 +170,7 @@ export const GymLocationModal = React.memo(function GymLocationModal({ visible, 
 
     await saveGymGeofenceConfig(config);
 
-    // Also register in Saved Places
+    // Also save/update as a primary frequent place
     await savePlace({
       id: 'place_gym_primary',
       name: placeName.trim() || 'My Gym',
@@ -161,32 +181,63 @@ export const GymLocationModal = React.memo(function GymLocationModal({ visible, 
       radius,
     });
 
+    // Sync active geofencing background task
     await syncAllActiveGeofences();
+
+    // Check if user is ALREADY standing inside this gym right now!
+    let proximityResult: any = null;
+    if (isEnabled && promptOnEnter) {
+      try {
+        proximityResult = await checkImmediateGymProximity({
+          force: true,
+          currentCoords: isCurrentLocationRef.current ? { latitude, longitude } : undefined,
+        });
+      } catch (proxErr) {
+        console.warn('[GymLocationModal] Proximity check failed:', proxErr);
+      }
+    }
+
     setLoading(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onClose();
-  }, [latitude, longitude, isEnabled, placeName, radius, promptOnEnter, promptOnExit, address, onClose]);
 
-  // 4. Delete / Reset Configuration
-  const handleDeleteGeofence = useCallback(async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (proximityResult?.insideGym && proximityResult?.triggered) {
+      // User is currently at this gym! Workout was auto-started and event emitted.
+      // Close modal immediately so UI navigates smoothly to ActiveLogging.
+      onClose();
+    } else {
+      Alert.alert('Gym Location Saved', 'ZenTrack will automatically detect and notify you when you arrive at your gym.');
+      onClose();
+    }
+  }, [
+    latitude,
+    longitude,
+    placeName,
+    address,
+    radius,
+    promptOnEnter,
+    promptOnExit,
+    isEnabled,
+    onClose,
+  ]);
+
+  // 4. Delete Configuration
+  const handleDelete = useCallback(() => {
     Alert.alert(
       'Remove Gym Geofence',
-      'Are you sure you want to remove your gym location? Automatic workout detection will be disabled.',
+      'Are you sure you want to delete this gym location? Auto workout prompts will be disabled.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Remove',
+          text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            setLoading(true);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             await deleteGymGeofenceConfig();
             await syncAllActiveGeofences();
-            setLatitude(null);
-            setLongitude(null);
             setPlaceName('');
             setAddress('');
-            setLoading(false);
+            setLatitude(null);
+            setLongitude(null);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             onClose();
           },
@@ -222,13 +273,13 @@ export const GymLocationModal = React.memo(function GymLocationModal({ visible, 
 
         {/* Location Search Bar with GPS Button */}
         <View style={styles.sectionBlock}>
-          <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>GYM LOCATION SPOT</Text>
+          <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>GYM LOCATION SPOT OR GPS COORDINATES</Text>
           <View style={[styles.searchBox, { backgroundColor: isDark ? '#0d0d10' : '#F3F4F6', borderColor: isDark ? '#1c1c20' : '#E5E7EB' }]}>
             <Ionicons name="search" size={16} color={colors.textMuted} />
             <TextInput
               value={searchQuery}
               onChangeText={handleSearch}
-              placeholder="Search address or gym..."
+              placeholder="Address, gym name, or 30.7654, 76.7865..."
               placeholderTextColor={colors.textMuted}
               style={[styles.searchInput, { color: colors.textPrimary }]}
             />
@@ -261,9 +312,16 @@ export const GymLocationModal = React.memo(function GymLocationModal({ visible, 
                   onPress={() => handleSelectSearchResult(item)}
                   style={[styles.resultItem, { borderBottomColor: isDark ? '#16161a' : '#F3F4F6' }]}
                 >
-                  <Ionicons name="location-outline" size={16} color="#a599ff" />
+                  <Ionicons name={item.isCoordinates ? 'navigate-circle' : 'location-outline'} size={16} color="#a599ff" />
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.resultTitle, { color: colors.textPrimary }]}>{item.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={[styles.resultTitle, { color: colors.textPrimary }]}>{item.name}</Text>
+                      {item.isCoordinates && (
+                        <View style={{ backgroundColor: 'rgba(165, 153, 255, 0.15)', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                          <Text style={{ fontSize: 9, fontFamily: FONT_FAMILY.bold, color: '#a599ff' }}>GPS PIN</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={[styles.resultAddress, { color: colors.textMuted }]} numberOfLines={1}>{item.address}</Text>
                   </View>
                 </TouchableOpacity>
@@ -409,7 +467,7 @@ export const GymLocationModal = React.memo(function GymLocationModal({ visible, 
           </AnimatedPressable>
 
           {hasLocationSet && (
-            <TouchableOpacity onPress={handleDeleteGeofence} style={styles.removeBtn}>
+            <TouchableOpacity onPress={handleDelete} style={styles.removeBtn}>
               <Ionicons name="trash-outline" size={13} color="#ff6961" />
               <Text style={styles.removeBtnText}>Delete Gym Geofence</Text>
             </TouchableOpacity>
@@ -424,7 +482,6 @@ const styles = StyleSheet.create({
   sheetContent: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 16,
   },
   scrollContent: {
     paddingHorizontal: 0,

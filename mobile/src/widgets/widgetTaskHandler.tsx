@@ -10,8 +10,13 @@ import { LiveWorkoutWidget } from './LiveWorkoutWidget';
 import { 
   getCachedWidgetData, 
   getCachedLiveWorkoutData,
-  handleWidgetClickAction 
+  handleWidgetClickAction,
+  buildTodayAgendaData,
+  saveCachedWidgetData,
 } from '../services/widgetSyncService';
+import { formatLocalDateStr } from '../utils/dateUtils';
+import { readCoreCacheMulti } from '../utils/coreCache';
+import { readAcademicCache } from '../utils/domainCache';
 
 export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
   const widgetInfo = props.widgetInfo;
@@ -30,7 +35,26 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
           })
         );
       } else {
-        const data = await getCachedWidgetData();
+        const todayStr = formatLocalDateStr(new Date());
+        let data = await getCachedWidgetData();
+
+        // Stale or missing data check: if the cached agenda is from yesterday or not initialized,
+        // automatically reconstruct today's agenda from the offline-first L1 domain caches!
+        if (!data || data.dateStr !== todayStr) {
+          try {
+            const coreCache = await readCoreCacheMulti();
+            const academicCache = await readAcademicCache();
+            data = buildTodayAgendaData({
+              tasks: coreCache.tasks || [],
+              subjects: academicCache.attendance || [],
+              attendanceLogs: academicCache.attendanceLogs || [],
+              holidays: academicCache.holidays || [],
+              zenScore: data?.zenScore ?? 85,
+            });
+            await saveCachedWidgetData(data);
+          } catch {}
+        }
+
         props.renderWidget(
           React.createElement(TodayAgendaWidget, { 
             data, 

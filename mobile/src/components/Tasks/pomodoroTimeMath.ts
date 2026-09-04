@@ -14,6 +14,59 @@ export const DEFAULT_CONFIG: PomodoroConfig = {
   sessionsUntilLong: 4,
 };
 
+export interface FocusDepthPreset {
+  id: string;
+  label: string;
+  sublabel: string;
+  durationMinutes: number;
+  icon: string;
+  tag: string;
+}
+
+export const FOCUS_DEPTH_PRESETS: FocusDepthPreset[] = [
+  {
+    id: 'sprint',
+    label: 'Sprint',
+    sublabel: 'Beat friction',
+    durationMinutes: 15,
+    icon: 'flash-outline',
+    tag: '15m',
+  },
+  {
+    id: 'classic',
+    label: 'Classic',
+    sublabel: 'Pomodoro',
+    durationMinutes: 25,
+    icon: 'flame-outline',
+    tag: '25m',
+  },
+  {
+    id: 'deep',
+    label: 'Deep Work',
+    sublabel: 'High impact',
+    durationMinutes: 50,
+    icon: 'hardware-chip-outline',
+    tag: '50m',
+  },
+  {
+    id: 'flow',
+    label: 'Ultra Flow',
+    sublabel: 'Ultradian rhythm',
+    durationMinutes: 90,
+    icon: 'infinite-outline',
+    tag: '90m',
+  },
+];
+
+export const FOCUS_MANTRAS = [
+  'Silence the noise. Enter deep flow.',
+  'One task. Undivided presence.',
+  'Flow is built one breath at a time.',
+  'Action cures anxiety. Stay centered.',
+  'Deep work is your superpower.',
+  'Clarity precedes mastery.',
+];
+
 /** Parses time strings like "5:00 PM", "5pm", "17:00", "5" to minutes from midnight (0..1439) */
 export function parseTimeToMinutes(tStr: string, defaultPM?: boolean): number | null {
   if (!tStr) return null;

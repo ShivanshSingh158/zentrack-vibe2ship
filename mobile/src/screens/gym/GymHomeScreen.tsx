@@ -27,6 +27,13 @@ import GymWorkoutBanner from '../../components/Gym/GymWorkoutBanner';
 import WeeklyGymReport from '../../components/Gym/WeeklyGymReport';
 import { useGymPlanPreCache } from '../../hooks/useGymPlanPreCache';
 import GymHomeSkeleton from '../../components/Gym/GymHomeSkeleton';
+import {
+  getGeofenceDiagnosticStatus,
+  checkImmediateGymProximity,
+  ensureLocationServicesEnabled,
+  requestLocationPermissions,
+  type GeofenceDiagnosticStatus,
+} from '../../services/geofenceService';
 
 // ─── Heavy Modals: Lazy-loaded on demand (skips parsing ~9,750 LOC on cold boot) ───
 const AddExerciseModal = React.lazy(() => import('../../components/Gym/AddExerciseModal').then(m => ({ default: m.AddExerciseModal })));
@@ -66,11 +73,28 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   const pillAnim = useRef(new Animated.Value(0)).current;
   const isPillVisibleRef = useRef(false);
 
+  // Live Geofence Status HUD State
+  const [geofenceStatus, setGeofenceStatus] = useState<GeofenceDiagnosticStatus | null>(null);
+
+  const refreshGeofenceStatus = useCallback(async () => {
+    try {
+      const status = await getGeofenceDiagnosticStatus();
+      setGeofenceStatus(status);
+      if (status.isConfigured && status.isEnabled && status.isLocationServicesEnabled) {
+        checkImmediateGymProximity().catch(() => {});
+      }
+    } catch {}
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       isPillVisibleRef.current = false;
       pillAnim.setValue(0);
-    }, [pillAnim])
+      const handle = InteractionManager.runAfterInteractions(() => {
+        refreshGeofenceStatus();
+      });
+      return () => handle.cancel();
+    }, [pillAnim, refreshGeofenceStatus])
   );
 
   const { gymLogs, gymLogsReady, waterLogs, sleepLogs, applyMasterTemplate, userGymPlan, updateMasterPlan, updateFullMasterPlan } = useWellnessData();
@@ -90,17 +114,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     return () => handle.cancel();
   }, [gymLogs, userGymPlan]);
 
-  // Autonomous Geofence Arrival: auto-routes to ActiveLogging focused on the first exercise
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('gym_workout_auto_started', (event: any) => {
-      navigation.navigate('ActiveLogging', {
-        date: event?.date || todayStr(),
-        initialIndex: 0,
-      });
-    });
-    return () => sub.remove();
-  }, [navigation]);
-
   const handleGymNotifSaved = useCallback(() => {
     clearScheduleCache();
     scheduleAllNotifications({
@@ -119,6 +132,20 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     updateSet, saveLog, addCardio, updateCardio, deleteCardio, planDay,
     swapDayRoutine, reorderExercisesFull, triggerDeload, forceOverrideTodayPlan
   } = useGymLog(selectedDate);
+
+  // Autonomous Geofence Arrival: auto-starts local workout session and routes to ActiveLogging
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('gym_workout_auto_started', (event: any) => {
+      if (!log?.workoutStartTime) {
+        startWorkout();
+      }
+      navigation.navigate('ActiveLogging', {
+        date: event?.date || todayStr(),
+        initialIndex: 0,
+      });
+    });
+    return () => sub.remove();
+  }, [navigation, log?.workoutStartTime, startWorkout]);
 
   // Extracted AI Plan Manager
   const {
@@ -154,6 +181,22 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   const [supersetPickerFor, setSupersetPickerFor] = useState<any | null>(null);
   const [cardioMenuFor, setCardioMenuFor] = useState<GymCardioLog | null>(null);
   const [showLocationModal, setShowLocationModal] = useState(false);
+
+  // 1-Tap Location Issue Resolver (Google Play Services dialog or Permission Request)
+  const handleResolveLocationIssue = useCallback(async () => {
+    hapticMedium();
+    if (!geofenceStatus?.isLocationServicesEnabled) {
+      const enabled = await ensureLocationServicesEnabled();
+      if (enabled) {
+        refreshGeofenceStatus();
+      }
+    } else if (!geofenceStatus?.hasBackgroundPermission) {
+      await requestLocationPermissions();
+      refreshGeofenceStatus();
+    } else {
+      setShowLocationModal(true);
+    }
+  }, [geofenceStatus, refreshGeofenceStatus]);
 
   // Progressive Overload Toast
   const [overloadToast, setOverloadToast] = useState<{
@@ -403,6 +446,85 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Geofence Status HUD Pill */}
+      {geofenceStatus?.isConfigured && geofenceStatus?.isEnabled && (
+        <View style={{ paddingHorizontal: 12, marginBottom: 10 }}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={handleResolveLocationIssue}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingVertical: 8,
+              paddingHorizontal: 12,
+              borderRadius: 12,
+              borderWidth: 1,
+              backgroundColor: !geofenceStatus.isLocationServicesEnabled
+                ? 'rgba(255, 179, 71, 0.08)'
+                : !geofenceStatus.hasBackgroundPermission
+                ? 'rgba(255, 105, 97, 0.08)'
+                : 'rgba(165, 153, 255, 0.08)',
+              borderColor: !geofenceStatus.isLocationServicesEnabled
+                ? 'rgba(255, 179, 71, 0.3)'
+                : !geofenceStatus.hasBackgroundPermission
+                ? 'rgba(255, 105, 97, 0.3)'
+                : 'rgba(165, 153, 255, 0.25)',
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+              <View
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: !geofenceStatus.isLocationServicesEnabled
+                    ? '#ffb347'
+                    : !geofenceStatus.hasBackgroundPermission
+                    ? '#ff6961'
+                    : '#5eda9e',
+                }}
+              />
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontFamily: FONT_FAMILY.medium,
+                  color: !geofenceStatus.isLocationServicesEnabled
+                    ? '#ffb347'
+                    : !geofenceStatus.hasBackgroundPermission
+                    ? '#ff6961'
+                    : '#e2ddff',
+                }}
+                numberOfLines={1}
+              >
+                {!geofenceStatus.isLocationServicesEnabled
+                  ? 'Location is OFF • Tap to enable 1-tap GPS'
+                  : !geofenceStatus.hasBackgroundPermission
+                  ? 'Background location needed for pocket detection'
+                  : `Auto-Tracking ${geofenceStatus.gymName} (${geofenceStatus.radius}m)`}
+              </Text>
+            </View>
+            <Ionicons
+              name={
+                !geofenceStatus.isLocationServicesEnabled
+                  ? 'chevron-forward'
+                  : !geofenceStatus.hasBackgroundPermission
+                  ? 'chevron-forward'
+                  : 'options-outline'
+              }
+              size={14}
+              color={
+                !geofenceStatus.isLocationServicesEnabled
+                  ? '#ffb347'
+                  : !geofenceStatus.hasBackgroundPermission
+                  ? '#ff6961'
+                  : '#a599ff'
+              }
+            />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {planDay?.isRest ? (
         <WeeklyGymReport gymLogs={gymLogs} weekAnchorDate={selectedDate} userGymPlan={userGymPlan} />
       ) : (
@@ -451,7 +573,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </>
       )}
     </>
-  ), [s, weekDates, selectedDate, planDay?.isRest, gymLogs, userGymPlan, sleepLogs, triggerDeload, log, currentStreak, animBanner, navigation, handleStartWorkout, handleResumeWorkout, endWorkout, resumeWorkout, activeExercisesData.length]);
+  ), [s, weekDates, selectedDate, planDay?.isRest, gymLogs, userGymPlan, sleepLogs, triggerDeload, log, currentStreak, animBanner, navigation, handleStartWorkout, handleResumeWorkout, endWorkout, resumeWorkout, activeExercisesData.length, geofenceStatus, handleResolveLocationIssue]);
 
   // Cardio Renderer
   const renderCardio = useCallback(() => {
@@ -604,9 +726,39 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
               <TouchableOpacity onPress={() => { hapticMedium(); setShowLocationModal(true); }} style={s.morphBtn} activeOpacity={0.7}>
                 <View style={s.morphBtnIconWrap}>
                   <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
-                  <Ionicons name="location-outline" size={16} color={COLORS.textMuted} />
+                  <Ionicons
+                    name="location-outline"
+                    size={16}
+                    color={
+                      geofenceStatus?.isConfigured && geofenceStatus?.isEnabled
+                        ? (!geofenceStatus.isLocationServicesEnabled ? '#ffb347' : '#a599ff')
+                        : COLORS.textMuted
+                    }
+                  />
+                  {geofenceStatus?.isConfigured && geofenceStatus?.isEnabled && (
+                    <View
+                      style={{
+                        position: 'absolute',
+                        top: 4,
+                        right: 4,
+                        width: 5,
+                        height: 5,
+                        borderRadius: 2.5,
+                        backgroundColor: !geofenceStatus.isLocationServicesEnabled ? '#ffb347' : '#5eda9e',
+                      }}
+                    />
+                  )}
                 </View>
-                <Text style={s.headerBtnText}>GPS</Text>
+                <Text
+                  style={[
+                    s.headerBtnText,
+                    geofenceStatus?.isConfigured && geofenceStatus?.isEnabled
+                      ? { color: !geofenceStatus.isLocationServicesEnabled ? '#ffb347' : '#a599ff' }
+                      : null,
+                  ]}
+                >
+                  GPS
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity onPress={() => { hapticMedium(); navigation.navigate('GymProgress'); }} style={s.morphBtn} activeOpacity={0.7}>
@@ -796,7 +948,15 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
 
             {showBodyMetrics && <BodyMetricsSheet visible={showBodyMetrics} onClose={() => setShowBodyMetrics(false)} />}
             {showPRHallOfFame && <PRHallOfFameSheet visible={showPRHallOfFame} onClose={() => setShowPRHallOfFame(false)} />}
-            {showLocationModal && <GymLocationModal visible={showLocationModal} onClose={() => setShowLocationModal(false)} />}
+            {showLocationModal && (
+              <GymLocationModal
+                visible={showLocationModal}
+                onClose={() => {
+                  setShowLocationModal(false);
+                  refreshGeofenceStatus();
+                }}
+              />
+            )}
 
             {showWeeklyRecap && (
               <Modal

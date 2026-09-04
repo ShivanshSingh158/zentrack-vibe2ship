@@ -36,6 +36,7 @@ export const BOOT_KEYS = {
   ASSIGNMENTS:        '@zentrack_cache_assignments',
   SEMESTERS:          '@zentrack_cache_semesters',
   SEM_SUBJECTS:       '@zentrack_cache_sem_subjects',
+  HOLIDAYS:           '@zentrack_cache_holidays',
   GYM_LOGS:           '@zentrack_cache_gym_logs',
   USER_GYM_PLAN:      '@zentrack_cache_user_gym_plan',
   WATER_LOGS:         '@zentrack_cache_water_logs',
@@ -69,6 +70,7 @@ export interface BootManifest {
   assignments: any[];
   semesters: any[];
   semesterSubjects: any[];
+  holidays: string[];
   gymLogs: any[];
   userGymPlan: any | null;
   waterLogs: any[];
@@ -118,13 +120,9 @@ export async function loadBootManifest(): Promise<BootManifest> {
         } catch { /* ignore parse error */ }
       }
 
-      // Onboarded: explicit 'true'/'false' string in storage.
-      // DEFAULT: if key is absent AND user has an optimistic token (returning user),
-      // assume onboarded=true. Old app versions didn't write this key but users
-      // clearly completed onboarding before their auth token was stored.
-      // New users without optimistic token: default false so they see onboarding.
-      const onboardedVal = map.get(BOOT_KEYS.ONBOARDING);
-      const onboarded = onboardedVal === 'true' || (onboardedVal === null && optimisticUser !== null);
+      // Onboarded: explicit 'true' string in storage.
+      const onboardedVal = map.get(BOOT_KEYS.ONBOARDING) || map.get('zentrack_onboarded_v2');
+      const onboarded = onboardedVal === 'true';
 
       // 2. Pinned Modules
       let pinnedModules = DEFAULT_PINNED;
@@ -266,6 +264,11 @@ export async function loadBootManifest(): Promise<BootManifest> {
       if (semSubRaw) {
         try { const p = JSON.parse(semSubRaw); if (Array.isArray(p)) semesterSubjects = p; } catch {}
       }
+      let holidays: string[] = [];
+      const holidaysRaw = map.get(BOOT_KEYS.HOLIDAYS);
+      if (holidaysRaw) {
+        try { const p = JSON.parse(holidaysRaw); if (Array.isArray(p)) holidays = p; } catch {}
+      }
 
       // Planner: weeklyReviews
       let weeklyReviews: any[] = [];
@@ -314,6 +317,7 @@ export async function loadBootManifest(): Promise<BootManifest> {
         assignments,
         semesters,
         semesterSubjects,
+        holidays,
         gymLogs,
         userGymPlan,
         waterLogs,
@@ -350,6 +354,7 @@ export async function loadBootManifest(): Promise<BootManifest> {
         assignments: [],
         semesters: [],
         semesterSubjects: [],
+        holidays: [],
         gymLogs: [],
         userGymPlan: null,
         waterLogs: [],

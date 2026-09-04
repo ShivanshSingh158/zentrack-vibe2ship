@@ -4,7 +4,7 @@
  * handleLog, handleUndo, handleToggleHoliday, handleDeleteSubject,
  * handleApplyOverride, handleResetSemester.
  */
-import { Alert } from 'react-native';
+import { Alert, InteractionManager } from 'react-native';
 import {
   collection, query, where, addDoc, updateDoc, doc,
   writeBatch, getDocs,
@@ -19,6 +19,10 @@ import { safeWrite } from '../../utils/safeWrite';
 import { queueWrite } from '../../services/offlineSync';
 import { DAY_NAMES, getScheduledAttendanceLogDocId } from './attendanceConstants';
 import { awardXP } from '../../services/xpSystem';
+import { buildTodayAgendaData, saveCachedWidgetData, updateTodayAgendaWidget, getCachedWidgetData } from '../../services/widgetSyncService';
+import { readAcademicCache } from '../../utils/domainCache';
+import { formatLocalDateStr } from '../../utils/dateUtils';
+import { readCoreCacheMulti } from '../../utils/coreCache';
 
 // Set the notification handler once at module level (previously in AttendanceScreen top-level)
 Notifications.setNotificationHandler({
@@ -45,6 +49,7 @@ interface FirestoreActionsParams {
   optimisticUpdateAttendanceLog?: (logId: string, partial: any) => void;
   optimisticRemoveAttendanceLog: (logId: string) => void;
   optimisticDeleteSubject?: (subjectId: string) => void;
+  optimisticToggleHoliday?: (dateStr: string, isHoliday: boolean) => void;
 }
 
 export function useAttendanceFirestore({
@@ -52,7 +57,7 @@ export function useAttendanceFirestore({
   logsBySubjectId, overrideCounts,
   setOverrideOpen, setConfirmConfig,
   optimisticUpdateAttendance, optimisticAddAttendanceLog, optimisticUpdateAttendanceLog, optimisticRemoveAttendanceLog,
-  optimisticDeleteSubject,
+  optimisticDeleteSubject, optimisticToggleHoliday,
 }: FirestoreActionsParams) {
 
   // ── Core log action ────────────────────────────────────────────────────────
@@ -206,6 +211,37 @@ export function useAttendanceFirestore({
         }).catch(handleSyncError);
       }
 
+      // Sync to Android widget immediately if logging today's session
+      const nowStr = new Date().toISOString().slice(0, 10);
+      if (cleanLogDate === nowStr) {
+        InteractionManager.runAfterInteractions(async () => {
+          try {
+            const academicCache = await readAcademicCache();
+            const cachedWidget = await getCachedWidgetData();
+            const currentLogs = academicCache.attendanceLogs || logs;
+            const updatedLogs = [
+              targetLog,
+              ...currentLogs.filter(l => l.id !== targetDocId)
+            ];
+            const widgetData = buildTodayAgendaData({
+              tasks: (cachedWidget?.tasks?.map(t => ({
+                id: t.id,
+                title: t.title,
+                timeSlot: t.timeSlot,
+                status: t.status,
+                priority: t.priority,
+              })) as any) || [],
+              subjects: academicCache.attendance || subjects,
+              attendanceLogs: updatedLogs,
+              holidays: academicCache.holidays || [],
+              zenScore: cachedWidget?.zenScore ?? 85,
+            });
+            await saveCachedWidgetData(widgetData);
+            await updateTodayAgendaWidget(widgetData);
+          } catch {}
+        });
+      }
+
       const oldPct         = (subject.classesTotal || 0) + (subject.labsTotal || 0) === 0
         ? 100
         : (((subject.classesAttended || 0) + (subject.labsAttended || 0)) / ((subject.classesTotal || 0) + (subject.labsTotal || 0))) * 100;
@@ -270,6 +306,8 @@ export function useAttendanceFirestore({
   const handleToggleHoliday = async (isSelectedHoliday: boolean) => {
     if (!user) return;
     try {
+      optimisticToggleHoliday?.(selectedDate, !isSelectedHoliday);
+
       if (isSelectedHoliday) {
         const q = query(
           collection(db, COLLECTION.ATTENDANCE_HOLIDAYS),
@@ -334,6 +372,33 @@ export function useAttendanceFirestore({
 
         await batch.commit();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      // Sync to Android widget immediately if toggling today's holiday
+      const nowStr = formatLocalDateStr(new Date());
+      const cleanSelected = (selectedDate || '').trim().slice(0, 10);
+      if (cleanSelected === nowStr) {
+        InteractionManager.runAfterInteractions(async () => {
+          try {
+            const academicCache = await readAcademicCache();
+            const coreCache = await readCoreCacheMulti();
+            const cachedWidget = await getCachedWidgetData();
+            const existingHolidays = (academicCache.holidays || []).map(h => typeof h === 'string' ? h.trim().slice(0, 10) : (h as any)?.date?.trim()?.slice(0, 10)).filter(Boolean);
+            const updatedHolidays = !isSelectedHoliday
+              ? [...new Set([...existingHolidays, cleanSelected])]
+              : existingHolidays.filter(h => h !== cleanSelected);
+
+            const widgetData = buildTodayAgendaData({
+              tasks: coreCache.tasks || [],
+              subjects: academicCache.attendance || subjects,
+              attendanceLogs: academicCache.attendanceLogs || logs,
+              holidays: updatedHolidays,
+              zenScore: cachedWidget?.zenScore ?? 85,
+            });
+            await saveCachedWidgetData(widgetData);
+            await updateTodayAgendaWidget(widgetData);
+          } catch {}
+        });
       }
     } catch (err) { console.error(err); }
   };

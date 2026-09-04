@@ -3,7 +3,9 @@
  *
  * Performance-first architecture:
  * - 0ms instant display from Frame 0 memory cache.
- * - Throttled hardware sync (max once every 30s on foreground).
+ * - Live real-time hardware pedometer listener (Pedometer.watchStepCount).
+ * - Queries historical midnight baseline (Pedometer.getStepCountAsync).
+ * - Automatic permission request & graceful fallback.
  * - Debounced AsyncStorage writes (eliminates JS thread disk thrashing).
  * - Zero background CPU/battery drain.
  */
@@ -12,6 +14,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Platform, AppState, AppStateStatus } from 'react-native';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { db, auth } from '../services/firebase';
+import { safeWrite } from '../utils/safeWrite';
 
 export const STEP_GOAL_DEFAULT = 10000;
 export const STEP_CACHE_KEY_PREFIX = '@zentrack_steps_';
@@ -85,17 +90,55 @@ export function useStepCounter() {
   const [steps, setSteps] = useState<number>(memoryCachedSteps);
   const [stepGoal, setStepGoal] = useState<number>(memoryCachedGoal);
   const [isAvailable, setIsAvailable] = useState<boolean>(true);
+  const [hasPermission, setHasPermission] = useState<boolean>(true);
   const [history, setHistory] = useState<DayStepData[]>([]);
 
   const isQueryingRef = useRef<boolean>(false);
-  const lastSavedStepsRef = useRef<number>(memoryCachedSteps);
-  const saveTimeoutRef = useRef<any>(null);
+  const baselineStepsRef = useRef<number>(memoryCachedSteps);
+  const lastLiveStepsRef = useRef<number>(0);
+  const watchSubscriptionRef = useRef<any>(null);
 
-  // Throttled hardware step sync
+  const firestoreSyncDebounceRef = useRef<any>(null);
+
+  // Persist steps to local storage + cloud Firestore with throttling
+  const saveStepsToDisk = useCallback((count: number) => {
+    const todayStr = getTodayDateStrSync();
+    const cacheKey = `${STEP_CACHE_KEY_PREFIX}${todayStr}`;
+    memoryCachedSteps = count;
+    AsyncStorage.setItem(cacheKey, String(count)).catch(() => {});
+
+    // Cloud Sync to Firestore step_logs
+    if (firestoreSyncDebounceRef.current) {
+      clearTimeout(firestoreSyncDebounceRef.current);
+    }
+    firestoreSyncDebounceRef.current = setTimeout(() => {
+      const user = auth.currentUser;
+      if (user?.uid) {
+        const docId = `${user.uid}_${todayStr}`;
+        safeWrite(
+          () => setDoc(doc(db, 'step_logs', docId), {
+            userId: user.uid,
+            date: todayStr,
+            steps: count,
+            goal: memoryCachedGoal,
+            goalHit: count >= memoryCachedGoal,
+            updatedAt: Date.now(),
+            source: 'foreground',
+          }, { merge: true }),
+          'step_logs',
+          'update',
+          { steps: count },
+          docId
+        ).catch(() => {});
+      }
+    }, 5000);
+  }, []);
+
+  // Hardware step sync (historical baseline from midnight)
   const syncHardwareSteps = useCallback(async (force = false) => {
     const now = Date.now();
-    if (!force && now - lastHardwareSyncTime < 30000) {
-      return; // Max once per 30 seconds to prevent lag
+    if (!force && now - lastHardwareSyncTime < 10000) {
+      return;
     }
     if (isQueryingRef.current) return;
     isQueryingRef.current = true;
@@ -119,6 +162,7 @@ export function useStepCounter() {
         isGranted = req.granted;
       }
 
+      setHasPermission(isGranted);
       if (!isGranted) {
         isQueryingRef.current = false;
         return;
@@ -129,21 +173,65 @@ export function useStepCounter() {
       const rightNow = new Date();
 
       const result = await Pedometer.getStepCountAsync(startOfDay, rightNow).catch(() => null);
-      if (result && typeof result.steps === 'number') {
+      if (result && typeof result.steps === 'number' && result.steps > 0) {
         const hardwareSteps = Math.max(0, result.steps);
-        memoryCachedSteps = hardwareSteps;
-        setSteps(prev => (prev === hardwareSteps ? prev : hardwareSteps));
-
-        if (Math.abs(hardwareSteps - lastSavedStepsRef.current) >= 20) {
-          lastSavedStepsRef.current = hardwareSteps;
-          AsyncStorage.setItem(cacheKey, String(hardwareSteps)).catch(() => {});
+        baselineStepsRef.current = hardwareSteps;
+        lastLiveStepsRef.current = 0;
+        setSteps(hardwareSteps);
+        saveStepsToDisk(hardwareSteps);
+      } else {
+        // If historical query is 0 or unsupported on this Android device, load cached baseline
+        const cached = await AsyncStorage.getItem(cacheKey).catch(() => null);
+        if (cached) {
+          const parsed = parseInt(cached, 10);
+          if (!isNaN(parsed) && parsed > 0) {
+            baselineStepsRef.current = parsed;
+            setSteps(parsed);
+          }
         }
       }
     } catch (e) {
+      console.warn('[StepCounter] syncHardwareSteps error:', e);
     } finally {
       isQueryingRef.current = false;
     }
-  }, []);
+  }, [saveStepsToDisk]);
+
+  // Start live real-time pedometer stream
+  const startLiveWatcher = useCallback(async () => {
+    try {
+      if (watchSubscriptionRef.current) {
+        watchSubscriptionRef.current.remove();
+        watchSubscriptionRef.current = null;
+      }
+
+      const available = await Pedometer.isAvailableAsync().catch(() => false);
+      if (!available) return;
+
+      const perm = await Pedometer.getPermissionsAsync().catch(() => ({ granted: false }));
+      if (!perm.granted) {
+        const req = await Pedometer.requestPermissionsAsync().catch(() => ({ granted: false }));
+        if (!req.granted) return;
+      }
+
+      lastLiveStepsRef.current = 0;
+      const sub = Pedometer.watchStepCount((result) => {
+        if (result && typeof result.steps === 'number') {
+          const delta = result.steps - lastLiveStepsRef.current;
+          if (delta > 0) {
+            lastLiveStepsRef.current = result.steps;
+            const updated = baselineStepsRef.current + result.steps;
+            setSteps(updated);
+            saveStepsToDisk(updated);
+          }
+        }
+      });
+
+      watchSubscriptionRef.current = sub;
+    } catch (err) {
+      console.warn('[StepCounter] watchStepCount failed:', err);
+    }
+  }, [saveStepsToDisk]);
 
   const updateGoal = useCallback(async (newGoal: number) => {
     memoryCachedGoal = newGoal;
@@ -151,18 +239,54 @@ export function useStepCounter() {
     await AsyncStorage.setItem('@zentrack_step_goal', String(newGoal)).catch(() => {});
   }, []);
 
+  const setExactSteps = useCallback((exactCount: number) => {
+    const val = Math.max(0, exactCount);
+    baselineStepsRef.current = val;
+    lastLiveStepsRef.current = 0;
+    setSteps(val);
+    saveStepsToDisk(val);
+  }, [saveStepsToDisk]);
+
+  const addManualSteps = useCallback((additionalSteps: number) => {
+    if (additionalSteps <= 0) return;
+    setSteps(prev => {
+      const next = prev + additionalSteps;
+      baselineStepsRef.current = next;
+      saveStepsToDisk(next);
+      return next;
+    });
+  }, [saveStepsToDisk]);
+
   useEffect(() => {
     const todayStr = getTodayDateStrSync();
     const cacheKey = `${STEP_CACHE_KEY_PREFIX}${todayStr}`;
 
-    // 1. Initial 0ms memory / disk load
-    AsyncStorage.getItem(cacheKey).then((cached) => {
+    // 1. Initial 0ms memory / disk load + cloud fallback
+    AsyncStorage.getItem(cacheKey).then(async (cached) => {
       if (cached) {
         const val = parseInt(cached, 10);
         if (!isNaN(val) && val > 0) {
           memoryCachedSteps = val;
+          baselineStepsRef.current = val;
           setSteps(val);
+          return;
         }
+      }
+      // Cloud Fallback: If local storage has 0/empty, restore from Firestore
+      const user = auth.currentUser;
+      if (user?.uid) {
+        try {
+          const snap = await getDoc(doc(db, 'step_logs', `${user.uid}_${todayStr}`));
+          if (snap.exists() && typeof snap.data()?.steps === 'number') {
+            const cloudSteps = snap.data().steps;
+            if (cloudSteps > 0) {
+              memoryCachedSteps = cloudSteps;
+              baselineStepsRef.current = cloudSteps;
+              setSteps(cloudSteps);
+              AsyncStorage.setItem(cacheKey, String(cloudSteps)).catch(() => {});
+            }
+          }
+        } catch {}
       }
     }).catch(() => {});
 
@@ -176,28 +300,47 @@ export function useStepCounter() {
       }
     }).catch(() => {});
 
-    // 2. Hardware sync on mount
-    syncHardwareSteps();
+    // 2. Hardware sync & start live pedometer listener
+    syncHardwareSteps().then(() => {
+      startLiveWatcher();
+    });
 
-    // 3. Sync on app foreground resume
+    // 3. Foreground resume: sync and restart live watcher
     const appStateSub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
       if (nextState === 'active') {
-        syncHardwareSteps();
+        syncHardwareSteps().then(() => {
+          startLiveWatcher();
+        });
+      } else if (nextState === 'background') {
+        if (watchSubscriptionRef.current) {
+          watchSubscriptionRef.current.remove();
+          watchSubscriptionRef.current = null;
+        }
       }
     });
 
+    // 4. Load 7-day history
+    fetch7DayStepHistory().then(setHistory).catch(() => {});
+
     return () => {
       appStateSub.remove();
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      if (watchSubscriptionRef.current) {
+        watchSubscriptionRef.current.remove();
+        watchSubscriptionRef.current = null;
+      }
     };
-  }, [syncHardwareSteps]);
+  }, [syncHardwareSteps, startLiveWatcher]);
 
   return {
     steps,
     stepGoal,
     history,
     isAvailable,
+    hasPermission,
     updateGoal,
+    setExactSteps,
+    addManualSteps,
     refreshSteps: () => syncHardwareSteps(true),
   };
 }
+

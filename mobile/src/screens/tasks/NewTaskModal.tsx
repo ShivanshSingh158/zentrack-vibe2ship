@@ -31,7 +31,7 @@ import AnimatedPressable from '../../components/AnimatedPressable';
 import { LocationPickerModal } from '../../components/Tasks/LocationPickerModal';
 import { saveTaskLocationReminder } from '../../services/geofenceService';
 import type { TaskLocationTrigger } from '../../types/locationReminder.types';
-import { parseNLTask, ParsedTask, NLPToken, parseLocalDate, toYMD } from '../../utils/dateUtils';
+import { parseNLTask, ParsedTask, NLPToken, parseLocalDate, toYMD, cleanTaskTitle, formatRecurrenceLabel } from '../../utils/dateUtils';
 import { isSilenceOrNoise } from '../../services/voiceEngine';
 import {
   TAG_STORAGE_KEY, TAG_PALETTE, tagColorFor,
@@ -39,6 +39,7 @@ import {
   Priority,
 } from './taskConstants';
 import { makeTasksStyles } from './tasksStyles';
+import { scheduleSingleTaskReminder } from '../../services/notifications';
 
 interface Props {
   visible: boolean;
@@ -150,6 +151,13 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       }
       // Capture NLP-inferred duration (used as fallback when no start+end time)
       if (parsed.durationMinutes != null) setNlpDuration(parsed.durationMinutes);
+      if (parsed.subtasks && parsed.subtasks.length > 0) {
+        setSubtasks(parsed.subtasks);
+        setShowSubtasks(true);
+      }
+      if (parsed.locationReminder) {
+        setLocationTrigger(parsed.locationReminder);
+      }
     }, 300);
   }, [priority]);
 
@@ -162,6 +170,8 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     if (type === 'duration')   { setNlpDuration(null); }
     if (type === 'reminder')   { setIsReminder(false); }
     if (type === 'tag')        { removeSelectedTag(display.replace(/^#/, '')); }
+    if (type === 'subtask')    { setSubtasks([]); setShowSubtasks(false); }
+    if (type === 'location')   { setLocationTrigger(null); }
     // Splice the matched span out of the raw title and re-parse
     const cleaned = (title.slice(0, start) + title.slice(end)).replace(/\s{2,}/g, ' ').trim();
     setTitle(cleaned);
@@ -191,9 +201,13 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       setShowStartPicker(false);
       if (event.type === 'set' && d) {
         setStartTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`);
+        setIsReminder(true);
       }
     } else {
-      if (d) setStartTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`);
+      if (d) {
+        setStartTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`);
+        setIsReminder(true);
+      }
     }
   };
 
@@ -239,13 +253,32 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     if (extractedTasks.length > 0) {
       const pt = extractedTasks[0];
       
-      // Populate preview fields
+      // Populate all extracted fields
       if (pt.title) setTitle(pt.title);
+      if (pt.date) setTaskDate(pt.date);
       if (pt.priority) setPriority(pt.priority);
-      if (pt.timeSlot) setStartTime(pt.timeSlot);
+      if (pt.timeSlot) {
+        if (typeof pt.timeSlot === 'string' && pt.timeSlot.includes(' - ')) {
+          const [s, e] = pt.timeSlot.split(' - ');
+          setStartTime(s.trim());
+          setEndTime(e.trim());
+        } else {
+          setStartTime(pt.timeSlot);
+        }
+      }
+      if (pt.endTimeSlot) setEndTime(pt.endTimeSlot);
       if (pt.recurrenceRule) setRecurrenceRule(pt.recurrenceRule);
-      
-      // Don't auto-save, let the user tap "Add task"
+      if (pt.tags && Array.isArray(pt.tags)) {
+        pt.tags.forEach((t: string) => addTag(t));
+      }
+      if (pt.subtasks && Array.isArray(pt.subtasks) && pt.subtasks.length > 0) {
+        const subStrings = pt.subtasks.map((s: any) => typeof s === 'string' ? s : s.title || '');
+        setSubtasks(subStrings);
+        setShowSubtasks(true);
+      }
+      if (pt.isReminder) setIsReminder(true);
+      if (pt.durationMinutes) setNlpDuration(pt.durationMinutes);
+      if (pt.locationReminder) setLocationTrigger(pt.locationReminder);
     }
   };
 
@@ -263,7 +296,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     const rawForParse = isOverride ? rawText : title;
     const saveParsed = rawForParse.trim().length >= 2 ? parseNLTask(rawForParse) : null;
 
-    let finalTitle = saveParsed?.title?.trim() || nlpParsed?.title?.trim() || rawForParse.trim();
+    let finalTitle = cleanTaskTitle(saveParsed?.title?.trim() || nlpParsed?.title?.trim() || rawForParse.trim());
     let ts = startTime ? (endTime ? `${startTime} - ${endTime}` : startTime) : null;
     let est = calcEstMinutes(startTime, endTime) || nlpDuration || saveParsed?.durationMinutes || 0;
     let finalPriority = priority;
@@ -375,6 +408,9 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       };
 
       optimisticAddTask(taskPayload);
+      if (finalIsReminder || ts) {
+        scheduleSingleTaskReminder(taskPayload).catch(console.warn);
+      }
 
       if (locationTrigger) {
         saveTaskLocationReminder({
@@ -526,7 +562,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
             >
               <Ionicons name={recurrenceRule ? 'repeat' : 'repeat-outline'} size={13} color={recurrenceRule ? '#c084fc' : '#8e8e93'} />
               <Text style={[styles.quickChipText, recurrenceRule && { color: '#c084fc', fontWeight: '500' }]}>
-                {recurrenceRule ? (recurrenceRule.type === 'custom' ? `Every ${recurrenceRule.interval}d` : recurrenceRule.type.charAt(0).toUpperCase() + recurrenceRule.type.slice(1)) : 'Repeat'}
+                {formatRecurrenceLabel(recurrenceRule)}
               </Text>
             </AnimatedPressable>
 
@@ -565,12 +601,19 @@ export const NewTaskModal = React.memo(function NewTaskModal({
               ]}
               onPress={() => {
                 import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Light));
-                setIsReminder(v => !v);
+                if (!isReminder) {
+                  setIsReminder(true);
+                  if (!startTime) {
+                    setShowStartPicker(true);
+                  }
+                } else {
+                  setIsReminder(false);
+                }
               }}
             >
               <Ionicons name={isReminder ? "notifications" : "notifications-outline"} size={13} color={isReminder ? '#f59e0b' : '#8e8e93'} />
               <Text style={[styles.quickChipText, isReminder && { color: '#f59e0b', fontWeight: '600' }]}>
-                {isReminder ? 'Alarm ON' : 'Reminder'}
+                {isReminder ? (startTime ? `Alarm ${formatTimeDisplay(startTime)}` : 'Alarm ON') : 'Reminder'}
               </Text>
             </AnimatedPressable>
           </View>
@@ -717,6 +760,12 @@ export const NewTaskModal = React.memo(function NewTaskModal({
         visible={showDictationOverlay}
         onClose={() => setShowDictationOverlay(false)}
         onTasksExtracted={handleVoiceTasksExtracted}
+        onTaskCreated={() => {
+          setShowDictationOverlay(false);
+          resetAndClose();
+        }}
+        selectedDate={taskDate || selectedDate}
+        userId={userId}
       />
     </BottomSheet>
   );

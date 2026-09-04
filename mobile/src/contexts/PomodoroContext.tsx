@@ -61,7 +61,7 @@ export interface PomodoroContextType {
   resetTimer: () => void;
   skipSession: () => void;
   extendTime: (seconds?: number) => void;
-  switchMode: (newMode: PomodoroMode) => void;
+  switchMode: (newMode: PomodoroMode, customDuration?: number) => void;
   setConfig: React.Dispatch<React.SetStateAction<PomodoroConfig>>;
   setLinkedTask: (taskId: string | null, taskTitle?: string | null, customDurationSecs?: number) => void;
   unlinkTask: () => void;
@@ -445,14 +445,18 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
   }, [status, targetEndTime, persistState]);
 
-  const switchMode = useCallback((newMode: PomodoroMode) => {
+  const switchMode = useCallback((newMode: PomodoroMode, customDuration?: number) => {
     feedback.tap();
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
 
-    const duration = config[newMode];
+    const duration = customDuration && customDuration > 0 ? customDuration : config[newMode];
+    if (customDuration && customDuration > 0) {
+      setConfig(prev => ({ ...prev, [newMode]: customDuration }));
+    }
+
     setStatus('idle');
     setMode(newMode);
     setTimeLeft(duration);

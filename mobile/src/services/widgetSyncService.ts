@@ -16,10 +16,15 @@ import {
   LiveWorkoutWidgetData,
 } from '../types/widget.types';
 import type { Task, AttendanceSubject, AttendanceLog } from '../contexts/MobileDataContext';
-import { safeUpdate, safeAdd } from '../utils/safeWrite';
+import { safeUpdate, safeAdd, safeWrite } from '../utils/safeWrite';
 import { db, auth } from './firebase';
 import { COLLECTION } from '../config/constants';
-import { doc, updateDoc, collection, addDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, addDoc, writeBatch, setDoc } from 'firebase/firestore';
+import { getScheduledAttendanceLogDocId } from '../screens/attendance/attendanceConstants';
+import { readAcademicCache, writeAcademicCache } from '../utils/domainCache';
+import { formatLocalDateStr } from '../utils/dateUtils';
+import { readCoreCacheMulti, writeCoreCacheMulti } from '../utils/coreCache';
+import { awardXP } from './xpSystem';
 
 const WIDGET_STORAGE_KEY = '@zentrack_widget_agenda_data';
 const LIVE_WORKOUT_STORAGE_KEY = '@zentrack_widget_live_workout_data';
@@ -45,23 +50,71 @@ function parseTimeToMins(tStr?: string): number {
 }
 
 /**
+ * Converts any time string into a clean "9:00 AM" / "2:30 PM" display format.
+ *
+ * Handles:
+ *   "10:00"     → "10:00 AM"   (bare 24h — the bug case)
+ *   "14:30"     → "2:30 PM"    (bare 24h, afternoon)
+ *   "9:00 AM"   → "9:00 AM"    (already correct — pass through)
+ *   "11:00 PM"  → "11:00 PM"   (pass through)
+ *   "15:00"     → "3:00 PM"
+ *   "0:00"      → "12:00 AM"
+ *   "12:00"     → "12:00 PM"
+ *   ""          → ""           (empty — pass through for "Today", "Overdue" labels)
+ */
+function formatWidgetTime(raw?: string): string {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  // If already has AM/PM (case-insensitive), clean up spacing and return
+  const alreadyAmPm = /\b(am|pm)\b/i.test(trimmed);
+  if (alreadyAmPm) {
+    return trimmed.replace(/\s*(am|pm)/i, (_, s) => ' ' + s.toUpperCase());
+  }
+  // Parse bare time: "10:00", "14:30", "9", etc.
+  const match = trimmed.match(/^(\d{1,2})(?::(\d{2}))?$/);
+  if (!match) return trimmed; // "Overdue", "Tomorrow", free-text — pass through
+  const h24 = parseInt(match[1], 10);
+  const min = match[2] ? parseInt(match[2], 10) : 0;
+  if (isNaN(h24) || h24 < 0 || h24 > 23) return trimmed;
+  const suffix = h24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  const mm = String(min).padStart(2, '0');
+  return `${h12}:${mm} ${suffix}`;
+}
+
+/**
  * Builds TodayAgendaWidgetData from live application state
  */
 export function buildTodayAgendaData({
   tasks = [],
   subjects = [],
   attendanceLogs = [],
+  holidays = [],
   zenScore = 85,
+  streak = 0,
 }: {
   tasks?: Task[];
   subjects?: AttendanceSubject[];
   attendanceLogs?: AttendanceLog[];
+  holidays?: string[];
   zenScore?: number;
+  streak?: number;
 }): TodayAgendaWidgetData {
   const now = new Date();
-  const dateStr = now.toISOString().split('T')[0];
+  const dateStr = formatLocalDateStr(now);
+  const isHoliday = (holidays || []).some((h) => {
+    if (!h) return false;
+    const s = typeof h === 'string' ? h : (h as any).date;
+    return typeof s === 'string' && s.trim().slice(0, 10) === dateStr;
+  });
+
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const tomorrowStr = formatLocalDateStr(tomorrow);
+
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const dayOfWeek = dayNames[now.getDay()];
+  const dayIdx = now.getDay();
+  const dayOfWeek = dayNames[dayIdx];
+  const dayOfWeekNum = dayIdx.toString();
 
   const displayDate = now.toLocaleDateString('en-US', {
     weekday: 'short',
@@ -69,99 +122,203 @@ export function buildTodayAgendaData({
     day: 'numeric',
   });
 
-  // 1. Build today's classes
+  // 1. Build today's classes (supports both { classes: [], labs: [] } object schema and flat array schema)
+  // If today is marked as a holiday, omit all classes from widget
   const classes: WidgetAgendaClass[] = [];
   const items: any[] = [];
-  const todayLogs = attendanceLogs.filter((l) => l.date === dateStr);
+  const todayLogs = attendanceLogs.filter((l) => (l.date || '').slice(0, 10) === dateStr);
 
-  subjects.forEach((subj) => {
-    const slots = (subj as any).schedule?.[dayOfWeek] || (subj as any).timetable?.[dayOfWeek] || [];
-    slots.forEach((slot: any, idx: number) => {
-      const isLab = slot.isLab || slot.type === 'lab';
-      const log = todayLogs.find(
-        (l) => l.subjectId === subj.id && (l.idx === idx || (l as any).sessionIdx === idx)
-      );
+  if (!isHoliday) {
+    subjects.forEach((subj) => {
+      const sch =
+        (subj as any).schedule?.[dayOfWeek] ||
+        (subj as any).schedule?.[dayOfWeekNum] ||
+        (subj as any).schedule?.[Number(dayOfWeekNum)] ||
+        (subj as any).schedule?.[dayOfWeek.toLowerCase()] ||
+        (subj as any).timetable?.[dayOfWeek] ||
+        (subj as any).timetable?.[dayOfWeekNum];
 
-      const status: 'attended' | 'missed' | 'cancelled' | 'pending' = log
-        ? (log.action === 'attended' ? 'attended' : log.action === 'missed' ? 'missed' : log.action === 'cancelled' ? 'cancelled' : 'pending')
-        : 'pending';
+      // Mirror the exact condition from useAttendanceData.ts — must have at least 1 class/lab slot
+      if (!sch) return;
+      const hasClasses = (Array.isArray(sch.classes) && sch.classes.length > 0) || (sch.classCount > 0);
+      const hasLabs    = (Array.isArray(sch.labs) && sch.labs.length > 0) || (sch.labCount > 0);
+      const isFlat     = Array.isArray(sch) && sch.length > 0;
+      if (!hasClasses && !hasLabs && !isFlat) return;
 
-      const timeMins = parseTimeToMins(slot.time);
+      const classSlots: any[] = [];
+      if (isFlat) {
+        classSlots.push(...(sch as any[]));
+      } else {
+        // ── Regular class sessions ──
+        const classCount = Array.isArray(sch.classes) ? sch.classes.length : (sch.classCount || 0);
+        for (let i = 0; i < classCount; i++) {
+          const session = sch.classes?.[i];
+          // Accept slot even with no time — mirrors how AttendanceScreen renders 'Class #N'
+          classSlots.push({
+            ...(session && typeof session === 'object' ? session : {}),
+            type: 'class',
+            idx: i,
+            time: session?.time || session?.slot || '',
+            room: session?.room,
+          });
+        }
+        // ── Lab sessions ──
+        const labCount = Array.isArray(sch.labs) ? sch.labs.length : (sch.labCount || 0);
+        for (let i = 0; i < labCount; i++) {
+          const session = sch.labs?.[i];
+          classSlots.push({
+            ...(session && typeof session === 'object' ? session : {}),
+            type: 'lab',
+            idx: classCount + i,
+            time: session?.time || session?.slot || '',
+            room: session?.room,
+          });
+        }
+      }
 
-      classes.push({
-        id: `${subj.id}_${idx}`,
-        subjectId: subj.id,
-        subjectName: subj.name,
-        time: slot.time || 'Class',
-        room: slot.room,
-        type: isLab ? 'lab' : 'class',
-        status: status === 'cancelled' ? 'pending' : status,
-        idx,
-      });
+      classSlots.forEach((slot: any, slotIdx: number) => {
+        const isLab = slot.isLab || slot.type === 'lab';
+        const sessionIdx = slot.idx ?? slotIdx;
+        const log = todayLogs.find(
+          (l) => l.subjectId === subj.id && ((l as any).sessionIdx === sessionIdx || (l as any).idx === sessionIdx)
+        );
 
-      items.push({
-        id: `${subj.id}_${idx}`,
-        type: isLab ? 'lab' : 'class',
-        title: subj.name,
-        subtitle: slot.room ? `[${slot.room}]` : isLab ? 'Lab' : 'Class',
-        timeStr: slot.time || 'Class',
-        timeMins,
-        status,
-        subjectId: subj.id,
-        subjectName: subj.name,
-        sessionIdx: idx,
+        const status: 'attended' | 'missed' | 'cancelled' | 'pending' = log
+          ? (log.action === 'attended' || (log.action as any) === 'present'
+              ? 'attended'
+              : log.action === 'missed' || (log.action as any) === 'absent'
+              ? 'missed'
+              : log.action === 'cancelled'
+              ? 'cancelled'
+              : 'pending')
+          : 'pending';
+
+        const timeMins = parseTimeToMins(slot.time);
+        // Display label: use time if available, fall back to 'Class #N' / 'Lab #N'
+        const sessionLabel = slot.time
+          ? formatWidgetTime(slot.time)
+          : isLab ? `Lab #${sessionIdx + 1}` : `Class #${sessionIdx + 1}`;
+
+        classes.push({
+          id: `${subj.id}_${sessionIdx}`,
+          subjectId: subj.id,
+          subjectName: subj.name,
+          time: sessionLabel,
+          room: slot.room,
+          type: isLab ? 'lab' : 'class',
+          status,
+          idx: sessionIdx,
+        });
+
+        items.push({
+          id: `${subj.id}_${sessionIdx}`,
+          type: isLab ? 'lab' : 'class',
+          title: subj.name,
+          subtitle: slot.room ? `[${slot.room}]` : isLab ? 'Lab' : 'Class',
+          timeStr: sessionLabel,
+          timeMins,
+          status,
+          subjectId: subj.id,
+          subjectName: subj.name,
+          sessionIdx,
+        });
       });
     });
-  });
+  }
 
   // Sort classes by time
   classes.sort((a, b) => parseTimeToMins(a.time) - parseTimeToMins(b.time));
 
-  // 2. Build today's tasks
-  const todayTasks: WidgetAgendaTask[] = tasks
-    .filter((t) => !t.date || t.date === dateStr || t.status === 'pending')
-    .slice(0, 10)
-    .map((t) => {
-      const timeStr = (t as any).timeSlot || (t as any).dueTime || '';
-      const timeMins = timeStr ? parseTimeToMins(timeStr) : 1439; // default end of day
-      const status: 'completed' | 'pending' = t.status === 'completed' ? 'completed' : 'pending';
+  // 2. Build today's tasks with strict date verification
+  const todayTasksList = tasks.filter((t) => {
+    const d = (t.date || '').slice(0, 10);
+    return d === dateStr || (!d && t.status === 'pending');
+  });
+  const overdueTasksList = tasks.filter((t) => {
+    const d = (t.date || '').slice(0, 10);
+    return d && d < dateStr && t.status === 'pending';
+  });
+  const tomorrowTasksList = tasks.filter((t) => {
+    const d = (t.date || '').slice(0, 10);
+    return d === tomorrowStr && t.status === 'pending';
+  });
 
-      items.push({
-        id: t.id,
-        type: 'task',
-        title: t.title,
-        subtitle: 'Task',
-        timeStr: timeStr || 'Today',
-        timeMins,
-        status,
-        taskId: t.id,
-      });
+  // ── PRIORITY RULE: Only show overdue/tomorrow when today has NO tasks AND NO classes ──
+  // If there are today's tasks or classes, show only today's tasks (no overdue/tomorrow noise).
+  const todayHasContent = todayTasksList.length > 0 || classes.length > 0;
+  let relevantTasks: typeof tasks;
+  if (todayTasksList.length > 0) {
+    // Today has tasks — show only today's tasks, no overdue/tomorrow
+    relevantTasks = todayTasksList;
+  } else if (!todayHasContent && overdueTasksList.length > 0) {
+    // Today is completely empty → show overdue as fallback
+    relevantTasks = overdueTasksList;
+  } else if (!todayHasContent && tomorrowTasksList.length > 0) {
+    // Today + no overdue → show tomorrow as preview
+    relevantTasks = tomorrowTasksList.slice(0, 5);
+  } else {
+    relevantTasks = [];
+  }
 
-      return {
-        id: t.id,
-        title: t.title,
-        timeSlot: timeStr,
-        status,
-        priority: t.priority as any,
-      };
+  const mappedTasks: WidgetAgendaTask[] = relevantTasks.slice(0, 8).map((t) => {
+    const rawTime = (t as any).timeSlot || (t as any).dueTime || '';
+    const formattedTime = rawTime ? formatWidgetTime(rawTime) : '';
+    const isOverdue = !todayHasContent && t.date && t.date < dateStr && t.status === 'pending';
+    const isTomorrow = !todayHasContent && t.date === tomorrowStr;
+
+    let timeBadge = formattedTime || 'Today';
+    if (isOverdue) timeBadge = formattedTime ? `Overdue · ${formattedTime}` : 'Overdue';
+    else if (isTomorrow) timeBadge = formattedTime ? `Tomorrow · ${formattedTime}` : 'Tomorrow';
+
+    // Pending tasks without explicit time get 540 mins (9:00 AM) so they appear during the day alongside classes
+    // instead of being pushed to 8:00 PM (1200 mins). Completed tasks get 1200 mins.
+    const timeMins = isOverdue ? 0 : rawTime ? parseTimeToMins(rawTime) : (t.status === 'pending' ? 540 : 1200);
+    const status: 'completed' | 'pending' = t.status === 'completed' ? 'completed' : 'pending';
+
+    items.push({
+      id: t.id,
+      type: 'task',
+      title: t.title,
+      subtitle: isOverdue ? 'Overdue' : isTomorrow ? 'Tomorrow' : 'Task',
+      timeStr: timeBadge,
+      timeMins,
+      status,
+      taskId: t.id,
     });
 
-  // Sort unified agenda items chronologically by time
-  items.sort((a, b) => a.timeMins - b.timeMins);
+    return {
+      id: t.id,
+      title: t.title,
+      timeSlot: timeBadge,
+      status,
+      priority: t.priority as any,
+    };
+  });
+
+  // Sort unified agenda items: pending items first, then by timeMins ascending
+  items.sort((a, b) => {
+    const aPending = a.status === 'pending';
+    const bPending = b.status === 'pending';
+    if (aPending && !bPending) return -1;
+    if (!aPending && bPending) return 1;
+    return a.timeMins - b.timeMins;
+  });
 
   const attendedClasses = classes.filter((c) => c.status === 'attended').length;
-  const doneTasks = todayTasks.filter((t) => t.status === 'completed').length;
+  const doneTasks = todayTasksList.filter((t) => t.status === 'completed').length;
 
   return {
     dateStr,
     displayDate,
     zenScore: Math.round(zenScore),
+    streak: Math.round(streak || 0),
+    isHoliday,
     items,
     classes,
-    tasks: todayTasks,
-    totalClasses: classes.length,
+    tasks: mappedTasks,
+    totalClasses: classes.filter((c) => c.status !== 'cancelled').length,
     attendedClasses,
-    totalTasks: todayTasks.length,
+    totalTasks: todayTasksList.length,
     doneTasks,
     lastUpdated: Date.now(),
   };
@@ -200,7 +357,12 @@ export async function updateTodayAgendaWidget(data?: TodayAgendaWidgetData | nul
     const widgetData = data || (await getCachedWidgetData());
     await requestWidgetUpdate({
       widgetName: 'TodayAgenda',
-      renderWidget: () => React.createElement(TodayAgendaWidget, { data: widgetData }),
+      renderWidget: (props) =>
+        React.createElement(TodayAgendaWidget, {
+          data: widgetData,
+          width: props?.width || 330,
+          height: props?.height || 280,
+        }),
       widgetNotFound: () => {},
     });
   } catch (e: any) {
@@ -244,7 +406,12 @@ export async function updateLiveWorkoutWidget(data?: LiveWorkoutWidgetData | nul
     const widgetData = data || (await getCachedLiveWorkoutData());
     await requestWidgetUpdate({
       widgetName: 'LiveWorkout',
-      renderWidget: () => React.createElement(LiveWorkoutWidget, { data: widgetData }),
+      renderWidget: (props) =>
+        React.createElement(LiveWorkoutWidget, {
+          data: widgetData,
+          width: props?.width || 330,
+          height: props?.height || 280,
+        }),
       widgetNotFound: () => {},
     });
   } catch (e: any) {
@@ -266,8 +433,8 @@ export async function handleWidgetClickAction(payload: WidgetClickActionPayload)
   switch (payload.action) {
     case 'mark_task_done': {
       if (!payload.taskId) return;
+      const taskId = payload.taskId;
       if (user) {
-        const taskId = payload.taskId;
         await safeUpdate(
           taskId,
           COLLECTION.TASKS,
@@ -275,9 +442,57 @@ export async function handleWidgetClickAction(payload: WidgetClickActionPayload)
           () => updateDoc(doc(db, COLLECTION.TASKS, taskId), { status: 'completed', completedAt: new Date().toISOString() })
         ).catch(() => {});
       }
+      try {
+        const coreCache = await readCoreCacheMulti();
+        if (coreCache.tasks) {
+          const updatedTasks = coreCache.tasks.map(t => t.id === taskId ? { ...t, status: 'completed' as const } : t);
+          await writeCoreCacheMulti({ tasks: updatedTasks });
+        }
+      } catch {}
+
       if (currentData) {
         currentData.tasks = currentData.tasks.map((t) =>
-          t.id === payload.taskId ? { ...t, status: 'completed' } : t
+          t.id === taskId ? { ...t, status: 'completed' } : t
+        );
+        currentData.items = currentData.items.map((item) =>
+          item.id === taskId || item.taskId === taskId
+            ? { ...item, status: 'completed' }
+            : item
+        );
+        currentData.doneTasks = currentData.tasks.filter((t) => t.status === 'completed').length;
+        await saveCachedWidgetData(currentData);
+        await updateTodayAgendaWidget(currentData);
+      }
+      break;
+    }
+
+    case 'mark_task_undone': {
+      if (!payload.taskId) return;
+      const taskId = payload.taskId;
+      if (user) {
+        await safeUpdate(
+          taskId,
+          COLLECTION.TASKS,
+          { status: 'pending', completedAt: null },
+          () => updateDoc(doc(db, COLLECTION.TASKS, taskId), { status: 'pending', completedAt: null as any })
+        ).catch(() => {});
+      }
+      try {
+        const coreCache = await readCoreCacheMulti();
+        if (coreCache.tasks) {
+          const updatedTasks = coreCache.tasks.map(t => t.id === taskId ? { ...t, status: 'pending' as const } : t);
+          await writeCoreCacheMulti({ tasks: updatedTasks });
+        }
+      } catch {}
+
+      if (currentData) {
+        currentData.tasks = currentData.tasks.map((t) =>
+          t.id === taskId ? { ...t, status: 'pending' } : t
+        );
+        currentData.items = currentData.items.map((item) =>
+          item.id === taskId || item.taskId === taskId
+            ? { ...item, status: 'pending' }
+            : item
         );
         currentData.doneTasks = currentData.tasks.filter((t) => t.status === 'completed').length;
         await saveCachedWidgetData(currentData);
@@ -291,33 +506,111 @@ export async function handleWidgetClickAction(payload: WidgetClickActionPayload)
       if (!payload.subjectId) return;
       const status = payload.action === 'mark_class_present' ? 'attended' : 'missed';
       const sessionIdx = payload.sessionIdx ?? 0;
+      const type: 'class' | 'lab' = payload.type || 'class';
 
       if (user) {
-        const logData = {
+        const deterministicId = getScheduledAttendanceLogDocId(user.uid, payload.subjectId, dateStr, type, sessionIdx);
+        const academicCache = await readAcademicCache();
+        const subject = academicCache.attendance?.find(s => s.id === payload.subjectId);
+
+        const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
+        const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
+
+        const existingLog = academicCache.attendanceLogs?.find(l =>
+          l.id === deterministicId ||
+          (
+            l.subjectId === payload.subjectId &&
+            (l.date || '').slice(0, 10) === dateStr &&
+            (l.type === type || (!l.type && type === 'class')) &&
+            (l.idx === sessionIdx || (l.idx === undefined && sessionIdx === 0))
+          )
+        );
+
+        let subjectUpdates: any = null;
+        if (subject) {
+          let newAttended: number;
+          let newTotal: number;
+          if (existingLog) {
+            const oldAction = existingLog.action;
+            const oldAtt = oldAction === 'attended' ? 1 : 0;
+            const newAtt = status === 'attended' ? 1 : 0;
+            const oldTot = oldAction === 'cancelled' ? 0 : 1;
+            const newTot = 1;
+            newAttended = Math.max(0, (subject[attendedKey] || 0) + (newAtt - oldAtt));
+            newTotal    = Math.max(0, (subject[totalKey]    || 0) + (newTot - oldTot));
+          } else {
+            newAttended = (subject[attendedKey] || 0) + (status === 'attended' ? 1 : 0);
+            newTotal    = (subject[totalKey]    || 0) + 1;
+          }
+          subjectUpdates = { [attendedKey]: newAttended, [totalKey]: newTotal };
+        }
+
+        const targetLog = {
+          id: deterministicId,
           userId: user.uid,
           subjectId: payload.subjectId,
-          subjectName: payload.subjectName || '',
-          date: dateStr,
+          subjectName: subject?.name || payload.subjectName || '',
+          type,
           action: status,
           status,
-          sessionIdx,
-          type: payload.type || 'class',
-          timestamp: new Date().toISOString(),
+          date: dateStr,
+          isExtra: false,
+          timestamp: Date.now(),
+          idx: sessionIdx,
         };
-        await safeAdd(
+
+        // WhatsApp Pattern: write both subject counter and attendance log atomically
+        await safeWrite(
+          async () => {
+            const batch = writeBatch(db);
+            if (subject && subjectUpdates) {
+              batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id), subjectUpdates);
+            }
+            batch.set(doc(db, COLLECTION.ATTENDANCE_LOGS, deterministicId), targetLog, { merge: true });
+            await batch.commit();
+          },
           COLLECTION.ATTENDANCE_LOGS,
-          logData,
-          () => addDoc(collection(db, COLLECTION.ATTENDANCE_LOGS), logData)
+          'set',
+          targetLog,
+          deterministicId
         ).catch(() => {});
+
+        // Synchronize local academic cache immediately so AttendanceScreen updates without waiting for network
+        const updatedLogs = [
+          targetLog,
+          ...(academicCache.attendanceLogs || []).filter(l => l.id !== deterministicId && !(l.subjectId === payload.subjectId && (l.date || '').slice(0, 10) === dateStr && l.idx === sessionIdx))
+        ];
+        const updatedSubjects = (academicCache.attendance || []).map(s =>
+          s.id === payload.subjectId && subjectUpdates ? { ...s, ...subjectUpdates } : s
+        );
+        await writeAcademicCache({
+          attendanceLogs: updatedLogs,
+          attendance: updatedSubjects,
+        }, true);
+
+        if (status === 'attended') {
+          awardXP('ATTENDANCE_LOG').catch(() => {});
+        }
       }
 
       if (currentData) {
+        // 1. Update the classes array (drives the spotlight)
         currentData.classes = currentData.classes.map((c) =>
           c.subjectId === payload.subjectId && c.idx === sessionIdx
             ? { ...c, status }
             : c
         );
         currentData.attendedClasses = currentData.classes.filter((c) => c.status === 'attended').length;
+
+        // 2. ALSO update the items array (drives the schedule row list)
+        currentData.items = currentData.items.map((item) =>
+          (item.type === 'class' || item.type === 'lab') &&
+          item.subjectId === payload.subjectId &&
+          item.sessionIdx === sessionIdx
+            ? { ...item, status }
+            : item
+        );
+
         await saveCachedWidgetData(currentData);
         await updateTodayAgendaWidget(currentData);
       }

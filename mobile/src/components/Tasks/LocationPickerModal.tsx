@@ -119,24 +119,6 @@ export const LocationPickerModal = React.memo(function LocationPickerModal({
 
   // 1b. Save Current Selection as a Frequent Place
   const [savingPlace, setSavingPlace] = useState(false);
-  const handleSaveAsFrequentPlace = useCallback(async () => {
-    if (!latitude || !longitude || !placeName.trim()) return;
-    setSavingPlace(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    const newPlace = await savePlace({
-      name: placeName.trim(),
-      category: 'custom',
-      latitude,
-      longitude,
-      address,
-      radius,
-    });
-
-    setSavedPlaces(prev => [newPlace, ...prev.filter(p => p.name !== newPlace.name)]);
-    setSavingPlace(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [latitude, longitude, placeName, address, radius]);
 
   // 2. Use Current Device GPS Spot
   const handleUseCurrentLocation = useCallback(async () => {
@@ -169,18 +151,30 @@ export const LocationPickerModal = React.memo(function LocationPickerModal({
     }
   }, []);
 
-  // 3. Search Address / Place
-  const handleSearch = useCallback(async (text: string) => {
+  const searchDebounceRef = React.useRef<any>(null);
+
+  // 3. Search Address / Place / Direct Coordinates (Debounced 280ms)
+  const handleSearch = useCallback((text: string) => {
     setSearchQuery(text);
-    if (text.trim().length < 3) {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    if (text.trim().length < 2) {
       setSearchResults([]);
+      setSearching(false);
       return;
     }
 
     setSearching(true);
-    const results = await searchAddressLocations(text);
-    setSearchResults(results);
-    setSearching(false);
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const results = await searchAddressLocations(text);
+        setSearchResults(results);
+      } finally {
+        setSearching(false);
+      }
+    }, 280);
   }, []);
 
   const handleSelectSearchResult = useCallback((res: any) => {
@@ -218,6 +212,51 @@ export const LocationPickerModal = React.memo(function LocationPickerModal({
     onClose();
   }, [onSelect, onClose]);
 
+  // 5. Save Current Selected Place to Frequent List
+  const handleSaveAsFrequentPlace = useCallback(async () => {
+    if (!latitude || !longitude || !placeName.trim()) {
+      Alert.alert('Incomplete', 'Please ensure place name and coordinates are filled.');
+      return;
+    }
+
+    setSavingPlace(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const newPlace = await savePlace({
+      name: placeName.trim(),
+      category: 'custom',
+      latitude,
+      longitude,
+      address,
+      radius,
+    });
+
+    const updated = [newPlace, ...savedPlaces.filter(p => p.id !== newPlace.id)];
+    setSavedPlaces(updated);
+    setSavingPlace(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert('Saved to Cloud', `"${placeName.trim()}" is now saved to your frequent locations.`);
+  }, [latitude, longitude, placeName, address, radius, savedPlaces]);
+
+  // Delete frequent place
+  const handleDeletePlace = useCallback(async (placeId: string, name: string) => {
+    Alert.alert(
+      'Delete Saved Place',
+      `Remove "${name}" from your saved locations?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            await deletePlace(placeId);
+            setSavedPlaces(prev => prev.filter(p => p.id !== placeId));
+          },
+        },
+      ]
+    );
+  }, []);
+
   const hasLocation = latitude !== null && longitude !== null;
 
   return (
@@ -231,11 +270,11 @@ export const LocationPickerModal = React.memo(function LocationPickerModal({
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
             <View style={[styles.headerIconBadge, { backgroundColor: 'rgba(165, 153, 255, 0.12)', borderColor: 'rgba(165, 153, 255, 0.25)' }]}>
-              <Ionicons name="location-sharp" size={16} color="#a599ff" />
+              <Ionicons name="location-outline" size={18} color="#a599ff" />
             </View>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={[styles.title, { color: colors.textPrimary }]}>Location Reminder</Text>
-              <Text style={[styles.subtitle, { color: colors.textMuted }]}>Notify when you arrive or leave a place</Text>
+              <Text style={[styles.subtitle, { color: colors.textMuted }]}>Alert me when I arrive or leave</Text>
             </View>
           </View>
           <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: isDark ? '#141418' : '#F3F4F6' }]}>
@@ -263,7 +302,7 @@ export const LocationPickerModal = React.memo(function LocationPickerModal({
                   <AnimatedPressable
                     key={place.id}
                     onPress={() => handleSelectSavedPlace(place)}
-                    onLongPress={() => handleDeleteSavedPlace(place)}
+                    onLongPress={() => handleDeletePlace(place.id, place.name)}
                     style={[
                       styles.savedPlaceChip,
                       isSelected
@@ -289,13 +328,13 @@ export const LocationPickerModal = React.memo(function LocationPickerModal({
 
         {/* Search Place / Address with inline Current Location Action */}
         <View style={styles.sectionBlock}>
-          <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>SEARCH PLACE OR GPS</Text>
+          <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>SEARCH PLACE OR GPS COORDINATES</Text>
           <View style={[styles.searchBox, { backgroundColor: isDark ? '#0d0d10' : '#F3F4F6', borderColor: isDark ? '#1c1c20' : '#E5E7EB' }]}>
             <Ionicons name="search" size={15} color={colors.textMuted} />
             <TextInput
               value={searchQuery}
               onChangeText={handleSearch}
-              placeholder="e.g. Campus Lab, Central Library"
+              placeholder="Address, place, or 30.7654, 76.7865..."
               placeholderTextColor={colors.textMuted}
               style={[styles.searchInput, { color: colors.textPrimary }]}
             />
@@ -328,9 +367,16 @@ export const LocationPickerModal = React.memo(function LocationPickerModal({
                   onPress={() => handleSelectSearchResult(item)}
                   style={[styles.resultItem, { borderBottomColor: isDark ? '#16161a' : '#F3F4F6' }]}
                 >
-                  <Ionicons name="location-outline" size={15} color="#a599ff" />
+                  <Ionicons name={item.isCoordinates ? 'navigate-circle' : 'location-outline'} size={16} color="#a599ff" />
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.resultTitle, { color: colors.textPrimary }]}>{item.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={[styles.resultTitle, { color: colors.textPrimary }]}>{item.name}</Text>
+                      {item.isCoordinates && (
+                        <View style={{ backgroundColor: 'rgba(165, 153, 255, 0.15)', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                          <Text style={{ fontSize: 9, fontFamily: FONT_FAMILY.bold, color: '#a599ff' }}>GPS PIN</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={[styles.resultAddress, { color: colors.textMuted }]} numberOfLines={1}>{item.address}</Text>
                   </View>
                 </TouchableOpacity>
@@ -462,7 +508,6 @@ const styles = StyleSheet.create({
   sheetContent: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 16,
   },
   scrollContent: {
     paddingHorizontal: 0,

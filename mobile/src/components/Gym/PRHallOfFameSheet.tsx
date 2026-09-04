@@ -44,7 +44,7 @@ export default function PRHallOfFameSheet({ visible, onClose }: Props) {
   }, [prs]);
 
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible={visible} onClose={onClose} avoidKeyboard={false}>
       <Text style={s.title}>🏆 PR Hall of Fame</Text>
       <Text style={s.subtitle}>Your all-time personal records</Text>
 

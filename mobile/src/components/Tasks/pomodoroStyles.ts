@@ -7,21 +7,21 @@ export const RING_RADIUS = (RING_SIZE - RING_STROKE * 2) / 2;
 export const RING_CIRCUM = RING_RADIUS * 2 * Math.PI;
 
 export function modeLabel(mode: PomodoroMode): string {
-  if (mode === 'focus') return 'FOCUSING';
-  if (mode === 'shortBreak') return 'SHORT BREAK';
-  return 'LONG BREAK';
+  if (mode === 'focus') return 'DEEP FLOW';
+  if (mode === 'shortBreak') return 'ZEN RECHARGE';
+  return 'DEEP REST';
 }
 
 export function modeIconName(mode: PomodoroMode): any {
   if (mode === 'focus') return 'flame';
-  if (mode === 'shortBreak') return 'cafe';
+  if (mode === 'shortBreak') return 'leaf';
   return 'moon';
 }
 
 export function modeAccentDark(mode: PomodoroMode): string {
   if (mode === 'focus') return '#a599ff';
-  if (mode === 'shortBreak') return '#5eda9e';
-  return '#89dceb';
+  if (mode === 'shortBreak') return '#34d399';
+  return '#38bdf8';
 }
 
 export function modeAccentLight(mode: PomodoroMode): string {
@@ -44,8 +44,8 @@ export function makeStyles(colors: any, isDark: boolean, accent: string, insets:
       backgroundColor: isDark ? '#08080b' : '#FFFFFF',
       borderTopLeftRadius: 32,
       borderTopRightRadius: 32,
-      minHeight: 620,
-      maxHeight: '95%' as any,
+      minHeight: 640,
+      maxHeight: '96%' as any,
       paddingHorizontal: 20,
       paddingTop: 10,
       shadowColor: '#000000',
@@ -71,18 +71,18 @@ export function makeStyles(colors: any, isDark: boolean, accent: string, insets:
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: 14,
+      marginBottom: 12,
       paddingHorizontal: 4,
     },
     headerTitle: {
       fontFamily: 'Inter_700Bold',
-      fontSize: 23,
+      fontSize: 22,
       color: colors.textPrimary,
       letterSpacing: -0.5,
     },
     headerSub: {
       fontFamily: 'Inter_400Regular',
-      fontSize: 12.5,
+      fontSize: 12,
       color: colors.textMuted,
       marginTop: 2,
     },
@@ -97,7 +97,42 @@ export function makeStyles(colors: any, isDark: boolean, accent: string, insets:
       borderColor: isDark ? '#22222a' : colors.border,
     },
 
-    /* Segmented Mode Selector */
+    /* Best-in-Class Mode Switcher: Deep Focus vs Zen Recharge */
+    modeSwitcherCapsule: {
+      flexDirection: 'row',
+      backgroundColor: isDark ? '#0f0f15' : '#F0EFF7',
+      borderRadius: 16,
+      padding: 4,
+      borderWidth: 1,
+      borderColor: isDark ? '#1c1c28' : colors.border,
+      marginBottom: 14,
+    },
+    modeSwitcherTab: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 9,
+      borderRadius: 12,
+      gap: 6,
+    },
+    modeSwitcherTabActive: {
+      backgroundColor: isDark ? '#1a1a24' : '#FFFFFF',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 6,
+      elevation: 3,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+    },
+    modeSwitcherText: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 12.5,
+      color: colors.textMuted,
+    },
+
+    /* Legacy Segmented Capsule (Backwards compatibility) */
     segmentedCapsule: {
       flexDirection: 'row',
       backgroundColor: isDark ? '#0f0f14' : '#F0EFF7',
@@ -345,6 +380,190 @@ export function makeStyles(colors: any, isDark: boolean, accent: string, insets:
       fontFamily: 'Inter_600SemiBold',
       fontSize: 10.5,
       color: colors.textTertiary,
+    },
+
+    /* Daily Performance HUD Bar */
+    dailyHudCard: {
+      backgroundColor: isDark ? '#0d0d12' : '#F4F3F8',
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: isDark ? '#1a1a24' : colors.border,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      marginTop: 10,
+      marginBottom: 16,
+    },
+    dailyHudRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-around',
+    },
+    dailyHudItem: {
+      alignItems: 'center',
+      flex: 1,
+    },
+    dailyHudVal: {
+      fontFamily: 'Inter_700Bold',
+      fontSize: 15,
+      color: colors.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    dailyHudLbl: {
+      fontFamily: 'Inter_500Medium',
+      fontSize: 10,
+      color: colors.textMuted,
+      marginTop: 2,
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    dailyHudDivider: {
+      width: 1,
+      height: 22,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+    },
+
+    /* Mindful Focus Mantra */
+    mantraBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
+      paddingVertical: 7,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      marginBottom: 14,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+    },
+    mantraText: {
+      fontFamily: 'Inter_500Medium',
+      fontSize: 11.5,
+      color: colors.textSecondary,
+      fontStyle: 'italic',
+    },
+
+    /* Dual Quick Boost (+5m / +15m) */
+    dualBoostRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      marginBottom: 16,
+    },
+    boostBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 13,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: isDark ? '#101017' : '#F0EFF7',
+      borderWidth: 1,
+      borderColor: isDark ? '#1e1e2c' : colors.border,
+    },
+    boostBtnText: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 11.5,
+      color: colors.textSecondary,
+    },
+
+    /* Focus Depths Section (Sprint, Classic, Deep, Flow) */
+    focusDepthSection: {
+      marginBottom: 16,
+    },
+    focusDepthHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 8,
+      paddingHorizontal: 2,
+    },
+    focusDepthTitle: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 10.5,
+      color: colors.textTertiary,
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+    },
+    focusDepthBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    focusDepthBadgeText: {
+      fontFamily: 'Inter_500Medium',
+      fontSize: 10.5,
+      color: colors.textMuted,
+    },
+    depthGrid: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    depthCard: {
+      flex: 1,
+      backgroundColor: isDark ? '#0b0b10' : '#F7F6FB',
+      borderRadius: 16,
+      padding: 10,
+      borderWidth: 1.5,
+      borderColor: isDark ? '#171722' : colors.border,
+      alignItems: 'center',
+      position: 'relative',
+    },
+    depthCardActive: {
+      borderColor: accent,
+      backgroundColor: isDark ? 'rgba(165, 153, 255, 0.08)' : 'rgba(108, 92, 231, 0.06)',
+      shadowColor: accent,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+    depthCardIconWrap: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: isDark ? '#161622' : '#ECEBF5',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 6,
+    },
+    depthCardDurationText: {
+      fontFamily: 'Inter_700Bold',
+      fontSize: 13.5,
+      color: colors.textPrimary,
+      fontVariant: ['tabular-nums'],
+    },
+    depthCardTitle: {
+      fontFamily: 'Inter_500Medium',
+      fontSize: 10.5,
+      color: colors.textMuted,
+      marginTop: 2,
+      textAlign: 'center',
+    },
+
+    /* Zen Recharge Section */
+    rechargeCard: {
+      backgroundColor: isDark ? '#091510' : '#F0FDF4',
+      borderRadius: 16,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: isDark ? '#164e37' : '#BBF7D0',
+      marginBottom: 16,
+      alignItems: 'center',
+    },
+    rechargeTitle: {
+      fontFamily: 'Inter_700Bold',
+      fontSize: 14,
+      color: '#34D399',
+      marginBottom: 4,
+    },
+    rechargeDesc: {
+      fontFamily: 'Inter_400Regular',
+      fontSize: 12,
+      color: colors.textMuted,
+      textAlign: 'center',
+      lineHeight: 17,
     },
 
     /* Presets Grid */

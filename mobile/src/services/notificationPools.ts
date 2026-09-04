@@ -26,11 +26,11 @@ export function shuffleArray<T>(array: T[]): T[] {
 // ── 1. Morning Briefing ───────────────────────────────────────────────────────
 
 export const MORNING_BRIEF_TITLES_STANDARD = [
-  'Uth jao bestie, sara din wait kar raha hai 🌞',
+  'Uth jao bestie, poora din wait kar raha hai 🌞',
   'Rise & grind era loading... 🔄',
   'No pressure but also... PRESSURE 💀',
   'Good morning king/queen 👑',
-  'Sara online hai aur judge kar rahi hai 👁️',
+  'ZenTrack online hai aur ready hai 👁️',
   'Wake up, the grind never sleeps 🌅',
   'Bhai/Bestie subah ho gayi, let\'s get this! ☀️',
   'New day, new W incoming 🚀',
@@ -39,7 +39,7 @@ export const MORNING_BRIEF_TITLES_STANDARD = [
 
 export const MORNING_BRIEF_STANDARD_POOLS = (summary: string) => [
   `Aaj ${summary} pending hai! Coffee piyo, phone rakho, move — let's get this bread bestie 🍞✨`,
-  `Subah ho gayi! ${summary} queue mein hai. Sara says: 'Tumhe ho sakta hai!' (she believes in u fr 💜)`,
+  `Subah ho gayi! ${summary} queue mein hai. ZenTrack says: 'You got this!' (we believe in u fr 💜)`,
   `Aaj ka agenda: ${summary}. Kal waala tu aaj ke tujhse thank you bolega 🙏 Let's go!`,
   `Vibe check: productive ✅. ${summary} await karna hai. Coffee piyo, phone rakho, move 🚀`,
   `Seriously though — ${summary} niptana hai aaj. You got this bestie 🫂`,
@@ -54,16 +54,16 @@ export const MORNING_BRIEF_MISSED_GYM_TITLES = [
   'Kal ka skip, aaj ka redemption arc 📈',
   'The gains are crying 😭',
   'Accountability check 🪞',
-  'Sara ne notice kiya 👀',
+  'ZenTrack ne notice kiya 👀',
   'Gym miss detected yesterday 🏋️❌',
 ];
 
 export const MORNING_BRIEF_MISSED_GYM_POOLS = (summary: string) => [
-  `Sara noticed kal ka skip. It's okay babe, aaj double energy ke sath aana. ${summary} + workout = W day! 💪`,
+  `Kal ka skip notice ho gaya. It's okay babe, aaj double energy ke sath aana. ${summary} + workout = W day! 💪`,
   `Gym ke bina kal gaya aur aaj bhi skip karoge? No no no. ${summary} ke baad straight to iron 🏋️`,
   `Muscles: *sobbing*. Aaj please mat chhodna unhe. ${summary} ke baad workout, no excuses today!`,
   `Kal rest day nahi tha. Aaj mandatory slay: ${summary} + gym 💪✨`,
-  `Kal ka skip dekha Sara ne. Aaj compensation day! ${summary} niptao aur gains wapas lao 🔥`,
+  `Kal ka skip notice ho gaya. Aaj compensation day! ${summary} niptao aur gains wapas lao 🔥`,
   `Bhai kal gym nahi gaye? Koi baat nahi — aaj koi excuse nahi. ${summary} + workout = redemption 💪`,
 ];
 
@@ -87,7 +87,7 @@ export const TASK_BUFFER_POOLS = (title: string, bufferMin: number) => [
   `"${title}" in ${bufferMin} mins. Stretch, coffee, deep breath. Let's land this one clean ✈️`,
   `You said you'd do "${title}" — the time is in ${bufferMin}m. No backing out, hero era loading 🦸`,
   `"${title}" next in queue (${bufferMin}m). Side effects: productivity, dopamine, self-respect ✨`,
-  `Sara reminder: "${title}" window opens in ${bufferMin}m. The future you is watching 👀`,
+  `ZenTrack reminder: "${title}" window opens in ${bufferMin}m. The future you is watching 👀`,
   `Mission approaching! "${title}" in ${bufferMin} mins — prep mode on, distractions off 🎯`,
 ];
 
@@ -107,7 +107,7 @@ export const TASK_T15_POOLS = (title: string) => [
 
 export const TASK_DAILY_POOLS = (title: string) => [
   `Aaj ka target: "${title}". Schedule it or just DO it — a ✅ by evening, deal? 🤝`,
-  `"${title}" is on today's docket. Sara says: "Don't let it roll over again!" 😤`,
+  `"${title}" is on today's docket. ZenTrack says: "Don't let it roll over again!" 😤`,
   `"${title}" — knock it out and your evening is all yours bestie 😌✨`,
   `"${title}" needs to be done today. No tomorrow. No next week. TODAY. 💪`,
   `"${title}" is patiently waiting. It believes in you. Do it some justice! 🙏`,
@@ -120,7 +120,7 @@ export const TASK_DAILY_POOLS = (title: string) => [
 export const CALENDAR_EVENT_POOLS = (title: string, time?: string) => [
   `"${title}" is up next — prep your notes, thoughts, or just show up with vibes ✨`,
   `"${title}" at ${time || 'soon'} — 1 hour away! Don't be that person who joins 10 mins late 😬`,
-  `Sara reminder: "${title}" starts at ${time || 'scheduled time'}. Aaj late mat karna! 😤💜`,
+  `Event reminder: "${title}" starts at ${time || 'scheduled time'}. Aaj late mat karna! 😤💜`,
   `"${title}" locked and loaded. Show up for it — whether class, meeting, or hangout! ✨`,
   `"${title}" in 1h. Wind up whatever you're doing! Punctuality = your superpower today ⚡`,
 ];
@@ -129,7 +129,7 @@ export const CALENDAR_EVENT_POOLS = (title: string, time?: string) => [
 
 export const HABIT_STREAK_RISK_POOLS = (habitName: string, streakCount: number) => [
   `${streakCount} days of "${habitName}" — do NOT let tonight be the end. Quick tap, SAVE THE STREAK! 🔥`,
-  `Sara is panicking on your behalf. "${habitName}" (${streakCount}d streak!) hasn't been logged. PLEASE 🥺💜`,
+  `Streak emergency! "${habitName}" (${streakCount}d streak!) hasn't been logged. PLEASE 🥺💜`,
   `${streakCount} days of discipline for "${habitName}" — midnight is the enemy. Log it NOW!`,
   `"${habitName}" streak at risk! The universe aligned for this streak. Don't waste it bestie! 😤`,
   `"${habitName}" (${streakCount} days strong!) needs a checkmark before midnight. 2 seconds. Go. 💔`,
@@ -141,7 +141,7 @@ export const HABIT_STREAK_RISK_POOLS = (habitName: string, streakCount: number) 
 
 export const HABIT_DAILY_30_POOLS = (habitName: string, streakCount: number) => [
   `A WHOLE MONTH+ OF "${habitName}"?? You're literally a different person now 🦋 Day ${streakCount}!`,
-  `Sara: This ${streakCount}-day "${habitName}" streak is the most impressive thing in your profile 👑`,
+  `ZenTrack: This ${streakCount}-day "${habitName}" streak is the most impressive thing in your profile 👑`,
   `${streakCount} days of "${habitName}". This is called CHARACTER. Flex on kal waale tum 😤`,
   `"${habitName}" Day ${streakCount} — at this point you should be giving advice, not receiving it 🎓`,
   `The streak is a monument now. Day ${streakCount} of "${habitName}". Don't let anyone tear it down 💜`,
@@ -181,7 +181,7 @@ export const HABIT_DAILY_0_POOLS = (habitName: string) => [
 
 export const GYM_WORKOUT_POOLS = (planName: string, countSuffix: string) => [
   `Aaj ka ${planName}${countSuffix} scheduled! Get ready, then slay! 💪`,
-  `Sara's reminder: ${planName}${countSuffix} ain't gonna do itself! Pre-workout lete jaana 🔥`,
+  `Workout reminder: ${planName}${countSuffix} ain't gonna do itself! Pre-workout lete jaana 🔥`,
   `${planName} tonight — every rep you skip is a gains opportunity missed. Show up! 🥺`,
   `Today's mission: ${planName}${countSuffix}. Discipline = doing it even when you don't want to. GO 💥`,
   `The iron doesn't know you had a long day. ${planName} time — tired is a vibe, not a verdict 💪`,
@@ -194,7 +194,7 @@ export const GYM_WORKOUT_POOLS = (planName: string, countSuffix: string) => [
 export const GYM_REST_DAY_POOLS = () => [
   `Aaj literally allowed ho to chill — muscles are rebuilding! Protein khao, aaram karo 🥩😴`,
   `Rest day ≠ lazy day. Your gains are being MADE while you sleep. Eat, sleep, hydrate! 💆`,
-  `Sara's order: no gym today. CNS recharge karo — kal ke lifts ke liye body rebuild hogi 🔋`,
+  `Recovery protocol: no gym today. CNS recharge karo — kal ke lifts ke liye body rebuild hogi 🔋`,
   `Today's vibe: gentle movement, good food, 8 hours of sleep. Kal heavy lifts phodne hain! 😴`,
   `Your body is making gains RIGHT NOW while you chill. This is literally the plan. Enjoy! ✨`,
   `Active rest day! Thoda walk ya light stretch — kal ke compound lifts ke liye recharge hona hai 🚶`,
@@ -205,7 +205,7 @@ export const GYM_REST_DAY_POOLS = () => [
 export const ATTENDANCE_CRITICAL_POOLS = (subjName: string, pct: string, needed: number) => [
   `${subjName} mein sirf ${pct}% attendance hai! ${needed} aur classes = safe zone. Aaj jaana! 🚨`,
   `${subjName}: ${pct}%. Below 75% bestie. Next ${needed} classes are MANDATORY, no exceptions! ⚠️`,
-  `${subjName} attendance: ${pct}%. Sara genuinely worried. ${needed} more classes = out of danger! 🆘`,
+  `${subjName} attendance: ${pct}%. Danger zone! ${needed} more classes = safe area! 🆘`,
   `${subjName} at ${pct}%. Debarment list doesn't care about your reasons. Next ${needed}: COMPULSORY. 📋`,
   `Yaar ${subjName} mein ${pct}%! ${needed} aur classes aur tum safe ho. Aaj ka class mat chhodna! 🥺`,
   `Academic SOS! ${pct}% in ${subjName} = danger zone. ${needed} classes to survive the semester 📡`,
@@ -217,7 +217,7 @@ export const CLASS_PRE_POOLS = (subject: string, time: string, timeStr: string) 
   `Mobilize! ${subject} at ${time || 'class time'} (${timeStr} to go). Baste uthao, no proxy reliance 😉`,
   `${subject} (${timeStr} away). Notes, water, attention span — all ready? 📝`,
   `Don't be THAT person who walks in late 😬 ${subject} in ${timeStr}! Punctuality is a vibe today.`,
-  `Sara: ${subject} in ${timeStr}. Be there. Front row? Optional. Showing up? MANDATORY. 📡`,
+  `Class alert: ${subject} in ${timeStr}. Be there. Front row? Optional. Showing up? MANDATORY. 📡`,
   `${subject} is ${timeStr} away! Attendance % doesn't negotiate — go bestie 📉`,
   `Your attendance % is watching. ${subject} in ${timeStr} — show up, it literally adds up! ✅`,
 ];
@@ -228,7 +228,7 @@ export const POST_CLASS_LOG_POOLS = (subject: string) => [
   `${subject} class done! Present tha/thi ya bunk mara? 5 sec — log attendance abhi! ✅`,
   `${subject} class just ended! Update karo warna baad mein bhool jaoge (we know 😅)`,
   `${subject} done — seal it with an attendance log! P/A/C — protect your percentage 🛡️`,
-  `Sara: ${subject} session complete. 10-second task — log attendance BEFORE distraction! 📋`,
+  `Session complete: ${subject} done! 10-second task — log attendance BEFORE distraction! 📋`,
   `Class me the ya nahi? Tap karo aur ${subject} attendance save karo! ✅`,
 ];
 
@@ -259,14 +259,14 @@ export const ASSIGNMENT_48H_POOLS = (title: string) => [
   `"${title}" — 48h left. The last-night version of you will be SO grateful if you start today! 🥺`,
   `"${title}" deadline incoming! Early starters submit better work. Be the early starter ✨`,
   `"${title}" — 48 hours. Start tonight, review tomorrow, submit stress-free 😌`,
-  `"${title}" is due in 2 days. Sara says: "Start tonight, even just 20 mins!" 👀`,
+  `"${title}" is due in 2 days. Pro tip: "Start tonight, even just 20 mins!" 👀`,
   `"Dear present me, please start ${title} NOW. Love, future me." 💌`,
 ];
 
 // ── 20. Assignment 24h Warning ────────────────────────────────────────────────
 
 export const ASSIGNMENT_24H_POOLS = (title: string) => [
-  `"${title}" is due TOMORROW. Haven't started? Start RIGHT NOW. Sara is watching 👁️`,
+  `"${title}" is due TOMORROW. Haven't started? Start RIGHT NOW. Clock is ticking ⏰`,
   `"${title}" submits in exactly 24 hours. Close this, open assignment. GO. NOW. 🏃💀`,
   `Final 24 hours for "${title}"! Main character moment — submit BEFORE deadline, not during! 🔥`,
   `"${title}" due tomorrow. Every hour you wait adds pressure. Start the final push! 🆘`,
@@ -283,7 +283,7 @@ export const WATER_TITLES_POOL = [
   'Gatak Lo Ek Glass 💦',
   'Skin & Brain Fuel 🧠💧',
   'Refill That Bottle! 🧊',
-  'Sara Hydration Check 💙',
+  'ZenTrack Hydration Check 💙',
   'Dehydration Is NOT The Vibe 🚫🌵',
   'Power Sip Time ⚡💧',
   'Paani Break, Champ! 🚰',
@@ -312,7 +312,7 @@ export const WATER_PROGRESS_POOLS = (loggedL: string, remainingL: string, goalL:
 // ── 22. Hydration — Zero Logged ───────────────────────────────────────────────
 
 export const WATER_EMPTY_POOLS = () => [
-  `Sara emergency: ZERO water logged today 💧 Running on 1% battery? Ek bada glass gatak lo right now! 🥤`,
+  `Hydration alert: ZERO water logged today 💧 Running on 1% battery? Ek bada glass gatak lo right now! 🥤`,
   `Your brain is literally 75% water and currently running dry 💀 Go grab a cold glass, fast!`,
   `Dehydration is NOT aesthetic bestie 😤 Skin glow aur energy boost ke liye go drink a glass now! ✨`,
   `Bottle dhoondo aur paani piyo! 🚰 Future productive you will thank you for this one sip 💙`,
@@ -335,7 +335,7 @@ export const SLEEP_NIGHT_POOLS = () => [
   `Bahut ho gaya scroll karna! Phone rakho, sleep mode on, kal machao — tonight recharge karo 😴`,
   `One more reel = 47 more. Put the phone down and recover like the champion you are! 🛌`,
   `Future 7AM you says: 'PLEASE sleep now.' Past midnight is where regrets happen. Log sleep! 🌙`,
-  `Sara sleep protocol: INITIATED 😴 Blue light down. Brain off. Recovery on. Log tonight's sleep ✨`,
+  `Night recovery protocol: INITIATED 😴 Blue light down. Brain off. Recovery on. Log tonight's sleep ✨`,
   `Tomorrow's energy depends on tonight's rest 💤 Phone band karo, log sleep — slay harder tomorrow! 👑`,
   `Sleep is the ultimate pre-workout! Phone band karo aur so jao cutie 😴✨`,
 ];
@@ -343,12 +343,12 @@ export const SLEEP_NIGHT_POOLS = () => [
 // ── 24. Sleep Morning Log ─────────────────────────────────────────────────────
 
 export const SLEEP_MORNING_POOLS = () => [
-  `Rise and shine bestie! Log last night's sleep so Sara can track your readiness for today! 📊`,
+  `Rise and shine bestie! Log last night's sleep to track your readiness for today! 📊`,
   `Subah ho gayi! Kal raat ki neend kaisi rahi? 30 seconds — log sleep and start the day! 🌅`,
-  `Before you dive in — how many hours did you sleep? Log it so Sara can calibrate today! 🔑`,
-  `Morning! Quick sleep log karo so Sara knows how recharged you are. 10 seconds! 💜`,
-  `Kal raat ka sleep log mat bhoolna! Sara uses it to understand your energy patterns ☀️`,
-  `Rise and log! 🌅 Sara tracks your readiness score from sleep data — 10 sec before diving in!`,
+  `Before you dive in — how many hours did you sleep? Log it to calibrate today! 🔑`,
+  `Morning! Quick sleep log karo so ZenTrack knows how recharged you are. 10 seconds! 💜`,
+  `Kal raat ka sleep log mat bhoolna! It tracks your energy patterns for today ☀️`,
+  `Rise and log! 🌅 Track your readiness score from sleep data — 10 sec before diving in!`,
 ];
 
 // ── 25. Weekly Review ─────────────────────────────────────────────────────────
@@ -364,7 +364,7 @@ export const WEEKLY_REVIEW_POOLS = () => [
 // ── 26. Inactivity Nudge ──────────────────────────────────────────────────────
 
 export const INACTIVITY_POOLS = (days: number) => [
-  `${days} days and no tasks, habits, or gym. Sara has been waiting. Come back, even 5 mins! 💜`,
+  `${days} days and no tasks, habits, or gym. ZenTrack has been waiting. Come back, even 5 mins! 💜`,
   `${days} days MIA! Tasks, habits, goals have been waiting patiently. Come show them some love! 😢`,
   `${days} days of silence bestie. It's not too late! Log ONE thing and restart the momentum!`,
   `${days} days since last log. No judgment — just a gentle nudge. We'll be here when you're ready 💜`,

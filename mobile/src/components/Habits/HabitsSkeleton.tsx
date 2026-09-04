@@ -37,14 +37,21 @@ export default function HabitsSkeleton() {
               <SkeletonCircle size={36} />
             </View>
 
-            {/* Bottom row: 7-Day clean rolling mini week strip */}
-            <View style={styles.weekStrip}>
-              {Array.from({ length: 7 }).map((_, dayIdx) => (
-                <View key={dayIdx} style={styles.dayCol}>
-                  <SkeletonBox width={14} height={9} borderRadius={2} />
-                  <SkeletonCircle size={22} style={{ marginTop: 5 }} />
-                </View>
-              ))}
+            {/* Bottom row: 5-Week (35-Day) GitHub-Style Matrix Skeleton */}
+            <View style={styles.matrixStrip}>
+              <View style={styles.matrixGrid}>
+                {Array.from({ length: 5 }).map((_, colIdx) => (
+                  <View key={colIdx} style={styles.matrixCol}>
+                    {Array.from({ length: 7 }).map((_, rowIdx) => (
+                      <SkeletonBox key={rowIdx} width={15} height={15} borderRadius={3.5} />
+                    ))}
+                  </View>
+                ))}
+              </View>
+              <View style={styles.matrixFooter}>
+                <SkeletonBox width="35%" height={10} borderRadius={2} />
+                <SkeletonBox width="20%" height={10} borderRadius={2} />
+              </View>
             </View>
           </SkeletonCard>
         ))}
@@ -69,15 +76,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  weekStrip: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    paddingTop: 12,
+  matrixStrip: {
+    marginTop: 14,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.04)',
   },
-  dayCol: {
+  matrixGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+  },
+  matrixCol: {
+    flexDirection: 'column',
+    gap: 4,
+  },
+  matrixFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 8,
+    paddingHorizontal: 2,
   },
 });

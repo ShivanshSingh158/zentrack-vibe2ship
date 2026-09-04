@@ -53,7 +53,7 @@ export function useDashboardData() {
   // ── Granular domain hooks (replaces useMobileData() monolith) ─────────────
   // Dashboard only re-renders when these specific slices change.
   const { user, tasks, habitLogs, allHabits, tasksReady } = useCoreData();
-  const { attendance, attendanceLogs, assignments } = useAcademicData();
+  const { attendance, attendanceLogs, assignments, holidays } = useAcademicData();
   const { gymLogs, userGymPlan, waterLogs, ensureSubscribed: ensureWellnessSubscribed } = useWellnessData();
   const { customEvents } = usePlannerData();
 
@@ -254,6 +254,7 @@ export function useDashboardData() {
   // ── Unified Today's Scheduled Classes ──────────────────────────────────────
   const todayClasses = useMemo(() => {
     if (!attendance || attendance.length === 0) return [];
+    if (holidays && holidays.includes(todayStr)) return [];
     const dayOfWeek = nowDate.getDay().toString();
     const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     return attendance.flatMap(subj => {
@@ -266,7 +267,7 @@ export function useDashboardData() {
       if (sch.labs)    sch.labs.forEach((l: any, idx: number) => l.time && cls.push({ id: `${subj.id}-lab-${l.time}`,   title: `${subj.name} Lab`,   time: l.time, type: 'lab', subjectId: subj.id, subject: subj, sessionIdx: idx }));
       return cls;
     });
-  }, [attendance, nowDate]);
+  }, [attendance, nowDate, holidays, todayStr]);
 
   // ── Next Class Logic ───────────────────────────────────────────────────────
   const nextClass = useMemo<NextClassData | null>(() => {
@@ -423,7 +424,7 @@ export function useDashboardData() {
   return {
     // Data
     user, tasks, gymLogs, userGymPlan, habitLogs, allHabits,
-    attendance, attendanceLogs, assignments, waterLogs, customEvents,
+    attendance, attendanceLogs, assignments, holidays, waterLogs, customEvents,
     // Derived
     todayStr, timeGreeting, avatarLetter, hour,
     nowDate, nextClass, appStreak,

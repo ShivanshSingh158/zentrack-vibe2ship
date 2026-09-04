@@ -30,7 +30,7 @@ import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
 import { usePlannerData } from '../contexts/domains/PlannerContext';
-import { scheduleAllNotifications } from '../services/notifications';
+import { scheduleAllNotifications, clearScheduleCache } from '../services/notifications';
 
 // ── Design Tokens ────────────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ const MAX_PINNED = 4;
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
   const { user, googleAccessToken, tasks, habitLogs, allHabits, pinnedModules, setPinnedModules } = useCoreData();
-  const { gymLogs } = useWellnessData();
+  const { gymLogs, waterLogs, sleepLogs, userGymPlan } = useWellnessData();
   const { attendance, assignments } = useAcademicData();
   const { customEvents } = usePlannerData();
   const [hasWorkspace, setHasWorkspace] = useState(!!googleAccessToken);
@@ -113,9 +113,13 @@ export default function SettingsScreen() {
       setNotifTimeStr(timeStr);
       await AsyncStorage.setItem('zentrack_default_notif_time', timeStr24);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      clearScheduleCache();
       // Defer notification reschedule — avoids blocking time picker dismissal animation.
       InteractionManager.runAfterInteractions(() => {
-        scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments }).catch(console.warn);
+        scheduleAllNotifications({
+          tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments,
+          waterLogs, sleepLogs, userGymPlan,
+        }).catch(console.warn);
       });
     }
   };

@@ -625,6 +625,7 @@ export default function AttendanceScreen() {
     optimisticUpdateAttendanceLog: academic.optimisticUpdateAttendanceLog,
     optimisticRemoveAttendanceLog: academic.optimisticRemoveAttendanceLog,
     optimisticDeleteSubject: academic.optimisticDeleteSubject,
+    optimisticToggleHoliday: academic.optimisticToggleHoliday,
   });
   const {
     handleLog, handleUndo, handleToggleHoliday, handleDeleteSubject,
@@ -980,7 +981,7 @@ export default function AttendanceScreen() {
               Animated.timing(pillAnim, { toValue: 0, duration: 50, useNativeDriver: true }).start();
             }
           }}
-          scrollEventThrottle={16}
+          scrollEventThrottle={64}
           ListHeaderComponent={listHeader}
           ListEmptyComponent={
             <EmptyState
@@ -1206,7 +1207,7 @@ export default function AttendanceScreen() {
 
       {/* Unlogged / Pending Classes & Labs Drawer */}
       {isUnloggedOpen && (
-        <BottomSheet visible={isUnloggedOpen} onClose={() => setIsUnloggedOpen(false)}>
+        <BottomSheet visible={isUnloggedOpen} onClose={() => setIsUnloggedOpen(false)} avoidKeyboard={false}>
           <View style={{ width: '100%', maxHeight: 480 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <View style={{ flex: 1, marginRight: 10 }}>
@@ -1254,7 +1255,7 @@ export default function AttendanceScreen() {
 
       {/* Extra Class Modal */}
       {isExtraOpen && (
-        <BottomSheet visible={isExtraOpen} onClose={() => setIsExtraOpen(false)}>
+        <BottomSheet visible={isExtraOpen} onClose={() => setIsExtraOpen(false)} avoidKeyboard={false}>
           <View style={{ width: '100%' }}>
             <Text style={[styles.sheetTitle, { marginBottom: 16 }]}>Log Extra Class</Text>
 

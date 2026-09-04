@@ -26,12 +26,12 @@ import ConfettiCannon from 'react-native-confetti-cannon';
 import { COLLECTION } from '../config/constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from "../contexts/ThemeContext";
-import { HabitReminderModal } from '../components/Habits/HabitReminderModal';
 import { handleSyncError } from '../utils/errorUtils';
 import EmptyState from '../components/ui/EmptyState';
 import { formatLocalDateStr } from '../utils/dateUtils';
 import BottomSheet from '../components/ui/BottomSheet';
 import HabitsSkeleton from '../components/Habits/HabitsSkeleton';
+import { HabitReminderModal, HabitHeatmapGrid, HabitDetailModal, TilePressEvent } from '../components/Habits';
 
 const getTodayStr = () => formatLocalDateStr(new Date());
 // IMPORTANT: never use a module-level `today` constant here — it gets frozen at app launch
@@ -67,11 +67,11 @@ function CreateHabitModal({ visible, userId, onClose }: {
   const [targetCount, setTargetCount] = useState('');
   const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const HABIT_COLORS = isDark 
-    ? ['#a599ff', '#5eda9e', '#ff9f4d', '#ff6961', '#38bdf8', '#c084fc']
-    : ['#6C5CE7', '#059669', '#D97706', '#E11D48', '#0284C7', '#7C3AED'];
+    ? ['#a599ff', '#5eda9e', '#ffd60a', '#0a84ff', '#ff453a', '#ff375f', '#a3e635', '#6366f1']
+    : ['#6C5CE7', '#059669', '#D97706', '#0284C7', '#E11D48', '#DB2777', '#65A30D', '#4F46E5'];
   const EMOJI_PRESETS = type === 'positive' 
-    ? ['⭐', '💧', '📚', '🏃', '🧘', '🍎', '💤', '🎯']
-    : ['🚫', '🚭', '🍫', '📱', '🎮', '☕', '🍔', '💸'];
+    ? ['⭐', '💧', '📚', '🏃', '🧘', '🍎', '💤', '🎯', '💪', '🧠', '✍️', '🌱']
+    : ['🚫', '🚭', '🍫', '📱', '🎮', '☕', '🍔', '💸', '🍷', '🛑'];
   const [saving, setSaving] = useState(false);
 
   const handleSave = () => {
@@ -223,6 +223,30 @@ function CreateHabitModal({ visible, userId, onClose }: {
           ))}
         </View>
 
+        {frequency === 'custom' && (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACE.md, marginTop: 4 }}>
+            {DAYS.map((day) => {
+              const selected = customDays.includes(day);
+              return (
+                <TouchableOpacity
+                  key={day}
+                  onPress={() => {
+                    setCustomDays(prev => selected ? prev.filter(d => d !== day) : [...prev, day]);
+                  }}
+                  style={[
+                    styles.dayChip,
+                    selected && { backgroundColor: color, borderColor: color },
+                  ]}
+                >
+                  <Text style={[styles.dayChipText, selected && { color: isDark ? '#000000' : '#FFFFFF', fontFamily: FONT_FAMILY.bold }]}>
+                    {day}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
         <View style={styles.modalActions}>
           <AnimatedPressable style={styles.cancelBtn} onPress={onClose}>
             <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -240,9 +264,21 @@ function CreateHabitModal({ visible, userId, onClose }: {
   );
 }
 
-// ─── Habit Card (Redesigned iOS Design) ──────────────────────────────────────
+// ─── Habit Card (HabitKit-Tier GitHub Heatmap Design) ─────────────────────────
 
-const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, onToggle, onArchive, onDelete, habitLogs, onFireConfetti, freezesLeft }: {
+const HabitCard = React.memo(function HabitCard({
+  habit,
+  isCompleted,
+  todayLog,
+  onToggle,
+  onArchive,
+  onDelete,
+  habitLogs,
+  onFireConfetti,
+  freezesLeft,
+  onOpenDetail,
+  onToggleHistoricalDate,
+}: {
   habit: Habit;
   isCompleted: boolean;
   todayLog?: HabitLog;
@@ -252,6 +288,8 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
   habitLogs: HabitLog[];
   onFireConfetti: (x: number, y: number, color: string) => void;
   freezesLeft?: number;
+  onOpenDetail?: (habit: Habit) => void;
+  onToggleHistoricalDate?: (habit: Habit, dateStr: string) => void;
 }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
@@ -260,6 +298,8 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
   const isNegative = habit.type === 'negative';
   const habitColor = habit.color || (isDark ? colors.accentPrimary : '#6C5CE7');
   const today = getTodayStr();
+
+  const [activeTile, setActiveTile] = useState<TilePressEvent | null>(null);
 
   let daysClean = 0;
   let moneySaved = 0;
@@ -275,52 +315,6 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
     if (daysClean < 0) daysClean = 0;
     if (habit.costPerDay) moneySaved = daysClean * habit.costPerDay;
   }
-
-  // Calculate 7-Day Week History (Clean iOS Rolling Week Strip)
-  const weekHistory = useMemo(() => {
-    if (isNegative) return null;
-    const logDateMap = new Map<string, HabitLog>();
-    for (const l of habitLogs) {
-      if (l.date) logDateMap.set((l.date || '').slice(0, 10), l);
-    }
-
-    const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-    const days = [];
-    const now = new Date();
-    
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const dateStr = formatLocalDateStr(d);
-      const dayOfWeek = d.getDay();
-      const dayLabel = DAY_LABELS[dayOfWeek];
-      const isToday = i === 0;
-      const log = logDateMap.get(dateStr);
-      
-      let status: 'completed' | 'missed' | 'freeze' | 'future' = 'missed';
-      if (log) {
-        if (log.isFreeze) status = 'freeze';
-        else if (habit.targetCount && habit.targetCount > 0) {
-          status = (log.count || 0) >= habit.targetCount ? 'completed' : 'missed';
-        } else {
-          status = 'completed';
-        }
-      } else if (isToday) {
-        status = 'future';
-      } else if (habit.startDate && dateStr < habit.startDate) {
-        status = 'future';
-      }
-      
-      days.push({
-        dateStr,
-        dayLabel,
-        dayNum: d.getDate(),
-        isToday,
-        status,
-      });
-    }
-    return days;
-  }, [isNegative, habitLogs, habit.targetCount, habit.startDate]);
 
   const animatedCheckStyle = useAnimatedStyle(() => ({
     transform: [{ scale: checkScale.value }],
@@ -373,19 +367,16 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
       "Manage Habit",
       habit.name,
       [
-        { text: "Archive", onPress: onArchive },
+        { text: "View Full Analytics", onPress: () => onOpenDetail && onOpenDetail(habit) },
+        { text: habit.archived ? "Unarchive" : "Archive", onPress: onArchive },
         { text: "Delete", onPress: onDelete, style: 'destructive' },
         { text: "Cancel", style: 'cancel' }
       ]
     );
-  }, [habit.name, onArchive, onDelete]);
+  }, [habit, onArchive, onDelete, onOpenDetail]);
 
   return (
-    <AnimatedPressable 
-      activeOpacity={0.9} 
-      onLongPress={handleLongPress} 
-      delayLongPress={300}
-      onPress={handlePress}
+    <View 
       style={[
         styles.habitCard, 
         {
@@ -398,29 +389,41 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
     >
       {/* ── TOP SECTION: Icon, Title, Streak & Check Action Button ── */}
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        {/* Emoji Avatar */}
-        <View style={[
-          styles.avatar, 
-          { 
-            backgroundColor: isNegative 
-              ? (isDark ? 'rgba(239,68,68,0.14)' : 'rgba(239,68,68,0.10)') 
-              : (isDark ? `${habitColor}22` : `${habitColor}14`),
-            borderColor: isNegative 
-              ? (isDark ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.2)') 
-              : (isDark ? `${habitColor}40` : `${habitColor}30`),
-            borderWidth: 1,
-          }
-        ]}>
+        {/* Emoji Avatar (Tap to open Detail) */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => onOpenDetail && onOpenDetail(habit)}
+          style={[
+            styles.avatar, 
+            { 
+              backgroundColor: isNegative 
+                ? (isDark ? 'rgba(239,68,68,0.14)' : 'rgba(239,68,68,0.10)') 
+                : (isDark ? `${habitColor}22` : `${habitColor}14`),
+              borderColor: isNegative 
+                ? (isDark ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.2)') 
+                : (isDark ? `${habitColor}40` : `${habitColor}30`),
+              borderWidth: 1,
+            }
+          ]}
+        >
           <Reanimated.Text style={[styles.avatarEmoji, { transform: [{ scale: emojiScale }] }]}>
             {habit.emoji || (isNegative ? '🚫' : '⭐')}
           </Reanimated.Text>
-        </View>
+        </TouchableOpacity>
 
-        {/* Title & Streak Badge */}
-        <View style={{ flex: 1, marginLeft: 12, marginRight: 8 }}>
-          <Text style={[styles.habitName, isCompleted && !isNegative && styles.habitNameCompleted]} numberOfLines={1}>
-            {habit.name}
-          </Text>
+        {/* Title & Streak Badge (Tap to open Detail) */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => onOpenDetail && onOpenDetail(habit)}
+          onLongPress={handleLongPress}
+          style={{ flex: 1, marginLeft: 12, marginRight: 8 }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={[styles.habitName, isCompleted && !isNegative && styles.habitNameCompleted]} numberOfLines={1}>
+              {habit.name}
+            </Text>
+            <Ionicons name="chevron-forward" size={13} color={colors.textTertiary} style={{ marginLeft: 4 }} />
+          </View>
           
           {isNegative ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 6 }}>
@@ -456,9 +459,9 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
               )}
             </View>
           )}
-        </View>
+        </TouchableOpacity>
 
-        {/* Big iOS Action Check Ring */}
+        {/* Big iOS Action Check Ring (Toggles TODAY) */}
         {!isNegative ? (
           <TouchableOpacity
             activeOpacity={0.7}
@@ -500,45 +503,76 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
         )}
       </View>
 
-      {/* ── BOTTOM SECTION: 7-Day Clean Rolling Week Strip ── */}
-      {!isNegative && weekHistory && (
-        <View style={styles.weekStripContainer}>
-          {weekHistory.map((item, idx) => {
-            const isDone = item.status === 'completed';
-            const isFreeze = item.status === 'freeze';
-            const isCurrentDay = item.isToday;
+      {/* ── BOTTOM SECTION: GitHub-Style Contribution Heatmap Matrix (35 Days) ── */}
+      <HabitHeatmapGrid
+        habit={habit}
+        habitLogs={habitLogs}
+        weeksCount={5}
+        onTilePress={(tileEvent) => {
+          setActiveTile(tileEvent);
+        }}
+      />
 
-            return (
-              <View key={idx} style={styles.weekDayColumn}>
-                <Text style={[
-                  styles.weekDayLabel,
-                  isCurrentDay && { color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold }
-                ]}>
-                  {item.dayLabel}
-                </Text>
-                <View style={[
-                  styles.weekDayDot,
-                  isDone && { backgroundColor: habitColor, borderColor: habitColor },
-                  isFreeze && { backgroundColor: '#06B6D4', borderColor: '#06B6D4' },
-                  !isDone && !isFreeze && isCurrentDay && { 
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F0EFF7', 
-                    borderWidth: 1.5, 
-                    borderColor: habitColor,
-                  },
-                  !isDone && !isFreeze && !isCurrentDay && {
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#ECEBF2',
-                    borderColor: 'transparent'
-                  }
-                ]}>
-                  {isDone && <Ionicons name="checkmark" size={11} color={isDark ? '#000000' : '#FFFFFF'} />}
-                  {isFreeze && <Ionicons name="snow" size={10} color="#FFFFFF" />}
-                </View>
-              </View>
-            );
-          })}
+      {/* ── INTERACTIVE HISTORICAL TILE TOOLTIP HUD ── */}
+      {activeTile && (
+        <View style={[styles.tileTooltipHud, { borderColor: `${habitColor}60` }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.tooltipDate}>
+              {activeTile.dateStr} ({activeTile.dayLabel})
+            </Text>
+            <Text
+              style={[
+                styles.tooltipStatus,
+                {
+                  color: activeTile.status === 'completed'
+                    ? (isDark ? '#5EDA9E' : '#059669')
+                    : activeTile.status === 'freeze'
+                    ? '#06B6D4'
+                    : colors.textTertiary,
+                },
+              ]}
+            >
+              {activeTile.status === 'completed'
+                ? `✓ Completed${activeTile.targetCount ? ` (${activeTile.count}/${activeTile.targetCount})` : ''}`
+                : activeTile.status === 'freeze'
+                ? '❄️ Streak Protected (Freeze)'
+                : '○ Missed / Not logged'}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              if (onToggleHistoricalDate) {
+                onToggleHistoricalDate(habit, activeTile.dateStr);
+              }
+              setActiveTile(null);
+            }}
+            style={[
+              styles.tooltipActionBtn,
+              { backgroundColor: activeTile.status === 'completed' ? 'rgba(239,68,68,0.18)' : habitColor },
+            ]}
+          >
+            <Text
+              style={[
+                styles.tooltipActionText,
+                { color: activeTile.status === 'completed' ? '#EF4444' : (isDark ? '#000000' : '#FFFFFF') },
+              ]}
+            >
+              {activeTile.status === 'completed' ? 'Undo' : 'Mark Done'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setActiveTile(null)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.tooltipCloseBtn}
+          >
+            <Ionicons name="close" size={14} color={colors.textTertiary} />
+          </TouchableOpacity>
         </View>
       )}
-    </AnimatedPressable>
+    </View>
   );
 });
 
@@ -557,6 +591,10 @@ export default function HabitsScreen() {
   const headerFade = useRef(new Animated.Value(0)).current;
   const headerSlide = useRef(new Animated.Value(-10)).current;
   const today = getTodayStr();
+
+  // ── Detail Modal & Filtering ──
+  const [detailHabit, setDetailHabit] = useState<Habit | null>(null);
+  const [activeFilter, setActiveFilter] = useState<'all' | 'positive' | 'negative'>('all');
 
   // ── Streak Freeze Evaluator ──
   const [freezes, setFreezes] = useState<number>(0);
@@ -731,6 +769,42 @@ export default function HabitsScreen() {
       } catch (e) { console.error('[Habits] Undo quantitative error', e); }
     })();
   }, [today, user, optimisticRemoveHabitLog, optimisticUpdateHabitLog, optimisticUpdateHabit]);
+
+  const handleToggleHistoricalDate = useCallback((habit: Habit, dateStr: string) => {
+    if (!user) return;
+    const logDocId = `${habit.id}_${dateStr}`;
+    const habitLogsList = logsByHabitId.get(habit.id) || [];
+    const existingLog = habitLogsList.find(l => l.date === dateStr);
+
+    if (existingLog) {
+      import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Light));
+      optimisticRemoveHabitLog(habit.id, dateStr);
+      (async () => {
+        try {
+          await safeWrite(
+            () => deleteDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId)),
+            COLLECTION.HABIT_LOGS, 'delete', null, logDocId
+          );
+        } catch (e) {
+          console.error('[HabitsScreen] Error removing historical habit log', e);
+        }
+      })();
+    } else {
+      import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
+      const logData = { habitId: habit.id, userId: user.uid, date: dateStr, count: habit.targetCount || 1 };
+      optimisticAddHabitLog({ id: logDocId, ...logData });
+      (async () => {
+        try {
+          await safeWrite(
+            () => setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), { ...logData, timestamp: serverTimestamp() }),
+            COLLECTION.HABIT_LOGS, 'set', logData, logDocId
+          );
+        } catch (e) {
+          console.error('[HabitsScreen] Error adding historical habit log', e);
+        }
+      })();
+    }
+  }, [user, logsByHabitId, optimisticRemoveHabitLog, optimisticAddHabitLog]);
 
   const toggleHabit = useCallback((habit: Habit, x?: number, y?: number) => {
     if (!user) return;
@@ -936,9 +1010,15 @@ export default function HabitsScreen() {
   }, []);
 
   const listData = useMemo(() => {
+    if (activeFilter === 'positive') {
+      return positiveHabits.length === 0 ? [] : [{ type: 'header' }, ...positiveHabits];
+    }
+    if (activeFilter === 'negative') {
+      return negativeHabits.length === 0 ? [] : [{ type: 'divider' }, ...negativeHabits];
+    }
     if (positiveHabits.length === 0 && negativeHabits.length === 0) return [];
     return [{ type: 'header' }, ...positiveHabits, { type: 'divider' }, ...negativeHabits];
-  }, [positiveHabits, negativeHabits]);
+  }, [activeFilter, positiveHabits, negativeHabits]);
 
   const keyExtractor = useCallback((item: any, i: number) => item.id || `type-${i}`, []);
 
@@ -968,10 +1048,12 @@ export default function HabitsScreen() {
           onDelete={() => handleDelete(h.id)}
           onFireConfetti={handleFireConfetti}
           freezesLeft={freezes}
+          onOpenDetail={(habit) => setDetailHabit(habit)}
+          onToggleHistoricalDate={handleToggleHistoricalDate}
         />
       </Reanimated.View>
     );
-  }, [positiveHabits.length, negativeHabits.length, styles.sectionHeader, todayLogsByHabitId, logsByHabitId, toggleHabit, handleArchive, handleDelete, handleFireConfetti, freezes]);
+  }, [positiveHabits.length, negativeHabits.length, styles.sectionHeader, todayLogsByHabitId, logsByHabitId, toggleHabit, handleArchive, handleDelete, handleFireConfetti, freezes, handleToggleHistoricalDate]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -990,6 +1072,39 @@ export default function HabitsScreen() {
           </View>
         </View>
       </Animated.View>
+
+      {/* ── Segmented Filter Pills (HabitKit Style) ── */}
+      <View style={styles.segmentBar}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => setActiveFilter('all')}
+          style={[styles.segmentBtn, activeFilter === 'all' && styles.segmentBtnActive]}
+        >
+          <Text style={[styles.segmentBtnText, activeFilter === 'all' && styles.segmentBtnTextActive]}>
+            All ({activeHabits.length})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => setActiveFilter('positive')}
+          style={[styles.segmentBtn, activeFilter === 'positive' && styles.segmentBtnActivePos]}
+        >
+          <Text style={[styles.segmentBtnText, activeFilter === 'positive' && styles.segmentBtnTextActivePos]}>
+            Building ({positiveHabits.length})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => setActiveFilter('negative')}
+          style={[styles.segmentBtn, activeFilter === 'negative' && styles.segmentBtnActiveNeg]}
+        >
+          <Text style={[styles.segmentBtnText, activeFilter === 'negative' && styles.segmentBtnTextActiveNeg]}>
+            Avoiding ({negativeHabits.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       {/* —————————————————————————————————————————————————————————————————————— */}
       {isInitialLoading ? (
@@ -1029,6 +1144,24 @@ export default function HabitsScreen() {
           visible={showReminderModal}
           onClose={() => setShowReminderModal(false)}
           habits={activeHabits}
+        />
+      )}
+
+      {detailHabit && (
+        <HabitDetailModal
+          visible={!!detailHabit}
+          habit={detailHabit}
+          habitLogs={logsByHabitId.get(detailHabit.id) || []}
+          onClose={() => setDetailHabit(null)}
+          onToggleDate={(dateStr) => handleToggleHistoricalDate(detailHabit, dateStr)}
+          onArchive={(hid) => {
+            handleArchive(hid);
+            setDetailHabit(null);
+          }}
+          onDelete={(hid) => {
+            handleDelete(hid);
+            setDetailHabit(null);
+          }}
         />
       )}
 
@@ -1366,5 +1499,98 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     color: '#ffffff',
     fontFamily: FONT_FAMILY.bold,
     fontSize: 15,
+  },
+  dayChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F5F4FA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayChipText: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.medium,
+    color: colors.textSecondary,
+  },
+  tileTooltipHud: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+    backgroundColor: isDark ? 'rgba(20,20,30,0.95)' : '#F8F8FC',
+    gap: 10,
+  },
+  tooltipDate: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.bold,
+    color: colors.textPrimary,
+  },
+  tooltipStatus: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.medium,
+    marginTop: 2,
+  },
+  tooltipActionBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tooltipActionText: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.bold,
+  },
+  tooltipCloseBtn: {
+    padding: 2,
+  },
+  segmentBar: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    gap: 8,
+  },
+  segmentBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+  },
+  segmentBtnActive: {
+    backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)',
+    borderColor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)',
+  },
+  segmentBtnActivePos: {
+    backgroundColor: isDark ? 'rgba(94,218,158,0.18)' : 'rgba(16,185,129,0.14)',
+    borderColor: isDark ? '#5EDA9E' : '#059669',
+  },
+  segmentBtnActiveNeg: {
+    backgroundColor: isDark ? 'rgba(239,68,68,0.18)' : 'rgba(239,68,68,0.14)',
+    borderColor: isDark ? '#EF4444' : '#DC2626',
+  },
+  segmentBtnText: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.medium,
+    color: colors.textSecondary,
+  },
+  segmentBtnTextActive: {
+    fontFamily: FONT_FAMILY.bold,
+    color: colors.textPrimary,
+  },
+  segmentBtnTextActivePos: {
+    fontFamily: FONT_FAMILY.bold,
+    color: isDark ? '#5EDA9E' : '#059669',
+  },
+  segmentBtnTextActiveNeg: {
+    fontFamily: FONT_FAMILY.bold,
+    color: isDark ? '#EF4444' : '#DC2626',
   },
 });

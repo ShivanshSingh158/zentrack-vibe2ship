@@ -39,6 +39,7 @@ export interface AcademicContextType {
   optimisticAddAttendanceLog: (log: AttendanceLog) => void;
   optimisticUpdateAttendanceLog: (logId: string, partial: Partial<AttendanceLog>) => void;
   optimisticRemoveAttendanceLog: (logId: string) => void;
+  optimisticToggleHoliday: (dateStr: string, isHoliday: boolean) => void;
 }
 
 const DEFAULT_ACADEMIC_DATA: AcademicContextType = {
@@ -59,6 +60,7 @@ const DEFAULT_ACADEMIC_DATA: AcademicContextType = {
   optimisticAddAttendanceLog: () => {},
   optimisticUpdateAttendanceLog: () => {},
   optimisticRemoveAttendanceLog: () => {},
+  optimisticToggleHoliday: () => {},
 };
 
 const AcademicContext = createContext<AcademicContextType | null>(null);
@@ -85,7 +87,7 @@ export function AcademicProvider({
   const [assignments, setAssignments]         = useState<Assignment[]>(initialManifest?.assignments ?? []);
   const [semesters, setSemesters]             = useState<Semester[]>(initialManifest?.semesters ?? []);
   const [semesterSubjects, setSemesterSubjects] = useState<SemesterSubject[]>(initialManifest?.semesterSubjects ?? []);
-  const [holidays, setHolidays]               = useState<string[]>([]);
+  const [holidays, setHolidays]               = useState<string[]>(initialManifest?.holidays ?? []);
   // FIX (Bug D): attendanceSnapshotFired = true once first Firestore attendance snapshot fires.
   // Used as skeleton gate. Previously AttendanceScreen used `!user` as the condition,
   // which is always false when an authenticated user visits the screen.
@@ -155,6 +157,10 @@ export function AcademicProvider({
         }
         if (semesterSubjects.length === 0 && (manifest.semesterSubjects?.length ?? 0) > 0) {
           setSemesterSubjects(manifest.semesterSubjects);
+          seeded = true;
+        }
+        if (holidays.length === 0 && (manifest.holidays?.length ?? 0) > 0) {
+          setHolidays(manifest.holidays);
           seeded = true;
         }
         if (seeded) hasCachedDataRef.current = true;
@@ -265,8 +271,14 @@ export function AcademicProvider({
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.ATTENDANCE_HOLIDAYS), where("userId", "==", uid)),
       snap => {
-        const fresh = snap.docs.map(d => (d.data() as any).date).filter(Boolean);
+        const fresh = snap.docs.map(d => {
+          const raw = (d.data() as any).date;
+          if (!raw) return '';
+          if (typeof raw === 'string') return raw.trim().slice(0, 10);
+          return String(raw).slice(0, 10);
+        }).filter(Boolean);
         setHolidays(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+        InteractionManager.runAfterInteractions(() => writeAcademicCache({ holidays: fresh }));
       },
       scheduleListenerRestart("holidays")
     ));
@@ -385,6 +397,17 @@ export function AcademicProvider({
     });
   };
 
+  const optimisticToggleHoliday = (dateStr: string, isHoliday: boolean) => {
+    const cleanDate = (dateStr || '').trim().slice(0, 10);
+    setHolidays(prev => {
+      const next = isHoliday
+        ? (prev.some(d => d.slice(0, 10) === cleanDate) ? prev : [...prev, cleanDate])
+        : prev.filter(d => d.slice(0, 10) !== cleanDate);
+      writeAcademicCache({ holidays: next }, true); // immediate: optimistic holiday toggle
+      return next;
+    });
+  };
+
   // attendanceReady: true once the first Firestore snapshot has fired (even if user has no subjects).
   const attendanceReady = attendanceSnapshotFired;
 
@@ -394,7 +417,7 @@ export function AcademicProvider({
     ensureSubscribed, optimisticAddSubject, optimisticDeleteSubject,
     optimisticUpdateAttendance, optimisticAddAssignment,
     optimisticUpdateAssignment, optimisticDeleteAssignment, optimisticAddAttendanceLog,
-    optimisticUpdateAttendanceLog, optimisticRemoveAttendanceLog
+    optimisticUpdateAttendanceLog, optimisticRemoveAttendanceLog, optimisticToggleHoliday
   }), [
     attendance, attendanceLogs, assignments, semesters, semesterSubjects, holidays,
     attendanceReady, ensureSubscribed

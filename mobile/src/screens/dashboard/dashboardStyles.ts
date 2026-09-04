@@ -249,4 +249,26 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     fontSize: FONT_SIZE.sm,
     color: colors.accentPrimary,
   },
+
+  // Voice Task FAB (Floating Action Button replacing Sara button)
+  voiceTaskFab: {
+    position: 'absolute',
+    right: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    zIndex: 9999,
+    elevation: 8,
+    shadowColor: '#FF3B30',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.38,
+    shadowRadius: 10,
+  },
+  voiceTaskFabGradient: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

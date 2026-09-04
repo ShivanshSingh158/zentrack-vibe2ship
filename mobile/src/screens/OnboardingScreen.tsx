@@ -23,16 +23,17 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated,
-  Dimensions, ScrollView, Image, Platform
+  Dimensions, ScrollView, Platform, DeviceEventEmitter
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { DynamicCalendarIcon } from '../components/ui/DynamicCalendarIcon';
 import * as Haptics from 'expo-haptics';
-import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
-import { awardXP } from '../services/xpSystem';
+import { awardXP, getXP, getLevel, XPState, XP_SOURCES } from '../services/xpSystem';
+import { MASCOT_IMAGES, getGradientForLevel } from '../components/Dashboard/mascotConstants';
 import { requestNotificationPermissions } from '../services/notifications';
 import * as Notifications from 'expo-notifications';
 import Reanimated, {
@@ -41,16 +42,15 @@ import Reanimated, {
   SlideInLeft, SlideOutRight,
   Layout
 } from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
 
 // Fonts & Theme
-import { useFonts, Inter_400Regular, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { PlayfairDisplay_600SemiBold, PlayfairDisplay_600SemiBold_Italic } from '@expo-google-fonts/playfair-display';
 import { useTheme } from '../contexts/ThemeContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
-import { updateL1Cache } from '../utils/bootManifest';
+import { updateL1Cache, getBootManifestSync } from '../utils/bootManifest';
 
-const { width } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const ONBOARDING_KEY = 'zentrack_onboarded_v2';
 
@@ -112,7 +112,6 @@ export const MODULE_CATALOG: ModuleItem[] = [
   { id: 'Calendar',    name: 'Calendar',   activeIcon: 'calendar-clear',   inactiveIcon: 'calendar-clear-outline',   desc: 'Unified Agenda' },
   { id: 'Notes',       name: 'Notes',      activeIcon: 'document-text',    inactiveIcon: 'document-text-outline',    desc: 'Markdown & AI Notes' },
   { id: 'Learning',    name: 'Learn',      activeIcon: 'library',          inactiveIcon: 'library-outline',          desc: 'Video Lectures & MindMap' },
-  { id: 'Grades',      name: 'Grades',     activeIcon: 'calculator',       inactiveIcon: 'calculator-outline',       desc: 'SGPA/CGPA Forecast' },
   { id: 'Analytics',   name: 'Stats',      activeIcon: 'bar-chart',        inactiveIcon: 'bar-chart-outline',        desc: 'XP & Discipline Radar' },
 ];
 
@@ -122,6 +121,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
 
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
+    Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
     PlayfairDisplay_600SemiBold,
@@ -133,16 +133,9 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
   const [selectedPersona, setPersona] = useState<string>('allrounder');
   const [pinnedModules, setPinned] = useState<string[]>(['Tasks', 'Gym', 'Calendar', 'Attendance']);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    return () => {
-      Speech.stop().catch(() => {});
-    };
-  }, []);
-
-  if (!fontsLoaded) return <View style={styles.root} />;
+  if (!fontsLoaded) return <View style={[styles.root, { backgroundColor: colors.background }]} />;
 
   const next = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -201,18 +194,22 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
       }).catch(() => {});
 
       // Persist chosen 4 pinned modules to L1 & AsyncStorage
-      updateL1Cache('pinnedModules', pinnedModules);
-      await AsyncStorage.setItem('@zentrack_pinned_modules', JSON.stringify(pinnedModules));
+      const finalPinned = pinnedModules.length > 0 ? pinnedModules.slice(0, 4) : ['Tasks', 'Gym', 'Calendar', 'Attendance'];
+      updateL1Cache('pinnedModules', finalPinned);
+      await AsyncStorage.setItem('@zentrack_pinned_modules', JSON.stringify(finalPinned));
       await AsyncStorage.multiSet([
         ['@zentrack_onboarding_completed', 'true'],
         [ONBOARDING_KEY, 'true'],
       ]);
 
-      // Save identity to Firestore in background
+      // Emit event so CoreDataContext and TabNavigator update immediately in memory
+      DeviceEventEmitter.emit('pinned_modules_changed', finalPinned);
+
+      // Save identity & pinned modules to Firestore in background
       if (uid) {
         setDoc(doc(db, 'users', uid, 'profile', 'identity'), {
           persona: selectedPersona,
-          pinnedModules,
+          pinnedModules: finalPinned,
           onboardedAt: Date.now(),
         }, { merge: true }).catch(() => {});
       }
@@ -226,6 +223,12 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
       await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
       onComplete();
     }
+  };
+
+  const getStepSubtitle = () => {
+    if (step === 0) return '01 / archetype';
+    if (step === 1) return '02 / dock';
+    return '03 / genesis';
   };
 
   // ── Render Steps ──────────────────────────────────────────────────────────
@@ -271,65 +274,73 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
   };
 
   return (
-    <SafeAreaView style={styles.root}>
-      {/* Top Header */}
-      <View style={styles.globalHeader}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={styles.globalBrand}>ZENTRACK</Text>
-          <View style={styles.brandDot} />
-        </View>
-        <Reanimated.Text
-          key={step}
-          entering={FadeIn.duration(200)}
-          exiting={FadeOut.duration(150)}
-          style={styles.globalStep}
-        >
-          0{step + 1} / 03
-        </Reanimated.Text>
-      </View>
-
-      {/* Main Animated View with Pure Horizontal Slide (Zero Vertical Bounce) */}
-      <View style={styles.sliderContainer}>
-        <Reanimated.View
-          key={`step-${step}`}
-          entering={
-            direction === 'forward'
-              ? SlideInRight.duration(280)
-              : SlideInLeft.duration(280)
-          }
-          exiting={
-            direction === 'forward'
-              ? SlideOutLeft.duration(200)
-              : SlideOutRight.duration(200)
-          }
-          style={styles.stepContainer}
-        >
-          {renderStep()}
-        </Reanimated.View>
-      </View>
-
-      {/* Footer Nav Bar with Back & Dots */}
-      <View style={styles.footerRow}>
-        {step > 0 ? (
-          <TouchableOpacity onPress={prev} style={styles.backBtn} activeOpacity={0.7}>
-            <Ionicons name="arrow-back" size={16} color={colors.textSecondary} />
-            <Text style={styles.backBtnText}>Back</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 60 }} />
-        )}
-
-        <View style={styles.dots}>
-          {[0, 1, 2].map(i => (
-            <Reanimated.View
-              key={i}
-              layout={Layout.springify()}
-              style={[styles.dot, i === step && styles.dotActive]}
-            />
-          ))}
+    <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
+      <View style={styles.content}>
+        
+        {/* ── Top Header (Matching LandingScreen & AuthScreen) ─────────── */}
+        <View style={styles.topHeader}>
+          <Text style={[styles.brand, { color: colors.textPrimary }]}>ZENTRACK</Text>
+          <Reanimated.Text
+            key={step}
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(150)}
+            style={[styles.step, { color: colors.textMuted }]}
+          >
+            {getStepSubtitle()}
+          </Reanimated.Text>
         </View>
 
-        <View style={{ width: 60 }} />
+        {/* ── Main Animated Content Slide ────────────────────────────── */}
+        <View style={styles.sliderContainer}>
+          <Reanimated.View
+            key={`step-${step}`}
+            entering={
+              direction === 'forward'
+                ? SlideInRight.duration(260)
+                : SlideInLeft.duration(260)
+            }
+            exiting={
+              direction === 'forward'
+                ? SlideOutLeft.duration(180)
+                : SlideOutRight.duration(180)
+            }
+            style={styles.stepContainer}
+          >
+            {renderStep()}
+          </Reanimated.View>
+        </View>
+
+        {/* ── Footer Navigation & Pagination Dots ─────────────────────── */}
+        <View style={styles.footerRow}>
+          {step > 0 ? (
+            <TouchableOpacity onPress={prev} style={styles.backBtn} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="arrow-back" size={15} color={colors.textSecondary} />
+              <Text style={[styles.backBtnText, { color: colors.textSecondary }]}>Back</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 50 }} />
+          )}
+
+          <View style={styles.dots}>
+            {[0, 1, 2].map(i => (
+              <View
+                key={i}
+                style={[
+                  styles.dot,
+                  {
+                    backgroundColor: i === step
+                      ? (isDark ? '#FFFFFF' : '#0A0A0E')
+                      : (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.15)'),
+                    width: i === step ? 16 : 4.5,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+
+          <View style={{ width: 50 }} />
+        </View>
+
       </View>
     </SafeAreaView>
   );
@@ -339,12 +350,13 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
 function StepPersona({ selected, onSelect, onNext, styles, colors, isDark }: any) {
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollStep} showsVerticalScrollIndicator={false}>
-      <Text style={styles.stepIndicator}>STEP 01</Text>
-      <Text style={styles.titleSerif}>
-        Who are you{'\n'}
-        <Text style={styles.titleSerifItalic}>building in 90 days?</Text>
+      <View style={styles.heroTextContainer}>
+        <Text style={[styles.heroTitleSerif, { color: colors.textPrimary }]}>Who are you</Text>
+        <Text style={[styles.heroTitleItalic, { color: colors.accentPrimary }]}>building in 90 days?</Text>
+      </View>
+      <Text style={[styles.subText, { color: colors.textSecondary }]}>
+        Select your primary archetype to calibrate your daily operating system.
       </Text>
-      <Text style={styles.subText}>Select your primary archetype to tailor your daily operating system.</Text>
 
       <View style={styles.personaList}>
         {PERSONAS.map(p => {
@@ -353,23 +365,42 @@ function StepPersona({ selected, onSelect, onNext, styles, colors, isDark }: any
             <TouchableOpacity
               key={p.id}
               onPress={() => onSelect(p)}
-              activeOpacity={0.8}
-              style={[styles.personaRow, active && styles.personaRowActive]}
+              activeOpacity={0.84}
+              style={[
+                styles.personaRow,
+                {
+                  borderColor: active
+                    ? colors.accentPrimary
+                    : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                  backgroundColor: active
+                    ? isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.06)'
+                    : isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.02)',
+                },
+              ]}
             >
-              <View style={[styles.personaIconWrap, active && styles.personaIconWrapActive]}>
+              <View style={[
+                styles.personaIconWrap,
+                {
+                  backgroundColor: active
+                    ? isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.12)'
+                    : isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+                }
+              ]}>
                 <Ionicons
                   name={p.icon}
-                  size={20}
+                  size={19}
                   color={active ? colors.accentPrimary : colors.textSecondary}
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.personaTitle, active && { color: colors.accentPrimary }]}>{p.label}</Text>
-                <Text style={styles.personaTagline}>{p.tagline}</Text>
+                <Text style={[styles.personaTitle, { color: active ? colors.accentPrimary : colors.textPrimary }]}>
+                  {p.label}
+                </Text>
+                <Text style={[styles.personaTagline, { color: colors.textMuted }]}>{p.tagline}</Text>
               </View>
               {active && (
-                <View style={styles.activeCheckCircle}>
-                  <Ionicons name="checkmark" size={12} color={isDark ? '#000000' : '#FFFFFF'} />
+                <View style={[styles.activeCheckCircle, { backgroundColor: colors.accentPrimary }]}>
+                  <Ionicons name="checkmark" size={11} color={isDark ? '#000000' : '#FFFFFF'} />
                 </View>
               )}
             </TouchableOpacity>
@@ -377,53 +408,150 @@ function StepPersona({ selected, onSelect, onNext, styles, colors, isDark }: any
         })}
       </View>
 
-      <TouchableOpacity style={styles.primaryBtn} onPress={onNext} activeOpacity={0.85}>
-        <Text style={styles.primaryBtnText}>Continue to Dock</Text>
-        <Ionicons name="arrow-forward" size={16} color={isDark ? '#000000' : '#FFFFFF'} />
+      <TouchableOpacity
+        style={[
+          styles.primaryBtn,
+          {
+            backgroundColor: isDark ? '#FFFFFF' : '#0A0A0E',
+            borderColor: isDark ? '#FFFFFF' : '#0A0A0E',
+          }
+        ]}
+        onPress={onNext}
+        activeOpacity={0.88}
+      >
+        <Text style={[styles.primaryBtnText, { color: isDark ? '#0A0A0E' : '#FFFFFF' }]}>
+          Continue to Dock  →
+        </Text>
       </TouchableOpacity>
     </ScrollView>
   );
 }
 
+// ─── Authentic Navigation Icon Resolver ──────────────────────────────────────
+const renderModuleNavIcon = (modId: string, isSelected: boolean, color: string, size = 20) => {
+  if (modId === 'Calendar') {
+    return <DynamicCalendarIcon size={size} color={color} isFilled={isSelected} />;
+  }
+  if (modId === 'Gym') {
+    return (
+      <MaterialCommunityIcons
+        name={isSelected ? 'arm-flex' : 'arm-flex-outline'}
+        size={size}
+        color={color}
+      />
+    );
+  }
+  if (modId === 'Attendance') {
+    return (
+      <Ionicons
+        name={isSelected ? 'id-card' : 'id-card-outline'}
+        size={size}
+        color={color}
+      />
+    );
+  }
+  if (modId === 'Notes') {
+    return (
+      <Ionicons
+        name={isSelected ? 'folder' : 'folder-outline'}
+        size={size}
+        color={color}
+      />
+    );
+  }
+  if (modId === 'Habits') {
+    return (
+      <Ionicons
+        name={isSelected ? 'sync' : 'sync-outline'}
+        size={size}
+        color={color}
+      />
+    );
+  }
+  if (modId === 'Tasks') {
+    return (
+      <Ionicons
+        name={isSelected ? 'checkmark-circle' : 'checkmark-circle-outline'}
+        size={size}
+        color={color}
+      />
+    );
+  }
+  if (modId === 'Assignments') {
+    return (
+      <Ionicons
+        name={isSelected ? 'clipboard' : 'clipboard-outline'}
+        size={size}
+        color={color}
+      />
+    );
+  }
+  if (modId === 'Learning') {
+    return (
+      <Ionicons
+        name={isSelected ? 'library' : 'library-outline'}
+        size={size}
+        color={color}
+      />
+    );
+  }
+  if (modId === 'Analytics') {
+    return (
+      <Ionicons
+        name={isSelected ? 'bar-chart' : 'bar-chart-outline'}
+        size={size}
+        color={color}
+      />
+    );
+  }
+  return <Ionicons name="ellipse" size={size} color={color} />;
+};
+
 // ─── Step 2: Focus Matrix & LIVE DOCK PREVIEW ─────────────────────────────────
 function StepFocusMatrix({ pinned, onToggle, onNext, styles, colors, isDark }: any) {
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollStep} showsVerticalScrollIndicator={false}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={styles.stepIndicator}>STEP 02</Text>
-        <View style={styles.slotCountBadge}>
-          <Text style={styles.slotCountText}>{pinned.length} / 4 Pinned</Text>
-        </View>
+      <View style={styles.heroTextContainer}>
+        <Text style={[styles.heroTitleSerif, { color: colors.textPrimary }]}>Choose your 4</Text>
+        <Text style={[styles.heroTitleItalic, { color: colors.accentPrimary }]}>core pillars.</Text>
       </View>
-
-      <Text style={styles.titleSerif}>
-        Choose your 4{'\n'}
-        <Text style={styles.titleSerifItalic}>core pillars.</Text>
+      <Text style={[styles.subText, { color: colors.textSecondary }]}>
+        Tap to customize your 4 bottom dock shortcuts. Changes reflect below in real time.
       </Text>
-      <Text style={styles.subText}>Tap to select 4 modules. Watch your bottom dock morph in real time below.</Text>
 
       {/* 3x3 Module Grid */}
       <View style={styles.moduleGrid}>
         {MODULE_CATALOG.map(mod => {
           const isSelected = pinned.includes(mod.id);
+          const iconColor = isSelected ? colors.accentPrimary : colors.textSecondary;
           return (
             <TouchableOpacity
               key={mod.id}
               onPress={() => onToggle(mod.id)}
               activeOpacity={0.75}
-              style={[styles.moduleTile, isSelected && styles.moduleTileSelected]}
+              style={[
+                styles.moduleTile,
+                {
+                  borderColor: isSelected
+                    ? colors.accentPrimary
+                    : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                  backgroundColor: isSelected
+                    ? isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.06)'
+                    : isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.02)',
+                }
+              ]}
             >
-              <Ionicons
-                name={isSelected ? mod.activeIcon : mod.inactiveIcon}
-                size={22}
-                color={isSelected ? colors.accentPrimary : colors.textSecondary}
-              />
-              <Text style={[styles.moduleTileLabel, isSelected && { color: colors.accentPrimary }]}>
+              <View style={{ height: 24, alignItems: 'center', justifyContent: 'center' }}>
+                {renderModuleNavIcon(mod.id, isSelected, iconColor, 21)}
+              </View>
+              <Text style={[styles.moduleTileLabel, { color: isSelected ? colors.accentPrimary : colors.textPrimary }]}>
                 {mod.name}
               </Text>
               {isSelected && (
-                <View style={styles.moduleTileBadge}>
-                  <Text style={styles.moduleTileBadgeText}>{pinned.indexOf(mod.id) + 1}</Text>
+                <View style={[styles.moduleTileBadge, { backgroundColor: colors.accentPrimary }]}>
+                  <Text style={[styles.moduleTileBadgeText, { color: isDark ? '#000000' : '#FFFFFF' }]}>
+                    {pinned.indexOf(mod.id) + 1}
+                  </Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -432,13 +560,13 @@ function StepFocusMatrix({ pinned, onToggle, onNext, styles, colors, isDark }: a
       </View>
 
       {/* ── LIVE MORPHING DOCK PREVIEW ── */}
-      <View style={styles.dockPreviewWrapper}>
-        <Text style={styles.dockPreviewLabel}>LIVE BOTTOM DOCK PREVIEW</Text>
-        <View style={styles.dockPreviewBar}>
+      <View style={[styles.dockPreviewWrapper, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', backgroundColor: isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.02)' }]}>
+        <Text style={[styles.dockPreviewLabel, { color: colors.textMuted }]}>LIVE BOTTOM DOCK PREVIEW</Text>
+        <View style={[styles.dockPreviewBar, { backgroundColor: isDark ? '#000000' : '#F1F1F5', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
           {/* Permanent Home */}
           <View style={styles.dockPreviewItem}>
-            <Ionicons name="home" size={17} color={colors.textMuted} />
-            <Text style={styles.dockPreviewItemText}>Home</Text>
+            <Ionicons name="home" size={16} color={colors.textMuted} />
+            <Text style={[styles.dockPreviewItemText, { color: colors.textMuted }]}>Home</Text>
           </View>
 
           {/* 4 Dynamic Slots */}
@@ -453,7 +581,9 @@ function StepFocusMatrix({ pinned, onToggle, onNext, styles, colors, isDark }: a
                 exiting={FadeOut.duration(120)}
                 style={styles.dockPreviewItem}
               >
-                <Ionicons name={modObj.activeIcon} size={17} color={colors.accentPrimary} />
+                <View style={{ height: 18, alignItems: 'center', justifyContent: 'center' }}>
+                  {renderModuleNavIcon(modId, true, colors.accentPrimary, 16)}
+                </View>
                 <Text style={[styles.dockPreviewItemText, { color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold }]}>
                   {modObj.name}
                 </Text>
@@ -463,27 +593,55 @@ function StepFocusMatrix({ pinned, onToggle, onNext, styles, colors, isDark }: a
 
           {/* Permanent More */}
           <View style={styles.dockPreviewItem}>
-            <Ionicons name="apps" size={17} color={colors.textMuted} />
-            <Text style={styles.dockPreviewItemText}>More</Text>
+            <Ionicons name="apps" size={16} color={colors.textMuted} />
+            <Text style={[styles.dockPreviewItemText, { color: colors.textMuted }]}>More</Text>
           </View>
         </View>
       </View>
 
       <TouchableOpacity
-        style={[styles.primaryBtn, pinned.length < 4 && { opacity: 0.85 }]}
+        style={[
+          styles.primaryBtn,
+          {
+            backgroundColor: isDark ? '#FFFFFF' : '#0A0A0E',
+            borderColor: isDark ? '#FFFFFF' : '#0A0A0E',
+            opacity: pinned.length < 4 ? 0.85 : 1,
+          }
+        ]}
         onPress={onNext}
-        activeOpacity={0.85}
+        activeOpacity={0.88}
       >
-        <Text style={styles.primaryBtnText}>Confirm Dock ({pinned.length}/4)</Text>
-        <Ionicons name="arrow-forward" size={16} color={isDark ? '#000000' : '#FFFFFF'} />
+        <Text style={[styles.primaryBtnText, { color: isDark ? '#0A0A0E' : '#FFFFFF' }]}>
+          Confirm Dock ({pinned.length}/4)  →
+        </Text>
       </TouchableOpacity>
     </ScrollView>
   );
 }
 
-// ─── Step 3: Genesis XP & Floating Seeker Mascot ──────────────────────────────
+// ─── Mascot Asset Catalog ───────────────────────────────────────────────────
+const getMascotForLevel = (title: string) => {
+  return MASCOT_IMAGES[title] || MASCOT_IMAGES['Seeker'];
+};
+
+// ─── Step 3: Genesis XP & Mascot Launch ───────────────────────────────────────
 function StepGenesisLaunch({ persona, pinned, saving, onLaunch, styles, colors, isDark }: any) {
   const personaObj = PERSONAS.find(p => p.id === persona);
+
+  // Live user XP & Level state (instant synchronous L1 cache read, background getXP verification)
+  const [xpState, setXpState] = useState<XPState>(() => {
+    const cachedXP = getBootManifestSync()?.xp;
+    return getLevel(cachedXP ?? 0);
+  });
+
+  useEffect(() => {
+    getXP().then(xp => {
+      setXpState(getLevel(xp));
+    }).catch(() => {});
+  }, []);
+
+  // Dynamic rank palette matching user level
+  const rankColors = useMemo(() => getGradientForLevel(xpState.title), [xpState.title]);
 
   // Floating Seeker Mascot Physics
   const floatAnim = useRef(new Animated.Value(0)).current;
@@ -492,14 +650,14 @@ function StepGenesisLaunch({ persona, pinned, saving, onLaunch, styles, colors, 
   useEffect(() => {
     const float = Animated.loop(
       Animated.sequence([
-        Animated.timing(floatAnim, { toValue: -7, duration: 1800, useNativeDriver: true }),
-        Animated.timing(floatAnim, { toValue: 0, duration: 1800, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: -10, duration: 2200, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: 0, duration: 2200, useNativeDriver: true }),
       ])
     );
     const pulse = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.08, duration: 1800, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1.0, duration: 1800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.05, duration: 2200, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.0, duration: 2200, useNativeDriver: true }),
       ])
     );
     float.start();
@@ -510,164 +668,233 @@ function StepGenesisLaunch({ persona, pinned, saving, onLaunch, styles, colors, 
     };
   }, [floatAnim, pulseAnim]);
 
+  const mascotSource = getMascotForLevel(xpState.title);
+
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollStep} showsVerticalScrollIndicator={false}>
-      {/* Luxury Genesis Initiation Card */}
-      <View style={styles.genesisCard}>
-        {/* Floating Seeker Mascot Illustration with Emerald Cosmic Aura */}
-        <View style={styles.mascotDisplayContainer}>
-          {/* Pulsing Aura */}
-          <Animated.Image
-            source={require('../../assets/mascots/level0.png')}
-            style={[
-              styles.mascotAuraImage,
-              {
-                transform: [
-                  { translateY: floatAnim },
-                  { scale: pulseAnim }
-                ]
-              }
-            ]}
-            resizeMode="contain"
-          />
-          {/* Main Character Mascot */}
-          <Animated.Image
-            source={require('../../assets/mascots/level0.png')}
-            style={[
-              styles.mascotHeroImage,
-              {
-                transform: [
-                  { translateY: floatAnim },
-                  { scale: pulseAnim }
-                ]
-              }
-            ]}
-            resizeMode="contain"
-          />
-        </View>
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ flexGrow: 1, justifyContent: 'space-between', paddingBottom: 4 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View>
+          <View style={styles.heroTextContainer}>
+            <Text style={[styles.heroTitleSerif, { color: colors.textPrimary }]}>Genesis calibration</Text>
+            <Text style={[styles.heroTitleItalic, { color: colors.accentPrimary }]}>complete.</Text>
+          </View>
+          <Text style={[styles.subText, { color: colors.textSecondary }]}>
+            Your customized archetype and navigation matrix are loaded. Welcome to ZenTrack.
+          </Text>
 
-        {/* Level Rank Badge from XP Constellation */}
-        <View style={styles.rankPill}>
-          <Text style={styles.rankPillText}>RANK: SEEKER • LEVEL 1</Text>
-        </View>
-        <Text style={styles.realmSubText}>Initiate Realm • Wind & Discovery</Text>
-
-        {/* Genesis Reward */}
-        <Text style={styles.genesisRewardText}>+500 GENESIS XP</Text>
-
-        {/* Level Progress Bar with Seeker Emerald Nature Gradient */}
-        <View style={styles.xpProgressWrapper}>
-          <View style={styles.xpProgressBg}>
-            <LinearGradient
-              colors={['#34d399', '#10b981']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[styles.xpProgressFill, { width: '50%' }]}
+          {/* Floating Large Animated Mascot Hero */}
+          <View style={styles.mascotDisplayContainer}>
+            <Animated.Image
+              source={mascotSource}
+              blurRadius={Platform.OS === 'ios' ? 14 : 8}
+              style={[
+                styles.mascotAuraImage,
+                {
+                  tintColor: rankColors[0],
+                  transform: [
+                    { translateY: floatAnim },
+                    { scale: pulseAnim }
+                  ]
+                }
+              ]}
+              resizeMode="contain"
+            />
+            <Animated.Image
+              source={mascotSource}
+              style={[
+                styles.mascotHeroImage,
+                {
+                  transform: [
+                    { translateY: floatAnim },
+                    { scale: pulseAnim }
+                  ]
+                }
+              ]}
+              resizeMode="contain"
             />
           </View>
-          <View style={styles.xpProgressLabels}>
-            <Text style={styles.xpProgressText}>500 / 1,000 XP (50%)</Text>
-            <Text style={styles.xpNextLevelText}>Next: Level 2 Warden (500 XP)</Text>
+
+          {/* Genesis Initiation Spec Card */}
+          <View style={[styles.genesisCard, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', backgroundColor: isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.02)' }]}>
+            <View style={styles.genesisBadgeRow}>
+              <View style={[styles.rankPill, { backgroundColor: isDark ? `${rankColors[0]}22` : `${rankColors[0]}15`, borderColor: rankColors[0] }]}>
+                <Text style={[styles.rankPillText, { color: rankColors[0] }]}>⭐ {xpState.title.toUpperCase()} · LEVEL {xpState.level}</Text>
+              </View>
+              <Text style={[styles.genesisRewardText, { color: isDark ? '#FFD60A' : '#D97706' }]}>
+                +{XP_SOURCES.ONBOARDING.base} XP
+              </Text>
+            </View>
+
+            {/* Level XP Progress Meter */}
+            <View style={styles.xpProgressWrapper}>
+              <View style={[styles.xpProgressBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
+                <View
+                  style={[
+                    styles.xpProgressFill,
+                    {
+                      width: `${Math.max(10, Math.min(100, Math.round(xpState.progress * 100)))}%`,
+                      backgroundColor: rankColors[0],
+                    }
+                  ]}
+                />
+              </View>
+              <View style={styles.xpProgressLabels}>
+                <Text style={[styles.xpProgressText, { color: rankColors[0] }]}>
+                  {xpState.xp} XP (Active)
+                </Text>
+                <Text style={[styles.xpNextLevelText, { color: colors.textMuted }]}>
+                  Next: {xpState.nextThreshold} XP
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.genesisConfigRows}>
+              <View style={styles.configItem}>
+                <Text style={[styles.configItemLabel, { color: colors.textMuted }]}>Archetype Profile</Text>
+                <Text style={[styles.configItemValue, { color: colors.textPrimary }]}>{personaObj?.label}</Text>
+              </View>
+              <View style={[styles.configDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} />
+              
+              <View style={styles.configColumnItem}>
+                <Text style={[styles.configItemLabel, { color: colors.textMuted, marginBottom: 6 }]}>Pinned Dock (4 Pillars)</Text>
+                <View style={styles.pinnedPillsWrap}>
+                  {pinned.slice(0, 4).map((modId: string) => {
+                    const shortLabel = modId === 'Assignments' ? 'Assign' : modId === 'Attendance' ? 'Attend' : modId;
+                    return (
+                      <View
+                        key={modId}
+                        style={[
+                          styles.pinnedMicroPill,
+                          {
+                            backgroundColor: isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.06)',
+                            borderColor: isDark ? 'rgba(165,153,255,0.28)' : 'rgba(108,92,231,0.2)',
+                          }
+                        ]}
+                      >
+                        <View style={{ marginRight: 3 }}>
+                          {renderModuleNavIcon(modId, true, colors.accentPrimary, 12)}
+                        </View>
+                        <Text
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                          style={[styles.pinnedMicroPillText, { color: colors.accentPrimary }]}
+                        >
+                          {shortLabel}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+              <View style={[styles.configDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} />
+
+              <View style={styles.configItem}>
+                <Text style={[styles.configItemLabel, { color: colors.textMuted }]}>Storage Architecture</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#34d399' }} />
+                  <Text style={[styles.configItemValue, { color: '#34d399' }]}>100% Local-First Sync</Text>
+                </View>
+              </View>
+            </View>
           </View>
         </View>
-      </View>
 
-      <Text style={styles.genesisHeadline}>Your Life OS is Ready.</Text>
-      <Text style={styles.genesisSub}>
-        S.A.R.A is online. All 4 core modules are configured and synchronized.
-      </Text>
-
-      <TouchableOpacity
-        style={styles.primaryBtn}
-        onPress={onLaunch}
-        disabled={saving}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.primaryBtnText}>
-          {saving ? 'Forging System...' : 'Launch ZenTrack (0ms)'}
-        </Text>
-        <Ionicons name="rocket-outline" size={18} color={isDark ? '#000000' : '#FFFFFF'} />
-      </TouchableOpacity>
-    </ScrollView>
+        <TouchableOpacity
+          style={[
+            styles.primaryBtn,
+            {
+              backgroundColor: isDark ? '#FFFFFF' : '#0A0A0E',
+              borderColor: isDark ? '#FFFFFF' : '#0A0A0E',
+              marginTop: 10,
+            },
+            saving && { opacity: 0.6 }
+          ]}
+          onPress={onLaunch}
+          disabled={saving}
+          activeOpacity={0.88}
+        >
+          <Text style={[styles.primaryBtnText, { color: isDark ? '#0A0A0E' : '#FFFFFF' }]}>
+            {saving ? 'Initializing...' : 'Initialize Life OS  →'}
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 }
 
-// ─── Styles & Tokens ──────────────────────────────────────────────────────────
 const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background,
   },
-  globalHeader: {
+  content: {
+    flex: 1,
+    paddingHorizontal: 5,
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    paddingBottom: 16,
+  },
+  topHeader: {
+    marginTop: 8,
+    paddingHorizontal: 6,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 12,
   },
-  globalBrand: {
+  brand: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 13,
-    letterSpacing: 2.2,
-    color: colors.textPrimary,
+    fontSize: 12,
+    letterSpacing: 2,
   },
-  brandDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: colors.accentPrimary,
-  },
-  globalStep: {
-    fontFamily: FONT_FAMILY.bold,
+  step: {
+    fontFamily: FONT_FAMILY.body,
     fontSize: 11,
-    letterSpacing: 1.2,
-    color: colors.textMuted,
+    letterSpacing: 1,
   },
   sliderContainer: {
     flex: 1,
     overflow: 'hidden',
+    marginTop: 6,
   },
   stepContainer: {
     flex: 1,
-    paddingHorizontal: 12,
+    paddingHorizontal: 4,
   },
   scrollStep: {
-    paddingBottom: 28,
+    paddingBottom: 16,
   },
-
-  // Typography
-  stepIndicator: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 10.5,
-    letterSpacing: 1.5,
-    color: colors.accentPrimary,
-    textTransform: 'uppercase',
-    marginBottom: 6,
+  heroTextContainer: {
+    marginBottom: 4,
   },
-  titleSerif: {
+  heroTitleSerif: {
     fontFamily: 'PlayfairDisplay_600SemiBold',
-    fontSize: 30,
-    lineHeight: 36,
-    color: colors.textPrimary,
-    marginBottom: 6,
+    fontSize: 34,
+    lineHeight: 40,
+    paddingLeft: 4,
   },
-  titleSerifItalic: {
+  heroTitleItalic: {
     fontFamily: 'PlayfairDisplay_600SemiBold_Italic',
-    color: colors.accentPrimary,
+    fontSize: 38,
+    lineHeight: 44,
+    paddingLeft: 4,
+    paddingRight: 16,
+    paddingVertical: 1,
   },
   subText: {
     fontFamily: FONT_FAMILY.body,
     fontSize: 13,
-    color: colors.textSecondary,
     lineHeight: 18,
-    marginBottom: 20,
+    marginBottom: 10,
+    paddingHorizontal: 4,
   },
 
   // Step 1: Sleek Persona List
   personaList: {
     gap: 8,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   personaRow: {
     flexDirection: 'row',
@@ -676,120 +903,80 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 14,
     borderRadius: RADIUS.lg,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-  },
-  personaRowActive: {
-    borderColor: colors.accentPrimary,
-    backgroundColor: isDark ? (colors.surfaceRaised || '#161424') : '#F5F3FF',
-    borderWidth: 1.5,
   },
   personaIconWrap: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  personaIconWrapActive: {
-    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.1)',
   },
   activeCheckCircle: {
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: colors.accentPrimary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   personaTitle: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 14.5,
-    color: colors.textPrimary,
   },
   personaTagline: {
     fontFamily: FONT_FAMILY.body,
     fontSize: 11.5,
-    color: colors.textMuted,
     marginTop: 2,
   },
 
   // Step 2: Module Grid
-  slotCountBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
-    borderWidth: 1,
-    borderColor: colors.accentPrimary,
-  },
-  slotCountText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 11,
-    color: colors.accentPrimary,
-  },
   moduleGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   moduleTile: {
-    width: (width - 24 - 12) / 3,
-    paddingVertical: 12,
-    paddingHorizontal: 4,
+    width: '31.8%',
+    paddingVertical: 10,
+    paddingHorizontal: 2,
     borderRadius: RADIUS.md,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  moduleTileSelected: {
-    borderColor: colors.accentPrimary,
-    backgroundColor: isDark ? (colors.surfaceRaised || '#181628') : '#F5F3FF',
-    borderWidth: 1.5,
-  },
   moduleTileLabel: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 11,
-    color: colors.textPrimary,
-    marginTop: 4,
+    fontSize: 10.5,
+    marginTop: 3,
     textAlign: 'center',
   },
   moduleTileBadge: {
     position: 'absolute',
-    top: 5,
-    right: 5,
+    top: 4,
+    right: 4,
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: colors.accentPrimary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   moduleTileBadgeText: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 8.5,
-    color: isDark ? '#000000' : '#FFFFFF',
+    fontSize: 8,
   },
 
   // Live Dock Preview Bar
   dockPreviewWrapper: {
-    marginBottom: 20,
-    padding: 10,
+    marginBottom: 18,
+    padding: 12,
     borderRadius: RADIUS.lg,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
   },
   dockPreviewLabel: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 9,
+    fontSize: 9.5,
     letterSpacing: 1,
-    color: colors.textMuted,
     marginBottom: 8,
     textAlign: 'center',
   },
@@ -797,11 +984,9 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    height: 44,
+    height: 48,
     borderRadius: RADIUS.md,
-    backgroundColor: isDark ? '#0D0B14' : '#F0EEF8',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
     paddingHorizontal: 4,
   },
   dockPreviewItem: {
@@ -810,49 +995,47 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     justifyContent: 'center',
   },
   dockPreviewItemText: {
-    fontSize: 8.5,
+    fontSize: 9,
     fontFamily: FONT_FAMILY.medium,
-    color: colors.textMuted,
     marginTop: 2,
   },
 
-  // Step 3: Genesis Card & Floating Seeker Mascot
-  genesisCard: {
-    padding: 18,
-    borderRadius: RADIUS.xl,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.2)',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
+  // Step 3: Mascot Display & Genesis Card
   mascotDisplayContainer: {
-    width: 160,
-    height: 180,
+    width: '100%',
+    height: 150,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
     position: 'relative',
   },
   mascotAuraImage: {
     position: 'absolute',
-    width: 175,
-    height: 175,
-    tintColor: '#34d399',
+    width: 160,
+    height: 160,
     opacity: 0.35,
   },
   mascotHeroImage: {
-    width: 160,
-    height: 160,
+    width: 140,
+    height: 140,
+  },
+  genesisCard: {
+    padding: 14,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  genesisBadgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
   },
   rankPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingHorizontal: 11,
+    paddingVertical: 4.5,
     borderRadius: RADIUS.full,
-    backgroundColor: isDark ? 'rgba(52,211,153,0.15)' : 'rgba(16,185,129,0.1)',
     borderWidth: 1,
-    borderColor: '#34d399',
-    marginBottom: 4,
   },
   rankPillText: {
     fontFamily: FONT_FAMILY.bold,
@@ -860,34 +1043,24 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     letterSpacing: 0.8,
     color: '#34d399',
   },
-  realmSubText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: colors.textMuted,
-    marginBottom: 8,
-  },
   genesisRewardText: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 22,
+    fontSize: 18,
     letterSpacing: 0.5,
-    color: isDark ? '#FFD60A' : '#D97706',
-    marginBottom: 12,
   },
   xpProgressWrapper: {
     width: '100%',
-    marginBottom: 14,
+    marginBottom: 10,
   },
   xpProgressBg: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+    height: 5,
+    borderRadius: 2.5,
     overflow: 'hidden',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   xpProgressFill: {
     height: '100%',
-    borderRadius: 3,
-    backgroundColor: colors.accentPrimary,
+    borderRadius: 2.5,
   },
   xpProgressLabels: {
     flexDirection: 'row',
@@ -895,28 +1068,56 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
   xpProgressText: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 10.5,
-    color: '#34d399',
+    fontSize: 10,
   },
   xpNextLevelText: {
     fontFamily: FONT_FAMILY.medium,
-    fontSize: 10.5,
-    color: colors.textMuted,
+    fontSize: 10,
   },
-  genesisHeadline: {
-    fontFamily: 'PlayfairDisplay_600SemiBold',
-    fontSize: 22,
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: 4,
+  genesisConfigRows: {
+    gap: 7,
   },
-  genesisSub: {
-    fontFamily: FONT_FAMILY.body,
+  configItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 3.5,
+  },
+  configColumnItem: {
+    paddingVertical: 3.5,
+  },
+  configItemLabel: {
+    fontFamily: FONT_FAMILY.medium,
     fontSize: 12,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 17,
-    marginBottom: 24,
+  },
+  configItemValue: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 12.5,
+  },
+  pinnedPillsWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 5,
+    marginTop: 2,
+  },
+  pinnedMicroPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+    paddingVertical: 5,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+  },
+  pinnedMicroPillText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 9.5,
+  },
+  configDivider: {
+    height: StyleSheet.hairlineWidth,
+    width: '100%',
   },
 
   // Primary Button
@@ -924,16 +1125,17 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    height: 50,
-    borderRadius: RADIUS.full,
-    backgroundColor: colors.accentPrimary,
-    marginTop: 'auto',
+    borderRadius: RADIUS.lg,
+    paddingVertical: 14,
+    width: '100%',
+    borderWidth: 1,
+    marginBottom: 6,
+    ...SHADOW.sm,
   },
   primaryBtnText: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 14,
-    color: isDark ? '#000000' : '#FFFFFF',
+    fontSize: 15.5,
+    letterSpacing: 0.2,
   },
 
   // Footer Row
@@ -941,34 +1143,27 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
   },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingVertical: 6,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
   },
   backBtnText: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: 12,
-    color: colors.textSecondary,
   },
   dots: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)',
-  },
-  dotActive: {
-    width: 18,
-    backgroundColor: colors.accentPrimary,
+    height: 3.5,
+    borderRadius: 2,
   },
 });

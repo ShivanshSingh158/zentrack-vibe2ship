@@ -427,9 +427,10 @@ function buildProactiveScan(ctx: AppContext): string {
 
   // 📋 Tasks
   const allTasks = ctx.tasks || [];
-  const overdue = allTasks.filter(t => t.status !== 'completed' && t.date && t.date < todayISO);
-  const dueToday = allTasks.filter(t => t.status !== 'completed' && t.date === todayISO);
-  const pending = allTasks.filter(t => t.status !== 'completed');
+  const isTaskDone = (t: any) => t.status === 'completed' || t.status === 'done' || Boolean(t.completed);
+  const overdue = allTasks.filter(t => !isTaskDone(t) && t.date && t.date < todayISO);
+  const dueToday = allTasks.filter(t => !isTaskDone(t) && t.date === todayISO);
+  const pending = allTasks.filter(t => !isTaskDone(t));
   const highPriority = pending.filter(t => t.priority === 'P1' || t.priority === 'high');
 
   if (overdue.length > 0) lines.push(`⚠️ OVERDUE: ${overdue.length} task(s) past deadline — "${overdue.slice(0,2).map(t=>t.title).join('", "')}"`);

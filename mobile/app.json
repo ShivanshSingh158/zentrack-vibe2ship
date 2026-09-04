@@ -93,35 +93,44 @@
           "widgets": [
             {
               "name": "TodayAgenda",
-              "label": "ZenTrack Today's Agenda",
-              "minWidth": "160dp",
-              "minHeight": "90dp",
+              "label": "ZenTrack Today",
+              "minWidth": "250dp",
+              "minHeight": "110dp",
+              "minResizeWidth": "180dp",
+              "minResizeHeight": "110dp",
               "targetCellWidth": 4,
-              "targetCellHeight": 2,
+              "targetCellHeight": 3,
               "maxResizeWidth": "600dp",
               "maxResizeHeight": "600dp",
               "resizeMode": "horizontal|vertical",
-              "description": "Adaptive Obsidian Cosmos schedule, live classes, and tasks",
+              "description": "Today's schedule, live classes, attendance and tasks",
               "updatePeriodMillis": 1800000
             },
             {
               "name": "LiveWorkout",
-              "label": "ZenTrack Live Workout HUD",
-              "minWidth": "160dp",
-              "minHeight": "90dp",
+              "label": "ZenTrack Workout HUD",
+              "minWidth": "250dp",
+              "minHeight": "110dp",
+              "minResizeWidth": "180dp",
+              "minResizeHeight": "110dp",
               "targetCellWidth": 4,
               "targetCellHeight": 2,
               "maxResizeWidth": "600dp",
               "maxResizeHeight": "600dp",
               "resizeMode": "horizontal|vertical",
-              "description": "Live active gym set logger, routine tracker, and rest timer",
-              "updatePeriodMillis": 1800000
+              "description": "Live active gym set logger and routine tracker",
             }
           ]
         }
       ],
       "expo-quick-actions",
-      "expo-sqlite"
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#a599ff"
+        }
+      ]
     ],
     "extra": {
       "eas": {

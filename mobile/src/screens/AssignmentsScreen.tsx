@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   Keyboard,
   InteractionManager,
+  Switch,
 } from 'react-native';
 import AnimatedPressable from '../components/AnimatedPressable';
 import BottomSheet from '../components/ui/BottomSheet';
@@ -17,9 +18,11 @@ import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
-import type { Assignment } from '../contexts/MobileDataContext';
+import { usePlannerData } from '../contexts/domains/PlannerContext';
+import type { Assignment, CustomEvent, Task } from '../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -36,6 +39,7 @@ import * as Haptics from 'expo-haptics';
 
 // ─── Status Definitions & Themes ─────────────────────────────────────────────
 type AssignmentStatus = 'not_started' | 'in_progress' | 'submitted' | 'graded';
+type UrgencyTier = 'critical' | 'approaching' | 'safe' | 'completed' | 'overdue';
 
 const getStatusConfig = (isDark: boolean) => ({
   not_started: {
@@ -63,6 +67,83 @@ const getStatusConfig = (isDark: boolean) => ({
     icon: 'checkmark-circle-outline' as const,
   },
 });
+
+// ─── Dynamic Deadline Radar & Urgency Resolver ──────────────────────────────
+export function getDeadlineUrgency(dueDateStr: string, status: AssignmentStatus) {
+  if (status === 'submitted' || status === 'graded') {
+    return {
+      tier: 'completed' as UrgencyTier,
+      label: status === 'graded' ? 'Graded' : 'Submitted',
+      color: '#5eda9e',
+      bg: 'rgba(94, 218, 158, 0.08)',
+      borderColor: 'rgba(94, 218, 158, 0.22)',
+      icon: 'checkmark-circle' as const,
+      isCritical: false,
+    };
+  }
+
+  const due = parseLocalDateStr(dueDateStr);
+  due.setHours(23, 59, 59, 999);
+  const now = new Date();
+  const diffMs = due.getTime() - now.getTime();
+
+  if (diffMs < 0) {
+    const overdueDays = Math.max(1, Math.ceil(Math.abs(diffMs) / (1000 * 60 * 60 * 24)));
+    return {
+      tier: 'overdue' as UrgencyTier,
+      label: `Overdue (${overdueDays}d)`,
+      color: '#ff6961',
+      bg: 'rgba(255, 105, 97, 0.08)',
+      borderColor: 'rgba(255, 105, 97, 0.24)',
+      icon: 'alert-circle' as const,
+      isCritical: true,
+    };
+  }
+
+  const hoursLeft = diffMs / (1000 * 60 * 60);
+
+  // 🔴 Critical (< 24 hrs): Dynamic Live Countdown
+  if (hoursLeft <= 24) {
+    const h = Math.floor(hoursLeft);
+    const m = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    const countdown = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    return {
+      tier: 'critical' as UrgencyTier,
+      label: `${countdown} left`,
+      color: '#ff6961',
+      bg: 'rgba(255, 105, 97, 0.08)',
+      borderColor: 'rgba(255, 105, 97, 0.28)',
+      icon: 'flame' as const,
+      isCritical: true,
+    };
+  }
+
+  // 🟡 Approaching (< 3 days)
+  if (hoursLeft <= 72) {
+    const days = Math.ceil(hoursLeft / 24);
+    return {
+      tier: 'approaching' as UrgencyTier,
+      label: `${days}d left`,
+      color: '#ff9f4d',
+      bg: 'rgba(255, 159, 77, 0.08)',
+      borderColor: 'rgba(255, 159, 77, 0.22)',
+      icon: 'time-outline' as const,
+      isCritical: false,
+    };
+  }
+
+  // 🟢 Safe (> 3 days)
+  const days = Math.ceil(hoursLeft / 24);
+  return {
+    tier: 'safe' as const,
+    label: `${days}d left`,
+    color: '#5eda9e',
+    bg: 'rgba(94, 218, 158, 0.06)',
+    borderColor: 'rgba(94, 218, 158, 0.16)',
+    icon: 'calendar-outline' as const,
+    isCritical: false,
+  };
+}
 
 // ─── Timezone-Safe Date Helpers ───────────────────────────────────────────────
 /** Safely parses YYYY-MM-DD string into a local Date without UTC midnight shifts */
@@ -134,7 +215,8 @@ export default function AssignmentsScreen() {
     optimisticUpdateAssignment,
     optimisticDeleteAssignment,
   } = useAcademicData();
-  const { user } = useCoreData();
+  const { user, optimisticAddTask } = useCoreData();
+  const { optimisticAddEvent } = usePlannerData();
 
   useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
@@ -147,8 +229,9 @@ export default function AssignmentsScreen() {
   const psiCtx = useMemo(() => ({ assignments: assignments as any[] }), [assignments]);
   const { surfaceMessage, surfaceActionLabel, dismissBanner } = useSaraSurface('Assignments', psiCtx as any, user?.uid);
 
-  // Filters & Search
+  // Filters, Radar & Search
   const [filter, setFilter] = useState<'all' | AssignmentStatus>('all');
+  const [radarFilter, setRadarFilter] = useState<'all' | 'critical' | 'approaching' | 'safe'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modal Form State
@@ -166,6 +249,7 @@ export default function AssignmentsScreen() {
   const [obtainedMarks, setObtainedMarks] = useState('');
   const [grade, setGrade] = useState('');
   const [showMarksFields, setShowMarksFields] = useState(false);
+  const [syncToCalendarAndTasks, setSyncToCalendarAndTasks] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const titleInputRef = useRef<TextInput>(null);
@@ -180,6 +264,7 @@ export default function AssignmentsScreen() {
     setObtainedMarks('');
     setGrade('');
     setShowMarksFields(false);
+    setSyncToCalendarAndTasks(true);
     setEditingId(null);
     setSaving(false);
   }, [attendance]);
@@ -203,6 +288,7 @@ export default function AssignmentsScreen() {
     setObtainedMarks(a.obtainedMarks !== undefined ? String(a.obtainedMarks) : '');
     setGrade(a.grade || '');
     setShowMarksFields(a.maxMarks !== undefined || a.obtainedMarks !== undefined || !!a.grade || a.status === 'graded');
+    setSyncToCalendarAndTasks(false);
     setModalVisible(true);
   }, []);
 
@@ -213,7 +299,7 @@ export default function AssignmentsScreen() {
     setDueDate(d);
   }, []);
 
-  // 0ms Optimistic Save with Background SafeWrite
+  // 0ms Optimistic Save with Background SafeWrite + Ecosystem Sync
   const handleSave = useCallback(async () => {
     const finalTitle = title.trim();
     if (!finalTitle) {
@@ -278,7 +364,7 @@ export default function AssignmentsScreen() {
       setModalVisible(false);
       resetForm();
 
-      // 2. Background Firestore Sync
+      // 2. Background Firestore Sync for Assignment
       safeWrite(
         () => setDoc(doc(db, COLLECTION.ASSIGNMENTS, newId), newAssignment),
         COLLECTION.ASSIGNMENTS,
@@ -286,6 +372,83 @@ export default function AssignmentsScreen() {
         newAssignment,
         newId
       ).catch(handleSyncError);
+
+      // 3. 1-Tap Sync to Calendar & Tasks (if toggle enabled)
+      if (syncToCalendarAndTasks) {
+        // A. Calendar Deadline Event
+        const eventId = `ev_${newId}`;
+        const eventData: CustomEvent = {
+          id: eventId,
+          userId: user.uid,
+          title: `📋 ${finalTitle} (${finalSubject})`,
+          date: dueDateStr,
+          type: 'assignment_due',
+          description: `Assignment Deadline: ${finalTitle} for ${finalSubject}.${notes.trim() ? '\n' + notes.trim() : ''}`,
+        };
+        optimisticAddEvent(eventData);
+        safeWrite(
+          () => setDoc(doc(db, COLLECTION.CALENDAR_EVENTS, eventId), eventData),
+          COLLECTION.CALENDAR_EVENTS,
+          'set',
+          eventData,
+          eventId
+        ).catch(handleSyncError);
+
+        // B. High-Priority Task
+        const taskId = `task_${newId}`;
+        const taskData: Task = {
+          id: taskId,
+          userId: user.uid,
+          title: `Complete: ${finalTitle}`,
+          priority: 'high',
+          status: 'pending',
+          date: dueDateStr,
+          timeSlot: '23:59',
+          isReminder: true,
+          tags: ['Assignment', finalSubject],
+        };
+        optimisticAddTask(taskData);
+        safeWrite(
+          () => setDoc(doc(db, COLLECTION.TASKS, taskId), taskData),
+          COLLECTION.TASKS,
+          'set',
+          taskData,
+          taskId
+        ).catch(handleSyncError);
+
+        // C. Schedule 24h & 2h Push Notifications
+        try {
+          const dueDateTime = parseLocalDateStr(dueDateStr);
+          dueDateTime.setHours(23, 59, 0, 0);
+          const nowMs = Date.now();
+
+          // 24 Hours Alert
+          const t24 = dueDateTime.getTime() - 24 * 60 * 60 * 1000;
+          if (t24 > nowMs) {
+            Notifications.scheduleNotificationAsync({
+              content: {
+                title: `Kal Deadline Hai: ${finalTitle}! 🚨`,
+                body: `Don't forget to submit your ${finalSubject} assignment on time.`,
+                data: { type: 'assignment_24h', assignmentId: newId },
+              },
+              trigger: { type: 'date', date: new Date(t24) } as any,
+            }).catch(() => {});
+          }
+
+          // 2 Hours Alert
+          const t2 = dueDateTime.getTime() - 2 * 60 * 60 * 1000;
+          if (t2 > nowMs) {
+            Notifications.scheduleNotificationAsync({
+              content: {
+                title: `Final 2 Hours: ${finalTitle} Due Soon! ⏰`,
+                body: `Submit your ${finalSubject} assignment before the portal closes.`,
+                data: { type: 'assignment_2h', assignmentId: newId },
+              },
+              trigger: { type: 'date', date: new Date(t2) } as any,
+            }).catch(() => {});
+          }
+        } catch {}
+      }
 
       awardXP('TASK_COMPLETE').catch(() => {});
     }
@@ -300,8 +463,11 @@ export default function AssignmentsScreen() {
     status,
     notes,
     editingId,
+    syncToCalendarAndTasks,
     optimisticUpdateAssignment,
     optimisticAddAssignment,
+    optimisticAddEvent,
+    optimisticAddTask,
     resetForm,
   ]);
 
@@ -345,8 +511,8 @@ export default function AssignmentsScreen() {
     ]);
   }, [optimisticDeleteAssignment]);
 
-  // Filter & Search Aggregation
-  const { filteredList, counts } = useMemo(() => {
+  // Filter, Radar & Search Aggregation
+  const { filteredList, counts, radarStats } = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const all = assignments || [];
 
@@ -358,14 +524,46 @@ export default function AssignmentsScreen() {
       graded: 0,
     };
 
+    const radar = {
+      critical: 0,
+      approaching: 0,
+      safe: 0,
+      completed: 0,
+    };
+
     all.forEach((a) => {
       if (stats[a.status] !== undefined) stats[a.status]++;
+      const urgency = getDeadlineUrgency(a.dueDate, a.status);
+      if (urgency.tier === 'critical' || urgency.tier === 'overdue') {
+        radar.critical++;
+      } else if (urgency.tier === 'approaching') {
+        radar.approaching++;
+      } else if (urgency.tier === 'safe') {
+        radar.safe++;
+      } else if (urgency.tier === 'completed') {
+        radar.completed++;
+      }
     });
 
     let result = all;
+
+    // Status filter
     if (filter !== 'all') {
       result = result.filter((a) => a.status === filter);
     }
+
+    // Radar urgency filter
+    if (radarFilter !== 'all') {
+      result = result.filter((a) => {
+        const u = getDeadlineUrgency(a.dueDate, a.status);
+        if (radarFilter === 'critical') return u.tier === 'critical' || u.tier === 'overdue';
+        if (radarFilter === 'approaching') return u.tier === 'approaching';
+        if (radarFilter === 'safe') return u.tier === 'safe';
+        return true;
+      });
+    }
+
+    // Search query
     if (q) {
       result = result.filter(
         (a) =>
@@ -376,8 +574,8 @@ export default function AssignmentsScreen() {
     }
 
     result.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
-    return { filteredList: result, counts: stats };
-  }, [assignments, filter, searchQuery]);
+    return { filteredList: result, counts: stats, radarStats: radar };
+  }, [assignments, filter, radarFilter, searchQuery]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
@@ -401,6 +599,147 @@ export default function AssignmentsScreen() {
           <Ionicons name="add" size={22} color={isDark ? '#000000' : '#FFFFFF'} />
           <Text style={styles.headerAddBtnText}>New</Text>
         </AnimatedPressable>
+      </View>
+
+      {/* Dynamic Deadline Radar Urgency Strip */}
+      <View style={styles.radarContainer}>
+        <View style={styles.radarHeaderRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <Ionicons name="radio-outline" size={12} color={colors.accentPrimary} />
+            <Text style={styles.radarTitle}>DEADLINE RADAR</Text>
+          </View>
+          {radarFilter !== 'all' ? (
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setRadarFilter('all');
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.radarResetText}>Reset Filter</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.radarSubText}>Active urgency tracker</Text>
+          )}
+        </View>
+
+        <View style={styles.radarChipsRow}>
+          {/* Critical Pill */}
+          <AnimatedPressable
+            style={[
+              styles.radarChip,
+              radarFilter === 'critical' && styles.radarChipActive,
+            ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setRadarFilter((prev) => (prev === 'critical' ? 'all' : 'critical'));
+            }}
+          >
+            <View style={[styles.radarDot, { backgroundColor: '#ff6961' }]} />
+            <Text
+              style={[
+                styles.radarChipLabel,
+                radarFilter === 'critical' && styles.radarChipLabelActive,
+              ]}
+              numberOfLines={1}
+            >
+              &lt;24h Critical
+            </Text>
+            <View
+              style={[
+                styles.radarCountBadge,
+                radarStats.critical > 0 && styles.radarCountBadgeCritical,
+                radarFilter === 'critical' && styles.radarCountBadgeActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.radarCountText,
+                  radarStats.critical > 0 && styles.radarCountTextCritical,
+                  radarFilter === 'critical' && styles.radarCountTextActive,
+                ]}
+              >
+                {radarStats.critical}
+              </Text>
+            </View>
+          </AnimatedPressable>
+
+          {/* Approaching Pill */}
+          <AnimatedPressable
+            style={[
+              styles.radarChip,
+              radarFilter === 'approaching' && styles.radarChipActive,
+            ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setRadarFilter((prev) => (prev === 'approaching' ? 'all' : 'approaching'));
+            }}
+          >
+            <View style={[styles.radarDot, { backgroundColor: '#ff9f4d' }]} />
+            <Text
+              style={[
+                styles.radarChipLabel,
+                radarFilter === 'approaching' && styles.radarChipLabelActive,
+              ]}
+              numberOfLines={1}
+            >
+              &lt;3 Days
+            </Text>
+            <View
+              style={[
+                styles.radarCountBadge,
+                radarFilter === 'approaching' && styles.radarCountBadgeActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.radarCountText,
+                  radarFilter === 'approaching' && styles.radarCountTextActive,
+                ]}
+              >
+                {radarStats.approaching}
+              </Text>
+            </View>
+          </AnimatedPressable>
+
+          {/* Safe Pill */}
+          <AnimatedPressable
+            style={[
+              styles.radarChip,
+              radarFilter === 'safe' && styles.radarChipActive,
+            ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setRadarFilter((prev) => (prev === 'safe' ? 'all' : 'safe'));
+            }}
+          >
+            <View style={[styles.radarDot, { backgroundColor: '#5eda9e' }]} />
+            <Text
+              style={[
+                styles.radarChipLabel,
+                radarFilter === 'safe' && styles.radarChipLabelActive,
+              ]}
+              numberOfLines={1}
+            >
+              &gt;3 Days
+            </Text>
+            <View
+              style={[
+                styles.radarCountBadge,
+                radarFilter === 'safe' && styles.radarCountBadgeActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.radarCountText,
+                  radarFilter === 'safe' && styles.radarCountTextActive,
+                ]}
+              >
+                {radarStats.safe}
+              </Text>
+            </View>
+          </AnimatedPressable>
+        </View>
       </View>
 
       {/* Search Input Bar */}
@@ -460,34 +799,18 @@ export default function AssignmentsScreen() {
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => {
           const conf = statusConfig[item.status] || statusConfig.not_started;
-          const daysLeft = getDaysUntilDue(item.dueDate);
-          let urgencyColor = colors.textMuted;
-          let urgencyText = '';
-
-          if (item.status === 'submitted' || item.status === 'graded') {
-            urgencyText = item.status === 'graded' ? 'Graded' : 'Submitted';
-            urgencyColor = colors.accentGreen || '#10B981';
-          } else if (daysLeft < 0) {
-            urgencyColor = colors.error || '#EF4444';
-            urgencyText = `Overdue by ${Math.abs(daysLeft)}d`;
-          } else if (daysLeft === 0) {
-            urgencyColor = colors.accentAmber || '#F59E0B';
-            urgencyText = 'Due Today';
-          } else if (daysLeft <= 3) {
-            urgencyColor = colors.accentAmber || '#F59E0B';
-            urgencyText = `${daysLeft}d left`;
-          } else {
-            urgencyColor = colors.accentGreen || '#10B981';
-            urgencyText = `${daysLeft}d left`;
-          }
+          const urgency = getDeadlineUrgency(item.dueDate, item.status);
 
           return (
             <AnimatedPressable
-              style={styles.card}
+              style={[
+                styles.card,
+                urgency.isCritical && styles.cardCriticalBorder,
+              ]}
               onPress={() => openEdit(item)}
               onLongPress={() => confirmDelete(item.id!, item.title)}
             >
-              {/* Top Row: Subject & Due Date */}
+              {/* Top Row: Subject & Dynamic Urgency Radar */}
               <View style={styles.cardTopRow}>
                 <View style={styles.subjectBadge}>
                   <View style={styles.subjectDot} />
@@ -496,12 +819,11 @@ export default function AssignmentsScreen() {
                   </Text>
                 </View>
 
-                <View style={styles.urgencyBadge}>
-                  <Text style={[styles.urgencyText, { color: urgencyColor }]}>
-                    {urgencyText}
-                  </Text>
-                  <Text style={styles.dueDateText}>
-                    • {formatDDMMYYYY(item.dueDate)}
+                {/* Urgency Pulse Glow Pill */}
+                <View style={[styles.urgencyPill, { backgroundColor: urgency.bg, borderColor: urgency.borderColor }]}>
+                  <Ionicons name={urgency.icon} size={12} color={urgency.color} style={{ marginRight: 3 }} />
+                  <Text style={[styles.urgencyText, { color: urgency.color }]}>
+                    {urgency.label}
                   </Text>
                 </View>
               </View>
@@ -529,7 +851,12 @@ export default function AssignmentsScreen() {
                     </Text>
                   </View>
                 ) : (
-                  <View style={{ flex: 1 }} />
+                  <View style={styles.dueDateBadge}>
+                    <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
+                    <Text style={styles.dueDateText}>
+                      {formatDDMMYYYY(item.dueDate)}
+                    </Text>
+                  </View>
                 )}
 
                 {/* Direct Tap to Cycle Status */}
@@ -550,8 +877,8 @@ export default function AssignmentsScreen() {
         ListEmptyComponent={
           <EmptyState
             mascot="idle"
-            title={searchQuery ? 'No matching assignments' : 'All caught up!'}
-            subtitle={searchQuery ? 'Try clearing your search or filter.' : 'Tap + to track your upcoming assignment.'}
+            title={searchQuery || radarFilter !== 'all' ? 'No matching assignments' : 'All caught up!'}
+            subtitle={searchQuery || radarFilter !== 'all' ? 'Try clearing your search or radar filter.' : 'Tap + to track your upcoming assignment.'}
           />
         }
       />
@@ -563,7 +890,11 @@ export default function AssignmentsScreen() {
 
       {/* Add / Edit Assignment Sheet */}
       {modalVisible && (
-        <BottomSheet visible={modalVisible} onClose={() => setModalVisible(false)}>
+        <BottomSheet
+          visible={modalVisible}
+          onClose={() => setModalVisible(false)}
+          contentStyle={{ paddingHorizontal: 10, maxHeight: '94%' }}
+        >
           <View style={styles.sheetContainer}>
             {/* Modal Header */}
             <View style={styles.sheetHeader}>
@@ -580,210 +911,264 @@ export default function AssignmentsScreen() {
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 style={styles.sheetCloseBtn}
               >
-                <Ionicons name="close" size={22} color={colors.textPrimary} />
+                <Ionicons name="close" size={18} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
             <ScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              style={{ flexShrink: 1 }}
               contentContainerStyle={styles.sheetScrollBody}
             >
               {/* 1. Title Input */}
-              <Text style={styles.inputLabel}>ASSIGNMENT TITLE *</Text>
-              <TextInput
-                ref={titleInputRef}
-                style={styles.textInput}
-                placeholder="e.g. Computer Networks Lab 3 Report"
-                placeholderTextColor={colors.textMuted}
-                value={title}
-                onChangeText={setTitle}
-                autoCapitalize="sentences"
-                returnKeyType="next"
-              />
+              <View style={styles.formSection}>
+                <View style={styles.inputLabelRow}>
+                  <Ionicons name="document-text-outline" size={12} color={colors.accentPrimary} />
+                  <Text style={styles.inputLabel}>ASSIGNMENT TITLE *</Text>
+                </View>
+                <TextInput
+                  ref={titleInputRef}
+                  style={styles.textInput}
+                  placeholder="e.g. Computer Networks Lab 3 Report"
+                  placeholderTextColor={colors.textMuted}
+                  value={title}
+                  onChangeText={setTitle}
+                  autoCapitalize="sentences"
+                  returnKeyType="next"
+                />
+              </View>
 
               {/* 2. Course / Subject Selection + Custom Input */}
-              <Text style={styles.inputLabel}>COURSE / SUBJECT</Text>
-              {attendance && attendance.length > 0 && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.subjectChipsRow}>
-                  {attendance.map((sub) => {
-                    const isSelected = subjectName.trim().toLowerCase() === sub.name.trim().toLowerCase();
+              <View style={styles.formSection}>
+                <View style={styles.inputLabelRow}>
+                  <Ionicons name="school-outline" size={12} color={colors.accentPrimary} />
+                  <Text style={styles.inputLabel}>COURSE / SUBJECT</Text>
+                </View>
+                {attendance && attendance.length > 0 && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.subjectChipsRow}>
+                    {attendance.map((sub) => {
+                      const isSelected = subjectName.trim().toLowerCase() === sub.name.trim().toLowerCase();
+                      return (
+                        <TouchableOpacity
+                          key={sub.id}
+                          style={[styles.subjectChip, isSelected && styles.subjectChipActive]}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            setSubjectName(sub.name);
+                          }}
+                        >
+                          <View style={[styles.subjectChipDot, isSelected && { backgroundColor: isDark ? '#000' : '#FFF' }]} />
+                          <Text style={[styles.subjectChipText, isSelected && styles.subjectChipTextActive]}>
+                            {sub.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                )}
+                <TextInput
+                  style={[styles.textInput, { marginTop: 4 }]}
+                  placeholder="Type or edit custom subject name..."
+                  placeholderTextColor={colors.textMuted}
+                  value={subjectName}
+                  onChangeText={setSubjectName}
+                  autoCapitalize="words"
+                />
+              </View>
+
+              {/* 3. Due Date & Quick Selectors */}
+              <View style={styles.formSection}>
+                <View style={styles.inputLabelRow}>
+                  <Ionicons name="calendar-outline" size={12} color={colors.accentPrimary} />
+                  <Text style={styles.inputLabel}>DUE DATE</Text>
+                </View>
+                <View style={styles.datePresetsRow}>
+                  {[
+                    { label: 'Today', days: 0 },
+                    { label: 'Tomorrow', days: 1 },
+                    { label: '3 Days', days: 3 },
+                    { label: '1 Week', days: 7 },
+                    { label: '2 Weeks', days: 14 },
+                  ].map((preset) => (
+                    <TouchableOpacity
+                      key={preset.label}
+                      style={styles.datePresetPill}
+                      onPress={() => setQuickDate(preset.days)}
+                    >
+                      <Text style={styles.datePresetText}>{preset.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowPicker(true)}>
+                  <Ionicons name="calendar" size={15} color={colors.accentPrimary} style={{ marginRight: 6 }} />
+                  <Text style={styles.datePickerBtnText}>
+                    {formatDisplayDate(dueDate)} ({formatDDMMYYYY(dueDate)})
+                  </Text>
+                  <Ionicons name="chevron-forward" size={13} color={colors.textMuted} style={{ marginLeft: 'auto' }} />
+                </TouchableOpacity>
+
+                {showPicker && (
+                  <DateTimePicker
+                    value={dueDate}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_, selectedDate) => {
+                      setShowPicker(Platform.OS === 'ios');
+                      if (selectedDate) setDueDate(selectedDate);
+                    }}
+                  />
+                )}
+              </View>
+
+              {/* 4. Status Segmented Buttons */}
+              <View style={styles.formSection}>
+                <View style={styles.inputLabelRow}>
+                  <Ionicons name="flag-outline" size={12} color={colors.accentPrimary} />
+                  <Text style={styles.inputLabel}>STATUS</Text>
+                </View>
+                <View style={styles.statusGrid}>
+                  {(['not_started', 'in_progress', 'submitted', 'graded'] as const).map((k) => {
+                    const conf = statusConfig[k];
+                    const isSelected = status === k;
                     return (
                       <TouchableOpacity
-                        key={sub.id}
-                        style={[styles.subjectChip, isSelected && styles.subjectChipActive]}
+                        key={k}
+                        style={[
+                          styles.statusSelectChip,
+                          isSelected && { backgroundColor: conf.color, borderColor: conf.color },
+                        ]}
                         onPress={() => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          setSubjectName(sub.name);
+                          setStatus(k);
+                          if (k === 'graded') setShowMarksFields(true);
                         }}
                       >
-                        <View style={[styles.subjectChipDot, isSelected && { backgroundColor: isDark ? '#000' : '#FFF' }]} />
-                        <Text style={[styles.subjectChipText, isSelected && styles.subjectChipTextActive]}>
-                          {sub.name}
+                        <Ionicons
+                          name={conf.icon}
+                          size={13}
+                          color={isSelected ? '#FFFFFF' : conf.color}
+                          style={{ marginRight: 4 }}
+                        />
+                        <Text style={[styles.statusSelectText, isSelected && { color: '#FFFFFF', fontWeight: 'bold' }]}>
+                          {conf.label}
                         </Text>
                       </TouchableOpacity>
                     );
                   })}
-                </ScrollView>
-              )}
-              <TextInput
-                style={[styles.textInput, { marginTop: 6 }]}
-                placeholder="Type or edit custom subject name..."
-                placeholderTextColor={colors.textMuted}
-                value={subjectName}
-                onChangeText={setSubjectName}
-                autoCapitalize="words"
-              />
+                </View>
 
-              {/* 3. Due Date & Quick Selectors */}
-              <Text style={styles.inputLabel}>DUE DATE</Text>
-              <View style={styles.datePresetsRow}>
-                {[
-                  { label: 'Today', days: 0 },
-                  { label: 'Tomorrow', days: 1 },
-                  { label: '3 Days', days: 3 },
-                  { label: '1 Week', days: 7 },
-                  { label: '2 Weeks', days: 14 },
-                ].map((preset) => (
-                  <TouchableOpacity
-                    key={preset.label}
-                    style={styles.datePresetPill}
-                    onPress={() => setQuickDate(preset.days)}
-                  >
-                    <Text style={styles.datePresetText}>{preset.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+                {/* Marks / Grading Section Toggle */}
+                <TouchableOpacity
+                  style={styles.toggleMarksBtn}
+                  onPress={() => setShowMarksFields((v) => !v)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={showMarksFields ? 'chevron-up-circle' : 'add-circle-outline'}
+                    size={15}
+                    color={colors.accentPrimary}
+                  />
+                  <Text style={styles.toggleMarksText}>
+                    {showMarksFields ? 'Hide Marks & Grade details' : 'Add Marks, Max Marks, or Grade'}
+                  </Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowPicker(true)}>
-                <Ionicons name="calendar-outline" size={18} color={colors.accentPrimary} style={{ marginRight: 8 }} />
-                <Text style={styles.datePickerBtnText}>
-                  {formatDisplayDate(dueDate)} ({formatDDMMYYYY(dueDate)})
-                </Text>
-              </TouchableOpacity>
-
-              {showPicker && (
-                <DateTimePicker
-                  value={dueDate}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_, selectedDate) => {
-                    setShowPicker(Platform.OS === 'ios');
-                    if (selectedDate) setDueDate(selectedDate);
-                  }}
-                />
-              )}
-
-              {/* 4. Status Segmented Buttons */}
-              <Text style={styles.inputLabel}>STATUS</Text>
-              <View style={styles.statusGrid}>
-                {(['not_started', 'in_progress', 'submitted', 'graded'] as const).map((k) => {
-                  const conf = statusConfig[k];
-                  const isSelected = status === k;
-                  return (
-                    <TouchableOpacity
-                      key={k}
-                      style={[
-                        styles.statusSelectChip,
-                        isSelected && { backgroundColor: conf.color, borderColor: conf.color },
-                      ]}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setStatus(k);
-                        if (k === 'graded') setShowMarksFields(true);
-                      }}
-                    >
-                      <Ionicons
-                        name={conf.icon}
-                        size={15}
-                        color={isSelected ? '#FFFFFF' : conf.color}
-                        style={{ marginRight: 4 }}
+                {showMarksFields && (
+                  <View style={styles.marksInputRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.subInputLabel}>OBTAINED</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="e.g. 85"
+                        placeholderTextColor={colors.textMuted}
+                        keyboardType="numeric"
+                        value={obtainedMarks}
+                        onChangeText={setObtainedMarks}
                       />
-                      <Text style={[styles.statusSelectText, isSelected && { color: '#FFFFFF', fontWeight: 'bold' }]}>
-                        {conf.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.subInputLabel}>MAX MARKS</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="e.g. 100"
+                        placeholderTextColor={colors.textMuted}
+                        keyboardType="numeric"
+                        value={maxMarks}
+                        onChangeText={setMaxMarks}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.subInputLabel}>GRADE</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="e.g. A+"
+                        placeholderTextColor={colors.textMuted}
+                        autoCapitalize="characters"
+                        value={grade}
+                        onChangeText={setGrade}
+                      />
+                    </View>
+                  </View>
+                )}
               </View>
 
-              {/* 5. Marks / Grading Section Toggle */}
-              <TouchableOpacity
-                style={styles.toggleMarksBtn}
-                onPress={() => setShowMarksFields((v) => !v)}
-              >
-                <Ionicons
-                  name={showMarksFields ? 'chevron-up-circle-outline' : 'add-circle-outline'}
-                  size={16}
-                  color={colors.accentPrimary}
-                />
-                <Text style={styles.toggleMarksText}>
-                  {showMarksFields ? 'Hide Marks & Grade details' : 'Add Marks, Max Marks, or Grade'}
-                </Text>
-              </TouchableOpacity>
-
-              {showMarksFields && (
-                <View style={styles.marksInputRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.subInputLabel}>OBTAINED</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      placeholder="e.g. 85"
-                      placeholderTextColor={colors.textMuted}
-                      keyboardType="numeric"
-                      value={obtainedMarks}
-                      onChangeText={setObtainedMarks}
-                    />
+              {/* 5. 1-Tap Sync to Calendar & Tasks Feature */}
+              {!editingId && (
+                <View style={styles.syncCard}>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                      <Ionicons name="sparkles" size={13} color={colors.accentPrimary} />
+                      <Text style={styles.syncCardTitle}>1-Tap Sync to Calendar & Tasks</Text>
+                    </View>
+                    <Text style={styles.syncCardSub}>
+                      Creates calendar deadline event + high-priority task with 24h & 2h alerts
+                    </Text>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.subInputLabel}>MAX MARKS</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      placeholder="e.g. 100"
-                      placeholderTextColor={colors.textMuted}
-                      keyboardType="numeric"
-                      value={maxMarks}
-                      onChangeText={setMaxMarks}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.subInputLabel}>GRADE</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      placeholder="e.g. A+"
-                      placeholderTextColor={colors.textMuted}
-                      autoCapitalize="characters"
-                      value={grade}
-                      onChangeText={setGrade}
-                    />
-                  </View>
+                  <Switch
+                    value={syncToCalendarAndTasks}
+                    onValueChange={(val) => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setSyncToCalendarAndTasks(val);
+                    }}
+                    trackColor={{ false: isDark ? '#333338' : '#CBD5E1', true: colors.accentPrimary }}
+                    thumbColor="#FFFFFF"
+                  />
                 </View>
               )}
 
               {/* 6. Notes / Rubric / Submission Link */}
-              <Text style={styles.inputLabel}>NOTES / RUBRIC / SUBMISSION LINK</Text>
-              <TextInput
-                style={styles.notesAreaInput}
-                placeholder="Add assignment rubric, drive links, instructions, or notes..."
-                placeholderTextColor={colors.textMuted}
-                multiline
-                value={notes}
-                onChangeText={setNotes}
-                autoCapitalize="sentences"
-              />
+              <View style={styles.formSection}>
+                <View style={styles.inputLabelRow}>
+                  <Ionicons name="clipboard-outline" size={12} color={colors.accentPrimary} />
+                  <Text style={styles.inputLabel}>NOTES / RUBRIC / SUBMISSION LINK</Text>
+                </View>
+                <TextInput
+                  style={styles.notesAreaInput}
+                  placeholder="Add assignment rubric, drive links, instructions, or notes..."
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  value={notes}
+                  onChangeText={setNotes}
+                  autoCapitalize="sentences"
+                />
+              </View>
+            </ScrollView>
 
-              {/* 7. Save Action Button */}
+            {/* 7. Sticky Pinned Save Action Button */}
+            <View style={styles.sheetFooter}>
               <AnimatedPressable
                 style={[styles.saveButton, saving && { opacity: 0.6 }]}
                 onPress={handleSave}
                 disabled={saving}
               >
-                <Ionicons name="checkmark-circle" size={20} color={isDark ? '#000000' : '#FFFFFF'} style={{ marginRight: 6 }} />
+                <Ionicons name="checkmark-circle" size={17} color={isDark ? '#000000' : '#FFFFFF'} style={{ marginRight: 6 }} />
                 <Text style={styles.saveButtonText}>
                   {saving ? 'Saving...' : editingId ? 'Update Assignment' : 'Save Assignment (+50 XP)'}
                 </Text>
               </AnimatedPressable>
-            </ScrollView>
+            </View>
           </View>
         </BottomSheet>
       )}
@@ -802,7 +1187,7 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: SPACE.xl,
+      paddingHorizontal: 8,
       paddingTop: SPACE.sm,
       paddingBottom: SPACE.xs,
     },
@@ -835,12 +1220,109 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       color: isDark ? '#000000' : '#FFFFFF',
     },
 
+    // Dynamic Deadline Radar Strip
+    radarContainer: {
+      marginHorizontal: 5,
+      marginTop: 2,
+      marginBottom: 6,
+      paddingHorizontal: 6,
+      paddingVertical: 7,
+      borderRadius: RADIUS.md,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#FFFFFF',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0',
+    },
+    radarHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+      paddingHorizontal: 2,
+    },
+    radarTitle: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 9.5,
+      letterSpacing: 1.1,
+      color: isDark ? colors.textMuted : colors.textSecondary,
+    },
+    radarSubText: {
+      fontFamily: FONT_FAMILY.body,
+      fontSize: 10,
+      color: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)',
+    },
+    radarResetText: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 10.5,
+      color: colors.accentPrimary,
+    },
+    radarChipsRow: {
+      flexDirection: 'row',
+      gap: 4,
+    },
+    radarChip: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 3.5,
+      paddingVertical: 6,
+      paddingHorizontal: 2,
+      borderRadius: RADIUS.sm,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0',
+    },
+    radarChipActive: {
+      backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
+      borderColor: colors.accentPrimary,
+    },
+    radarDot: {
+      width: 5,
+      height: 5,
+      borderRadius: 2.5,
+    },
+    radarChipLabel: {
+      fontFamily: FONT_FAMILY.medium,
+      fontSize: 10.5,
+      color: isDark ? colors.textMuted : colors.textSecondary,
+    },
+    radarChipLabelActive: {
+      fontFamily: FONT_FAMILY.bold,
+      color: colors.accentPrimary,
+    },
+    radarCountBadge: {
+      paddingHorizontal: 5,
+      paddingVertical: 0.5,
+      borderRadius: RADIUS.full,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+      minWidth: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    radarCountBadgeCritical: {
+      backgroundColor: isDark ? 'rgba(255,105,97,0.16)' : 'rgba(255,105,97,0.10)',
+    },
+    radarCountBadgeActive: {
+      backgroundColor: colors.accentPrimary,
+    },
+    radarCountText: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 9.5,
+      color: isDark ? colors.textMuted : colors.textSecondary,
+    },
+    radarCountTextCritical: {
+      color: colors.error || '#ff6961',
+    },
+    radarCountTextActive: {
+      color: isDark ? '#000000' : '#FFFFFF',
+    },
+
     // Search
     searchBar: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginHorizontal: SPACE.xl,
-      marginTop: SPACE.sm,
+      marginHorizontal: 5,
+      marginTop: 4,
       marginBottom: SPACE.xs,
       backgroundColor: isDark ? colors.surface2 : '#F1F5F9',
       borderRadius: RADIUS.md,
@@ -861,8 +1343,8 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       marginVertical: SPACE.xs,
     },
     filterScrollContent: {
-      paddingHorizontal: SPACE.xl,
-      gap: 8,
+      paddingHorizontal: 5,
+      gap: 6,
     },
     filterChip: {
       flexDirection: 'row',
@@ -908,10 +1390,10 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
 
     // List & Cards
     listContent: {
-      paddingHorizontal: SPACE.xl,
+      paddingHorizontal: 5,
       paddingTop: SPACE.sm,
       paddingBottom: 110,
-      gap: 12,
+      gap: 10,
     },
     card: {
       backgroundColor: isDark ? colors.surface : '#FFFFFF',
@@ -920,6 +1402,10 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
       ...SHADOW.sm,
+    },
+    cardCriticalBorder: {
+      borderColor: isDark ? 'rgba(255, 105, 97, 0.3)' : 'rgba(255, 105, 97, 0.25)',
+      backgroundColor: isDark ? 'rgba(255, 105, 97, 0.02)' : '#FFFFFF',
     },
     cardTopRow: {
       flexDirection: 'row',
@@ -935,12 +1421,12 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       paddingHorizontal: 8,
       paddingVertical: 3,
       borderRadius: RADIUS.sm,
-      maxWidth: '55%',
+      maxWidth: '52%',
     },
     subjectDot: {
       width: 5,
       height: 5,
-      borderRadius: 3,
+      borderRadius: 2.5,
       backgroundColor: colors.accentPrimary,
     },
     subjectText: {
@@ -948,19 +1434,27 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       fontSize: 11,
       color: colors.accentPrimary,
     },
-    urgencyBadge: {
+    urgencyPill: {
       flexDirection: 'row',
       alignItems: 'center',
+      paddingHorizontal: 7,
+      paddingVertical: 2.5,
+      borderRadius: RADIUS.full,
+      borderWidth: 1,
     },
     urgencyText: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 11,
+      fontSize: 10,
+    },
+    dueDateBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
     },
     dueDateText: {
       fontFamily: FONT_FAMILY.body,
       fontSize: 11,
       color: colors.textMuted,
-      marginLeft: 4,
     },
 
     cardTitle: {
@@ -1026,106 +1520,140 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       elevation: 6,
     },
 
+    // 1-Tap Sync Card
+    syncCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+      borderRadius: RADIUS.md,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      marginBottom: 2,
+    },
+    syncCardTitle: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 11.5,
+      color: colors.textPrimary,
+    },
+    syncCardSub: {
+      fontFamily: FONT_FAMILY.body,
+      fontSize: 10,
+      color: colors.textMuted,
+      marginTop: 2,
+      lineHeight: 14,
+    },
+
     // Sheet Modal Layout
     sheetContainer: {
-      paddingHorizontal: 4,
+      paddingHorizontal: 2,
     },
     sheetHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: 14,
       paddingBottom: 10,
-      borderBottomWidth: 1,
+      marginBottom: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
     },
     sheetTitle: {
-      fontFamily: FONT_FAMILY.title,
-      fontSize: 20,
-      fontWeight: 'bold',
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 17,
+      letterSpacing: -0.2,
       color: colors.textPrimary,
     },
     sheetSubtitle: {
       fontFamily: FONT_FAMILY.body,
-      fontSize: 12,
+      fontSize: 11.5,
       color: colors.textMuted,
-      marginTop: 2,
+      marginTop: 1,
     },
     sheetCloseBtn: {
-      padding: 6,
+      padding: 5,
       backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
       borderRadius: RADIUS.full,
     },
     sheetScrollBody: {
-      paddingBottom: 40,
+      paddingBottom: 10,
+      gap: 10,
     },
 
-    // Inputs
+    // Form Sections
+    formSection: {
+      width: '100%',
+    },
+    inputLabelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4.5,
+      marginBottom: 4,
+    },
     inputLabel: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 11,
+      fontSize: 10,
       color: isDark ? colors.textMuted : colors.textSecondary,
-      letterSpacing: 1,
-      marginBottom: 6,
-      marginTop: 12,
+      letterSpacing: 0.6,
     },
     subInputLabel: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 10,
+      fontSize: 9,
       color: colors.textMuted,
-      letterSpacing: 0.8,
-      marginBottom: 4,
+      letterSpacing: 0.6,
+      marginBottom: 3,
     },
     textInput: {
-      backgroundColor: isDark ? colors.surface2 : '#F8FAFC',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
       borderRadius: RADIUS.md,
       paddingHorizontal: 12,
-      paddingVertical: 10,
-      color: colors.textPrimary,
-      fontFamily: FONT_FAMILY.body,
-      fontSize: 14,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1',
-    },
-    notesAreaInput: {
-      backgroundColor: isDark ? colors.surface2 : '#F8FAFC',
-      borderRadius: RADIUS.md,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
+      paddingVertical: 9,
       color: colors.textPrimary,
       fontFamily: FONT_FAMILY.body,
       fontSize: 13,
-      minHeight: 85,
-      maxHeight: 160,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+    },
+    notesAreaInput: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+      borderRadius: RADIUS.md,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      color: colors.textPrimary,
+      fontFamily: FONT_FAMILY.body,
+      fontSize: 12.5,
+      minHeight: 56,
+      maxHeight: 90,
       textAlignVertical: 'top',
       borderWidth: 1,
-      borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1',
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
     },
 
     // Subject Chips
     subjectChipsRow: {
-      marginBottom: 4,
+      marginBottom: 5,
     },
     subjectChip: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 5,
+      gap: 4,
       paddingHorizontal: 10,
-      paddingVertical: 6,
+      paddingVertical: 5.5,
       borderRadius: RADIUS.full,
-      backgroundColor: isDark ? colors.surface2 : '#F1F5F9',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F1F5F9',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
-      marginRight: 6,
+      marginRight: 5,
     },
     subjectChipActive: {
       backgroundColor: colors.accentPrimary,
       borderColor: colors.accentPrimary,
     },
     subjectChipDot: {
-      width: 5,
-      height: 5,
-      borderRadius: 3,
+      width: 4.5,
+      height: 4.5,
+      borderRadius: 2.5,
       backgroundColor: colors.accentPrimary,
     },
     subjectChipText: {
@@ -1141,14 +1669,14 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
     // Due Date Presets
     datePresetsRow: {
       flexDirection: 'row',
-      gap: 6,
-      marginBottom: 8,
+      gap: 5,
+      marginBottom: 6,
     },
     datePresetPill: {
       flex: 1,
       paddingVertical: 6,
       borderRadius: RADIUS.sm,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F1F5F9',
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1,
@@ -1156,22 +1684,23 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
     },
     datePresetText: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 11,
+      fontSize: 10,
       color: colors.accentPrimary,
+      letterSpacing: 0.2,
     },
     datePickerBtn: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: isDark ? colors.surface2 : '#F8FAFC',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
       borderWidth: 1,
-      borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1',
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
       paddingHorizontal: 12,
-      paddingVertical: 10,
+      paddingVertical: 9,
       borderRadius: RADIUS.md,
     },
     datePickerBtnText: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 13,
+      fontSize: 12.5,
       color: colors.textPrimary,
     },
 
@@ -1179,21 +1708,24 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
     statusGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 8,
+      gap: 6,
     },
     statusSelectChip: {
+      flex: 1,
+      minWidth: '47%',
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 12,
+      justifyContent: 'center',
+      paddingHorizontal: 8,
       paddingVertical: 8,
-      borderRadius: RADIUS.full,
+      borderRadius: RADIUS.md,
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#CBD5E1',
-      backgroundColor: isDark ? colors.surface2 : '#F8FAFC',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
     },
     statusSelectText: {
       fontFamily: FONT_FAMILY.medium,
-      fontSize: 12,
+      fontSize: 11.5,
       color: isDark ? colors.textMuted : colors.textPrimary,
     },
 
@@ -1201,35 +1733,44 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
     toggleMarksBtn: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      marginTop: 14,
-      marginBottom: 6,
+      gap: 5,
+      marginTop: 6,
+      paddingVertical: 3,
     },
     toggleMarksText: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 12,
+      fontSize: 11.5,
       color: colors.accentPrimary,
     },
     marksInputRow: {
       flexDirection: 'row',
-      gap: 8,
+      gap: 6,
       marginTop: 4,
     },
 
-    // Save Button
+    // Sticky Bottom Action Container
+    sheetFooter: {
+      paddingTop: 8,
+      paddingBottom: 4,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+    },
     saveButton: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: colors.accentPrimary,
-      paddingVertical: 14,
+      backgroundColor: isDark ? '#FFFFFF' : '#0A0A0E',
+      paddingVertical: 13.5,
       borderRadius: RADIUS.lg,
-      marginTop: 20,
-      ...SHADOW.md,
+      borderWidth: 1,
+      borderColor: isDark ? '#FFFFFF' : '#0A0A0E',
+      width: '100%',
+      ...SHADOW.sm,
     },
     saveButtonText: {
       fontFamily: FONT_FAMILY.bold,
-      fontSize: 15,
-      color: isDark ? '#000000' : '#FFFFFF',
+      fontSize: 14.5,
+      letterSpacing: 0.2,
+      color: isDark ? '#0A0A0E' : '#FFFFFF',
     },
   });

@@ -63,6 +63,8 @@ export const STORAGE_KEYS = {
   SARA_SURFACE_DISMISSED: '@sara_surface_dismissed_v1', // Dismissed PSI banners (JSON array)
   SARA_ACTION_HISTORY: '@sara_action_history_v1',  // [4.15] Committed action log (last 50, JSON)
   DASHBOARD_LAYOUT: '@zentrack_dashboard_layout', // Custom dashboard widget order
+  SAVED_PLACES: '@zentrack_saved_places',         // User frequent places array
+  GYM_GEOFENCE: '@zentrack_gym_geofence_config',  // Gym geofence trigger configuration
 } as const;
 
 // ── Firestore Collections ─────────────────────────────────────────────────────
@@ -178,4 +180,4 @@ export const XP_LEVELS = [
 ] as const;
 
 // ── Default Tab Modules ───────────────────────────────────────────────────────
-export const DEFAULT_PINNED_MODULES = ['Tasks', 'Sara', 'Calendar'];
+export const DEFAULT_PINNED_MODULES = ['Tasks', 'Gym', 'Calendar', 'Attendance'];

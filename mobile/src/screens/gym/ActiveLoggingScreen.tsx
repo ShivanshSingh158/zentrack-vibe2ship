@@ -132,6 +132,7 @@ export default function ActiveLoggingScreen() {
 
   const {
     log,
+    startWorkout,
     updateExercise,
     startRestTimer,
     clearRestTimer,
@@ -145,6 +146,13 @@ export default function ActiveLoggingScreen() {
     endWorkout,
     updateNotes,
   } = useGymLog(date);
+
+  // Auto-engage workout timer if arrived from GPS / geofence and workout was not yet started
+  useEffect(() => {
+    if (log && !log.completed && !log.workoutStartTime) {
+      startWorkout();
+    }
+  }, [log?.completed, log?.workoutStartTime, startWorkout]);
 
   const insets = useSafeAreaInsets();
   // Guarantee timer always floats cleanly above bottom navigation bar

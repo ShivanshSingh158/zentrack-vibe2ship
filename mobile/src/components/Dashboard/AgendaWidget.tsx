@@ -1,9 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
+import VoiceDictationOverlay from '../Tasks/VoiceDictationOverlay';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { WEEKDAY_TO_PLAN, GYM_PLAN } from '../../data/gymPlan';
 import { getCustomPlanDay } from '../../hooks/useGymLog';
@@ -16,6 +18,7 @@ interface AgendaWidgetProps {
   attendanceLogs: any[];
   todayStr: string;
   nowDate: Date;
+  holidays?: string[];
 }
 
 export const AgendaWidget = React.memo(function AgendaWidget({
@@ -25,17 +28,22 @@ export const AgendaWidget = React.memo(function AgendaWidget({
   attendance,
   attendanceLogs,
   todayStr,
-  nowDate
+  nowDate,
+  holidays = []
 }: AgendaWidgetProps) {
   const { colors, isDark } = useTheme();
+  const { user } = useCoreData();
   const navigation = useNavigation<any>();
+  const [isVoiceDictationOpen, setIsVoiceDictationOpen] = useState(false);
 
   const { todayTasks, todayClasses, todayGym, shouldShowGymInAgenda, plannedDay, formatTimeStr } = useMemo(() => {
+    const isHoliday = holidays?.includes(todayStr) || false;
     const todayTasks = tasks.filter(t => t.date === todayStr);
     
     const dayOfWeek  = nowDate.getDay().toString();
     const DAY_NAMES  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    const todayClasses = attendance?.flatMap(subj => {
+    // On holidays, omit all academic classes from the agenda (including cancelled logs)
+    const todayClasses = isHoliday ? [] : (attendance?.flatMap(subj => {
       const sch = subj.schedule?.[dayOfWeek] || subj.schedule?.[Number(dayOfWeek)]
         || subj.schedule?.[DAY_NAMES[nowDate.getDay()]]
         || subj.schedule?.[DAY_NAMES[nowDate.getDay()].toLowerCase()];
@@ -44,7 +52,7 @@ export const AgendaWidget = React.memo(function AgendaWidget({
       if (sch.classes) sch.classes.forEach((c: any) => c.time && cls.push({ id: `${subj.id}-class-${c.time}`, title: `${subj.name} Class`, time: c.time, type: 'class', subjectId: subj.id }));
       if (sch.labs)    sch.labs.forEach((l: any)    => l.time && cls.push({ id: `${subj.id}-lab-${l.time}`,   title: `${subj.name} Lab`,   time: l.time, type: 'lab', subjectId: subj.id }));
       return cls;
-    }) || [];
+    }) || []);
 
     // O(1) Map Pre-Indexing for attendance logs
     const todayLogsMap = new Map<string, any>();
@@ -99,7 +107,7 @@ export const AgendaWidget = React.memo(function AgendaWidget({
     };
 
     return { todayTasks, todayClasses, todayGym, shouldShowGymInAgenda, plannedDay, formatTimeStr };
-  }, [tasks, gymLogs, userGymPlan, attendance, attendanceLogs, todayStr, nowDate]);
+  }, [tasks, gymLogs, userGymPlan, attendance, attendanceLogs, todayStr, nowDate, holidays]);
 
   const nowMins = nowDate.getHours() * 60 + nowDate.getMinutes();
 
@@ -278,17 +286,40 @@ export const AgendaWidget = React.memo(function AgendaWidget({
           No tasks or sessions scheduled for today. Recovery is where growth happens—take a breather or start an activity!
         </Text>
 
-        <TouchableOpacity
-          style={[styles.emptyActionBtn, { backgroundColor: colors.accentPrimary }]}
-          activeOpacity={0.8}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            navigation.navigate('Tasks');
-          }}
-        >
-          <Ionicons name="add" size={16} color={isDark ? '#000000' : '#FFFFFF'} />
-          <Text style={[styles.emptyActionTextPrimary, { color: isDark ? '#000000' : '#FFFFFF' }]}>Add Task</Text>
-        </TouchableOpacity>
+        <View style={styles.emptyActionsRow}>
+          <TouchableOpacity
+            style={[styles.emptyActionBtn, { backgroundColor: colors.accentPrimary }]}
+            activeOpacity={0.8}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.navigate('Tasks');
+            }}
+          >
+            <Ionicons name="add" size={16} color={isDark ? '#000000' : '#FFFFFF'} />
+            <Text style={[styles.emptyActionTextPrimary, { color: isDark ? '#000000' : '#FFFFFF' }]}>Add Task</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.emptyActionBtn, styles.emptyVoiceBtn]}
+            activeOpacity={0.8}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setIsVoiceDictationOpen(true);
+            }}
+          >
+            <Ionicons name="mic" size={16} color="#FFFFFF" />
+            <Text style={styles.emptyVoiceText}>Voice</Text>
+          </TouchableOpacity>
+        </View>
+
+        {isVoiceDictationOpen && (
+          <VoiceDictationOverlay
+            visible={isVoiceDictationOpen}
+            onClose={() => setIsVoiceDictationOpen(false)}
+            selectedDate={todayStr}
+            userId={user?.uid}
+          />
+        )}
       </View>
     );
   }
@@ -333,6 +364,15 @@ export const AgendaWidget = React.memo(function AgendaWidget({
           </TouchableOpacity>
         );
       })}
+
+      {isVoiceDictationOpen && (
+        <VoiceDictationOverlay
+          visible={isVoiceDictationOpen}
+          onClose={() => setIsVoiceDictationOpen(false)}
+          selectedDate={todayStr}
+          userId={user?.uid}
+        />
+      )}
     </View>
   );
 });
@@ -384,11 +424,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 14,
   },
+  emptyActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
   emptyActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 20,
+    gap: 5,
+    paddingHorizontal: 18,
     paddingVertical: 9,
     borderRadius: 22,
   },
@@ -396,6 +442,19 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.bold,
     fontSize: 13,
     color: '#000000',
+  },
+  emptyVoiceBtn: {
+    backgroundColor: '#FF453A',
+    shadowColor: '#FF453A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  emptyVoiceText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 13,
+    color: '#FFFFFF',
   },
 });
 

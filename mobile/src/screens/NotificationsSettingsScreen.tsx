@@ -16,7 +16,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TouchableOpacity, 
-  Switch, Platform, Alert, InteractionManager, Modal
+  Switch, Platform, Alert, InteractionManager, Modal, Linking
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/tokens';
@@ -77,12 +77,117 @@ function displayTime(hm: string) {
   return `${hr}:${m.toString().padStart(2, '0')}${ampm}`;
 }
 
+function getTriggerTimestamp(trigger: any, nowMs: number): number {
+  if (!trigger) return 0;
+  if (typeof trigger === 'number') return trigger;
+  if (typeof trigger === 'string') {
+    const t = new Date(trigger).getTime();
+    if (!isNaN(t)) return t;
+  }
+  if (typeof trigger.timestamp === 'number') return trigger.timestamp;
+  if (typeof trigger.value === 'number') return trigger.value;
+  if (typeof trigger.value === 'string') {
+    const t = new Date(trigger.value).getTime();
+    if (!isNaN(t)) return t;
+  }
+  if (typeof trigger.date === 'number') return trigger.date;
+  if (typeof trigger.date === 'string') {
+    const t = new Date(trigger.date).getTime();
+    if (!isNaN(t)) return t;
+  }
+  if (trigger.date instanceof Date) return trigger.date.getTime();
+  if (typeof trigger.seconds === 'number') return nowMs + trigger.seconds * 1000;
+  if (typeof trigger.timeInterval === 'number') return nowMs + trigger.timeInterval * 1000;
+  if (typeof trigger.hour === 'number' && typeof trigger.minute === 'number') {
+    const d = new Date(nowMs);
+    d.setHours(trigger.hour, trigger.minute, 0, 0);
+    if (d.getTime() <= nowMs) {
+      d.setDate(d.getDate() + 1);
+    }
+    return d.getTime();
+  }
+  return 0;
+}
+
+function formatAlarmTrigger(triggerMs: number, nowMs: number): { label: string; countdown: string; isPast: boolean } {
+  if (!triggerMs) return { label: 'Immediate', countdown: 'Now', isPast: false };
+  const diffMs = triggerMs - nowMs;
+  const diffMin = Math.round(diffMs / 60000);
+  const isPast = diffMin < 0;
+  const triggerDate = new Date(triggerMs);
+
+  let countdown = '';
+  if (isPast) {
+    countdown = 'Just now';
+  } else if (diffMin < 60) {
+    countdown = `in ${Math.max(1, diffMin)}m`;
+  } else if (diffMin < 24 * 60) {
+    const hrs = Math.floor(diffMin / 60);
+    const remMin = diffMin % 60;
+    countdown = remMin > 0 ? `in ${hrs}h ${remMin}m` : `in ${hrs}h`;
+  } else {
+    const days = Math.round(diffMin / (24 * 60));
+    countdown = `in ${days}d`;
+  }
+
+  const isToday = triggerDate.toDateString() === new Date(nowMs).toDateString();
+  const tomDate = new Date(nowMs);
+  tomDate.setDate(tomDate.getDate() + 1);
+  const isTomorrow = triggerDate.toDateString() === tomDate.toDateString();
+
+  const timeStr = triggerDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+
+  let label = '';
+  if (isToday) label = `Today, ${timeStr}`;
+  else if (isTomorrow) label = `Tomorrow, ${timeStr}`;
+  else {
+    const dayStr = triggerDate.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    label = `${dayStr}, ${timeStr}`;
+  }
+
+  return { label, countdown, isPast };
+}
+
+function getCategoryInfo(item: any): { tag: string; icon: string; color: string } {
+  const type = item.content?.data?.type || '';
+  const channel = item.content?.channelId || item.trigger?.channelId || '';
+
+  if (type === 'water_reminder' || channel === 'wellness') {
+    return { tag: 'Water', icon: 'water', color: '#38BDF8' };
+  }
+  if (type === 'gym' || type === 'gym_rest') {
+    return { tag: 'Gym', icon: 'barbell', color: '#5EDA9E' };
+  }
+  if (type === 'morning_brief') {
+    return { tag: 'Briefing', icon: 'sunny', color: '#FF9F4D' };
+  }
+  if (type === 'habit_reminder' || type === 'habit_streak' || channel === 'habits') {
+    return { tag: 'Habit', icon: 'flame', color: '#FF9F4D' };
+  }
+  if (type.startsWith('class_') || type.startsWith('lab_') || type === 'attendance_warning') {
+    return { tag: 'Class', icon: 'school', color: '#FBBF24' };
+  }
+  if (type === 'sleep_night' || type === 'sleep_morning') {
+    return { tag: 'Sleep', icon: 'moon', color: '#A599FF' };
+  }
+  if (type.startsWith('assignment_')) {
+    return { tag: 'Assignment', icon: 'book', color: '#EF4444' };
+  }
+  if (type === 'flashcard_review') {
+    return { tag: 'Recall', icon: 'bulb', color: '#89DCEB' };
+  }
+  if (item.content?.data?.taskId || channel === 'reminders' || type === 'overdue_nudge') {
+    return { tag: 'Task', icon: 'checkmark-circle', color: '#A599FF' };
+  }
+  return { tag: 'Reminder', icon: 'notifications', color: '#A599FF' };
+}
+
 export default function NotificationsSettingsScreen() {
   const { colors, isDark } = useTheme();
   const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
   const { tasks, habitLogs, allHabits, user } = useCoreData();
-  const { gymLogs, waterLogs } = useWellnessData();
+  const { gymLogs, waterLogs, sleepLogs, userGymPlan } = useWellnessData();
   const { attendance, assignments } = useAcademicData();
   const { customEvents } = usePlannerData();
 
@@ -139,14 +244,63 @@ export default function NotificationsSettingsScreen() {
     setLoadingAlarms(true);
     setActiveAlarmsModalVisible(true);
     try {
-      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-      setScheduledAlarms(scheduled);
+      clearScheduleCache();
+      await scheduleAllNotifications({
+        tasks,
+        customEvents,
+        gymLogs,
+        attendance,
+        habitLogs,
+        allHabits,
+        assignments,
+        waterLogs,
+        sleepLogs,
+        userGymPlan,
+      });
+
+      let scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      // Resilient fallback: give native SQLite 200ms to settle if bridge just completed batch schedule
+      if (scheduled.length === 0) {
+        await new Promise(r => setTimeout(r, 200));
+        scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      }
+
+      const nowMs = Date.now();
+      const withTimes = scheduled.map((item: any) => ({
+        ...item,
+        triggerMs: getTriggerTimestamp(item.trigger, nowMs),
+      }));
+
+      // Sort strictly ASCENDING by triggerMs (closest upcoming alarm at top)
+      withTimes.sort((a: any, b: any) => {
+        if (!a.triggerMs) return 1;
+        if (!b.triggerMs) return -1;
+        return a.triggerMs - b.triggerMs;
+      });
+
+      setScheduledAlarms(withTimes);
     } catch (e) {
       console.error('[NotificationsSettings] Failed to get scheduled notifications', e);
     } finally {
       setLoadingAlarms(false);
     }
   };
+
+  // Permission state
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+
+  const checkPermissions = useCallback(async () => {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      setHasPermission(status === 'granted');
+    } catch {
+      setHasPermission(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkPermissions();
+  }, [checkPermissions]);
 
   // Load all settings fast to prevent transition stutter
   useEffect(() => {
@@ -215,9 +369,9 @@ export default function NotificationsSettingsScreen() {
     clearScheduleCache();
     scheduleAllNotifications({
       tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments,
-      waterLogs,
+      waterLogs, sleepLogs, userGymPlan,
     }).catch(console.warn);
-  }, [tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments, waterLogs]);
+  }, [tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments, waterLogs, sleepLogs, userGymPlan]);
 
   // Toggle helper — saves + reschedules
   const toggle = useCallback(async (key: string, val: boolean, setter: (v: boolean) => void) => {
@@ -311,14 +465,48 @@ export default function NotificationsSettingsScreen() {
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
 
         {/* TEST & VERIFY */}
-        <SectionHeader label="SYSTEM CHECK" />
+        <SectionHeader label="SYSTEM CHECK & PERMISSIONS" />
         <View style={[s.card, { marginBottom: 8 }]}>
+          {hasPermission === false && (
+            <>
+              <TouchableOpacity 
+                style={[s.row, { backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : '#FEE2E2', borderRadius: 8, padding: 10, margin: 4 }]}
+                activeOpacity={0.7}
+                onPress={() => Linking.openSettings()}
+              >
+                <Ionicons name="warning-outline" size={20} color="#EF4444" style={{ marginRight: 10 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: '#EF4444' }}>
+                    Notifications Disabled in Phone Settings
+                  </Text>
+                  <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 11, color: isDark ? '#FCA5A5' : '#B91C1C', marginTop: 2 }}>
+                    Tap to open Settings & allow notifications to wake your screen.
+                  </Text>
+                </View>
+                <Ionicons name="open-outline" size={16} color="#EF4444" />
+              </TouchableOpacity>
+              <Hairline />
+            </>
+          )}
           <TouchableOpacity 
             style={s.row} 
             activeOpacity={0.7} 
-            onPress={() => {
+            onPress={async () => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              sendTestNotification(user?.displayName || undefined);
+              const { status } = await Notifications.getPermissionsAsync();
+              if (status !== 'granted') {
+                Alert.alert(
+                  'Permission Required',
+                  'Notifications are currently blocked by Android/iOS system settings. Please enable them in Settings to receive reminders.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Open Settings', onPress: () => Linking.openSettings() }
+                  ]
+                );
+                return;
+              }
+              await sendTestNotification(user?.displayName || undefined);
+              Alert.alert('🔔 Test Sent!', 'ZenTrack sent an immediate heads-up test notification to your notification shade.');
             }}
           >
             <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)' }]}>
@@ -326,7 +514,7 @@ export default function NotificationsSettingsScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.rowTitle}>Send Test Notification</Text>
-              <Text style={s.rowSub}>Verify S.A.R.A comms are working</Text>
+              <Text style={s.rowSub}>Verify device alarms are working</Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
@@ -362,13 +550,13 @@ export default function NotificationsSettingsScreen() {
           <ToggleRow icon="timer-outline" label="Focus" subtitle="Focus session completion alerts" value={modFocus} onToggle={v => toggle('mod_focus', v, setModFocus)} iconColor={isDark ? '#89DCEB' : '#0284C7'} />
         </View>
 
-        {/* AI & ACTIONS */}
-        <SectionHeader label="S.A.R.A. & ACTIONS" />
+        {/* SYSTEM ACTIONS & TONE */}
+        <SectionHeader label="SYSTEM ACTIONS & TONE" />
         <View style={s.card}>
           <ToggleRow
-            icon="hardware-chip-outline"
-            label="S.A.R.A. Tone Escalation"
-            subtitle="Strict AI responses if you slack off"
+            icon="flash-outline"
+            label="Strict Accountability Tone"
+            subtitle="Direct, firm reminders if you fall behind"
             value={saraEscalation}
             onToggle={v => toggle('sara_escalation', v, setSaraEscalation)}
             iconColor={isDark ? '#EF4444' : '#DC2626'}
@@ -619,19 +807,28 @@ export default function NotificationsSettingsScreen() {
       {activeAlarmsModalVisible && (
         <Modal transparent animationType="slide" visible={activeAlarmsModalVisible}>
           <View style={s.pickerModalOverlay}>
-            <View style={[s.pickerCard, { maxHeight: '80%', paddingHorizontal: 16 }]}>
+            <View style={[s.pickerCard, { maxHeight: '82%', paddingHorizontal: 16 }]}>
               <View style={s.pickerHeader}>
                 <View>
                   <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 17, color: colors.textPrimary }}>
                     Scheduled Alarms ({scheduledAlarms.length})
                   </Text>
                   <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                    Active notifications scheduled in the OS
+                    Chronologically sorted upcoming OS alarms
                   </Text>
                 </View>
-                <TouchableOpacity onPress={() => setActiveAlarmsModalVisible(false)} style={{ padding: 4 }}>
-                  <Ionicons name="close" size={24} color={colors.textPrimary} />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity 
+                    onPress={handleOpenActiveAlarms} 
+                    style={{ padding: 6, marginRight: 8 }}
+                    disabled={loadingAlarms}
+                  >
+                    <Ionicons name="refresh-outline" size={20} color={colors.accentPrimary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setActiveAlarmsModalVisible(false)} style={{ padding: 6 }}>
+                    <Ionicons name="close" size={24} color={colors.textPrimary} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {loadingAlarms ? (
@@ -644,24 +841,16 @@ export default function NotificationsSettingsScreen() {
                   <Text style={{ color: colors.textPrimary, fontFamily: 'Inter_600SemiBold', marginTop: 12, fontSize: 15 }}>
                     No Active Alarms Queued
                   </Text>
-                  <Text style={{ color: colors.textSecondary, fontFamily: 'Inter_400Regular', marginTop: 4, fontSize: 12 }}>
-                    Alarms are scheduled on-demand when upcoming events/tasks are due.
+                  <Text style={{ color: colors.textSecondary, fontFamily: 'Inter_400Regular', marginTop: 4, fontSize: 12, textAlign: 'center', paddingHorizontal: 20 }}>
+                    Alarms are scheduled on-demand when upcoming events, tasks, or water intervals are active.
                   </Text>
                 </View>
               ) : (
                 <ScrollView showsVerticalScrollIndicator={false} style={{ marginVertical: 12 }}>
                   {scheduledAlarms.map((item, idx) => {
-                    const trigger = item.trigger;
-                    let triggerLabel = 'Immediate';
-                    if (trigger) {
-                      if (trigger.value) {
-                        triggerLabel = new Date(trigger.value).toLocaleString();
-                      } else if (trigger.date) {
-                        triggerLabel = new Date(trigger.date).toLocaleString();
-                      } else if (trigger.seconds) {
-                        triggerLabel = `In ${Math.round(trigger.seconds / 60)} minutes`;
-                      }
-                    }
+                    const nowMs = Date.now();
+                    const { label, countdown, isPast } = formatAlarmTrigger(item.triggerMs, nowMs);
+                    const cat = getCategoryInfo(item);
                     const title = item.content?.title || 'Notification';
                     const body = item.content?.body || '';
 
@@ -670,23 +859,55 @@ export default function NotificationsSettingsScreen() {
                         key={item.identifier || idx}
                         style={{
                           backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA',
-                          borderRadius: 12,
-                          padding: 12,
-                          marginBottom: 8,
+                          borderRadius: 14,
+                          padding: 13,
+                          marginBottom: 9,
                           borderWidth: 1,
                           borderColor: colors.border,
                         }}
                       >
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.accentPrimary, flex: 1 }}>
-                            {title}
-                          </Text>
-                          <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 11, color: colors.textMuted }}>
-                            {triggerLabel}
-                          </Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 8 }}>
+                            <View style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              backgroundColor: `${cat.color}22`,
+                              paddingHorizontal: 7,
+                              paddingVertical: 2.5,
+                              borderRadius: 6,
+                              gap: 4
+                            }}>
+                              <Ionicons name={cat.icon as any} size={11} color={cat.color} />
+                              <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 10, color: cat.color }}>
+                                {cat.tag.toUpperCase()}
+                              </Text>
+                            </View>
+                            <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 11, color: colors.textTertiary }} numberOfLines={1}>
+                              {label}
+                            </Text>
+                          </View>
+
+                          <View style={{
+                            backgroundColor: isPast ? 'rgba(239,68,68,0.15)' : isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)',
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 6
+                          }}>
+                            <Text style={{
+                              fontFamily: 'Inter_600SemiBold',
+                              fontSize: 11,
+                              color: isPast ? '#EF4444' : colors.accentPrimary
+                            }}>
+                              {countdown}
+                            </Text>
+                          </View>
                         </View>
+
+                        <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.textPrimary, marginBottom: 2 }}>
+                          {title}
+                        </Text>
                         {body ? (
-                          <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                          <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textSecondary, lineHeight: 16 }}>
                             {body}
                           </Text>
                         ) : null}

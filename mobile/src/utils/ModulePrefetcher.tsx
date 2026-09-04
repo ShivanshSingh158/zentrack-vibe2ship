@@ -52,26 +52,26 @@ const processNext = (): void => {
   if (!next) return;
 
   if (moduleCache.has(next.id)) {
-    // Already loaded by user navigation — skip to next after idle delay
+    // Already loaded by user navigation — skip to next after brief idle delay
     setTimeout(() => {
       InteractionManager.runAfterInteractions(processNext);
-    }, 600);
+    }, 100);
     return;
   }
 
   next.importer()
     .then(mod => {
       moduleCache.set(next.id, mod);
-      // Wait 800ms between modules so UI thread stays 100% responsive
+      // Wait 250ms between modules so UI thread stays 100% responsive without lagging user interactions
       setTimeout(() => {
         InteractionManager.runAfterInteractions(processNext);
-      }, 800);
+      }, 250);
     })
     .catch(err => {
       console.warn(`[ModulePrefetcher] Failed to prefetch ${next.id}:`, err);
       setTimeout(() => {
         InteractionManager.runAfterInteractions(processNext);
-      }, 800);
+      }, 300);
     });
 };
 
@@ -93,10 +93,10 @@ export const startPrefetching = (pinnedModules: string[] = []): void => {
     return 0;
   });
 
-  // Defer 3.5s so initial Home paint, fonts, and animations complete in <1.5s
-  setTimeout(() => {
-    InteractionManager.runAfterInteractions(processNext);
-  }, 3500);
+  // Wait for initial Home frame & gestures to settle, then begin background module warming immediately
+  InteractionManager.runAfterInteractions(() => {
+    setTimeout(processNext, 120);
+  });
 };
 
 /**
@@ -117,22 +117,23 @@ export const preloadNow = (id: string): void => {
 };
 
 /**
- * cacheAwareLazy ΓÇö The core primitive.
+ * cacheAwareLazy — The core primitive.
  *
  * Creates a stable wrapper component for a lazy-loaded screen.
- * The wrapper is created ONCE per id and reused ΓÇö this is critical:
+ * The wrapper is created ONCE per id and reused — this is critical:
  * recreating it would cause React to unmount/remount the screen component.
  *
  * Loading state:
- * - If the module is already cached ΓåÆ renders synchronously, frame 1.
- * - If not cached ΓåÆ shows a TRANSPARENT blank View (inherits screen bg)
+ * - If the module is already cached → renders synchronously, frame 1.
+ * - If not cached → renders FallbackComponent (e.g. pixel-matched shimmer skeleton)
  *   while importing, then renders the component immediately on load.
- *
- * The transparent View (not a coloured one) is the fix for the grey flash:
- * the Tab.Navigator's `sceneStyle: { backgroundColor: '#080510' }` already
- * paints the correct dark background. Our stub must not paint over it.
+ * - If no fallback provided, falls back to a transparent View (inherits screen bg).
  */
-export const cacheAwareLazy = (id: string, importer: Importer): ComponentType<any> => {
+export const cacheAwareLazy = (
+  id: string,
+  importer: Importer,
+  FallbackComponent?: ComponentType<any>
+): ComponentType<any> => {
   // Register for background loading
   registerForPrefetch(id, importer);
 
@@ -166,6 +167,9 @@ export const cacheAwareLazy = (id: string, importer: Importer): ComponentType<an
     }, []);
 
     if (!Comp) {
+      if (FallbackComponent) {
+        return <FallbackComponent />;
+      }
       // TRANSPARENT — inherits the dark background from Tab.Navigator sceneStyle.
       // A hardcoded backgroundColor here would cause a flash on background resume.
       return <View style={{ flex: 1 }} />;

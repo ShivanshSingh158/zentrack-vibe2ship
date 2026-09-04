@@ -14,7 +14,7 @@
 
 import React, { useEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Animated
+  View, Text, StyleSheet, TouchableOpacity, Animated, Image
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import BatchActionCard, { BatchAction } from './BatchActionCard';
@@ -230,7 +230,11 @@ function SaraBubbleInner({
         {/* Avatar + Label Header */}
         <View style={styles.assistantHeader}>
           <View style={styles.assistantAvatar}>
-            <Ionicons name="sparkles" size={12} color={colors.accentPrimary} />
+            <Image
+              source={require('../../../assets/images/sara-idle.png')}
+              style={{ width: 14, height: 14 }}
+              resizeMode="contain"
+            />
           </View>
           <Text style={styles.assistantName}>SARA</Text>
         </View>

@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pressable, Platform, StatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pressable, Platform, StatusBar, Linking } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
+import * as Notifications from 'expo-notifications';
+import { requestNotificationPermissions } from '../services/notifications';
 import Svg, { Circle } from 'react-native-svg';
 
 import { useCoreData } from '../contexts/domains/CoreDataContext';
@@ -39,7 +41,79 @@ import TaskTemplatesSheet from '../components/Tasks/TaskTemplatesSheet';
 import { usePomodoro } from '../contexts/PomodoroContext';
 import EditTaskModal from './tasks/EditTaskModal';
 import NewTaskModal from './tasks/NewTaskModal';
+import VoiceDictationOverlay from '../components/Tasks/VoiceDictationOverlay';
 import TasksSkeleton from '../components/Tasks/TasksSkeleton';
+import type { Task } from '../contexts/MobileDataContext';
+
+/**
+ * TaskRowMemo — Thin memoized adapter that bridges TasksScreen's stable
+ * callback API to TaskRow's original prop interface.
+ *
+ * WHY THIS EXISTS:
+ * TaskRow is already wrapped in React.memo, BUT renderItem was passing
+ * new inline arrow functions (e.g. `() => completeTask(item)`) on every
+ * render. Arrow functions always produce a new object reference, which
+ * defeats memo entirely. All 200 rows re-rendered on every single state
+ * change (e.g. toggling one checkbox).
+ *
+ * HOW IT WORKS:
+ * - Parent passes stable `useCallback` refs (onComplete: (task) => void).
+ * - TaskRowMemo wraps each ref into the row-specific signature TaskRow
+ *   expects (onComplete: () => void) using its own internal useCallback.
+ * - Because TaskRowMemo is itself React.memo'd with a custom comparator,
+ *   it only re-renders when THIS row's task data or isSelected changes.
+ *   Every other row stays frozen.
+ */
+interface TaskRowMemoProps {
+  task: Task;
+  isOverdue: boolean;
+  isBulkEdit?: boolean;
+  isSelected?: boolean;
+  onComplete: (task: Task) => void;
+  onReschedule: (taskId: string) => void;
+  onPress: (task: Task) => void;
+  onToggleSelect: (taskId: string) => void;
+  onUpdateTask: (taskId: string, updates: Partial<Task>) => void;
+}
+
+const TaskRowMemo = React.memo(function TaskRowMemo({
+  task, isOverdue, isBulkEdit, isSelected,
+  onComplete, onReschedule, onPress, onToggleSelect, onUpdateTask,
+}: TaskRowMemoProps) {
+  const handleComplete  = useCallback(() => onComplete(task), [onComplete, task]);
+  const handleReschedule = useCallback(() => onReschedule(task.id!), [onReschedule, task.id]);
+  const handlePress     = useCallback(() => onPress(task), [onPress, task]);
+  const handleLongPress = useCallback(() => onPress(task), [onPress, task]);
+  const handleToggle    = useCallback(() => onToggleSelect(task.id!), [onToggleSelect, task.id]);
+  const handleUpdate    = useCallback((id: string, updates: Partial<Task>) => onUpdateTask(id, updates), [onUpdateTask]);
+  const handleAddSubtask = useCallback(() => onPress(task), [onPress, task]);
+
+  return (
+    <TaskRow
+      task={task}
+      isOverdue={isOverdue}
+      isBulkEdit={isBulkEdit}
+      isSelected={isSelected}
+      onComplete={handleComplete}
+      onReschedule={handleReschedule}
+      onPress={handlePress}
+      onLongPress={handleLongPress}
+      onToggleSelect={handleToggle}
+      onUpdateTask={handleUpdate}
+      onAddSubtask={handleAddSubtask}
+    />
+  );
+}, (prev, next) =>
+  // Custom comparator: only re-render if this row's data or selection changed.
+  // This is the key gate that keeps 199 untouched rows frozen.
+  prev.task === next.task &&
+  prev.isOverdue === next.isOverdue &&
+  prev.isSelected === next.isSelected &&
+  prev.isBulkEdit === next.isBulkEdit &&
+  prev.onComplete === next.onComplete &&
+  prev.onReschedule === next.onReschedule &&
+  prev.onPress === next.onPress
+);
 
 function formatTimeStr(raw: string): string {
   if (!raw) return '';
@@ -91,6 +165,8 @@ export default function TasksScreen() {
     setIsTimeSpentOpen, setEditingTask, setConflicts,
     toggleTaskSelection,
   } = useTasksData(tasks);
+
+  const [isVoiceDictationOpen, setIsVoiceDictationOpen] = useState(false);
 
   const route = useRoute<any>();
   useEffect(() => {
@@ -146,6 +222,15 @@ export default function TasksScreen() {
     setSelectedDate(date);
   };
 
+  const sections = useMemo(() => {
+    if (selectedDateTasks.length === 0) return [];
+    return [{
+      title: selectedDate === today ? 'TODAY' : formatDateWithDay(selectedDate).toUpperCase(),
+      data: selectedDateTasks,
+      isSelectedDate: true,
+    }];
+  }, [selectedDateTasks, selectedDate]);
+
   const { doneCount, progressPercent, progressDashoffset, nextPendingTimeStr } = useMemo(() => {
     let done = 0;
     const total = selectedDateTasks.length;
@@ -181,28 +266,73 @@ export default function TasksScreen() {
     };
   }, [selectedDateTasks, selectedDate]);
 
+  // ── Stable handler refs — created once, never recreated on re-render ──────────
+  // Passed into TaskRowMemo so React.memo actually prevents TaskRow re-renders.
+  // Previously, inline `() => completeTask(item)` closures defeated React.memo
+  // because each renderItem call produced new function objects, forcing all rows
+  // to re-render whenever isBulkEdit or selectedTaskIds changed.
+  const onCompleteRef = useCallback((task: any) => completeTask(task), [completeTask]);
+  const onRescheduleRef = useCallback((taskId: string) => {
+    setSelectedTaskIds(new Set([taskId]));
+    setBulkRescheduleModal(true);
+  }, [setSelectedTaskIds, setBulkRescheduleModal]);
+  const onPressRef = useCallback((task: any) => setEditingTask(task), [setEditingTask]);
+  const onToggleSelectRef = useCallback((taskId: string) => toggleTaskSelection(taskId), [toggleTaskSelection]);
+  const onUpdateTaskRef = useCallback((id: string, updates: any) => updateTask(id, updates), [updateTask]);
+
   const renderItem = useCallback(({ item }: { item: any }) => (
-    <TaskRow
+    <TaskRowMemo
       task={item}
       isOverdue={item.date ? item.date < today && item.status !== 'completed' : false}
-      onComplete={() => completeTask(item)}
-      onReschedule={() => {
-        setSelectedTaskIds(new Set([item.id!]));
-        setBulkRescheduleModal(true);
-      }}
-      onPress={() => setEditingTask(item)}
-      onLongPress={() => setEditingTask(item)}
       isBulkEdit={isBulkEdit}
       isSelected={selectedTaskIds.has(item.id!)}
-      onToggleSelect={() => toggleTaskSelection(item.id!)}
-      onUpdateTask={(id, updates) => updateTask(id, updates)}
-      onAddSubtask={() => setEditingTask(item)}
+      onComplete={onCompleteRef}
+      onReschedule={onRescheduleRef}
+      onPress={onPressRef}
+      onToggleSelect={onToggleSelectRef}
+      onUpdateTask={onUpdateTaskRef}
     />
-  ), [completeTask, isBulkEdit, selectedTaskIds, setSelectedTaskIds, setBulkRescheduleModal, setEditingTask, toggleTaskSelection, updateTask]);
+  ), [isBulkEdit, selectedTaskIds, onCompleteRef, onRescheduleRef, onPressRef, onToggleSelectRef, onUpdateTaskRef]);
 
   const taskConflicts = useMemo(() => {
     return conflicts.filter(c => c.modules.includes('tasks') && !c.modules.includes('academic'));
   }, [conflicts]);
+
+  const [hasNotifPermission, setHasNotifPermission] = useState<boolean | null>(true);
+
+  const checkNotifPermission = useCallback(async () => {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      setHasNotifPermission(status === 'granted');
+    } catch {
+      setHasNotifPermission(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkNotifPermission();
+  }, [checkNotifPermission]);
+
+  const handleRequestNotifPermission = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const granted = await requestNotificationPermissions();
+      if (!granted) {
+        Alert.alert(
+          'Notifications Required',
+          'Android system notifications are turned off. Please open settings and allow notifications for ZenTrack to receive task reminders and alarms.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() }
+          ]
+        );
+      } else {
+        setHasNotifPermission(true);
+      }
+    } catch {
+      Linking.openSettings();
+    }
+  };
 
   return (
     <View style={[styles.root, { paddingTop: topInset }]}>
@@ -279,6 +409,37 @@ export default function TasksScreen() {
         <TaskDateStrip selectedDate={selectedDate} onSelectDate={handleDateSelect} taskDates={taskDates} />
       </View>
 
+      {/* NOTIFICATION PERMISSION WARNING BANNER */}
+      {hasNotifPermission === false && (
+        <AnimatedPressable
+          style={{
+            marginHorizontal: 16,
+            marginBottom: 10,
+            paddingVertical: 10,
+            paddingHorizontal: 14,
+            backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#fffbeb',
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#fde68a',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+          }}
+          onPress={handleRequestNotifPermission}
+        >
+          <Ionicons name="notifications-off" size={18} color="#f59e0b" />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? '#fbbf24' : '#b45309', fontFamily: 'Inter_600SemiBold' }}>
+              Notifications Disabled
+            </Text>
+            <Text style={{ fontSize: 11, color: isDark ? '#d1d5db' : '#92400e', fontFamily: 'Inter_400Regular' }}>
+              Task reminders and alarms won't fire. Tap to enable.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#f59e0b" />
+        </AnimatedPressable>
+      )}
+
       {/* PROGRESS RING */}
       <View style={{ paddingHorizontal: 6, marginBottom: 0 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
@@ -347,6 +508,14 @@ export default function TasksScreen() {
       {isNewTaskOpen && !!user && (
         <NewTaskModal visible={isNewTaskOpen} onClose={() => setIsNewTaskOpen(false)} userId={user.uid} selectedDate={selectedDate} listCount={selectedDateTasks.length} />
       )}
+      {isVoiceDictationOpen && (
+        <VoiceDictationOverlay
+          visible={isVoiceDictationOpen}
+          onClose={() => setIsVoiceDictationOpen(false)}
+          selectedDate={selectedDate}
+          userId={user?.uid}
+        />
+      )}
 
       {/* VIEWS */}
       {isInitialLoading ? (
@@ -388,16 +557,14 @@ export default function TasksScreen() {
           windowSize={5}
           initialNumToRender={8}
           onScroll={handleScroll}
-          scrollEventThrottle={16}
+          scrollEventThrottle={64}
           onScrollEndDrag={(e: any) => {
             if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
           }}
           onMomentumScrollEnd={(e: any) => {
             if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
           }}
-          sections={[
-            ...(selectedDateTasks.length > 0 ? [{ title: selectedDate === today ? 'TODAY' : formatDateWithDay(selectedDate).toUpperCase(), data: selectedDateTasks, isSelectedDate: true }] : []),
-          ] as any}
+          sections={sections as any}
           keyExtractor={(item: any) => item.id}
           ListEmptyComponent={
             <EmptyState
@@ -418,16 +585,23 @@ export default function TasksScreen() {
       )}
 
       {/* FLOATING ACTION PILLS */}
-      <View style={[styles.floatingAddContainer, { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16 }]}>
+      <View style={[styles.floatingAddContainer, { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 }]}>
         <AnimatedPressable style={styles.floatingAddBtn} onPress={() => setIsNewTaskOpen(true)}>
           <Ionicons name="add" size={18} color={isDark ? '#000000' : '#ffffff'} style={{ marginRight: 4 }} />
           <Text style={styles.floatingAddText}>Add task</Text>
+        </AnimatedPressable>
+        <AnimatedPressable
+          style={[styles.floatingAddBtn, { backgroundColor: '#FF453A', paddingHorizontal: 16 }]}
+          onPress={() => setIsVoiceDictationOpen(true)}
+        >
+          <Ionicons name="mic" size={18} color="#ffffff" style={{ marginRight: 4 }} />
+          <Text style={[styles.floatingAddText, { color: '#ffffff' }]}>Voice</Text>
         </AnimatedPressable>
       </View>
 
       {/* OVERDUE MODAL — strictly conditional to avoid running overdueTasks.map on mount */}
       {isOverdueModalOpen && (
-        <BottomSheet visible={isOverdueModalOpen} onClose={() => setIsOverdueModalOpen(false)}>
+        <BottomSheet visible={isOverdueModalOpen} onClose={() => setIsOverdueModalOpen(false)} avoidKeyboard={false}>
           <View style={{ flexShrink: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, paddingHorizontal: 8, paddingTop: 10 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -485,7 +659,7 @@ export default function TasksScreen() {
 
       {/* INBOX MODAL — strictly conditional to avoid running inboxTasks.map on mount */}
       {isInboxModalOpen && (
-        <BottomSheet visible={isInboxModalOpen} onClose={() => setIsInboxModalOpen(false)}>
+        <BottomSheet visible={isInboxModalOpen} onClose={() => setIsInboxModalOpen(false)} avoidKeyboard={false}>
           <View style={{ flexShrink: 1, maxHeight: 600 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingHorizontal: 8, paddingTop: 20 }}>
               <Ionicons name="file-tray" size={24} color={colors.accentPrimary} style={{ marginRight: 12 }} />

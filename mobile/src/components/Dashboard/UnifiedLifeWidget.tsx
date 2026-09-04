@@ -41,8 +41,8 @@ interface UnifiedLifeWidgetProps {
   habitsTotal: number;
   waterCompleted: number;
   waterTotal: number;
-  steps?: number;
-  stepGoal?: number;
+  steps?: number;        // kept for prop-compat (ignored — attendance shown instead)
+  stepGoal?: number;     // kept for prop-compat (ignored)
   classesAttendedToday?: number;
   classesTotalToday?: number;
   overallAttendancePct?: number;
@@ -60,7 +60,7 @@ interface UnifiedLifeWidgetProps {
   onPressStreak: () => void;
   onPressHabits: () => void;
   onPressWater: () => void;
-  onPressSteps?: () => void;
+  onPressSteps?: () => void;   // kept for prop-compat (not used — attendance shown instead)
   onPressAttendance?: () => void;
   onPressXP?: () => void;
   onPressRing?: () => void;
@@ -260,46 +260,60 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
             <Text style={[styles.valuePillText, { color: colors.accentBlue }]}>{displayWater}/{displayWaterTarget}L</Text>
           </AnimatedPressable>
 
-          {/* STEPS (Replaced Classes) */}
-          <AnimatedPressable
-            style={[
-              styles.compactMetricRow, 
-              { 
-                backgroundColor: isDark ? '#1C1C20' : 'rgba(245, 158, 11, 0.08)', 
-                borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border, 
-                borderWidth: 1,
-                overflow: 'hidden',
-              }
-            ]}
-            activeOpacity={0.75}
-            onPress={() => { 
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
-              if (onPressSteps) {
-                onPressSteps();
-              } else if (onPressAttendance) {
-                onPressAttendance();
-              }
-            }}
-          >
-            {/* Subtle Progress Fill */}
-            <View
-              style={{
-                position: 'absolute',
-                top: 0,
-                bottom: 0,
-                left: 0,
-                width: `${Math.min(100, ((steps || 0) / (stepGoal || 10000)) * 100)}%`,
-                backgroundColor: isDark ? 'rgba(245, 158, 11, 0.16)' : 'rgba(245, 158, 11, 0.12)',
-              }}
-            />
-            <View style={styles.compactLeftGroup}>
-              <Text style={styles.compactEmoji}>🚶</Text>
-              <Text style={[styles.compactLabel, { color: '#f59e0b' }]}>Steps</Text>
-            </View>
-            <Text style={[styles.valuePillText, { color: '#f59e0b' }]}>
-              {steps >= 1000 ? `${(steps / 1000).toFixed(1)}k` : steps}/{stepGoal >= 1000 ? `${Math.round(stepGoal / 1000)}k` : stepGoal}
-            </Text>
-          </AnimatedPressable>
+          {/* CLASS ATTENDANCE AVERAGE (replaces Steps) */}
+          {(() => {
+            const pct = Math.round(overallAttendancePct || 0);
+            const isSafe     = pct >= 75;
+            const isWarning  = pct >= 65 && pct < 75;
+            const accentColor = isSafe ? '#32D74B' : isWarning ? '#FFD60A' : '#FF453A';
+            const bgColor     = isSafe
+              ? (isDark ? 'rgba(50, 215, 75, 0.08)' : 'rgba(50, 215, 75, 0.10)')
+              : isWarning
+              ? (isDark ? 'rgba(255, 214, 10, 0.10)' : 'rgba(255, 214, 10, 0.10)')
+              : (isDark ? 'rgba(255, 69, 58, 0.10)' : 'rgba(255, 69, 58, 0.08)');
+            const label = isSafe ? 'Safe Zone' : isWarning ? 'At Risk' : 'Critical';
+            return (
+              <AnimatedPressable
+                style={[
+                  styles.compactMetricRow,
+                  {
+                    backgroundColor: isDark ? '#1C1C20' : bgColor,
+                    borderColor: isDark ? 'rgba(255,255,255,0.08)' : accentColor + '33',
+                    borderWidth: 1,
+                    overflow: 'hidden',
+                  },
+                ]}
+                activeOpacity={0.75}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  if (onPressAttendance) onPressAttendance();
+                }}
+              >
+                {/* Attendance progress fill */}
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: 0, bottom: 0, left: 0,
+                    width: `${Math.min(100, pct)}%`,
+                    backgroundColor: isSafe
+                      ? (isDark ? 'rgba(50, 215, 75, 0.14)' : 'rgba(50, 215, 75, 0.12)')
+                      : isWarning
+                      ? (isDark ? 'rgba(255, 214, 10, 0.14)' : 'rgba(255, 214, 10, 0.12)')
+                      : (isDark ? 'rgba(255, 69, 58, 0.16)' : 'rgba(255, 69, 58, 0.12)'),
+                  }}
+                />
+                <View style={styles.compactLeftGroup}>
+                  <Text style={styles.compactEmoji}>🎓</Text>
+                  <Text style={[styles.compactLabel, { color: accentColor }]}>
+                    Attendance
+                  </Text>
+                </View>
+                <Text style={[styles.valuePillText, { color: accentColor }]}>
+                  {pct}%
+                </Text>
+              </AnimatedPressable>
+            );
+          })()}
         </View>
       </View>
 

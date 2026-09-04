@@ -33,6 +33,7 @@ export const DOMAIN_CACHE_KEYS = {
   ASSIGNMENTS:      '@zentrack_cache_assignments',
   SEMESTERS:        '@zentrack_cache_semesters',
   SEM_SUBJECTS:     '@zentrack_cache_sem_subjects',
+  HOLIDAYS:         '@zentrack_cache_holidays',
   // Planner
   CUSTOM_EVENTS:    '@zentrack_cache_custom_events',
   GOALS:            '@zentrack_cache_goals',
@@ -160,6 +161,7 @@ const ACADEMIC_KEY_MAP = {
   assignments:     DOMAIN_CACHE_KEYS.ASSIGNMENTS,
   semesters:       DOMAIN_CACHE_KEYS.SEMESTERS,
   semesterSubjects: DOMAIN_CACHE_KEYS.SEM_SUBJECTS,
+  holidays:         DOMAIN_CACHE_KEYS.HOLIDAYS,
 } as const;
 
 export interface AcademicCache {
@@ -168,6 +170,7 @@ export interface AcademicCache {
   assignments: any[];
   semesters: any[];
   semesterSubjects: any[];
+  holidays: string[];
 }
 
 export const readAcademicCache  = () => readDomainCache<AcademicCache>(ACADEMIC_KEY_MAP);

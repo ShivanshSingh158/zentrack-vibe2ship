@@ -78,15 +78,40 @@ export interface TaskTemplate {
 }
 
 export interface Habit {
-  id: string; name: string; emoji: string; frequency: string;
-  streak?: number; longestStreak?: number; color?: string; userId: string; archived?: boolean;
+  id: string;
+  name: string;
+  emoji: string;
+  frequency: string;
+  frequencyType?: 'daily' | 'weekly_target' | 'specific_days' | 'monthly_target';
+  weeklyTargetCount?: number;
+  specificDays?: number[];
+  monthlyTargetCount?: number;
+  timeOfDay?: 'anytime' | 'morning' | 'afternoon' | 'evening';
+  streak?: number;
+  longestStreak?: number;
+  color?: string;
+  userId: string;
+  archived?: boolean;
   type?: 'positive' | 'negative';
   startDate?: string;
   costPerDay?: number;
   targetCount?: number;
+  unit?: string;
+  tileShape?: 'squircle' | 'circle' | 'square';
+  gridDaysCount?: 35 | 56 | 70;
+  totalCompletions?: number;
+  createdAt?: any;
 }
 
-export interface HabitLog { id: string; habitId: string; userId: string; date: string; count?: number; isFreeze?: boolean; }
+export interface HabitLog {
+  id: string;
+  habitId: string;
+  userId: string;
+  date: string;
+  count?: number;
+  isFreeze?: boolean;
+  note?: string;
+}
 
 export interface StorageNode {
   id?: string; userId: string; type: "folder" | "file" | "note"; name: string;

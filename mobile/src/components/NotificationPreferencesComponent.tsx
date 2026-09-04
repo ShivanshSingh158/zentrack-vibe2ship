@@ -486,8 +486,8 @@ export default function NotificationPreferencesComponent() {
         <SectionHeader label="ADVANCED & SOUNDS" />
         <View style={s.card}>
           <ToggleRow
-            icon="chatbubbles-outline"
-            label="Strict S.A.R.A Persona"
+            icon="flash-outline"
+            label="Strict Accountability Tone"
             subtitle="Tone escalation for missed habits & classes"
             value={saraToneStrict}
             onToggle={v => toggle('sara_tone', v, setSaraToneStrict)}

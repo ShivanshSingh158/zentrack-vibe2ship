@@ -9,10 +9,13 @@ import { COLLECTION } from '../../config/constants';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { scheduleAllNotifications } from '../../services/notifications';
+import { scheduleAllNotifications, clearScheduleCache } from '../../services/notifications';
 import { queueWrite } from '../../services/offlineSync';
 import { useGymProfile } from '../../hooks/useGymProfile';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
+import { useAcademicData } from '../../contexts/domains/AcademicContext';
+import { usePlannerData } from '../../contexts/domains/PlannerContext';
 import { formatLocalDateStr } from '../../utils/dateUtils';
 
 const WATER_GOAL_KEY = 'zentrack_water_goal_ml';
@@ -31,7 +34,11 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   const s = makeStyles(colors, isDark);
   const navigation = useNavigation<any>();
   const { gymProfile, saveGymProfile } = useGymProfile();
-  const { weightLogs, optimisticAddWaterLog } = useWellnessData();
+  const wellnessData = useWellnessData();
+  const coreData = useCoreData();
+  const academicData = useAcademicData();
+  const plannerData = usePlannerData();
+  const { weightLogs, optimisticAddWaterLog } = wellnessData;
 
   const [editingTarget, setEditingTarget] = useState(false);
   const [tempTarget, setTempTarget] = useState(String(target));
@@ -71,9 +78,22 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   const handleFreqChange = async (freq: string) => {
     setReminderFreq(freq);
     await AsyncStorage.setItem('@zentrack_water_reminder_freq', freq);
+    clearScheduleCache();
     // Defer notification reschedule — avoids blocking the UI thread during slider interaction.
     InteractionManager.runAfterInteractions(() => {
-      scheduleAllNotifications({ tasks: [], customEvents: [], gymLogs: [], attendance: [] });
+      scheduleAllNotifications({
+        tasks: coreData.tasks,
+        customEvents: plannerData.customEvents,
+        gymLogs: wellnessData.gymLogs,
+        attendance: academicData.attendance,
+        attendanceLogs: academicData.attendanceLogs,
+        habitLogs: coreData.habitLogs,
+        allHabits: coreData.allHabits,
+        assignments: academicData.assignments,
+        waterLogs: wellnessData.waterLogs,
+        sleepLogs: wellnessData.sleepLogs,
+        userGymPlan: wellnessData.userGymPlan,
+      }).catch(console.warn);
     });
   };
 

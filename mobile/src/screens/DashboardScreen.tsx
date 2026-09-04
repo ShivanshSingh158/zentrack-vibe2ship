@@ -31,9 +31,10 @@ import { getDueFlashcards, Flashcard } from '../services/flashcardService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useOfflineStatus } from '../hooks/useOfflineStatus';
 import { useWidgetSync } from '../hooks/useWidgetSync';
-import { useStepCounter } from '../hooks/useStepCounter';
 import { areItemsEqual } from '../utils/schemaGuards';
 import DashboardSkeleton from '../components/Dashboard/DashboardSkeleton';
+import { LinearGradient } from 'expo-linear-gradient';
+import VoiceDictationOverlay from '../components/Tasks/VoiceDictationOverlay';
 
 export default function DashboardScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
@@ -41,14 +42,15 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { isOffline, queueCount, recentlySynced } = useOfflineStatus();
-  const { steps, stepGoal } = useStepCounter();
 
   const data = useDashboardData();
   useWidgetSync({
     tasks: data.tasks,
     subjects: data.attendance,
     attendanceLogs: data.attendanceLogs,
+    holidays: data.holidays,
     zenScore: data.overallAttendancePct,
+    streak: data.appStreak,
   });
   const paddingBottom = insets.bottom + 80;
   const levelInfo = getLevel(data.xp);
@@ -57,6 +59,9 @@ export default function DashboardScreen() {
   const [dueFlashcards, setDueFlashcards] = useState<Flashcard[]>([]);
   const [flashcardModalVisible, setFlashcardModalVisible] = useState(false);
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
+
+  // ── Voice Task Dictation State (FAB replaces previous Sara button) ──
+  const [isVoiceDictationOpen, setIsVoiceDictationOpen] = useState(false);
 
   const refreshFlashcards = useCallback(async () => {
     if (!data.user?.uid) return;
@@ -165,9 +170,6 @@ export default function DashboardScreen() {
     navigation.navigate('Attendance');
   }, [navigation]);
 
-  const handlePressSteps = useCallback(() => {
-    navigation.navigate('MoreStack', { screen: 'WellbeingDashboard', params: { initialTab: 'steps' } });
-  }, [navigation]);
 
   const handlePressXP = useCallback(() => {
     navigation.navigate('MoreStack', { screen: 'XPConstellation' });
@@ -464,8 +466,6 @@ export default function DashboardScreen() {
                     habitsTotal={data.allHabits.length}
                     waterCompleted={waterCompleted}
                     waterTotal={data.waterTotal}
-                    steps={steps}
-                    stepGoal={stepGoal}
                     classesAttendedToday={data.classesAttendedToday}
                     classesTotalToday={data.classesTotalToday}
                     overallAttendancePct={data.overallAttendancePct}
@@ -481,7 +481,6 @@ export default function DashboardScreen() {
                     onPressStreak={handlePressStreak}
                     onPressHabits={handlePressHabits}
                     onPressWater={handlePressWater}
-                    onPressSteps={handlePressSteps}
                     onPressAttendance={handlePressAttendance}
                     onPressXP={handlePressXP}
                     onPressRing={handlePressRing}
@@ -502,6 +501,7 @@ export default function DashboardScreen() {
                     attendanceLogs={data.attendanceLogs}
                     todayStr={data.todayStr}
                     nowDate={data.nowDate}
+                    holidays={data.holidays}
                   />
                 </Animated.View>
               );
@@ -543,6 +543,42 @@ export default function DashboardScreen() {
           dueCards={dueFlashcards}
           onClose={() => setFlashcardModalVisible(false)}
           onSessionComplete={refreshFlashcards}
+        />
+      )}
+
+      {/* Voice Task Floating Action Button (replacing Sara button) */}
+      <AnimatedPressable
+        style={[
+          s.voiceTaskFab,
+          {
+            bottom: Math.max(84, insets.bottom + 70),
+          },
+        ]}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          setIsVoiceDictationOpen(true);
+        }}
+        accessibilityLabel="Add task by voice"
+        accessibilityRole="button"
+        haptic="medium"
+      >
+        <LinearGradient
+          colors={['#FF5252', '#FF3B30']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={s.voiceTaskFabGradient}
+        >
+          <Ionicons name="mic" size={24} color="#FFFFFF" />
+        </LinearGradient>
+      </AnimatedPressable>
+
+      {/* Voice Dictation Overlay Modal for Tasks */}
+      {isVoiceDictationOpen && (
+        <VoiceDictationOverlay
+          visible={isVoiceDictationOpen}
+          onClose={() => setIsVoiceDictationOpen(false)}
+          selectedDate={data.todayStr}
+          userId={data.user?.uid}
         />
       )}
     </SafeAreaView>

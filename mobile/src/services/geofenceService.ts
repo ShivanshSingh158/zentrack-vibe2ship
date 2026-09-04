@@ -13,7 +13,7 @@
  * 5. Syncs active geofences with native OS Geofencing hardware.
  */
 
-import { Platform, DeviceEventEmitter } from 'react-native';
+import { Platform, DeviceEventEmitter, Linking, Alert } from 'react-native';
 import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
@@ -24,16 +24,154 @@ import { COLLECTION } from '../config/constants';
 import { safeWrite } from '../utils/safeWrite';
 import { awardXP } from './xpSystem';
 import { getGymGeofenceConfig } from './savedPlacesService';
+import type { GymGeofenceConfig } from '../types/locationReminder.types';
 
 export const GEOFENCE_TASK_NAME = 'ZENTRACK_GEOFENCE_TASK';
 export const TASK_REMINDERS_STORAGE_KEY = '@zentrack_task_location_reminders';
 
-function getTodayLocalDateStr(): string {
+export function getTodayLocalDateStr(): string {
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+/**
+ * Calculates high-accuracy Haversine distance in meters between two GPS coordinates.
+ */
+export function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000; // Earth radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+}
+
+/**
+ * Central Gym Arrival Pipeline:
+ * Initializes the active workout session in AsyncStorage, syncs to Firestore,
+ * awards XP, notifies UI listeners, and sends actionable arrival notification.
+ */
+export async function triggerGymArrival(
+  gymConfigParam?: GymGeofenceConfig | null,
+  options?: { force?: boolean }
+): Promise<boolean> {
+  try {
+    const gymConfig = gymConfigParam || (await getGymGeofenceConfig());
+    if (!gymConfig || !gymConfig.enabled) return false;
+
+    const placeName = gymConfig.placeName || 'the Gym';
+    const today = getTodayLocalDateStr();
+    const nowMs = Date.now();
+
+    const sessionKey = `@zentrack_active_workout_${today}`;
+    const existingRaw = await AsyncStorage.getItem(sessionKey);
+    let startTime = nowMs;
+
+    if (existingRaw) {
+      try {
+        const existing = JSON.parse(existingRaw);
+        // If workout today is already completed, do not auto-restart unless explicitly forced
+        if (existing?.completed && !options?.force) {
+          return false;
+        }
+        if (existing?.startTime) {
+          startTime = existing.startTime;
+        }
+      } catch {}
+    }
+
+    const sessionState = {
+      date: today,
+      startTime,
+      autoStartedByGeofence: true,
+      completed: false,
+      updatedAt: nowMs,
+    };
+
+    await AsyncStorage.setItem(sessionKey, JSON.stringify(sessionState));
+    await AsyncStorage.setItem('@zentrack_active_workout_state', JSON.stringify(sessionState));
+
+    // Sync to Firestore if authenticated
+    try {
+      const user = auth.currentUser;
+      if (user) {
+        const docId = `${user.uid}_${today}`;
+        const docRef = doc(db, COLLECTION.GYM_LOGS, docId);
+        const snap = await getDoc(docRef);
+
+        if (snap.exists()) {
+          const existingData = snap.data();
+          if (!existingData.completed && !existingData.workoutStartTime) {
+            await safeWrite(
+              () => setDoc(docRef, { workoutStartTime: startTime, completed: false, updatedAt: serverTimestamp() }, { merge: true }),
+              COLLECTION.GYM_LOGS,
+              'set',
+              { workoutStartTime: startTime, completed: false },
+              docId
+            );
+          }
+        } else {
+          const initialLog = {
+            id: docId,
+            userId: user.uid,
+            date: today,
+            workoutStartTime: startTime,
+            completed: false,
+            exercises: [],
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          };
+          await safeWrite(
+            () => setDoc(docRef, initialLog, { merge: true }),
+            COLLECTION.GYM_LOGS,
+            'set',
+            initialLog,
+            docId
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('[Geofence] Firestore gym arrival sync error:', e);
+    }
+
+    // Award attendance XP & notify UI listeners
+    awardXP('GYM_SET').catch(() => {});
+    DeviceEventEmitter.emit('gym_workout_auto_started', { date: today, startTime });
+
+    // Notification debounce guard: don't spam notifications if triggered repeatedly within 2 hours
+    const notifDebounceKey = `@zentrack_last_gym_arrival_notif_${today}`;
+    const lastNotifStr = await AsyncStorage.getItem(notifDebounceKey);
+    const lastNotifMs = lastNotifStr ? Number(lastNotifStr) : 0;
+    const isRecentlyNotified = nowMs - lastNotifMs < 2 * 60 * 60 * 1000;
+
+    if (!isRecentlyNotified || options?.force) {
+      await AsyncStorage.setItem(notifDebounceKey, String(nowMs));
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `🏋️ Arrived at ${placeName} — Workout Started!`,
+          body: `Workout timer is running. Tap to log your sets & exercises.`,
+          sound: 'default',
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          vibrate: [0, 500, 200, 500, 200, 500],
+          color: '#a599ff',
+          data: { type: 'GYM_ARRIVAL', screen: 'ActiveLogging', date: today },
+          categoryIdentifier: 'location_gym_arrival',
+          ...(Platform.OS === 'android' ? { channelId: 'location_reminders' } : {}),
+        },
+        trigger: null,
+      });
+    }
+
+    return true;
+  } catch (err: any) {
+    console.warn('[Geofence] triggerGymArrival failed:', err?.message);
+    return false;
+  }
 }
 
 // ─── 1. Background Task Definition (Registered at JS Boot) ────────────────────
@@ -62,92 +200,7 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }: any) => {
 
       // ── SUB-CASE A1: ARRIVAL (AUTO-START WORKOUT) ──────────────────────────
       if (isEnter && gymConfig.promptOnEnter) {
-        const sessionKey = `@zentrack_active_workout_${today}`;
-        const existingRaw = await AsyncStorage.getItem(sessionKey);
-        let startTime = nowMs;
-
-        if (existingRaw) {
-          try {
-            const existing = JSON.parse(existingRaw);
-            if (existing?.startTime && !existing?.completed) {
-              startTime = existing.startTime;
-            }
-          } catch {}
-        }
-
-        const sessionState = {
-          date: today,
-          startTime,
-          autoStartedByGeofence: true,
-          completed: false,
-          updatedAt: nowMs,
-        };
-
-        await AsyncStorage.setItem(sessionKey, JSON.stringify(sessionState));
-        await AsyncStorage.setItem('@zentrack_active_workout_state', JSON.stringify(sessionState));
-
-        // Sync to Firestore if authenticated
-        try {
-          const user = auth.currentUser;
-          if (user) {
-            const docId = `${user.uid}_${today}`;
-            const docRef = doc(db, COLLECTION.GYM_LOGS, docId);
-            const snap = await getDoc(docRef);
-
-            if (snap.exists()) {
-              const existingData = snap.data();
-              if (!existingData.completed && !existingData.workoutStartTime) {
-                await safeWrite(
-                  () => setDoc(docRef, { workoutStartTime: startTime, completed: false, updatedAt: serverTimestamp() }, { merge: true }),
-                  COLLECTION.GYM_LOGS,
-                  'set',
-                  { workoutStartTime: startTime, completed: false },
-                  docId
-                );
-              }
-            } else {
-              const initialLog = {
-                id: docId,
-                userId: user.uid,
-                date: today,
-                workoutStartTime: startTime,
-                completed: false,
-                exercises: [],
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-              };
-              await safeWrite(
-                () => setDoc(docRef, initialLog, { merge: true }),
-                COLLECTION.GYM_LOGS,
-                'set',
-                initialLog,
-                docId
-              );
-            }
-          }
-        } catch (e) {
-          console.warn('[Geofence] Firestore gym arrival sync error:', e);
-        }
-
-        // Award attendance XP & notify UI listeners
-        awardXP('GYM_SET').catch(() => {});
-        DeviceEventEmitter.emit('gym_workout_auto_started', { date: today, startTime });
-
-        // Schedule High-Priority Arrival Notification
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: `🏋️ Arrived at ${placeName} — Workout Started!`,
-            body: `Workout timer is running. Tap to log your sets & exercises.`,
-            sound: 'default',
-            priority: Notifications.AndroidNotificationPriority.MAX,
-            vibrate: [0, 500, 200, 500, 200, 500],
-            color: '#a599ff',
-            data: { type: 'GYM_ARRIVAL', screen: 'ActiveLogging', date: today },
-            categoryIdentifier: 'location_gym_arrival',
-            ...(Platform.OS === 'android' ? { channelId: 'location_reminders' } : {}),
-          },
-          trigger: null,
-        });
+        await triggerGymArrival(gymConfig);
       }
 
       // ── SUB-CASE A2: DEPARTURE (AUTO-FINISH WORKOUT) ────────────────────────
@@ -271,7 +324,7 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }: any) => {
   }
 });
 
-// ─── 2. Permissions Helper ───────────────────────────────────────────────────
+// ─── 2. Permissions & Device Service Helpers ─────────────────────────────────
 export async function requestLocationPermissions(): Promise<boolean> {
   try {
     const { status: fg } = await Location.requestForegroundPermissionsAsync();
@@ -282,6 +335,186 @@ export async function requestLocationPermissions(): Promise<boolean> {
   } catch (err) {
     console.warn('[Geofence] Permission request failed:', err);
     return false;
+  }
+}
+
+/**
+ * Ensures system location provider (GPS) is turned ON.
+ * On Android: prompts the native Google Play LocationServices 1-tap dialog ("To continue, turn on device location").
+ * On iOS: prompts the user to open device Settings.
+ */
+export async function ensureLocationServicesEnabled(): Promise<boolean> {
+  try {
+    const isEnabled = await Location.hasServicesEnabledAsync();
+    if (isEnabled) return true;
+
+    if (Platform.OS === 'android') {
+      try {
+        await Location.enableNetworkProviderAsync();
+        const afterCheck = await Location.hasServicesEnabledAsync();
+        if (afterCheck) {
+          checkImmediateGymProximity().catch(() => {});
+          syncAllActiveGeofences().catch(() => {});
+          return true;
+        }
+      } catch (providerErr: any) {
+        console.log('[Geofence] enableNetworkProviderAsync cancelled or failed:', providerErr?.message);
+      }
+    }
+
+    Alert.alert(
+      'Location Services Disabled',
+      'Please enable Device Location (GPS) in Settings so ZenTrack can detect when you arrive at your gym.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => Linking.openSettings() },
+      ]
+    );
+    return false;
+  } catch (err: any) {
+    console.warn('[Geofence] ensureLocationServicesEnabled error:', err?.message);
+    return false;
+  }
+}
+
+/**
+ * Immediate Proximity Evaluator:
+ * Solves the OS "transition edge" problem! If the user turned on location while ALREADY
+ * standing inside the gym, OS geofencing doesn't see a boundary crossing.
+ * This directly checks GPS distance right now and triggers arrival immediately.
+ */
+export async function checkImmediateGymProximity(options?: {
+  force?: boolean;
+  currentCoords?: { latitude: number; longitude: number };
+}): Promise<{
+  insideGym: boolean;
+  distanceMeters: number | null;
+  triggered: boolean;
+}> {
+  try {
+    const gymConfig = await getGymGeofenceConfig();
+    if (!gymConfig || !gymConfig.enabled || !gymConfig.latitude || !gymConfig.longitude) {
+      return { insideGym: false, distanceMeters: null, triggered: false };
+    }
+
+    const servicesEnabled = await Location.hasServicesEnabledAsync();
+    if (!servicesEnabled) {
+      return { insideGym: false, distanceMeters: null, triggered: false };
+    }
+
+    const { status: fg } = await Location.getForegroundPermissionsAsync();
+    if (fg !== 'granted') {
+      return { insideGym: false, distanceMeters: null, triggered: false };
+    }
+
+    // If caller provided currentCoords (e.g. user just tapped 'Use Current Location'), use them instantly
+    let currentCoords: { latitude: number; longitude: number } | null = options?.currentCoords ?? null;
+
+    if (!currentCoords) {
+      // Attempt balanced GPS position with 6-second timeout
+      try {
+        const positionPromise = Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000));
+        const pos = await Promise.race([positionPromise, timeoutPromise]);
+        if (pos && 'coords' in pos) {
+          currentCoords = (pos as Location.LocationObject).coords;
+        }
+      } catch (posErr: any) {
+        // Handled below
+      }
+
+      // Robust fallback: if timeout occurred or error was thrown, inspect last known GPS coordinate
+      if (!currentCoords) {
+        try {
+          const last = await Location.getLastKnownPositionAsync();
+          if (last) currentCoords = last.coords;
+        } catch {}
+      }
+    }
+
+    if (!currentCoords) {
+      return { insideGym: false, distanceMeters: null, triggered: false };
+    }
+
+    const distance = calculateDistanceMeters(
+      currentCoords.latitude,
+      currentCoords.longitude,
+      gymConfig.latitude,
+      gymConfig.longitude
+    );
+
+    const radius = gymConfig.radius || 150;
+    const isInside = distance <= radius;
+
+    if (isInside && gymConfig.promptOnEnter) {
+      const triggered = await triggerGymArrival(gymConfig, options);
+      return { insideGym: true, distanceMeters: distance, triggered };
+    }
+
+    return { insideGym: isInside, distanceMeters: distance, triggered: false };
+  } catch (err: any) {
+    console.warn('[Geofence] checkImmediateGymProximity failed:', err?.message);
+    return { insideGym: false, distanceMeters: null, triggered: false };
+  }
+}
+
+/**
+ * Diagnostic status for UI HUDs (e.g. GymHomeScreen pill)
+ */
+export interface GeofenceDiagnosticStatus {
+  isConfigured: boolean;
+  isEnabled: boolean;
+  isLocationServicesEnabled: boolean;
+  hasForegroundPermission: boolean;
+  hasBackgroundPermission: boolean;
+  gymName: string;
+  radius: number;
+}
+
+export async function getGeofenceDiagnosticStatus(): Promise<GeofenceDiagnosticStatus> {
+  try {
+    const gymConfig = await getGymGeofenceConfig();
+    const isConfigured = !!(gymConfig && gymConfig.latitude && gymConfig.longitude);
+    const isEnabled = !!gymConfig?.enabled;
+    const gymName = gymConfig?.placeName || 'My Gym';
+    const radius = gymConfig?.radius || 150;
+
+    let isLocationServicesEnabled = false;
+    let hasForegroundPermission = false;
+    let hasBackgroundPermission = false;
+
+    try {
+      isLocationServicesEnabled = await Location.hasServicesEnabledAsync();
+    } catch {}
+
+    try {
+      const fg = await Location.getForegroundPermissionsAsync();
+      hasForegroundPermission = fg.status === 'granted';
+      const bg = await Location.getBackgroundPermissionsAsync();
+      hasBackgroundPermission = bg.status === 'granted';
+    } catch {}
+
+    return {
+      isConfigured,
+      isEnabled,
+      isLocationServicesEnabled,
+      hasForegroundPermission,
+      hasBackgroundPermission,
+      gymName,
+      radius,
+    };
+  } catch {
+    return {
+      isConfigured: false,
+      isEnabled: false,
+      isLocationServicesEnabled: false,
+      hasForegroundPermission: false,
+      hasBackgroundPermission: false,
+      gymName: '',
+      radius: 150,
+    };
   }
 }
 
@@ -376,3 +609,34 @@ export async function syncAllActiveGeofences(): Promise<void> {
     console.warn('[Geofence] syncAllActiveGeofences failed:', err?.message);
   }
 }
+
+// ─── 5. Cold Boot & Lifecycle Auto-Arm ───────────────────────────────────────
+export async function initGeofencingOnBoot(): Promise<void> {
+  try {
+    const gymConfig = await getGymGeofenceConfig();
+    const taskReminders = await getActiveTaskLocationReminders();
+
+    const hasAnyTarget = (gymConfig && gymConfig.enabled && gymConfig.latitude) || (taskReminders && taskReminders.length > 0);
+    if (!hasAnyTarget) {
+      return;
+    }
+
+    // Only auto-sync if permissions were already granted
+    const { status: fg } = await Location.getForegroundPermissionsAsync();
+    if (fg !== 'granted') return;
+
+    const { status: bg } = await Location.getBackgroundPermissionsAsync();
+    if (bg === 'granted') {
+      await syncAllActiveGeofences();
+    }
+
+    // Evaluate immediate proximity if location services are on
+    const servicesOn = await Location.hasServicesEnabledAsync();
+    if (servicesOn) {
+      checkImmediateGymProximity().catch(() => {});
+    }
+  } catch (err: any) {
+    console.warn('[Geofence] initGeofencingOnBoot error:', err?.message);
+  }
+}
+

@@ -29,7 +29,7 @@ import { setupLifecycleHygiene } from './src/services/lifecycleHygiene';
 import { registerDeferredOtaSync } from './src/services/otaUpdateService';
 import { loadBootManifest } from './src/utils/bootManifest';
 import { PortalProvider } from './src/contexts/PortalContext';
-import { registerBackgroundProactiveAgent } from './src/services/backgroundProactiveAgent';
+import { unregisterBackgroundProactiveAgent } from './src/services/backgroundProactiveAgent';
 import { registerWeeklyReviewTask } from './src/services/backgroundTasks';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { MobileDataProvider } from './src/contexts/MobileDataContext';
@@ -105,6 +105,8 @@ function ThemedAppContainer() {
   );
 }
 
+import { initGeofencingOnBoot, checkImmediateGymProximity } from './src/services/geofenceService';
+
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
@@ -120,24 +122,34 @@ export default function App() {
     loadBootManifest().catch(() => {});
   }, []);
 
-  // PERF: Background service registrations deferred to 6.0s.
-  // These have zero effect on startup frames and setting them late keeps the C++ bridge 100% free.
   useEffect(() => {
+    // Initialize notification channels & check permissions immediately on boot
+    requestNotificationPermissions().catch(console.warn);
+
     const handle = InteractionManager.runAfterInteractions(() => {
       const timer = setTimeout(() => {
-        requestNotificationPermissions();
         registerBackgroundNotificationFetch();
-        registerBackgroundProactiveAgent();
+        unregisterBackgroundProactiveAgent().catch(() => {});
         registerWeeklyReviewTask();
-        try {
-          require('./src/services/geofenceService');
-        } catch (e: any) {
-          console.warn('[Boot] Geofence service registration skipped:', e?.message);
-        }
-      }, 6000);
+        initGeofencingOnBoot().catch((e: any) => {
+          console.warn('[Boot] Geofence boot init skipped:', e?.message);
+        });
+      }, 3000);
       return () => clearTimeout(timer);
     });
     return () => handle.cancel();
+  }, []);
+
+  // Proactive Instant Geofence Check on Foreground Resume:
+  // When the user toggles Location (GPS) in Quick Settings and re-opens ZenTrack
+  // while already standing inside the gym, evaluate proximity immediately!
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        checkImmediateGymProximity().catch(() => {});
+      }
+    });
+    return () => sub.remove();
   }, []);
 
 

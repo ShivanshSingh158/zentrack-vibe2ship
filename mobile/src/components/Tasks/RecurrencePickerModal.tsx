@@ -98,7 +98,7 @@ export default function RecurrencePickerModal({ visible, onClose, initialRule, o
 
   return (
     <>
-      <BottomSheet visible={visible} onClose={onClose}>
+      <BottomSheet visible={visible} onClose={onClose} avoidKeyboard={false}>
         <View style={styles.container}>
           <Text style={styles.title}>Repeat</Text>
 

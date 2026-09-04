@@ -11,19 +11,24 @@ import {
   updateTodayAgendaWidget 
 } from '../services/widgetSyncService';
 import type { Task, AttendanceSubject, AttendanceLog } from '../contexts/MobileDataContext';
+import { formatLocalDateStr } from '../utils/dateUtils';
 
 interface UseWidgetSyncParams {
   tasks?: Task[];
   subjects?: AttendanceSubject[];
   attendanceLogs?: AttendanceLog[];
+  holidays?: string[];
   zenScore?: number;
+  streak?: number;
 }
 
 export function useWidgetSync({
   tasks = [],
   subjects = [],
   attendanceLogs = [],
+  holidays = [],
   zenScore = 85,
+  streak = 0,
 }: UseWidgetSyncParams) {
   const debounceTimer = useRef<any>(null);
   const lastFingerprintRef = useRef<string>('');
@@ -31,8 +36,17 @@ export function useWidgetSync({
   useEffect(() => {
     if (Platform.OS !== 'android') return;
 
-    // Fast O(1) shallow fingerprint
-    const currentFingerprint = `${tasks.length}_${tasks.map(t => `${t.id}:${t.status}`).join(',')}_${subjects.length}_${attendanceLogs.length}_${Math.round(zenScore)}`;
+    const now = new Date();
+    const dateStr = formatLocalDateStr(now);
+    const todayLogs = attendanceLogs
+      .filter((l) => (l.date || '').slice(0, 10) === dateStr)
+      .map((l) => `${l.id || l.subjectId}_${(l as any).idx ?? (l as any).sessionIdx ?? 0}_${l.action}`)
+      .sort()
+      .join('|');
+    const isHoliday = (holidays || []).some(h => (typeof h === 'string' ? h.trim().slice(0, 10) : (h as any)?.date?.trim()?.slice(0, 10)) === dateStr);
+
+    // Fast O(1) shallow fingerprint tracking task states, today's log actions, holiday state, zenScore, and streak
+    const currentFingerprint = `${tasks.length}_${tasks.map(t => `${t.id}:${t.status}`).join(',')}_${subjects.length}_${todayLogs}_${isHoliday ? '1' : '0'}_${Math.round(zenScore)}_${Math.round(streak)}`;
     if (currentFingerprint === lastFingerprintRef.current) {
       return; // Data has not changed; skip 100% of background work
     }
@@ -49,7 +63,9 @@ export function useWidgetSync({
             tasks,
             subjects,
             attendanceLogs,
+            holidays,
             zenScore,
+            streak,
           });
           await saveCachedWidgetData(data);
           await updateTodayAgendaWidget(data);
@@ -63,5 +79,5 @@ export function useWidgetSync({
         clearTimeout(debounceTimer.current);
       }
     };
-  }, [tasks, subjects, attendanceLogs, zenScore]);
+  }, [tasks, subjects, attendanceLogs, holidays, zenScore, streak]);
 }

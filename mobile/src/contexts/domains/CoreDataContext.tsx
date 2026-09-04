@@ -14,7 +14,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates } from 'react-native';
 import { auth, db } from "../../services/firebase";
-import { COLLECTION } from "../../config/constants";
+import { COLLECTION, STORAGE_KEYS } from "../../config/constants";
 import type { Task, Habit, HabitLog } from "../MobileDataContext";
 import { writeCoreCacheMulti, readCoreCacheMulti, clearCoreCache } from "../../utils/coreCache";
 import { loadBootManifest, getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
@@ -135,7 +135,21 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     setPinnedModulesState(clamped);
     updateL1Cache('pinnedModules', clamped);
     AsyncStorage.setItem("@zentrack_pinned_modules", JSON.stringify(clamped)).catch(console.warn);
+    if (auth.currentUser?.uid) {
+      setDoc(doc(db, COLLECTION.USER_PROFILES, auth.currentUser.uid), {
+        pinnedModules: clamped,
+      }, { merge: true }).catch(() => {});
+    }
   };
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('pinned_modules_changed', (newMods: string[]) => {
+      if (Array.isArray(newMods) && newMods.length > 0) {
+        setPinnedModulesState(newMods.slice(0, 4));
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   // ── Listener auto-restart on error ───────────────────────────────────────
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
@@ -173,7 +187,8 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       auth.authStateReady().catch(() => null),
       AsyncStorage.getItem('@zentrack_optimistic_user').catch(() => null),
       readCoreCacheMulti().catch(() => null),
-    ]).then(([manifest, _, rawUser, coreCache]) => {
+      AsyncStorage.getItem('@zentrack_pinned_modules').catch(() => null),
+    ]).then(([manifest, _, rawUser, coreCache, rawPinned]) => {
       if (cancelled) return;
 
       unstable_batchedUpdates(() => {
@@ -196,7 +211,24 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           setFirestoreReady(true);
         }
 
-        // 2. Resolve user from auth state or optimistic storage
+        // 2. Hydrate pinned modules (ensures custom pins survive app close/kill)
+        let userPinned: string[] | null = null;
+        if (manifest?.pinnedModules && Array.isArray(manifest.pinnedModules) && manifest.pinnedModules.length > 0) {
+          userPinned = manifest.pinnedModules;
+        } else if (rawPinned) {
+          try {
+            const parsed = JSON.parse(rawPinned);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              userPinned = parsed.slice(0, 4);
+            }
+          } catch {}
+        }
+        if (userPinned && userPinned.length > 0) {
+          setPinnedModulesState(userPinned);
+          updateL1Cache('pinnedModules', userPinned);
+        }
+
+        // 3. Resolve user from auth state or optimistic storage
         if (auth.currentUser) {
           setUser(prev => {
             if (auth.currentUser && prev?.uid === auth.currentUser.uid) return prev;
@@ -281,7 +313,8 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
       snap => {
         // OFFLINE GUARD: If Firestore memory-cache returns empty snapshot while we have cached data, DO NOT wipe!
-        if (snap.docs.length === 0 && hasCachedDataRef.current) {
+        // Only guard when the empty snapshot is from local cache; server-confirmed empty updates must clear state.
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) {
           setFirestoreReady(true);
           return;
         }
@@ -301,7 +334,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) {
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) {
           setFirestoreReady(true);
           return;
         }
@@ -322,7 +355,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) {
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) {
           setFirestoreReady(true);
           return;
         }
@@ -339,7 +372,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       scheduleListenerRestart("habitLogs")
     ));
 
-    // 4. User Profile (XP Sync) Listener
+    // 4. User Profile (XP, Saved Places, Gym Geofence & Pinned Modules Sync) Listener
     unsubsRef.current.push(onSnapshot(
       doc(db, COLLECTION.USER_PROFILES, uid),
       snap => {
@@ -347,6 +380,22 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           const data = snap.data();
           if (typeof data?.xp === 'number') {
             syncXPWithFirestore(data.xp);
+          }
+          if (Array.isArray(data?.pinnedModules) && data.pinnedModules.length > 0) {
+            const remotePinned = data.pinnedModules.slice(0, 4);
+            setPinnedModulesState(remotePinned);
+            updateL1Cache('pinnedModules', remotePinned);
+            AsyncStorage.setItem('@zentrack_pinned_modules', JSON.stringify(remotePinned)).catch(() => {});
+          }
+          if (Array.isArray(data?.savedPlaces)) {
+            AsyncStorage.setItem(STORAGE_KEYS.SAVED_PLACES || '@zentrack_saved_places', JSON.stringify(data.savedPlaces)).catch(() => {});
+          }
+          if (data?.gymGeofenceConfig !== undefined) {
+            if (data.gymGeofenceConfig) {
+              AsyncStorage.setItem(STORAGE_KEYS.GYM_GEOFENCE || '@zentrack_gym_geofence_config', JSON.stringify(data.gymGeofenceConfig)).catch(() => {});
+            } else {
+              AsyncStorage.removeItem(STORAGE_KEYS.GYM_GEOFENCE || '@zentrack_gym_geofence_config').catch(() => {});
+            }
           }
         }
       },

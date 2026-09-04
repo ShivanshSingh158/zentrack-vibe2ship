@@ -62,21 +62,29 @@ export default function MoreScreen() {
   const [selected, setSelected] = useState<string[]>(() => effectivePinned);
 
   const handleClose = useCallback(() => {
+    if (isEditing) {
+      setIsEditing(false);
+      setSelected(effectivePinned);
+      return;
+    }
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
       navigation.navigate('Home');
     }
-  }, [navigation]);
+  }, [navigation, isEditing, effectivePinned]);
 
   const toggleEdit = useCallback(() => {
-    triggerLayoutAnimation();
     if (isEditing) {
-      setPinnedModules(selected.length > 0 ? selected : DEFAULT_PINNED_MODULES);
+      const toSave = selected.length > 0 ? selected : DEFAULT_PINNED_MODULES;
+      setPinnedModules(toSave);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setIsEditing(false);
     } else {
+      triggerLayoutAnimation();
       setSelected(effectivePinned);
+      setIsEditing(true);
     }
-    setIsEditing(prev => !prev);
   }, [isEditing, effectivePinned, selected, setPinnedModules]);
 
   const navigateWithClose = useCallback((screenName: string) => {
@@ -89,7 +97,6 @@ export default function MoreScreen() {
 
   const handleModulePress = useCallback((modId: string) => {
     if (isEditing) {
-      triggerLayoutAnimation();
       if (selected.includes(modId)) {
         setSelected(prev => prev.filter(m => m !== modId));
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -132,6 +139,8 @@ export default function MoreScreen() {
         entering={FadeIn.duration(120)}
         exiting={FadeOut.duration(80)}
         style={styles.cardWrapper}
+        renderToHardwareTextureAndroid={true}
+        shouldRasterizeIOS={true}
       >
         <BlurView intensity={isDark ? 85 : 95} tint={isDark ? "dark" : "light"} style={styles.sheet}>
 
@@ -154,14 +163,17 @@ export default function MoreScreen() {
                 haptic="light"
               >
                 <Ionicons
-                  name={isEditing ? 'checkmark' : 'pencil'}
+                  name={isEditing ? 'checkmark-circle' : 'pencil'}
                   size={13}
                   color={isEditing ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary}
                 />
                 <Text
                   style={[
                     styles.editPillText,
-                    { color: isEditing ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary },
+                    { 
+                      color: isEditing ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary,
+                      fontFamily: isEditing ? FONT_FAMILY.bold : FONT_FAMILY.medium,
+                    },
                   ]}
                 >
                   {isEditing ? 'Done' : 'Edit Nav'}
@@ -179,7 +191,7 @@ export default function MoreScreen() {
           </View>
 
           {isEditing && (
-            <Text style={styles.editHint}>Tap up to 4 modules to pin to your home tabs</Text>
+            <Text style={styles.editHint}>Select up to 4 modules to pin to your navigation bar</Text>
           )}
 
           <ScrollView 
@@ -195,7 +207,7 @@ export default function MoreScreen() {
                 return (
                   <AnimatedPressable
                     key={mod.id}
-                    style={[styles.gridItem, { opacity: isDimmed ? 0.3 : 1 }]}
+                    style={[styles.gridItem, { opacity: isDimmed ? 0.35 : 1 }]}
                     activeOpacity={0.7}
                     haptic="none"
                     onPress={() => handleModulePress(mod.id)}
@@ -233,14 +245,16 @@ export default function MoreScreen() {
                 );
               })}
 
-              {/* Utility Row: Settings */}
-              <AnimatedPressable style={styles.gridItem} activeOpacity={0.7} haptic="none" onPress={() => navigateWithClose('Settings')}>
-                <View style={styles.gridIconBox}>
-                  <View style={[StyleSheet.absoluteFillObject, { backgroundColor: isDark ? colors.textMuted : '#636366', opacity: isDark ? 0.14 : 0.10 }]} />
-                  <Ionicons name="settings" size={26} color={isDark ? colors.textMuted : '#636366'} />
-                </View>
-                <Text style={styles.gridItemText} numberOfLines={1}>Settings</Text>
-              </AnimatedPressable>
+              {/* Utility Row: Settings (only visible when not editing navigation pins) */}
+              {!isEditing && (
+                <AnimatedPressable style={styles.gridItem} activeOpacity={0.7} haptic="none" onPress={() => navigateWithClose('Settings')}>
+                  <View style={styles.gridIconBox}>
+                    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: isDark ? colors.textMuted : '#636366', opacity: isDark ? 0.14 : 0.10 }]} />
+                    <Ionicons name="settings" size={26} color={isDark ? colors.textMuted : '#636366'} />
+                  </View>
+                  <Text style={styles.gridItemText} numberOfLines={1}>Settings</Text>
+                </AnimatedPressable>
+              )}
             </View>
           </ScrollView>
         </BlurView>

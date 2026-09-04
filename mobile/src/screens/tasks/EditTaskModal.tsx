@@ -33,8 +33,9 @@ import UniversalCalendarModal from '../../components/UniversalCalendarModal';
 import AnimatedPressable from '../../components/AnimatedPressable';
 import { LocationPickerModal } from '../../components/Tasks/LocationPickerModal';
 import { saveTaskLocationReminder, removeTaskLocationReminder } from '../../services/geofenceService';
+import { scheduleSingleTaskReminder } from '../../services/notifications';
 import type { TaskLocationTrigger } from '../../types/locationReminder.types';
-import { parseNLTask, ParsedTask, NLPToken, parseLocalDate, toYMD } from '../../utils/dateUtils';
+import { parseNLTask, ParsedTask, NLPToken, parseLocalDate, toYMD, cleanTaskTitle } from '../../utils/dateUtils';
 import { isSilenceOrNoise } from '../../services/voiceEngine';
 import { handleSyncError } from '../../utils/errorUtils';
 import { Task } from '../../contexts/MobileDataContext';
@@ -232,9 +233,15 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
   const onStartChange = (event: any, d?: Date) => {
     if (Platform.OS === 'android') {
       setShowStartPicker(false);
-      if (event.type === 'set' && d) setStartTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`);
+      if (event.type === 'set' && d) {
+        setStartTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`);
+        setIsReminder(true);
+      }
     } else {
-      if (d) setStartTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`);
+      if (d) {
+        setStartTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`);
+        setIsReminder(true);
+      }
     }
   };
   const onEndChange = (event: any, d?: Date) => {
@@ -310,7 +317,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     const rawForParse = isOverride ? rawText : title;
     const saveParsed = rawForParse.trim().length >= 2 ? parseNLTask(rawForParse) : null;
 
-    let finalTitle = saveParsed?.title?.trim() || nlpParsed?.title?.trim() || rawForParse.trim();
+    let finalTitle = cleanTaskTitle(saveParsed?.title?.trim() || nlpParsed?.title?.trim() || rawForParse.trim());
     let ts = startTime ? (endTime ? `${startTime} - ${endTime}` : startTime) : null;
     let est = calcEstMinutes(startTime, endTime) || nlpDuration || saveParsed?.durationMinutes || currentTask.estimatedMinutes || 0;
     let finalPriority = priority;
@@ -352,6 +359,13 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     };
 
     optimisticUpdateTask(currentTask.id, updatePayload);
+
+    if (finalIsReminder || ts) {
+      scheduleSingleTaskReminder({
+        id: currentTask.id,
+        ...updatePayload,
+      } as any).catch(console.warn);
+    }
 
     if (locationTrigger) {
       saveTaskLocationReminder({
@@ -515,12 +529,19 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
               ]}
               onPress={() => {
                 import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Light));
-                setIsReminder(v => !v);
+                if (!isReminder) {
+                  setIsReminder(true);
+                  if (!startTime) {
+                    setShowStartPicker(true);
+                  }
+                } else {
+                  setIsReminder(false);
+                }
               }}
             >
               <Ionicons name={isReminder ? "notifications" : "notifications-outline"} size={13} color={isReminder ? '#f59e0b' : colors.textMuted} />
               <Text style={[styles.quickChipText, isReminder && { color: '#f59e0b', fontWeight: '600' }]}>
-                {isReminder ? 'Alarm ON' : 'Reminder'}
+                {isReminder ? (startTime ? `Alarm ${formatTimeDisplay(startTime)}` : 'Alarm ON') : 'Reminder'}
               </Text>
             </AnimatedPressable>
           </View>

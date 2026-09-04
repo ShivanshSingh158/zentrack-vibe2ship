@@ -177,7 +177,7 @@ mobile/
     │   ├── AppNavigator.tsx              # Root Auth Gate, 0ms Manifest Boot, Tabs, Modal Stacks
     │   └── GymStack.tsx                  # Dedicated Gym Workout Navigation Stack
     ├── screens/
-    │   ├── SaraScreen.tsx                # ChatGPT-Style AI Workspace & Voice Orb Console
+    │   ├── SaraScreen.tsx                # ChatGPT-Style Pure Text AI Workspace (OLED Theme)
     │   ├── DashboardScreen.tsx           # Home Dashboard: Life Matrix, Daily Briefing, Widgets
     │   ├── TasksScreen.tsx               # Task Manager: List, 24h Timeline, Eisenhower Matrix
     │   ├── AttendanceScreen.tsx          # Attendance Tracker, Bunk Calculator, Timetable View
@@ -226,7 +226,7 @@ mobile/
     │   ├── leetcode.ts                   # LeetCode Public GraphQL Profile Scraper
     │   ├── agentHistory.ts               # SARA Action History Persistence
     │   ├── backgroundTasks.ts            # Expo TaskManager Background Tasks
-    │   ├── backgroundProactiveAgent.ts   # Background AI Proactive Anomaly Check
+    │   ├── backgroundProactiveAgent.ts   # Deactivated (cleans up any deprecated OS background task)
     │   └── webScraper.ts                 # DuckDuckGo AI Web Search Provider
     ├── theme/
     │   ├── tokens.ts                     # Obsidian Cosmos (Dark) & Frost Quartz (Light) Palettes
@@ -304,8 +304,8 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/contexts/ThemeContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/ThemeContext.tsx) | `ThemeProvider` | `React.FC<{ children: React.ReactNode }>` | Theme state provider managing Obsidian Cosmos (dark) vs Frost Quartz (light). |
 | | `useTheme` | `() => { theme: ThemeMode, isDark: boolean, colors: ColorTokens, setTheme: (m: ThemeMode) => void }` | Hook providing active color tokens, dark mode boolean, and theme switcher. |
 | [`src/contexts/PortalContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/PortalContext.tsx) | `PortalProvider`, `Portal`, `PortalHost` | Components | Root modal portal coordinator rendering floating sheets at the root view hierarchy. |
-| [`src/contexts/domains/CoreDataContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/CoreDataContext.tsx) | `CoreDataProvider` | `React.FC<{ children: React.ReactNode }>` | Manages auth, tasks, habits, and habit logs. Listens for `firestore_force_reconnect` to auto-restart listeners on foreground. |
-| | `useCoreData` | `() => CoreDataContextType` | Hook returning `user`, `tasks`, `habits`, `habitLogs`, `optimisticAddTask`, `optimisticUpdateTask`, `optimisticDeleteTask`, etc. |
+| [`src/contexts/domains/CoreDataContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/CoreDataContext.tsx) | `CoreDataProvider` | `React.FC<{ children: React.ReactNode }>` | Manages auth, tasks, habits, habit logs, and persistent navigation pins (`pinnedModules` with cold-boot manifest + AsyncStorage hydration and Firestore cloud sync). Listens for `firestore_force_reconnect` to auto-restart listeners on foreground. |
+| | `useCoreData` | `() => CoreDataContextType` | Hook returning `user`, `tasks`, `habits`, `habitLogs`, `pinnedModules`, `setPinnedModules`, `optimisticAddTask`, etc. |
 | | `performSignOut` | `() => Promise<void>` | Explicit user sign-out: signs out of Firebase Auth, clears optimistic boot tokens, wipes offline write queue, and purges all domain caches. |
 | [`src/contexts/domains/WellnessContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/WellnessContext.tsx) | `WellnessProvider` | `React.FC<{ children: React.ReactNode, user: any }>` | Demand-based subscriptions for `gym_logs`, `user_gym_plans`, `water_logs`, `sleep_logs`, and `weight_logs`. |
 | | `useWellnessData` | `() => WellnessContextType` | Hook returning `gymLogs`, `userGymPlan`, `waterLogs`, `sleepLogs`, `updateMasterPlan`, `applyMasterTemplate`, etc. |
@@ -347,8 +347,10 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | | `subscribeToSyncComplete` | `(cb: (count: number) => void) => () => void` | Registers listener for successful sync completion toasts. |
 | | `getQueueCount` | `() => Promise<number>` | Returns count of pending offline writes. |
 | | `clearOfflineQueue` | `() => Promise<void>` | Wipes offline queue on sign-out. |
-| [`src/services/notifications.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/notifications.ts) | `scheduleAllNotifications` | `(params: ScheduleParams) => Promise<void>` | Evaluates user data fingerprint and rebuilds all local scheduled notifications across channels with `notificationChannels` and `notificationPools`. |
-| | `requestNotificationPermissions`| `() => Promise<boolean>` | Configures Android channels (`default`, `reminders`, `habits`, `sara_critical`) and requests OS permissions. |
+| [`src/services/notifications.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/notifications.ts) | `scheduleAllNotifications` | `(params: ScheduleParams) => Promise<void>` | Evaluates user data fingerprint and rebuilds all local scheduled notifications across channels with `notificationChannels` and `notificationPools`. Features a Promise queue to eliminate race conditions between background watchers and foreground UI inspectors, a 7-day rolling horizon for task reminders, exact time alarm delivery on `reminders` channel, fallback handling for `isReminder: true` tasks without explicit time slots, and an increased budget of 50 timed tasks on Android. |
+| | `scheduleSingleTaskReminder` | `(task: Task) => Promise<void>` | Direct single-task reminder scheduler invoked immediately upon task creation or edit in `NewTaskModal` & `EditTaskModal`. |
+| | `requestNotificationPermissions`| `() => Promise<boolean>` | Configures Android channels (`default`, `reminders`, `location_reminders`, `habits`, `sara_critical`, `wellness`, `active_workout`) with `AndroidImportance.MAX`, public lockscreen visibility, custom vibration patterns, and requests OS runtime permissions. |
+| | `ensureNotificationChannels` | `() => Promise<void>` | Idempotently verifies and registers all Android notification channels prior to scheduling. |
 | | `registerBackgroundNotificationFetch`| `() => Promise<void>` | Registers background TaskManager worker to verify notifications when app is suspended. |
 | | `clearScheduleCache` | `() => void` | Bypasses fingerprint cache to force immediate full notification rescheduling. |
 | [`src/services/xpSystem.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/xpSystem.ts) | `awardXP` | `(source: XPSource, customAmount?: number) => Promise<{ newXP: number, levelUp: boolean, newLevel: XPLevel }>` | Awards XP using Skinner variable ratio schedule, checks rank thresholds, and plays milestone haptics. |
@@ -374,23 +376,25 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/services/backgroundProactiveAgent.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/backgroundProactiveAgent.ts) | `registerBackgroundProactiveAgent` | `() => Promise<void>` | Background task evaluating critical academic and task risks when app is suspended. |
 | [`src/services/webScraper.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/webScraper.ts) | `executeWebSearch` | `(query: string) => Promise<string>` | DuckDuckGo search integration for SARA DAG queries. |
 | [`src/services/widgetSyncService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/widgetSyncService.ts) | `buildTodayAgendaData`, `saveCachedWidgetData`, `handleWidgetClickAction`, `updateTodayAgendaWidget` | Functions | Android Widget synchronization engine: aggregates chronological agenda (classes + tasks), saves to `@zentrack_widget_agenda_data`, handles headless button clicks (Present, Absent, Task Done/Undone), and writes to Firestore with deterministic doc IDs. |
+| [`src/services/geofenceService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/geofenceService.ts) | `calculateDistanceMeters`, `triggerGymArrival`, `ensureLocationServicesEnabled`, `checkImmediateGymProximity`, `getGeofenceDiagnosticStatus`, `syncAllActiveGeofences`, `initGeofencingOnBoot` | Functions | Autonomous background & instant foreground geofence engine: handles headless `ZENTRACK_GEOFENCE_TASK`, 0ms edge-transition bypass via direct Haversine distance, 1-tap Android Google Play Services location enabler, cold-boot auto-arming, and gym arrival/departure state machines. |
 
 ### 4.6. Navigation Layer (`src/navigation/`)
 | File Path | Component / Function | Purpose & Implementation Details |
 |---|---|---|
-| [`src/navigation/AppNavigator.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/navigation/AppNavigator.tsx) | `AppNavigator` | Root navigator managing auth gate (`onAuthStateChanged` with UID-stabilization guard), 0ms manifest boot (`loadBootManifest`), 0ms short-resume fast-path (<15m), On-Demand Tab Mounting with Zero Background Lock (Frame 0 mounts ONLY Home in <16ms; tabs mount individually on tap with `detachInactiveScreens={false}` and `freezeOnBlur={false}` for 0ms subsequent switching), hardware-accelerated Apple iOS fade transition (`animation: 'fade'`), deferred long-background (>30m) health-check & `firestore_force_reconnect`, `isAuthFatalError` handler, 8-second dead session recovery window, `MainTabs` with dynamic Telegram tab bar, and `MoreStack` card transitions. |
+| [`src/navigation/AppNavigator.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/navigation/AppNavigator.tsx) | `AppNavigator` | Root navigator managing auth gate (`onAuthStateChanged` with UID-stabilization guard), 0ms manifest boot (`loadBootManifest`), 0ms short-resume fast-path (<15m), Two-Phase On-Demand Warm Mounting (Frame 0 mounts ONLY Home in <16ms; after 350ms idle, pinned tabs warm-mount silently in the background with `detachInactiveScreens={false}` and `freezeOnBlur={false}` ensuring 100% instant, 0ms switching between tabs without native layout delays), hardware-accelerated Apple iOS fade transition (`animation: 'fade'`), deferred long-background (>30m) health-check & `firestore_force_reconnect`, `isAuthFatalError` handler, 8-second dead session recovery window, `MainTabs` with dynamic Telegram tab bar, and `MoreStack` card transitions. |
 | | `navigationRef` | Exported `NavigationContainerRef` for imperative deep linking from notification handlers in `App.tsx`. |
 | [`src/navigation/GymStack.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/navigation/GymStack.tsx) | `GymStack` | Dedicated workout stack: `GymHome` → `ActiveLogging` → `WorkoutSummary`, `GymProgress`, `GymHistory`, `ExerciseDetail`, `ExerciseSwap`, `CardioLog`. |
+| [`src/utils/ModulePrefetcher.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/ModulePrefetcher.tsx) | `cacheAwareLazy`, `startPrefetching`, `preloadNow` | WhatsApp-grade lazy module loading engine: `cacheAwareLazy(id, importer, FallbackComponent)` with zero black-flash fallbacks (renders pixel-matched shimmer skeletons on Frame 1 if tapped before import completes), background idle queue without artificial freezes (begins 120ms after Home interactions settle), and O(1) in-memory module caching. |
 
 ### 4.7. Screens & View Controllers (`src/screens/`)
 | File Path | Screen Component | Route Name | Key Screen Responsibilities |
 |---|---|---|---|
-| [`src/screens/DashboardScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/DashboardScreen.tsx) | `DashboardScreen` | `Home` | Main Dashboard: Life Matrix ring, daily tasks briefing, habit streak rings, hydration logger, and quick speed-dial sheet. |
-| [`src/screens/SaraScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/SaraScreen.tsx) | `SaraScreen` | `Sara`, `SaraModal` | ChatGPT OLED workspace: Voice Orb, real-time reasoning feed, 3-tier action confirmation cards, and memory summary drawer. |
+| [`src/screens/DashboardScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/DashboardScreen.tsx) | `DashboardScreen` | `Home` | Main Dashboard: Life Matrix ring, daily tasks briefing, habit streak rings, hydration logger, quick speed-dial sheet, and Voice Task Dictation FAB (replaces Sara button for 1-tap speech-to-task creation). |
+| [`src/screens/SaraScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/SaraScreen.tsx) | `SaraScreen` | `Sara`, `SaraModal` | Deactivated & hidden ultra-lightweight stub: renders null with 0 runtime dependencies, completely detached from prefetch queue and floating UI triggers to maximize app speed and responsiveness. |
 | [`src/screens/TasksScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/TasksScreen.tsx) | `TasksScreen` | `Tasks` | Task Command Center: List view with swipe actions, 24-hour timeline view, Eisenhower 4-quadrant matrix, and Pomodoro focus sheet. |
 | [`src/screens/AttendanceScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AttendanceScreen.tsx) | `AttendanceScreen` | `Attendance` | Attendance Tracker: subject card list, bunk prediction calculator, danger zone banner, timetable grid, Excel import/export, and chronological Subject History modal (strictly sorted Today → Oldest with relative day badges, class/lab pills, and undo capability). |
 | [`src/screens/CalendarScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/CalendarScreen.tsx) | `CalendarScreen` | `Calendar` | Calendar Hub: interactive month view, week strip pager, day agenda, event creator, and conflict markers. |
-| [`src/screens/HabitsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/HabitsScreen.tsx) | `HabitsScreen` | `Habits` | Habit Tracker: daily check-in pills, numerical counter buttons, streak freeze manager, streak detail charts, O(1) Map pre-indexed log lookups, and stable memoized FlashList recycling. |
+| [`src/screens/HabitsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/HabitsScreen.tsx) | `HabitsScreen` | `Habits` | HabitKit-Tier Habit Command Center: 35-day GitHub contribution heatmaps per card, squircle tiles with 4-tier graduated luminance, cyan freeze highlights, interactive historical date tooltip HUD, segmented filter bar (`All`, `Building`, `Avoiding`), 365-day panoramic annual analytics modal with day-of-week radar and 4-pill KPI summary, zero layout-shift skeleton matrix, and WhatsApp-grade offline safeWrite sync. |
 | [`src/screens/NotesScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/NotesScreen.tsx) | `NotesScreen` | `Notes` | ZenNotes: Markdown editor, hierarchical file/folder storage nodes, AI co-writer assistance, and PDF document exporter. |
 | [`src/screens/GoalsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GoalsScreen.tsx) | `GoalsScreen` | `Goals` | OKR Goal Tracker: goal cards, milestone breakdown, and progress completion progress rings. |
 | [`src/screens/GradesScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GradesScreen.tsx) | `GradesScreen` | `Grades` | SGPA/CGPA University Grade Calculator with semester subject credit breakdown. |
@@ -404,7 +408,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/screens/StudyRoomScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/StudyRoomScreen.tsx) | `StudyRoomScreen` | `StudyRoom` | Virtual Study Room: Pomodoro timer, ambient background noise, and study session loggers. |
 | [`src/screens/WeeklyReviewScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/WeeklyReviewScreen.tsx) | `WeeklyReviewScreen` | `WeeklyReview` | Sunday Review: retrospective questions (Went well, To improve, Priorities) and goal alignment. |
 | [`src/screens/AgentHistoryScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AgentHistoryScreen.tsx) | `AgentHistoryScreen` | `AgentHistory` | SARA Audit Log: list of all executed actions with undo buttons and execution timestamps. |
-| [`src/screens/MoreScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/MoreScreen.tsx) | `MoreScreen` | `More` | Module Launcher: 16-module icon grid with tab pinning configuration controls. |
+| [`src/screens/MoreScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/MoreScreen.tsx) | `MoreScreen` | `More` | Module Launcher: 16-module icon grid with tab pinning configuration controls, up-to-4 pin multi-selection with ordered badges (1–4), and explicit save mechanics. |
 | [`src/screens/SettingsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/SettingsScreen.tsx) | `SettingsScreen` | `Settings` | Settings: theme switcher, biometric lock toggle, data export/import, and sign-out button. |
 | [`src/screens/NotificationsSettingsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/NotificationsSettingsScreen.tsx) | `NotificationsSettingsScreen` | `NotificationsSettings` | Notification Preferences: mission windows, briefings, class reminders, and hydration interval controls. |
 | [`src/screens/OnboardingScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/OnboardingScreen.tsx) | `OnboardingScreen` | `Onboarding` | 5-step psychological onboarding: persona selection, goals, academic baseline, and SARA setup. |
@@ -480,7 +484,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/components/Calendar/CalendarWeekStripPager.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Calendar/CalendarWeekStripPager.tsx) | `CalendarWeekStripPager` | Horizontal swipeable week pager with day selection indicators. |
 | **Dashboard Components** (`src/components/Dashboard/`) | | |
 | [`src/components/Dashboard/UnifiedLifeWidget.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/UnifiedLifeWidget.tsx) | `UnifiedLifeWidget` | SVG donut score ring displaying overall life discipline score (0–100). |
-| [`src/components/Dashboard/AgendaWidget.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/AgendaWidget.tsx) | `AgendaWidget` | Today's timeline schedule card on Home dashboard. |
+| [`src/components/Dashboard/AgendaWidget.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/AgendaWidget.tsx) | `AgendaWidget` | Today's timeline schedule card on Home dashboard. Features chronological agenda items (classes, gym, tasks) with automatic holiday suppression (omits scheduled and cancelled classes on designated holidays, displaying only gym/tasks or "Rest & Recharge" state) and an interactive empty state with dual "+ Add Task" and "🎤 Voice" dictation buttons linking to `VoiceDictationOverlay`. |
 | [`src/components/Dashboard/QuickCaptureSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/QuickCaptureSheet.tsx) | `QuickCaptureSheet` | 1-tap capture bottom sheet for Tasks, Notes, and Habits with NLP parser. |
 | [`src/components/Dashboard/WaterLogSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/WaterLogSheet.tsx) | `WaterLogSheet` | Hydration logging bottom sheet (+250ml, +500ml quick chips). |
 | [`src/components/Dashboard/SleepLogSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/SleepLogSheet.tsx) | `SleepLogSheet` | Sleep duration & quality (1–5 stars) logging sheet. |
@@ -492,7 +496,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/components/Tasks/TimelineView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TimelineView.tsx) | `TimelineView` | 24-hour visual block timeline mapping tasks, academic classes, and gym workouts with `DraggableTaskBlock`, `timelineMath`, and `timelineViewStyles`. |
 | [`src/components/Tasks/MatrixView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/MatrixView.tsx) | `MatrixView` | Eisenhower Matrix (Do First, Schedule, Delegate, Don't Do) 4-quadrant layout. |
 | [`src/components/Tasks/KanbanView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/KanbanView.tsx) | `KanbanView` | Drag-and-drop Kanban board with Pending, In Progress, and Done columns. |
-| [`src/components/Tasks/PomodoroSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/PomodoroSheet.tsx) | `PomodoroSheet` | Animated SVG progress ring Pomodoro focus timer with `PomodoroTaskPicker`, `pomodoroTimeMath`, and `pomodoroStyles`. |
+| [`src/components/Tasks/PomodoroSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/PomodoroSheet.tsx) | `PomodoroSheet` | Ultra-modern Focus Flow timer: eliminates generic break tabs in favor of Focus Depths (Sprint 15m, Classic 25m, Deep Work 50m, Ultra Flow 90m), Zen Recharge (mindful breather), Daily Performance HUD bar, mindful focus mantras, and modular auto-linked task integration with `PomodoroTaskPicker`, `pomodoroTimeMath`, and `pomodoroStyles`. |
 | [`src/components/Tasks/NLPTaskInput.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/NLPTaskInput.tsx) | `NLPTaskInput` | Natural language text input field with live parsing token chips. |
 | [`src/components/Tasks/RecurrencePickerModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/RecurrencePickerModal.tsx) | `RecurrencePickerModal` | Custom repeat rule configurator (Daily, Weekly, Monthly, Custom intervals). |
 | [`src/components/Tasks/TaskDateStrip.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskDateStrip.tsx) | `TaskDateStrip` | Horizontal calendar date pill picker for filtering tasks by date. |
@@ -500,7 +504,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/components/Tasks/TaskTemplatesSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskTemplatesSheet.tsx) | `TaskTemplatesSheet` | Predefined routine task templates (Morning routine, Exam prep, Workout setup). |
 | [`src/components/Tasks/TaskTimeLogSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskTimeLogSheet.tsx) | `TaskTimeLogSheet` | Post-completion time logging sheet capturing actual minutes spent on a task. |
 | [`src/components/Tasks/TimeSpentSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TimeSpentSheet.tsx) | `TimeSpentSheet` | Time tracking analytics sheet. |
-| [`src/components/Tasks/VoiceDictationOverlay.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/VoiceDictationOverlay.tsx) | `VoiceDictationOverlay` | Full-screen voice dictation overlay converting spoken tasks to NLP tokens. |
+| [`src/components/Tasks/VoiceDictationOverlay.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/VoiceDictationOverlay.tsx) | `VoiceDictationOverlay` | Todoist-grade full-screen voice dictation overlay: real-time VAD voice recording, Gemini audio transcription (`transcribeAudioViaProxy`), live `parseNLTask` extraction with colorful chips (Date, Time, Recurrence, Priority, Tags), direct creation into Firestore (`safeWrite`) and `optimisticAddTask`, and notification reminder scheduling. |
 | **Gym Components** (`src/components/Gym/` & `Charts/`) | | |
 | [`src/components/Gym/ZenGymAiModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ZenGymAiModal.tsx) | `ZenGymAiModal` | Modular GYM-GPT AI coach modal: `GymAiChatBubble`, `GymAiMultiDayPlanCard`, `GymAiOptionsChips`, and `zenGymAiStyles`. |
 | [`src/components/Gym/ZenGymAiFab.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ZenGymAiFab.tsx) | `ZenGymAiFab` | Luxury floating action button with metallic plates & AI sparkles. |
@@ -533,6 +537,9 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/components/Gym/Charts/PRFeed.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/PRFeed.tsx) | `PRFeed` | Feed of recent Personal Record achievements. |
 | **Habits Components** (`src/components/Habits/`) | | |
 | [`src/components/Habits/HabitReminderModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Habits/HabitReminderModal.tsx) | `HabitReminderModal` | Modal for configuring daily habit notification reminder times. |
+| [`src/components/Habits/HabitHeatmapGrid.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Habits/HabitHeatmapGrid.tsx) | `HabitHeatmapGrid` | 35/56-day 2D matrix (weeks × Sun–Sat) GitHub contribution heatmap with squircle tiles, 4-tier graduated luminance, and `onTilePress` callback. |
+| [`src/components/Habits/HabitDetailModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Habits/HabitDetailModal.tsx) | `HabitDetailModal` | HabitKit-grade deep analytics modal: 4 hero metric pills, 365-day horizontal scrollable panoramic heatmap, Mon–Sun completion radar, and historical tile inspector. |
+| [`src/components/Habits/HabitsSkeleton.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Habits/HabitsSkeleton.tsx) | `HabitsSkeleton` | Shimmer skeleton loader replicating the 5x7 contribution matrix to prevent cold-boot layout shifts. |
 | **Learning Components** (`src/components/Learning/`) | | |
 | [`src/components/Learning/LearningVideoPlayer.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Learning/LearningVideoPlayer.tsx) | `LearningVideoPlayer` | YouTube iframe player with synchronized interactive transcript drawer and AI chat. |
 | [`src/components/Learning/FlashcardReviewModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Learning/FlashcardReviewModal.tsx) | `FlashcardReviewModal` | 3D flippable card deck with SM-2 grading buttons (Again, Hard, Good, Easy). |
@@ -554,7 +561,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/components/SARA/VoiceOrb.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/VoiceOrb.tsx) | `VoiceOrb` | Animated fluid canvas orb displaying idle, listening, thinking, and speaking states. |
 | [`src/components/SARA/VoiceMicButton.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/VoiceMicButton.tsx) | `VoiceMicButton` | Mic icon button with animated soundwave ripple in chat input bar. |
 | [`src/components/SARA/ReasoningFeed.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/ReasoningFeed.tsx) | `ReasoningFeed` | Live step-by-step thinking drawer showing SARA's internal decisions during inference. |
-| [`src/components/SARA/SaraBubble.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/SaraBubble.tsx) | `SaraBubble` | AI chat bubble with Markdown rendering, code highlighting, and action cards. |
+| [`src/components/SARA/SaraBubble.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/SaraBubble.tsx) | `SaraBubble` | AI chat bubble with official mascot avatar logo, Markdown rendering, code highlighting, and action cards. |
 | [`src/components/SARA/ActionConfirmationCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/ActionConfirmationCard.tsx) | `ActionConfirmationCard` | Tier 3 action confirmation card with Confirm / Dismiss controls. |
 | [`src/components/SARA/BatchActionCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/BatchActionCard.tsx) | `BatchActionCard` | Card confirming multiple sequential actions (DAG batch execution). |
 | [`src/components/SARA/InlineActionPill.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/InlineActionPill.tsx) | `InlineActionPill` | Tier 2 lightweight action pill embedded inside chat text. |
@@ -562,7 +569,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/components/SARA/SaraHUDToast.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/SaraHUDToast.tsx) | `SaraHUDToast` | Ambient notification toast for completed background actions. |
 | [`src/components/SARA/StreamingText.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/StreamingText.tsx) | `StreamingText` | Smooth token-by-token typewriter text animator for streaming responses. |
 | **UI Primitives** (`src/components/ui/`) | | |
-| [`src/components/ui/BottomSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/BottomSheet.tsx) | `BottomSheet` | Ultra-fast 180ms cubic-bezier bottom sheet modal wrapper with drag-to-dismiss. |
+| [`src/components/ui/BottomSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/BottomSheet.tsx) | `BottomSheet` | Ultra-fast 180ms cubic-bezier bottom sheet modal wrapper with contract-driven `avoidKeyboard?: boolean`, dynamic `useSafeAreaInsets` accounting, and zero-bounce hardware-accelerated keyboard elevation. |
 | [`src/components/ui/FloatingActionButton.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/FloatingActionButton.tsx) | `FloatingActionButton` | Reusable floating action button with icon and glow effects. |
 | [`src/components/ui/GlassCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/GlassCard.tsx) | `GlassCard` | Frosted glassmorphism card wrapper using `expo-blur`. |
 | [`src/components/ui/EmptyState.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/EmptyState.tsx) | `EmptyState` | Consistent placeholder component for empty lists with icon, title, and CTA button. |
@@ -590,8 +597,8 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 ### 4.10.1. Android Home Screen Widgets (`src/widgets/`)
 | File Path | Component / Handler | Description & Responsibilities |
 |---|---|---|
-| [`src/widgets/TodayAgendaWidget.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/widgets/TodayAgendaWidget.tsx) | `TodayAgendaWidget` | Obsidian Cosmos styled Android home screen widget rendering today's timetable classes and tasks chronologically sorted by time, with interactive Present/Absent and Task Done/Undone buttons. |
-| [`src/widgets/widgetTaskHandler.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/widgets/widgetTaskHandler.tsx) | `widgetTaskHandler` | Headless JS background task handler registered in `index.ts` via `registerWidgetTaskHandler`. Processes widget placement, resize, and click events without launching the main app. |
+| [`src/widgets/TodayAgendaWidget.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/widgets/TodayAgendaWidget.tsx) | `TodayAgendaWidget` | Obsidian Cosmos styled Android home screen widget rendering today's timetable classes and tasks. Features intelligent balanced item selection (guarantees tasks are never starved out by classes), dedicated Holiday mode (omits classes and Next Class spotlight, maximizes task capacity up to 8 rows), and interactive 1-tap Present/Absent and Task Done/Undone buttons. |
+| [`src/widgets/widgetTaskHandler.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/widgets/widgetTaskHandler.tsx) | `widgetTaskHandler` | Headless JS background task handler registered in `index.ts` via `registerWidgetTaskHandler`. Features automatic day-roll healing: detects stale date caches on device wake/resize and reconstructs today's agenda using offline-first L1 domain caches (`readCoreCacheMulti` & `readAcademicCache`). |
 
 ### 4.11. Utilities & Algorithmic Engines (`src/utils/`)
 | File Path | Exported Function | Signature / Type | Description & Purpose |
@@ -616,7 +623,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | | `startPrefetching` | `(pinnedModules?: string[]) => void` | Background-loads tab screen JS bundles in staggered 35ms frames after interaction settles. |
 | | `preloadNow` | `(id: string) => Promise<void>` | Immediately imports a specific screen module into memory. |
 | [`src/utils/haptics.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/haptics.ts) | `feedback.tap`, `feedback.commit`, `feedback.success`, `feedback.warning`, `feedback.error` | Helper Functions | Standardized tactile vibration wrappers using `expo-haptics`. |
-| [`src/utils/dateUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/dateUtils.ts) | `parseNaturalLanguageTask` | `(text: string) => ParsedTaskNLPResult` | Industry-leading natural language date/time/recurrence/priority parser with live token highlighting spans. |
+| [`src/utils/dateUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/dateUtils.ts) | `parseNaturalLanguageTask`, `parseNLTask`, `parseNLTasks`, `cleanTaskTitle` | `(text: string) => ParsedTaskNLPResult / ParsedTask` | Todoist-grade on-device NLP engine with sub-millisecond execution: gerund-to-imperative action verb normalization, conversational preamble & Hinglish suffix stripping, redundant period-of-day absorption, expanded location entities (25+ places), smart semantic domain tag auto-inference (#college, #gym, #placement, #finance, #health, #personal), tech/student acronym casing, and live token highlighting spans. |
 | | `formatDateLong`, `formatDateShort`, `formatDateWithDay`, `formatDateFull`, `formatDateNumeric` | Formatters | Day-first date formatting helpers (`DD-MM-YYYY` Indian convention). |
 | | `formatLocalDateStr`, `getTodayLocalDateStr` | `(d?: Date) => string` | Local timezone date string assembler preventing UTC midnight date shifts. |
 | | `timeAgo` | `(dateInput: any) => string` | Converts timestamps to relative time strings (`"2h ago"`, `"yesterday"`). |
@@ -941,7 +948,114 @@ All storage keys must be imported from `src/config/constants.ts → STORAGE_KEYS
 6. **Timezone Correctness**: Use `dateUtils.ts` (`todayStr()`) instead of `.toISOString().slice(0,10)` to prevent UTC midnight date shift bugs in Indian Standard Time (IST).
 7. **Dual-Tier Gemini Engine Selection**: Mobile GYM-GPT (`ZenGymAiModal.tsx`) and Learning AI Tutor (`LearningScreen.tsx` & `LearningVideoPlayer.tsx`) support real-time toggling between `gemini-3.7-flash` (Hybrid Reasoning Flagship) and `gemini-2.5-flash` (Fast & Balanced), persisted across sessions in `AsyncStorage` (`@zen_preferred_gym_model` & `@zen_preferred_learning_model`).
 
-## 15. Changelog
+### 2026-09-04 — Full Voice NLP Connectivity & Multi-Task Continuous Dictation
+- **Universal Typing NLP Connectivity in Voice (`parseNLTask` & `parseNLTasks`)**:
+  - Extended NLP token types in `dateUtils.ts` to include `'subtask'` and `'location'`.
+  - Added subtask parsing: extracts subtask items from phrases like `"with subtasks intro, slides, code"` or `"subtasks: milk, eggs, bread"`, registers `'subtask'` token, strips subtasks from title, and surfaces parsed items in `ParsedTask.subtasks`.
+  - Added spoken tag parsing: extracts spoken tags from `"tag work"`, `"label gym"`, `"hashtag study"` in addition to `#tag`.
+  - Added location trigger extraction: parses `"at gym"`, `"at campus"`, `"at library"`, `"at home"`, `"at office"`, populating `locationReminder` geofence objects and `'location'` tokens.
+  - Exported `parseNLTasks(raw: string): ParsedTask[]` supporting multi-task parsing from numbered lists, bullet points, newlines, semicolons, and compound conjunction transitions (`"and also"`, `"and then"`, `"and"` with actionable verbs or task attributes).
+- **Overhauled `VoiceDictationOverlay.tsx`**:
+  - Full parity with `NLPTaskInput.tsx` and `NewTaskModal.tsx`:
+    - Displays interactive chips for Date, Start Time, End Time, Duration (`15m`, `30m`, `45m`, `1h`, `2h`), Priority (`P1`/`P2`/`Low`), Recurrence (modal), Alarm/Reminder (`⏰ Alarm ON`), Location (`📍 Place`), and Tags.
+    - Added Subtasks Section: displays all voice-extracted subtasks with check indicators, delete buttons, and inline input to quickly add new subtasks.
+    - Added Tag Adder: inline label input with tag suggestions from `@zentrack_tags` AsyncStorage library.
+    - Multi-task preview: when multiple tasks are detected from speech, displays task selector pills and card summaries allowing inspection and individual editing.
+  - Multi-task and continuous dictation workflow:
+    - Primary CTA: `"Add Task"` (1 task) or `"Add All (N) Tasks"` (multi-task batch).
+    - Added `"+ Add & Dictate Next"`: commits current task(s) to Firestore and optimistic state immediately with success haptics, resets state, and re-arms the mic for the next task without closing the overlay.
+    - Writes deterministic upfront doc IDs, schedules exact-time reminder notifications on the `reminders` channel, and creates recurring series batches.
+- **Enhanced `NewTaskModal.tsx` & `NLPTaskInput.tsx`**:
+  - `handleVoiceTasksExtracted` hydrator now populates all fields: `title`, `taskDate`, `startTime`, `endTime`, `priority`, `recurrenceRule`, `selectedTags`, `subtasks`, `isReminder`, `nlpDuration`, `locationTrigger`.
+  - `handleTitleChange` in `NewTaskModal` auto-populates subtasks and location triggers during manual typing.
+  - `NLPTaskInput.tsx` renders themed colored chips for `subtask` and `location` tokens.
+- **VERIFIED**: `npx tsc --noEmit` passes with 0 errors.
+
+### 2026-09-04 — Notification Engine Overhaul (Rolling Water Reminders, Time-Sorted Alarms & Daytime Check-Ins)
+- **Robust Rolling Water Reminders (1h / 2h / 3h)**:
+  - Fixed the 30-minute drop barrier and replaced static fixed-hour loops with rolling intervals starting from `now + interval` across the daytime window (8 AM to 10 PM) for today, plus recurring intervals across days 1–3.
+  - Added dedicated `'wellness'` notification channel with `AndroidImportance.HIGH`, custom vibration pattern, `#38BDF8` light, and public lockscreen visibility.
+  - Protected wellness hydration notifications from Weekend Mode drops.
+  - Fixed date format matching with `(w.date || '').slice(0, 10)` to support both ISO and `YYYY-MM-DD` water logs.
+  - Fixed `WaterLogSheet.tsx` `handleFreqChange` bug which was calling `scheduleAllNotifications({ tasks: [], ... })` with empty arrays and wiping all other alarms.
+- **Time-Sorted Scheduled Alarms Inspection Modal**:
+  - `NotificationsSettingsScreen.tsx` extracts numeric fire timestamps (`triggerMs`) across all trigger variants (`trigger.value`, `trigger.date`, `trigger.seconds`, `trigger.timeInterval`) and sorts alarms strictly ascending chronologically.
+  - Added category badges (`[WATER]`, `[TASK]`, `[GYM]`, `[HABIT]`, `[CLASS]`, `[BRIEFING]`), exact fire times (`Today, 11:30 AM`), human-friendly countdown pills (`in 45m`, `in 2h`), and 1-tap refresh button in the modal header.
+- **Task & Habit Notification Reliability**:
+  - Added smart daytime checkpoint check-ins (1:30 PM, 5:30 PM, 8:30 PM) for untimed tasks on today's agenda added after morning brief.
+  - Replaced constantly-advancing `now + 30m` calculations for reminder tasks with deterministic upcoming slot snapping (10 AM, 12 PM, 2 PM, 4 PM, 6 PM, 8 PM, 9:30 PM).
+  - Fixed 15-minute advance buffer check (`taskBufferMin >= 15`).
+  - Lowered habit streak risk filter from `streak >= 2` to `streak >= 0` so new habits receive evening streak saver alerts at 8:00 PM.
+  - Updated `_buildFingerprint()` to track all user notification preferences so setting changes immediately invalidate cache.
+- **VERIFIED**: `npx tsc --noEmit` passes with 0 errors.
+
+### 2026-09-04 — Universal Task NLP & Voice Dictation Noise Stripping Engine
+- **`cleanTaskTitle()` Engine (`dateUtils.ts`)**:
+  - Automatically strips conversational command prefixes from voice & text input: `"create a task to"`, `"create task"`, `"create"`, `"add a task to"`, `"add"`, `"make"`, `"schedule"`, `"remind me to"`, `"i need to"`, `"todo:"`, `"ek task banao"`, etc.
+  - Strips leading and trailing connector prepositions (`to`, `for`, `about`, `at`, `from`, `on`, `by`).
+  - Normalizes inverted spoken syntax (e.g. `"dsa study"` -> `"Study DSA"`, `"physics study"` -> `"Study Physics"`, `"leetcode practice"` -> `"Practice LeetCode"`, `"os revision"` -> `"Revise OS"`).
+  - Normalizes tech & academic acronyms (`DSA`, `DBMS`, `OS`, `AI`, `ML`, `CN`, `OOP`, `SQL`, `API`, `HTML`, `CSS`, `JS`, `TS`, `PR`, `SDE`, `HR`, `UI`, `UX`, `PDF`, `CGPA`, `SGPA`) with title-case capitalization.
+- **Enhanced Speech Time Range & Spoken Minutes Support**:
+  - Expanded `rangePattern` and `timePatterns` in `dateUtils.ts` to parse speech-to-text transcriptions with space-separated minutes (e.g. `"from 10 am to 12 30 am"`, `"12 30 am"`, `"10 30 pm"`, `"between 2pm and 4pm"`).
+- **Integrated Across All Task Creation Portals**:
+  - Applied `cleanTaskTitle()` in `VoiceDictationOverlay.tsx`, `NewTaskModal.tsx`, `EditTaskModal.tsx`, `QuickCaptureSheet.tsx` (and Gemini prompt refinement), and `SaraScreen.tsx` action executor.
+- **VERIFIED**: `npx tsc --noEmit` passes with 0 errors.
+
+### 2026-09-04 — Android Home Screen Widget (Holiday Suppression & Cancelled Class Status Chip)
+- **Holiday Suppression & Multi-Layer Persistence**:
+  - `buildTodayAgendaData()` checks `holidays.includes(dateStr)`. When marked as a holiday, scheduled classes are automatically omitted from widget agenda.
+  - On a holiday, `TodayAgendaWidget.tsx` renders a frosted `HOLIDAY` badge in the header, omits the Next Class spotlight card, and displays `"Holiday · No classes scheduled"` if no tasks exist.
+  - Added `@zentrack_cache_holidays` to `DOMAIN_CACHE_KEYS` (`domainCache.ts`) and `BOOT_KEYS` (`bootManifest.ts`) with `optimisticToggleHoliday` in `AcademicContext.tsx` ensuring 0ms instant local updates.
+  - `useAttendanceFirestore.ts` triggers immediate widget updates upon toggling holiday status for today.
+- **Cancelled Class Status & Action Button Removal**:
+  - `WidgetAgendaClass.status` and `WidgetAgendaItem.status` now formally include `'cancelled'`.
+  - `buildTodayAgendaData()` preserves `status: 'cancelled'` instead of overriding to `'pending'`.
+  - Cancelled classes are excluded from `pendingClasses`, preventing them from appearing in the Next Class spotlight card with Present/Absent action buttons.
+  - Synchronized native Android widget behavior for cancelled classes.
+- **VERIFIED**: `npx tsc --noEmit` passes with 0 errors.
+
+### 2026-09-02 — Native Step Counter Engine (Cloud Sync, Calibration & Dashboard Km Display)
+- **Dual Local & Firestore Database Persistence**:
+  - `useStepCounter.ts` saves steps locally to `AsyncStorage` for 0ms instant display and automatically syncs debounced writes to Firestore cloud collection `step_logs/{uid}_{dateKey}` via `safeWrite()`.
+  - On fresh install or app re-open with empty local cache, steps are seamlessly restored from Firestore.
+- **Dashboard Km & Distance Display**:
+  - `UnifiedLifeWidget.tsx` renders real-time distance: `Steps (X.X km)` alongside current/goal count (`2.9k/10k`).
+- **1-Tap Step Calibration Modal**:
+  - `WellbeingDashboardScreen.tsx` features an interactive Step Ring with `Adjust / Sync` trigger to calibrate and synchronize starting steps with native device launcher widgets.
+- **Bottom Sheet Android Keyboard Anti-Flutter**:
+  - In `BottomSheet.tsx`, eliminated double keyboard height offset on Android native window resize.
+  - Added 280ms search debounce in `GymLocationModal.tsx` and `LocationPickerModal.tsx`.
+
+### 2026-09-02 — 0ms Instant App Switching & Tab Transition Optimization
+- **Eliminated Warm Resume Listener Teardown**:
+  - Removed premature `firestore_force_reconnect` emission on short (<15m) warm app resumes in `lifecycleHygiene.ts`. Firebase native SDK already keeps sockets alive; tearing down and recreating all 18 Firestore collection listeners on every app switch was thrashing the JS thread.
+  - Long background dormancy (>30m) health checks remain safely deferred in `AppNavigator.tsx` via `InteractionManager`.
+- **0ms Tab Switching (`freezeOnBlur: false`)**:
+  - Disabled `freezeOnBlur` in `MainTabNavigator`, eliminating React Freeze's synchronous unfreeze layout reconciliation pass when switching between tabs or returning from another app.
+
+### 2026-09-02 — Saved Places & Gym Geofence Cloud Sync + Direct GPS Coordinates Search
+- **Firestore Cloud Persistence for Saved Places & Geofence Config**:
+  - `savedPlacesService.ts` automatically writes all saved places (`SavedPlace[]`) and gym geofencing configurations (`GymGeofenceConfig`) to Firestore (`user_profiles/{uid}`) via offline-resilient `safeWrite()`.
+  - `CoreDataContext.tsx` listens to `user_profiles` document snapshots and hydrates local AsyncStorage (`@zentrack_saved_places` and `@zentrack_gym_geofence_config`), ensuring all locations are preserved and restored if the app is uninstalled/reinstalled.
+  - Added fallback cloud hydrator in `getSavedPlaces()` and `getGymGeofenceConfig()`.
+- **Direct GPS Coordinates Input Engine**:
+  - `parseCoordinates()` regex engine parses raw coordinate queries in formats such as `30.7654, 76.7865`, `30.7654 76.7865`, `lat: 30.7654, lng: 76.7865`, `28.6139° N, 77.2090° E`, `-33.8688, 151.2093`.
+  - Reverse geocodes the coordinates to resolve local landmark and street address with fallback to high-precision coordinate label.
+  - `LocationPickerModal.tsx` and `GymLocationModal.tsx` render distinct `[GPS PIN]` badges in the search dropdown for coordinate matches, allowing 1-tap exact pin selection.
+
+### 2026-09-02 — Android Home Screen Widgets (iOS Aesthetic Redesign, Adaptive Resize, Direct Attendance Sync & Deep Linking)
+- **TodayAgendaWidget & LiveWorkoutWidget**:
+  - Full iOS-native typography-driven redesign: clean hairline dividers, 7px status dots, `#111111` soft near-black canvas, zero cartoonish emojis.
+  - Adaptive cell sizing (`minWidth: 250dp`, `minHeight: 110dp`, `minResizeWidth/Height: 110dp`, `targetCellHeight: 3`) in `app.json`.
+  - Dynamic row height calculation preventing dead empty space on widget resize.
+  - Quick action launcher text buttons: `+ Task`, `Attendance`, `Habits` pinned cleanly to the bottom.
+  - Native `OPEN_URI` intent integration with React Navigation `LINKING_CONFIG` (`zentrack://tasks`, `zentrack://attendance`, `zentrack://habits`, `zentrack://gym`, `zentrack://dashboard`) for instantaneous zero-latency navigation when tapping widget buttons.
+- **Attendance & Widget Data Synchronization**:
+  - `widgetSyncService.ts` writes deterministic attendance logs (`${userId}_${subjectId}_${cleanDate}_${type}_${sessionIdx}`) and atomically updates subject totals (`classesAttended`/`classesTotal`) in Firestore.
+  - Immediate `writeAcademicCache` update ensuring in-app `AttendanceScreen` reflects widget Present/Absent logs instantly without delay.
+- **Android Home Screen Widgets**:
+  - Direct native Android widget implementation via `TodayAgendaWidget.tsx` and `widgetTaskHandler.tsx` with zero simulator dependencies.
+  - In-app preview simulator (`WidgetPreviewModal.tsx`) completely removed per user request to streamline Settings.
 
 ### 2026-08-29 — 1,324 Exercise Dataset Integration, Looping GIF Engine & Offline Pre-Caching (100% OTA Compatible)
 - **NEW** [`src/data/exercises.json`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/data/exercises.json): Bundled 1,324 comprehensive exercise records (MIT + GymVisual metadata) with standardized equipment, target muscles, secondary synergists, English & Hindi execution cues, and animated media identifiers.
