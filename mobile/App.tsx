@@ -1,7 +1,7 @@
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, LogBox, AppState, AppStateStatus, InteractionManager } from 'react-native';
+import { View, ActivityIndicator, LogBox, AppState, AppStateStatus, InteractionManager, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -174,7 +174,8 @@ export default function App() {
     const sub = Notifications.addNotificationResponseReceivedListener(async (response) => {
       const { notification, actionIdentifier } = response;
       const data = notification.request.content.data as any;
-      const notifType = data?.type as string | undefined;
+      const categoryId = notification.request.content.categoryIdentifier;
+      const notifType = (data?.type as string | undefined) || categoryId;
 
       // Helper: navigate imperatively, works before React tree mounts
       const nav = (screen: string, params?: object) => {
@@ -203,20 +204,30 @@ export default function App() {
 
       // ── ACTION: "Snooze 15m" button on gym_reminder ────────────────────────
       if (actionIdentifier === 'snooze_15m') {
-        const snoozeTime = new Date(Date.now() + 15 * 60 * 1000);
+        const snoozeSeconds = 15 * 60;
+        const triggerConfig: any = Platform.OS === 'android'
+          ? {
+              type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval',
+              seconds: snoozeSeconds,
+              repeats: false,
+              channelId: 'default',
+            }
+          : {
+              type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
+              date: new Date(Date.now() + snoozeSeconds * 1000),
+            };
+
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: 'Gym day ≡ƒÅï∩╕Å',
-            body: 'Snoozed 15 min. Time to go now!',
-            data: { type: 'gym' },
+            title: 'Workout Reminder: Gym Day',
+            body: 'Snoozed 15 min. Ready to begin your workout?',
+            data: Platform.OS === 'ios' ? { type: 'gym' } : undefined,
             categoryIdentifier: 'gym_reminder',
-            sound: 'default',
-          },
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DATE,
-            date: snoozeTime.getTime(),
             channelId: 'default',
+            ...(Platform.OS === 'ios' ? { sound: 'default' } : {}),
+            priority: Notifications.AndroidNotificationPriority?.HIGH ?? ('high' as any),
           } as any,
+          trigger: triggerConfig,
         });
         return;
       }
@@ -242,12 +253,12 @@ export default function App() {
           // Silent confirmation — app stays closed
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: '✓ Task done!',
-              body: taskTitle ? `"${taskTitle}" marked complete.` : 'Task marked as complete.',
-              data: {},
-              sound: undefined,
-            },
-            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: Date.now() + 1000 } as any,
+              title: 'Task Completed',
+              body: taskTitle ? `"${taskTitle}" marked as complete.` : 'Task marked as complete.',
+              data: Platform.OS === 'ios' ? { taskId } : undefined,
+              channelId: 'default',
+            } as any,
+            trigger: null,
           }).catch(() => {});
         } else {
           nav('Tasks');
@@ -293,7 +304,7 @@ export default function App() {
       if (actionIdentifier === 'log_habit') {
         const habitId = data?.habitId as string | undefined;
         let success = false;
-        let confirmTitle = '≡ƒöÑ Habit logged!';
+        let confirmTitle = 'Habit Logged';
         let confirmBody  = 'Keep the momentum going.';
         if (habitId) {
           try {
@@ -308,12 +319,12 @@ export default function App() {
               // Already logged today — show friendly info instead of duplicate write
               await Notifications.scheduleNotificationAsync({
                 content: {
-                  title: '✓ Already logged!',
-                  body: 'You already completed this habit today. Great work!',
-                  data: {},
-                  sound: undefined,
-                },
-                trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: Date.now() + 1000 } as any,
+                  title: 'Already Recorded',
+                  body: 'You already completed this habit today.',
+                  data: Platform.OS === 'ios' ? { habitId } : undefined,
+                  channelId: 'default',
+                } as any,
+                trigger: null,
               }).catch(() => {});
               return;
             }
@@ -332,7 +343,6 @@ export default function App() {
             if (habitSnap.exists()) {
               const habitData    = habitSnap.data();
               const habitName    = (habitData?.name    ?? 'Habit')   as string;
-              const habitEmoji   = (habitData?.emoji   ?? '🔥')      as string;
               const currentStreak = (habitData?.streak ?? 0)         as number;
               const newStreak     = currentStreak + 1;
               const longestStreak = (habitData?.longestStreak ?? 0)  as number;
@@ -340,10 +350,10 @@ export default function App() {
                 streak: newStreak,
                 longestStreak: Math.max(newStreak, longestStreak),
               });
-              confirmTitle = `${habitEmoji} ${habitName} — logged!`;
+              confirmTitle = `${habitName} Logged`;
               confirmBody  = newStreak >= 2
-                ? `≡ƒöÑ ${newStreak}-day streak! Keep it up.`
-                : 'Day 1 — the streak begins. See you tomorrow.';
+                ? `${newStreak}-day streak. Keep it up.`
+                : 'Day 1 recorded. Consistency builds momentum.';
             }
             success = true;
           } catch (e) {
@@ -353,8 +363,13 @@ export default function App() {
         if (success) {
           // Silent confirmation — app stays closed
           await Notifications.scheduleNotificationAsync({
-            content: { title: confirmTitle, body: confirmBody, data: {}, sound: undefined },
-            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: Date.now() + 1000 } as any,
+            content: {
+              title: confirmTitle,
+              body: confirmBody,
+              data: Platform.OS === 'ios' ? { habitId } : undefined,
+              channelId: 'default',
+            } as any,
+            trigger: null,
           }).catch(() => {});
         } else {
           // Write failed — open app as fallback
@@ -408,12 +423,12 @@ export default function App() {
         if (success) {
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: '✓ Present — logged!',
-              body: `${subjectName} marked as present.`,
-              data: {},
-              sound: undefined,
-            },
-            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: Date.now() + 1000 } as any,
+              title: 'Present Recorded',
+              body: `${subjectName} marked as attended.`,
+              data: Platform.OS === 'ios' ? { subjectId } : undefined,
+              channelId: 'default',
+            } as any,
+            trigger: null,
           }).catch(() => {});
         } else {
           nav('Attendance');
@@ -457,12 +472,12 @@ export default function App() {
         if (success) {
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: '❌ Absent — logged',
+              title: 'Absence Recorded',
               body: `${subjectName} marked as missed.`,
-              data: {},
-              sound: undefined,
-            },
-            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: Date.now() + 1000 } as any,
+              data: Platform.OS === 'ios' ? { subjectId } : undefined,
+              channelId: 'default',
+            } as any,
+            trigger: null,
           }).catch(() => {});
         } else {
           nav('Attendance');
@@ -502,12 +517,12 @@ export default function App() {
         if (success) {
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: '🚫 Class Cancelled — recorded',
+              title: 'Class Cancelled',
               body: `${subjectName} recorded as cancelled today.`,
-              data: {},
-              sound: undefined,
-            },
-            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: Date.now() + 1000 } as any,
+              data: Platform.OS === 'ios' ? { subjectId } : undefined,
+              channelId: 'default',
+            } as any,
+            trigger: null,
           }).catch(() => {});
         } else {
           nav('Attendance');
@@ -570,13 +585,13 @@ export default function App() {
       }
 
       // ── BODY TAP: Task reminder ("taskId" in data, or type = overdue_nudge) ─
-      if (data?.taskId || notifType === 'overdue_nudge') {
+      if (data?.taskId || notifType === 'overdue_nudge' || notifType === 'task_reminder' || categoryId === 'task_reminder') {
         nav('Tasks');
         return;
       }
 
       // ── BODY TAP: Habit streak at risk OR per-habit daily reminder ─────────
-      if (notifType === 'habit_streak' || notifType === 'habit_reminder') {
+      if (notifType === 'habit_streak' || notifType === 'habit_reminder' || categoryId === 'habit_reminder') {
         nav('Habits');
         return;
       }
@@ -594,14 +609,15 @@ export default function App() {
         notifType === 'class_log' ||
         notifType === 'lab_mid' ||
         notifType === 'lab_log' ||
-        notifType === 'attendance_warning'
+        notifType === 'attendance_warning' ||
+        categoryId === 'class_reminder'
       ) {
         nav('Attendance');
         return;
       }
 
       // ── BODY TAP: Gym reminder (workout day) ───────────────────────────────
-      if (notifType === 'gym') {
+      if (notifType === 'gym' || notifType === 'gym_reminder' || categoryId === 'gym_reminder') {
         nav('Gym');
         return;
       }
@@ -612,26 +628,32 @@ export default function App() {
         return;
       }
 
+      // ── BODY TAP: Hydration reminder ────────────────────────────────────────
+      if (notifType === 'water_reminder' || categoryId === 'water_reminder') {
+        nav('Home');
+        return;
+      }
+
       // ── BODY TAP: Calendar event reminder ──────────────────────────────────
-      if (data?.eventId) {
+      if (data?.eventId || categoryId === 'calendar_reminder') {
         nav('Calendar');
         return;
       }
 
       // ── BODY TAP: Morning briefing → Dashboard ─────────────────────────────
-      if (notifType === 'morning_brief') {
+      if (notifType === 'morning_brief' || categoryId === 'morning_brief') {
         nav('Home');
         return;
       }
 
       // ── BODY TAP: Weekly review → WeeklyReview screen ─────────────────────
-      if (notifType === 'weekly_review') {
+      if (notifType === 'weekly_review' || categoryId === 'weekly_review') {
         nav('WeeklyReview');
         return;
       }
 
       // ── BODY TAP: Inactivity nudge → Dashboard ─────────────────────────────
-      if (notifType === 'inactivity') {
+      if (notifType === 'inactivity' || categoryId === 'inactivity_nudge') {
         nav('Home');
         return;
       }

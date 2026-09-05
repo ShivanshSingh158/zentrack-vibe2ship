@@ -7,7 +7,7 @@ import {
   Folder, FileText, Trash2, X, Plus, FolderPlus,
   HardDrive, ExternalLink, Sparkles, Upload, Download,
   PanelLeftClose, PanelLeftOpen, Maximize2, Minimize2, Columns, LayoutGrid,
-  Loader2
+  Loader2, RotateCw, RotateCcw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -65,12 +65,32 @@ export const NotesModule = () => {
   // File Viewer State
   const [viewingFile, setViewingFile] = useState<StorageNode | null>(null);
   const [isIframeLoading, setIsIframeLoading] = useState(true);
+  const [pdfRotation, setPdfRotation] = useState<number>(0);
+  const fileBodyRef = useRef<HTMLDivElement>(null);
+  const [containerDims, setContainerDims] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
 
   useEffect(() => {
     if (viewingFile) {
       setIsIframeLoading(true);
+      setPdfRotation(0);
     }
   }, [viewingFile?.id, viewingFile?.url]);
+
+  useEffect(() => {
+    if (!fileBodyRef.current) return;
+    const updateDims = () => {
+      if (fileBodyRef.current) {
+        setContainerDims({
+          width: fileBodyRef.current.clientWidth,
+          height: fileBodyRef.current.clientHeight,
+        });
+      }
+    };
+    updateDims();
+    const ro = new ResizeObserver(updateDims);
+    ro.observe(fileBodyRef.current);
+    return () => ro.disconnect();
+  }, [viewingFile?.id]);
 
   useEffect(() => {
     activeNoteRef.current = activeNote;
@@ -576,6 +596,39 @@ export const NotesModule = () => {
                   )}
                 </div>
                 <div className="studio-file-header-actions">
+                  {/* Rotation Controls */}
+                  <div className="notes-rotate-controls" title="Rotate document orientation">
+                    <button
+                      type="button"
+                      className="notes-file-action-btn notes-rotate-btn"
+                      onClick={() => setPdfRotation(prev => (prev - 90 + 360) % 360)}
+                      title="Rotate 90° Counter-Clockwise"
+                      aria-label="Rotate Counter-Clockwise"
+                    >
+                      <RotateCcw size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className={`notes-file-action-btn notes-rotate-btn ${pdfRotation !== 0 ? 'active-rotation' : ''}`}
+                      onClick={() => setPdfRotation(prev => (prev + 90) % 360)}
+                      title="Rotate 90° Clockwise"
+                      aria-label="Rotate Clockwise"
+                    >
+                      <RotateCw size={13} />
+                      <span>{pdfRotation !== 0 ? `${pdfRotation}°` : 'Rotate'}</span>
+                    </button>
+                    {pdfRotation !== 0 && (
+                      <button
+                        type="button"
+                        className="notes-file-action-btn notes-rotate-reset-btn"
+                        onClick={() => setPdfRotation(0)}
+                        title="Reset rotation to 0°"
+                      >
+                        <span>Reset</span>
+                      </button>
+                    )}
+                  </div>
+
                   {/* Zen Focus / Collapse Both Left Panes Toggle */}
                   <button
                     type="button"
@@ -629,25 +682,83 @@ export const NotesModule = () => {
                 </div>
               </div>
 
-              <div className="notes-studio-file-body" style={{ position: 'relative' }}>
+              <div className="notes-studio-file-body" ref={fileBodyRef} style={{ position: 'relative', overflow: 'hidden' }}>
                 {viewingFile.url && (viewingFile.fileType === 'pdf' || viewingFile.mimeType?.includes('pdf') || viewingFile.url?.toLowerCase().endsWith('.pdf') || viewingFile.name?.toLowerCase().endsWith('.pdf') || viewingFile.fileType === 'docx' || viewingFile.name?.toLowerCase().match(/\.(docx?|pptx?|xlsx?)$/i)) ? (
                   <>
                     {isIframeLoading && (
                       <div className="notes-preview-loading-overlay">
-                        <Loader2 size={24} className="animate-spin" color="#a599ff" />
+                        <Loader2 size={24} className="animate-spin" color="#dba87e" />
                         <span>Loading document preview...</span>
                       </div>
                     )}
-                    <iframe
-                      src={`https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(viewingFile.url)}`}
-                      title={viewingFile.name}
-                      className="notes-preview-iframe"
-                      onLoad={() => setIsIframeLoading(false)}
-                      allow="autoplay"
-                    />
+                    <div
+                      className="notes-rotatable-wrapper"
+                      style={
+                        (pdfRotation === 90 || pdfRotation === 270) && containerDims.width > 0 && containerDims.height > 0
+                          ? {
+                              position: 'absolute',
+                              top: '50%',
+                              left: '50%',
+                              width: `${containerDims.height}px`,
+                              height: `${containerDims.width}px`,
+                              transform: `translate(-50%, -50%) rotate(${pdfRotation}deg)`,
+                              transformOrigin: 'center center',
+                              maxWidth: 'none',
+                              maxHeight: 'none',
+                            }
+                          : pdfRotation === 180
+                          ? {
+                              width: '100%',
+                              height: '100%',
+                              transform: 'rotate(180deg)',
+                              transformOrigin: 'center center',
+                            }
+                          : {
+                              width: '100%',
+                              height: '100%',
+                              transform: 'none',
+                            }
+                      }
+                    >
+                      <iframe
+                        src={`https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(viewingFile.url)}`}
+                        title={viewingFile.name}
+                        className="notes-preview-iframe"
+                        onLoad={() => setIsIframeLoading(false)}
+                        allow="autoplay"
+                      />
+                    </div>
                   </>
                 ) : viewingFile.url && (viewingFile.fileType === 'image' || viewingFile.mimeType?.startsWith('image/') || viewingFile.url?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i) || viewingFile.name?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i)) ? (
-                  <div className="notes-preview-img-container">
+                  <div
+                    className="notes-rotatable-wrapper notes-preview-img-container"
+                    style={
+                      (pdfRotation === 90 || pdfRotation === 270) && containerDims.width > 0 && containerDims.height > 0
+                        ? {
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            width: `${containerDims.height}px`,
+                            height: `${containerDims.width}px`,
+                            transform: `translate(-50%, -50%) rotate(${pdfRotation}deg)`,
+                            transformOrigin: 'center center',
+                            maxWidth: 'none',
+                            maxHeight: 'none',
+                          }
+                        : pdfRotation === 180
+                        ? {
+                            width: '100%',
+                            height: '100%',
+                            transform: 'rotate(180deg)',
+                            transformOrigin: 'center center',
+                          }
+                        : {
+                            width: '100%',
+                            height: '100%',
+                            transform: 'none',
+                          }
+                    }
+                  >
                     <img
                       src={viewingFile.url}
                       alt={viewingFile.name}
@@ -656,7 +767,7 @@ export const NotesModule = () => {
                   </div>
                 ) : (
                   <div className="notes-preview-generic-box">
-                    <FileText size={48} color="#a599ff" />
+                    <FileText size={48} color="#dba87e" />
                     <h4>{viewingFile.name}</h4>
                     <p>Document preview is not available in browser. Use the download or open link button above.</p>
                   </div>

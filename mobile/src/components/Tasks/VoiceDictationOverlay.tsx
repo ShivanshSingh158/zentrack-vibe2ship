@@ -733,16 +733,16 @@ export default function VoiceDictationOverlay({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        {/* Ambient Dark Gradient Background */}
+      <View style={[styles.backdrop, { paddingTop: insets.top }]}>
+        {/* Ambient Dark Gradient Background — starts BELOW status bar so clock/icons stay visible */}
         <LinearGradient
-          colors={['#18090C', '#0B0B0E', '#050507']}
+          colors={['transparent', '#18090C', '#0B0B0E', '#050507']}
           style={StyleSheet.absoluteFillObject}
-          locations={[0, 0.4, 1]}
+          locations={[0, 0.08, 0.45, 1]}
         />
 
         {/* Top Header Bar */}
-        <View style={[styles.topHeader, { paddingTop: Platform.OS === 'ios' ? insets.top + 5 : 5 }]}>
+        <View style={[styles.topHeader, { paddingTop: Platform.OS === 'ios' ? 5 : 5 }]}>
           <View style={styles.badgePill}>
             <Image
               source={require('../../../assets/images/sara-idle.png')}
@@ -1237,7 +1237,7 @@ export default function VoiceDictationOverlay({
           </View>
 
           {/* Action Footer */}
-          <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={[styles.footer, { paddingBottom: insets.bottom + 28 }]}>
             {state === 'recording' && (
               <TouchableOpacity
                 style={styles.doneBtn}

@@ -1,6 +1,7 @@
 /**
  * notificationPools.ts — ZenTrack Mobile
- * Gen-Z / Hinglish Notification Copy Pools (6–9 variants per category).
+ * Clean, high-agency, professional notification copy pools.
+ * Tone: Respectful, disciplined, encouraging, non-cringe, with minimal purposeful emojis.
  */
 
 export function getRandomMessage(messages: string[]): string {
@@ -17,357 +18,308 @@ export function shuffleArray<T>(array: T[]): T[] {
   return arr;
 }
 
-
 // ══════════════════════════════════════════════════════════════════════════════
-//   GEN-Z / HINGLISH NOTIFICATION POOLS (6–9 variants per type)
-//   Tone: your bestie who actually cares — cheesy, warm, never robotic.
+//   NOTIFICATION COPY POOLS
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ── 1. Morning Briefing ───────────────────────────────────────────────────────
 
-export const MORNING_BRIEF_TITLES_STANDARD = [
-  'Uth jao bestie, poora din wait kar raha hai 🌞',
-  'Rise & grind era loading... 🔄',
-  'No pressure but also... PRESSURE 💀',
-  'Good morning king/queen 👑',
-  'ZenTrack online hai aur ready hai 👁️',
-  'Wake up, the grind never sleeps 🌅',
-  'Bhai/Bestie subah ho gayi, let\'s get this! ☀️',
-  'New day, new W incoming 🚀',
-  'Aankh khulte hi phone dekh liya na? 📱',
+export const MORNING_BRIEF_TITLES_STANDARD = (name?: string) => [
+  name ? `Good Morning, ${name}` : 'Good Morning',
+  name ? `Daily Briefing for ${name}` : 'Daily Briefing',
+  'Today\'s Overview',
+  name ? `Ready for Today, ${name}` : 'Ready for Today',
+  'Your Agenda for Today',
+  'Plan for the Day',
 ];
 
-export const MORNING_BRIEF_STANDARD_POOLS = (summary: string) => [
-  `Aaj ${summary} pending hai! Coffee piyo, phone rakho, move — let's get this bread bestie 🍞✨`,
-  `Subah ho gayi! ${summary} queue mein hai. ZenTrack says: 'You got this!' (we believe in u fr 💜)`,
-  `Aaj ka agenda: ${summary}. Kal waala tu aaj ke tujhse thank you bolega 🙏 Let's go!`,
-  `Vibe check: productive ✅. ${summary} await karna hai. Coffee piyo, phone rakho, move 🚀`,
-  `Seriously though — ${summary} niptana hai aaj. You got this bestie 🫂`,
-  `New day, new W incoming! ${summary} today. Let's make the ancestors proud ✊💜`,
-  `Aaj ka plan tight hai: ${summary}. One task at a time, chal shuru karte hain 🎯`,
-  `Oye suno! ${summary} line mein laga hai. Chai piyo aur focus karo ☕ Let's crush it!`,
-  `Aankh khulte hi phone dekh liya? Smart move! Aaj ${summary} niptaate hain ✨`,
+export const MORNING_BRIEF_STANDARD_POOLS = (summary: string, name?: string) => [
+  name
+    ? `Good morning, ${name}. You have ${summary} on your agenda today.`
+    : `You have ${summary} on your agenda today. Tap to review your schedule.`,
+  `Here is your plan for today: ${summary}. Ready when you are.`,
+  name
+    ? `Today's focus, ${name}: ${summary}. Make steady progress step by step.`
+    : `Today's focus: ${summary}. Make steady progress step by step.`,
+  `Scheduled for today: ${summary}. Tap to open ZenTrack.`,
+  `Daily overview ready: ${summary} in your queue. Have a productive day.`,
+  `Your agenda is set: ${summary}. Tap to view details or begin.`,
 ];
 
-export const MORNING_BRIEF_MISSED_GYM_TITLES = [
-  'Bestie... kal gym skip kiya tha 🧐',
-  'Kal ka skip, aaj ka redemption arc 📈',
-  'The gains are crying 😭',
-  'Accountability check 🪞',
-  'ZenTrack ne notice kiya 👀',
-  'Gym miss detected yesterday 🏋️❌',
+export const MORNING_BRIEF_MISSED_GYM_TITLES = (name?: string) => [
+  name ? `Workout Check-in, ${name}` : 'Workout Check-in',
+  'Fitness Schedule',
+  name ? `Back on Track Today, ${name}` : 'Back on Track Today',
+  'Training Check-in',
 ];
 
-export const MORNING_BRIEF_MISSED_GYM_POOLS = (summary: string) => [
-  `Kal ka skip notice ho gaya. It's okay babe, aaj double energy ke sath aana. ${summary} + workout = W day! 💪`,
-  `Gym ke bina kal gaya aur aaj bhi skip karoge? No no no. ${summary} ke baad straight to iron 🏋️`,
-  `Muscles: *sobbing*. Aaj please mat chhodna unhe. ${summary} ke baad workout, no excuses today!`,
-  `Kal rest day nahi tha. Aaj mandatory slay: ${summary} + gym 💪✨`,
-  `Kal ka skip notice ho gaya. Aaj compensation day! ${summary} niptao aur gains wapas lao 🔥`,
-  `Bhai kal gym nahi gaye? Koi baat nahi — aaj koi excuse nahi. ${summary} + workout = redemption 💪`,
+export const MORNING_BRIEF_MISSED_GYM_POOLS = (summary: string, name?: string) => [
+  name
+    ? `Resume your momentum today, ${name}: ${summary} plus your scheduled workout session.`
+    : `Resume your momentum today: ${summary} plus your scheduled workout session.`,
+  `Consistency builds progress. Today\'s agenda includes ${summary} and your workout.`,
+  `Get back into your training rhythm today. Focus on ${summary} and hit the gym.`,
+  `Reset today with focus: ${summary} and your workout are on the docket.`,
 ];
 
 // ── 2. Overdue Task Nudge ─────────────────────────────────────────────────────
 
 export const OVERDUE_TASK_POOLS = (countStr: string) => [
-  `${countStr} tasks se roz moonh chhupa rahe ho. They're not going anywhere bestie 🥺 Aaj ek toh niptao!`,
-  `Aaj ${countStr} overdue tasks niptane mein help karungi. Ek-ek karke shuru karte hain! 💜`,
-  `${countStr} tasks stack ho gaye. Achievement unlocked — par koi XP nahi milta 💀 Abhi start karo!`,
-  `${countStr} pending tasks se tab se bhaag rahe ho. Let me be your hype person — aaj CRUSH them!`,
-  `${countStr} overdue tasks mujhe personally disappoint kar rahe hain 😤 Together karte hain aaj!`,
-  `${countStr} tasks window pe khade hain aur darwaza knock kar rahe hain. Answer karo bestie!`,
-  `Kal ka kaam aaj ka headache banega agar ${countStr} abhi nahi niptaye! Chalo shuru karte hain ☕`,
+  `You have ${countStr} uncompleted from yesterday. Tap to review or reschedule.`,
+  `Clear your backlog: ${countStr} carried over. A quick review keeps your agenda clean.`,
+  `${countStr} remaining from yesterday. Take a few minutes to check them off or adjust dates.`,
+  `Pending tasks: ${countStr} carried over. Tap to organize today\'s priorities.`,
+  `Review backlog: ${countStr} awaiting completion. Tap to update your list.`,
 ];
 
 // ── 3. Task Buffer Alert ──────────────────────────────────────────────────────
 
 export const TASK_BUFFER_POOLS = (title: string, bufferMin: number) => [
-  `"${title}" starts in ${bufferMin}m! Finish what you're doing, grab water, get in position 🚀`,
-  `Countdown to "${title}" is ON (${bufferMin}m). Close the reels, open the brain — game time! 🎮`,
-  `"${title}" in ${bufferMin} mins. Stretch, coffee, deep breath. Let's land this one clean ✈️`,
-  `You said you'd do "${title}" — the time is in ${bufferMin}m. No backing out, hero era loading 🦸`,
-  `"${title}" next in queue (${bufferMin}m). Side effects: productivity, dopamine, self-respect ✨`,
-  `ZenTrack reminder: "${title}" window opens in ${bufferMin}m. The future you is watching 👀`,
-  `Mission approaching! "${title}" in ${bufferMin} mins — prep mode on, distractions off 🎯`,
+  `"${title}" starts in ${bufferMin} minutes. Tap to view details or prepare.`,
+  `Upcoming task: "${title}" begins in ${bufferMin} minutes. Wrap up current work and get ready.`,
+  `In ${bufferMin} minutes: "${title}". Take a moment to prepare your workspace.`,
+  `Scheduled in ${bufferMin}m: "${title}". Tap to view task notes or start early.`,
+  `Reminder: "${title}" is set to begin in ${bufferMin} minutes.`,
 ];
 
 // ── 4. T-15 Execution Warning ─────────────────────────────────────────────────
 
 export const TASK_T15_POOLS = (title: string) => [
-  `"${title}" in 15 mins. No more prep time — just DO it. You trained for this moment 🔥`,
-  `Whatever you're doing, wrap it up — "${title}" is about to start. Let's goooo! 🛸`,
-  `15 mins until "${title}". Close the tabs. Lock in. Main tujhe believe karti hoon 💜`,
-  `"${title}" in 15. STOP scrolling and GET TO IT. Kal waala tu says thank you!`,
-  `Just 15 more minutes before "${title}" hits. Deep breath. You've got this. GO.`,
-  `"${title}" can't wait anymore bestie. 15 minutes. Full send. LET'S GO!!! 😤`,
-  `Hero banne ka time aa gaya! "${title}" in 15 — let's see what you're made of 🔥`,
+  `"${title}" begins in 15 minutes. Time to focus and get started.`,
+  `Starting in 15 minutes: "${title}". Tap to view task notes.`,
+  `15-minute reminder for "${title}". Get ready to dive in.`,
+  `Your next focus block is "${title}" in 15 minutes. Tap to open.`,
 ];
 
 // ── 5. Daily Unscheduled Task ─────────────────────────────────────────────────
 
 export const TASK_DAILY_POOLS = (title: string) => [
-  `Aaj ka target: "${title}". Schedule it or just DO it — a ✅ by evening, deal? 🤝`,
-  `"${title}" is on today's docket. ZenTrack says: "Don't let it roll over again!" 😤`,
-  `"${title}" — knock it out and your evening is all yours bestie 😌✨`,
-  `"${title}" needs to be done today. No tomorrow. No next week. TODAY. 💪`,
-  `"${title}" is patiently waiting. It believes in you. Do it some justice! 🙏`,
-  `Adding "${title}" to your active radar. Even 20 mins today counts — fit it in! 🤖💜`,
-  `Ek chhota sa mission bacha hai: "${title}". Fatafat niptate hain aaj! ⚡`,
+  `Today\'s focus: "${title}". Tap to view details or mark as complete.`,
+  `You have "${title}" planned for today. Tap to schedule a time or complete it.`,
+  `Focus item for today: "${title}". Make steady progress today.`,
+  `Planned for today: "${title}". Tap to view or complete.`,
 ];
 
-// ── 6. Calendar Event (was ROBOTIC static body) ───────────────────────────────
+// ── 6. Calendar Event ─────────────────────────────────────────────────────────
 
 export const CALENDAR_EVENT_POOLS = (title: string, time?: string) => [
-  `"${title}" is up next — prep your notes, thoughts, or just show up with vibes ✨`,
-  `"${title}" at ${time || 'soon'} — 1 hour away! Don't be that person who joins 10 mins late 😬`,
-  `Event reminder: "${title}" starts at ${time || 'scheduled time'}. Aaj late mat karna! 😤💜`,
-  `"${title}" locked and loaded. Show up for it — whether class, meeting, or hangout! ✨`,
-  `"${title}" in 1h. Wind up whatever you're doing! Punctuality = your superpower today ⚡`,
+  `"${title}" starts in 1 hour${time ? ` (${time})` : ''}. Tap to view event details.`,
+  `Upcoming event: "${title}" at ${time || 'scheduled time'}. Prepare your notes.`,
+  `1-hour reminder for "${title}". Tap to check location and details.`,
+  `Scheduled event: "${title}" is coming up in 1 hour.`,
 ];
 
 // ── 7. Habit Streak At Risk ───────────────────────────────────────────────────
 
 export const HABIT_STREAK_RISK_POOLS = (habitName: string, streakCount: number) => [
-  `${streakCount} days of "${habitName}" — do NOT let tonight be the end. Quick tap, SAVE THE STREAK! 🔥`,
-  `Streak emergency! "${habitName}" (${streakCount}d streak!) hasn't been logged. PLEASE 🥺💜`,
-  `${streakCount} days of discipline for "${habitName}" — midnight is the enemy. Log it NOW!`,
-  `"${habitName}" streak at risk! The universe aligned for this streak. Don't waste it bestie! 😤`,
-  `"${habitName}" (${streakCount} days strong!) needs a checkmark before midnight. 2 seconds. Go. 💔`,
-  `${streakCount} din ka "${habitName}" streak toot jaayega agar abhi log nahi kiya! Sirf 2 sec 🏃`,
-  `Itni mehnat se ${streakCount} days banaye the, ab aalsi banoge kya? Tap karke log karo 👑`,
+  `Your ${streakCount}-day streak for "${habitName}" is at risk. Tap to log before midnight.`,
+  `Keep your momentum going: "${habitName}" (${streakCount} days) hasn't been recorded today.`,
+  `Protect your ${streakCount}-day streak. Take 5 seconds to log "${habitName}".`,
+  `Streak reminder: ${streakCount} days on "${habitName}". Log today\'s completion to maintain it.`,
 ];
 
 // ── 8. Habit Daily — Streak Tier 30+ ─────────────────────────────────────────
 
 export const HABIT_DAILY_30_POOLS = (habitName: string, streakCount: number) => [
-  `A WHOLE MONTH+ OF "${habitName}"?? You're literally a different person now 🦋 Day ${streakCount}!`,
-  `ZenTrack: This ${streakCount}-day "${habitName}" streak is the most impressive thing in your profile 👑`,
-  `${streakCount} days of "${habitName}". This is called CHARACTER. Flex on kal waale tum 😤`,
-  `"${habitName}" Day ${streakCount} — at this point you should be giving advice, not receiving it 🎓`,
-  `The streak is a monument now. Day ${streakCount} of "${habitName}". Don't let anyone tear it down 💜`,
+  `Day ${streakCount} of "${habitName}". Exceptional consistency—tap to record today.`,
+  `${streakCount}-day streak on "${habitName}". Maintain your discipline today.`,
+  `Outstanding progress: Day ${streakCount} for "${habitName}". Tap to check in.`,
+  `Long-term mastery: "${habitName}" is on Day ${streakCount}. Tap to keep the chain strong.`,
 ];
 
 // ── 9. Habit Daily — Streak Tier 7+ ──────────────────────────────────────────
 
 export const HABIT_DAILY_7_POOLS = (habitName: string, streakCount: number) => [
-  `ONE WEEK+ of "${habitName}"! A full week of not giving up 🏆 Day ${streakCount} ready to log!`,
-  `${streakCount} days of "${habitName}"? You're BUILT DIFFERENT. Log today, keep cooking 🔥`,
-  `${streakCount} days means "${habitName}" is rewiring your brain. Keep going! 🧠`,
-  `At this point "${habitName}" is part of who you are. Day ${streakCount} — add to the legend 👑`,
-  `Real ones don't break the chain. ${streakCount} days of "${habitName}" — one more today! 💪`,
+  `Day ${streakCount} of "${habitName}". Solid momentum—tap to record today.`,
+  `${streakCount} consecutive days for "${habitName}". Keep the chain unbroken.`,
+  `Great consistency: Day ${streakCount} of "${habitName}". Tap to log your check-in.`,
+  `Habit building: "${habitName}" reaches Day ${streakCount}. Tap to log.`,
 ];
 
 // ── 10. Habit Daily — Streak Tier 1+ ─────────────────────────────────────────
 
 export const HABIT_DAILY_1_POOLS = (habitName: string, streakCount: number) => [
-  `Day ${streakCount} ain't gonna log itself bestie! "${habitName}" is waiting 💜`,
-  `Still here, still consistent — "${habitName}" day ${streakCount}. This is how legends are made! 🔥`,
-  `The vibe rn: 'I actually do this now' 🌟 Log "${habitName}" and keep the chain alive!`,
-  `Day ${streakCount} of the "${habitName}" era — tap to lock in today's win! ✅`,
-  `Early days building big habits: "${habitName}" check-in. Aaj ka ek ek din counts! 🌱`,
+  `Day ${streakCount} of "${habitName}". Tap to log your progress today.`,
+  `Keep the habit alive: "${habitName}" (Day ${streakCount}) is ready to be logged.`,
+  `Building momentum: remember to complete "${habitName}" today.`,
+  `Daily check-in: log your progress on "${habitName}" for Day ${streakCount}.`,
 ];
 
 // ── 11. Habit Daily — Streak Tier 0 (Fresh Start) ────────────────────────────
 
 export const HABIT_DAILY_0_POOLS = (habitName: string) => [
-  `Aaj se new era! Day 1 of "${habitName}" — the most powerful step is the FIRST 🚀`,
-  `'Kal se karunga' vs 'Aaj karta hoon'. Choose differently for once ✨ Start "${habitName}" NOW!`,
-  `Every legend started at Day 1. Your story begins with "${habitName}" today 👑`,
-  `Zero to hero starts now! First log of "${habitName}" — tap and set the vibe 🎯`,
-  `Blank slate. Clean start. Just you and "${habitName}" aaj se. Let's BUILD 💜`,
+  `Start strong: Day 1 of "${habitName}". Tap to record your first check-in.`,
+  `New habit starting today: "${habitName}". Take the first step.`,
+  `Set the foundation: log Day 1 of "${habitName}" today.`,
+  `First check-in: start your consistency streak with "${habitName}".`,
 ];
 
 // ── 12. Gym Workout Reminder ──────────────────────────────────────────────────
 
-export const GYM_WORKOUT_POOLS = (planName: string, countSuffix: string) => [
-  `Aaj ka ${planName}${countSuffix} scheduled! Get ready, then slay! 💪`,
-  `Workout reminder: ${planName}${countSuffix} ain't gonna do itself! Pre-workout lete jaana 🔥`,
-  `${planName} tonight — every rep you skip is a gains opportunity missed. Show up! 🥺`,
-  `Today's mission: ${planName}${countSuffix}. Discipline = doing it even when you don't want to. GO 💥`,
-  `The iron doesn't know you had a long day. ${planName} time — tired is a vibe, not a verdict 💪`,
-  `Gains don't come from couch hours! ${planName}${countSuffix} — USE the gym tonight ⚡`,
-  `No cap your best self is at the gym rn 💯 ${planName}${countSuffix} — get there and come back legendary!`,
-];
+export const GYM_WORKOUT_POOLS = (planName: string, exercisePreview?: string, totalExercises?: number) => {
+  const previewClause = exercisePreview
+    ? `: ${exercisePreview}${totalExercises && totalExercises > 3 ? ` +${totalExercises - 3} more` : ''}`
+    : '';
+  return [
+    `Scheduled for today: ${planName}${previewClause}. Tap to view your workout.`,
+    `Time to train: ${planName}${previewClause}. Stay consistent and log your sets.`,
+    `Today's session: ${planName}${previewClause}. Tap to begin tracking.`,
+    `Workout ready: ${planName}${previewClause}. Tap to review exercises.`,
+  ];
+};
 
 // ── 13. Gym Rest Day ──────────────────────────────────────────────────────────
 
 export const GYM_REST_DAY_POOLS = () => [
-  `Aaj literally allowed ho to chill — muscles are rebuilding! Protein khao, aaram karo 🥩😴`,
-  `Rest day ≠ lazy day. Your gains are being MADE while you sleep. Eat, sleep, hydrate! 💆`,
-  `Recovery protocol: no gym today. CNS recharge karo — kal ke lifts ke liye body rebuild hogi 🔋`,
-  `Today's vibe: gentle movement, good food, 8 hours of sleep. Kal heavy lifts phodne hain! 😴`,
-  `Your body is making gains RIGHT NOW while you chill. This is literally the plan. Enjoy! ✨`,
-  `Active rest day! Thoda walk ya light stretch — kal ke compound lifts ke liye recharge hona hai 🚶`,
+  'Today is a scheduled recovery day. Focus on rest, hydration, and nutrition.',
+  'Active recovery day. Allow muscles to recover for your next session.',
+  'Rest and recharge today. Quality recovery supports steady progress.',
+  'Recovery day: hydrate, stretch, and get adequate sleep.',
 ];
 
 // ── 14. Attendance < 75% Warning ─────────────────────────────────────────────
 
 export const ATTENDANCE_CRITICAL_POOLS = (subjName: string, pct: string, needed: number) => [
-  `${subjName} mein sirf ${pct}% attendance hai! ${needed} aur classes = safe zone. Aaj jaana! 🚨`,
-  `${subjName}: ${pct}%. Below 75% bestie. Next ${needed} classes are MANDATORY, no exceptions! ⚠️`,
-  `${subjName} attendance: ${pct}%. Danger zone! ${needed} more classes = safe area! 🆘`,
-  `${subjName} at ${pct}%. Debarment list doesn't care about your reasons. Next ${needed}: COMPULSORY. 📋`,
-  `Yaar ${subjName} mein ${pct}%! ${needed} aur classes aur tum safe ho. Aaj ka class mat chhodna! 🥺`,
-  `Academic SOS! ${pct}% in ${subjName} = danger zone. ${needed} classes to survive the semester 📡`,
+  `${subjName} attendance is at ${pct}%. Attend the next ${needed} classes to reach 75%.`,
+  `Attendance alert: ${subjName} is currently ${pct}%. You need ${needed} consecutive classes for safety.`,
+  `${subjName} is below the 75% threshold (${pct}%). Ensure you attend today\'s session.`,
+  `Academic alert: ${subjName} at ${pct}%. ${needed} more attendances required to reach safety margin.`,
 ];
 
 // ── 15. Class Pre-Warning ─────────────────────────────────────────────────────
 
-export const CLASS_PRE_POOLS = (subject: string, time: string, timeStr: string) => [
-  `Mobilize! ${subject} at ${time || 'class time'} (${timeStr} to go). Baste uthao, no proxy reliance 😉`,
-  `${subject} (${timeStr} away). Notes, water, attention span — all ready? 📝`,
-  `Don't be THAT person who walks in late 😬 ${subject} in ${timeStr}! Punctuality is a vibe today.`,
-  `Class alert: ${subject} in ${timeStr}. Be there. Front row? Optional. Showing up? MANDATORY. 📡`,
-  `${subject} is ${timeStr} away! Attendance % doesn't negotiate — go bestie 📉`,
-  `Your attendance % is watching. ${subject} in ${timeStr} — show up, it literally adds up! ✅`,
+export const CLASS_PRE_POOLS = (subject: string, time: string, timeStr: string, bunkStatus?: string) => [
+  `${subject} begins in ${timeStr}${time ? ` (${time})` : ''}.${bunkStatus ? ` ${bunkStatus}` : ' Tap to view class details.'}`,
+  `Upcoming class: ${subject} in ${timeStr}.${bunkStatus ? ` ${bunkStatus}` : ' Time to head over.'}`,
+  `Class reminder: ${subject} starts in ${timeStr}.${bunkStatus ? ` ${bunkStatus}` : ' Tap to check notes or room.'}`,
+  `${subject} starts in ${timeStr}.${bunkStatus ? ` ${bunkStatus}` : ' Tap to view your schedule.'}`,
 ];
 
 // ── 16. Post-Class Attendance Log ────────────────────────────────────────────
 
 export const POST_CLASS_LOG_POOLS = (subject: string) => [
-  `${subject} class done! Present tha/thi ya bunk mara? 5 sec — log attendance abhi! ✅`,
-  `${subject} class just ended! Update karo warna baad mein bhool jaoge (we know 😅)`,
-  `${subject} done — seal it with an attendance log! P/A/C — protect your percentage 🛡️`,
-  `Session complete: ${subject} done! 10-second task — log attendance BEFORE distraction! 📋`,
-  `Class me the ya nahi? Tap karo aur ${subject} attendance save karo! ✅`,
+  `${subject} class has ended. Tap to record your attendance status.`,
+  `Update your records: mark Present, Absent, or Cancelled for ${subject}.`,
+  `Keep your attendance accurate: log your status for ${subject}.`,
+  `Class finished: tap to log attendance for ${subject}.`,
 ];
 
 // ── 17. Mid-Lab Checkpoint ────────────────────────────────────────────────────
 
 export const LAB_MID_POOLS = (subject: string) => [
-  `First hour of ${subject} lab complete! Track hour-wise attendance if your college needs it 🧪`,
-  `Mid-lab checkpoint! Survived the first hour of ${subject}. Mark if needed, stay focused 💪`,
-  `${subject} practical: pehla ghanta behind you. Energy up — aage badho! ⏱️`,
-  `${subject} Lab checkpoint. Dept tracks per-hour? Tap to mark now! 🔬`,
-  `One hour into ${subject} lab 🔭 Attendance mein daalo agar zaroorat hai and keep going! 🧬`,
+  `One hour completed in ${subject} lab. Tap if you need to log hourly attendance.`,
+  `Mid-session checkpoint for ${subject} lab. Tap to update your log.`,
+  `${subject} practical: first hour completed. Tap to record progress.`,
 ];
 
-// ── 18. Post-Lab Log — DISTINCT title from Post-Class ────────────────────────
+// ── 18. Post-Lab Log ─────────────────────────────────────────────────────────
 
 export const POST_LAB_LOG_POOLS = (subject: string) => [
-  `${subject} lab session done! You survived! 🧪 Tap karke final lab attendance mark kar lo.`,
-  `Lab over! ${subject} practical credit lene ke liye abhi attendance log karo ✅`,
-  `${subject} lab complete. Quick tap — log your final presence status! 🔬`,
-  `Lab khatam! ${subject} ka practical attendance abhi record karo warna bhool jaoge 📋`,
-  `Experiment complete! Mark your ${subject} lab attendance before the memory fades — tap now 🧬`,
+  `${subject} lab completed. Tap to record your practical attendance.`,
+  `Practical session finished for ${subject}. Mark your attendance to stay up to date.`,
+  `${subject} lab has concluded. Tap to log your final status.`,
 ];
 
 // ── 19. Assignment 48h Warning ────────────────────────────────────────────────
 
 export const ASSIGNMENT_48H_POOLS = (title: string) => [
-  `"${title}" due in 2 days! Procrastination era is OVER. Open it, start it, submit it! 📝`,
-  `"${title}" — 48h left. The last-night version of you will be SO grateful if you start today! 🥺`,
-  `"${title}" deadline incoming! Early starters submit better work. Be the early starter ✨`,
-  `"${title}" — 48 hours. Start tonight, review tomorrow, submit stress-free 😌`,
-  `"${title}" is due in 2 days. Pro tip: "Start tonight, even just 20 mins!" 👀`,
-  `"Dear present me, please start ${title} NOW. Love, future me." 💌`,
+  `"${title}" is due in 48 hours. Review requirements and make headway today.`,
+  `Upcoming deadline: 2 days left for "${title}". Tap to view details.`,
+  `48-hour reminder for "${title}". Plan time today to finish without rushing.`,
+  `Assignment deadline approaching: "${title}" is due in 2 days.`,
 ];
 
 // ── 20. Assignment 24h Warning ────────────────────────────────────────────────
 
 export const ASSIGNMENT_24H_POOLS = (title: string) => [
-  `"${title}" is due TOMORROW. Haven't started? Start RIGHT NOW. Clock is ticking ⏰`,
-  `"${title}" submits in exactly 24 hours. Close this, open assignment. GO. NOW. 🏃💀`,
-  `Final 24 hours for "${title}"! Main character moment — submit BEFORE deadline, not during! 🔥`,
-  `"${title}" due tomorrow. Every hour you wait adds pressure. Start the final push! 🆘`,
-  `"${title}" — 1 day left. The assignment isn't going anywhere but the deadline is. MOVE! ⏰`,
-  `Last chance to make "${title}" good. 24 hours. Submit before midnight and sleep peacefully 🥺`,
+  `"${title}" is due tomorrow. Complete your final review and submit on time.`,
+  `Final 24 hours for "${title}". Ensure your submission is ready.`,
+  `Due tomorrow: "${title}". Tap to check requirements and submit.`,
+  `Upcoming deadline tomorrow: finish and submit "${title}".`,
 ];
 
 // ── 21. Hydration — Titles ───────────────────────────────────────────────────
 
 export const WATER_TITLES_POOL = [
-  'Hydration Check Bestie 💧',
-  'Sip Check! Paani Piya Kya? 🥤',
-  'Water Alert 🚨 Stay Hydrated!',
-  'Gatak Lo Ek Glass 💦',
-  'Skin & Brain Fuel 🧠💧',
-  'Refill That Bottle! 🧊',
-  'ZenTrack Hydration Check 💙',
-  'Dehydration Is NOT The Vibe 🚫🌵',
-  'Power Sip Time ⚡💧',
-  'Paani Break, Champ! 🚰',
-  'Drink Up, Slay Down ✨🥤',
-  'Hydrate Or Diedrate 💀💧',
-  'H2O Refuel Alert 🌊',
-  'Glow Mode: Drink Water ✨💧',
+  'Hydration Reminder',
+  'Water Check-in',
+  'Time to Hydrate',
+  'Daily Water Check',
+  'Stay Hydrated',
 ];
 
 // ── 21. Hydration — With Progress ────────────────────────────────────────────
 
 export const WATER_PROGRESS_POOLS = (loggedL: string, remainingL: string, goalL: string) => [
-  `Hydration check: ${loggedL}L down, only ${remainingL}L left for ${goalL}L! Almost at the finish line 💧`,
-  `${loggedL}L logged so far! Sirf ${remainingL}L baki hai for today's ${goalL}L target. Ek aur glass finish karo 🥤`,
-  `Bestie you're crushing it — ${loggedL}L in! Keep the momentum, ${remainingL}L more to hit ${goalL}L 🎯`,
-  `Skin glowing, brain buzzing! 💆 ${remainingL}L away from your ${goalL}L goal. Grab that bottle!`,
-  `Progress report: ${loggedL}L / ${goalL}L complete 📊 Just one or two more glasses to seal the deal 💦`,
-  `Almost in the hydrated elite club! ${remainingL}L left to reach ${goalL}L. Take a big gulp right now 🏆`,
-  `${loggedL}L logged! Halfway there is good, but hitting ${goalL}L is legendary 🔥 Sip up!`,
-  `Level up your hydration stats: ${remainingL}L baki hai ${goalL}L target ke liye. Don't stop now ⚡`,
-  `Your body is loving this ${loggedL}L hydration! Finish the remaining ${remainingL}L and celebrate 🎉`,
-  `Target in sight: ${remainingL}L remaining for ${goalL}L goal 🎯 Ek glass abhi gatak lo aur win today!`,
-  `Great pace! ${loggedL}L done, ${remainingL}L to go. Refill that bottle and stay unstoppable 💧🚀`,
+  `${loggedL}L logged so far. ${remainingL}L remaining toward your ${goalL}L goal.`,
+  `Hydration progress: ${loggedL}L / ${goalL}L completed. Remember to drink a glass of water.`,
+  `You're at ${loggedL}L today with ${remainingL}L to reach your ${goalL}L target.`,
+  `Keep steady hydration: ${remainingL}L left to complete your ${goalL}L daily goal.`,
+  `Steady progress: ${loggedL}L recorded. Drink some water to stay on track.`,
 ];
 
 // ── 22. Hydration — Zero Logged ───────────────────────────────────────────────
 
 export const WATER_EMPTY_POOLS = () => [
-  `Hydration alert: ZERO water logged today 💧 Running on 1% battery? Ek bada glass gatak lo right now! 🥤`,
-  `Your brain is literally 75% water and currently running dry 💀 Go grab a cold glass, fast!`,
-  `Dehydration is NOT aesthetic bestie 😤 Skin glow aur energy boost ke liye go drink a glass now! ✨`,
-  `Bottle dhoondo aur paani piyo! 🚰 Future productive you will thank you for this one sip 💙`,
-  `Are you waiting for a written invitation to drink water? 🤨 Break lo aur bottle khatam karo!`,
-  `Energy drop feel ho raha hai? It's not tiredness, it's dehydration! 🚨 Drink 300ml right now.`,
-  `Coffee/chai se pehle paani zaroori hai boss ☕➡️💧 Ek bada sip and back to slaying!`,
-  `No water logged yet today? 😱 Don't let your body run on empty. Sip up immediately!`,
-  `Reminder: Plants need water and so do YOU 🌱 Paani pi lo aur refresh ho jao champ!`,
-  `Slump antidote: ONE chilled glass of water 🧊 Drink now and level up your focus!`,
-  `Hustle tabhi hogi jab body hydrated hogi 🔥 Chalo jaldi se bottle bhar lo!`,
-  `Brain fog clearing protocol: Drink 1 glass of water 🧠💧 Works 10x faster than doomscrolling!`,
-  `Friendly aggressive reminder to DRINK WATER 🔫💧 Hydrate yourself right now!`,
-  `The audacity of going this long without water 😤 One glass, right now — your body demands it 💧`,
-  `Glowing skin aur sharp focus chahiye? Start with ONE full glass of water right now 🥤✨`,
+  'No water logged yet today. Take a moment to drink a glass and log your intake.',
+  'Stay refreshed and focused today. Remember to drink some water.',
+  'Hydration check: log your first glass of water to track today\'s progress.',
+  'Maintain your focus and energy. Drink a glass of water to start today\'s goal.',
+  'Health reminder: take a water break and log your intake.',
 ];
 
 // ── 23. Sleep Wind-Down ───────────────────────────────────────────────────────
 
 export const SLEEP_NIGHT_POOLS = () => [
-  `Bahut ho gaya scroll karna! Phone rakho, sleep mode on, kal machao — tonight recharge karo 😴`,
-  `One more reel = 47 more. Put the phone down and recover like the champion you are! 🛌`,
-  `Future 7AM you says: 'PLEASE sleep now.' Past midnight is where regrets happen. Log sleep! 🌙`,
-  `Night recovery protocol: INITIATED 😴 Blue light down. Brain off. Recovery on. Log tonight's sleep ✨`,
-  `Tomorrow's energy depends on tonight's rest 💤 Phone band karo, log sleep — slay harder tomorrow! 👑`,
-  `Sleep is the ultimate pre-workout! Phone band karo aur so jao cutie 😴✨`,
+  'Time to wind down for the night. Good rest prepares you for a productive day tomorrow.',
+  'Prepare for sleep. Dim the screen, disconnect, and recharge for tomorrow.',
+  'End-of-day recovery: restful sleep supports your energy and mental clarity tomorrow.',
+  'Wind-down reminder: disconnect for the night and log your sleep schedule.',
 ];
 
 // ── 24. Sleep Morning Log ─────────────────────────────────────────────────────
 
 export const SLEEP_MORNING_POOLS = () => [
-  `Rise and shine bestie! Log last night's sleep to track your readiness for today! 📊`,
-  `Subah ho gayi! Kal raat ki neend kaisi rahi? 30 seconds — log sleep and start the day! 🌅`,
-  `Before you dive in — how many hours did you sleep? Log it to calibrate today! 🔑`,
-  `Morning! Quick sleep log karo so ZenTrack knows how recharged you are. 10 seconds! 💜`,
-  `Kal raat ka sleep log mat bhoolna! It tracks your energy patterns for today ☀️`,
-  `Rise and log! 🌅 Track your readiness score from sleep data — 10 sec before diving in!`,
+  'Good morning. Take 10 seconds to log your sleep and check your daily readiness.',
+  'Record last night\'s sleep duration to keep your recovery insights accurate.',
+  'Start the day fresh: tap to log your sleep and view today\'s schedule.',
+  'Morning check-in: how did you sleep? Tap to record your rest hours.',
 ];
 
 // ── 25. Weekly Review ─────────────────────────────────────────────────────────
 
 export const WEEKLY_REVIEW_POOLS = () => [
-  `Hafta khatam hua bestie! Kya kiya, kya seekha, kya improve hoga — tap karo aur review karo! 📊`,
-  `This week's score is in! Wins count, losses teach. Reflect, plan, level up for next week 🚀`,
-  `The week just finished. Time to audit it, appreciate the wins, and close properly. Review! 🎯`,
-  `Week done! What went well, what didn't, what's next — 5 mins makes next week legendary 💜`,
-  `Sunday = clean slate time. Weekly review nahi kiya toh same mistakes repeat honge. 5 min! 🔄`,
+  'Your weekly summary is ready. Tap to review your accomplishments and plan ahead.',
+  'Take 5 minutes to reflect on this week\'s progress, habits, and priorities for next week.',
+  'Weekly reflection: review your completed tasks, streak continuity, and upcoming goals.',
+  'Sunday review: audit your progress and set priorities for the upcoming week.',
 ];
 
 // ── 26. Inactivity Nudge ──────────────────────────────────────────────────────
 
 export const INACTIVITY_POOLS = (days: number) => [
-  `${days} days and no tasks, habits, or gym. ZenTrack has been waiting. Come back, even 5 mins! 💜`,
-  `${days} days MIA! Tasks, habits, goals have been waiting patiently. Come show them some love! 😢`,
-  `${days} days of silence bestie. It's not too late! Log ONE thing and restart the momentum!`,
-  `${days} days since last log. No judgment — just a gentle nudge. We'll be here when you're ready 💜`,
-  `${days} days since last activity! Future you sends one word: PLEASE. Come back to ZenTrack! 🆘`,
-  `Hamari yaad nahi aati kya? 🥺💔 ${days} din se gayab ho yaar! ZenTrack sunsaan ho gaya hai.`,
+  `You haven't checked in for ${days} days. Tap to review your tasks and get back on track.`,
+  `A quick check-in can rebuild your momentum. Take 2 minutes to plan your day.`,
+  `ZenTrack is ready when you are. Review your goals and log today\'s progress.`,
+  `Check in to keep your streak and tasks organized. Tap to open ZenTrack.`,
+];
+
+// ── 27. Hydration Milestones ──────────────────────────────────────────────────
+
+export const WATER_MILESTONE_50_POOLS = (loggedL: string, targetL: string) => [
+  `Halfway there: you've reached 50% of your daily water goal (${loggedL}L / ${targetL}L).`,
+  `50% hydration achieved. Maintain steady intake through the day.`,
+  `Halfway mark reached: ${loggedL}L logged today. Keep going.`,
+];
+
+export const WATER_MILESTONE_75_POOLS = (loggedL: string, targetL: string) => [
+  `75% achieved: you've logged ${loggedL}L today. Almost at your ${targetL}L target.`,
+  `Three-quarters completed (${loggedL}L). One more glass will close out today's goal.`,
+  `Steady progress: 75% of your target is complete. Keep the momentum going.`,
+];
+
+export const WATER_MILESTONE_100_POOLS = (loggedL: string) => [
+  `Daily goal reached: you've completed 100% of your hydration target (${loggedL}L). Excellent consistency.`,
+  `Hydration goal completed: ${loggedL}L logged today. Target achieved.`,
+  `100% hydration milestone reached. Well hydrated for the day.`,
 ];

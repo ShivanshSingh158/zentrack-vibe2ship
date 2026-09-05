@@ -13,10 +13,12 @@ import {
   handleWidgetClickAction,
   buildTodayAgendaData,
   saveCachedWidgetData,
+  buildLiveWorkoutWidgetData,
+  saveCachedLiveWorkoutData,
 } from '../services/widgetSyncService';
 import { formatLocalDateStr } from '../utils/dateUtils';
 import { readCoreCacheMulti } from '../utils/coreCache';
-import { readAcademicCache } from '../utils/domainCache';
+import { readAcademicCache, readWellnessCache } from '../utils/domainCache';
 
 export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
   const widgetInfo = props.widgetInfo;
@@ -26,7 +28,25 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
     case 'WIDGET_UPDATE':
     case 'WIDGET_RESIZED': {
       if (widgetInfo.widgetName === 'LiveWorkout') {
-        const workoutData = await getCachedLiveWorkoutData();
+        const todayStr = formatLocalDateStr(new Date());
+        let workoutData = await getCachedLiveWorkoutData();
+
+        // Stale or missing data check: if the cached workout is missing or from a previous day,
+        // automatically reconstruct today's workout split from the offline-first wellness cache!
+        if (!workoutData || workoutData.dateStr !== todayStr) {
+          try {
+            const wellnessCache = await readWellnessCache();
+            workoutData = buildLiveWorkoutWidgetData({
+              todayStr,
+              gymLogs: wellnessCache.gymLogs || [],
+              userGymPlan: wellnessCache.userGymPlan || null,
+            });
+            if (workoutData) {
+              await saveCachedLiveWorkoutData(workoutData);
+            }
+          } catch {}
+        }
+
         props.renderWidget(
           React.createElement(LiveWorkoutWidget, {
             data: workoutData,

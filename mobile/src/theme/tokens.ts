@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 /**
  * ZenTrack Mobile — Design Tokens v2
  *
@@ -195,35 +197,41 @@ export const FONT_SIZE = {
 // Shadows use the accent color at low opacity for an ambient glow effect,
 // rather than plain black — creates a sense that surfaces float.
 
+// Android note: shadowColor / shadowOffset / shadowOpacity / shadowRadius are iOS-only.
+// On Android only `elevation` has an effect — and high values trigger an expensive
+// RenderThread shadow pass on every frame. Keep Android elevation values minimal.
+const IS_ANDROID = Platform.OS === 'android';
+
 export const SHADOW = {
   sm: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.4,
     shadowRadius: 6,
-    elevation: 3,
+    elevation: IS_ANDROID ? 1 : 3,
   },
   md: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.55,
     shadowRadius: 12,
-    elevation: 6,
+    elevation: IS_ANDROID ? 2 : 6,
   },
   lg: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.7,
     shadowRadius: 24,
-    elevation: 14,
+    elevation: IS_ANDROID ? 3 : 14,
   },
   // Coloured ambient glow — use on accent buttons, progress rings, orbs.
+  // iOS: uses shadowColor tint for ambient glow. Android: elevation only (no color).
   // FIX #11: Default was #cba6f7 (wrong theme purple). Corrected to ZenTrack's actual accent.
   accent: (color: string = '#a599ff') => ({
     shadowColor: color,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 14,
-    elevation: 10,
+    elevation: IS_ANDROID ? 4 : 10,
   }),
 };

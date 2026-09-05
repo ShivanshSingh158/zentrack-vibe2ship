@@ -244,7 +244,7 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
       {/* ══════════════════════════════════════════════════
           HERO
       ══════════════════════════════════════════════════ */}
-      <motion.div className="landing-hero" style={{ y: heroY, minHeight: '90vh', paddingTop: '5rem', paddingBottom: '7rem' }}>
+      <motion.div className="landing-hero" style={{ y: heroY, minHeight: '80vh', paddingTop: '4rem', paddingBottom: '3.5rem' }}>
         <motion.span
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.2 }}
           style={{ display: 'inline-block', marginBottom: '2rem', fontSize: '0.72rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 999, padding: '4px 16px' }}>
@@ -304,12 +304,12 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
           STATS BAR
       ══════════════════════════════════════════════════ */}
       <FadeUp>
-        <div style={{ position: 'relative', zIndex: 10, maxWidth: '72rem', margin: '0 auto 6rem', padding: '0 2rem' }} className="landing-stats-bar">
-          <div className="premium-matte-card premium-glow landing-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderRadius: '1.25rem', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="landing-stats-bar">
+          <div className="landing-stats-grid">
             {STATS.map((s, i) => (
-              <div key={i} className="landing-stats-item" style={{ padding: '1.75rem 1rem', textAlign: 'center', borderRight: i < 3 ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '2.6rem', fontWeight: 400, color: 'white', lineHeight: 1 }}>{s.value}</div>
-                <div style={{ fontSize: '0.73rem', color: 'rgba(255,255,255,0.38)', marginTop: '0.5rem', letterSpacing: '0.04em' }}>{s.label}</div>
+              <div key={i} className="landing-stats-item">
+                <div className="landing-stats-value">{s.value}</div>
+                <div className="landing-stats-label">{s.label}</div>
               </div>
             ))}
           </div>

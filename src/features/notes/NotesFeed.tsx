@@ -155,7 +155,7 @@ export const NotesFeed: React.FC<NotesFeedProps> = ({
           <input
             type="text"
             className="feed-search-input"
-            placeholder="Search notes & text..."
+            placeholder="Search notes..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
           />

@@ -95,9 +95,12 @@ function tokenize(str: string): string[] {
     .map(t => t.replace(/(s|es|ing)$/, '')); // stem
 }
 
+const EXERCISE_TOKENS = new Map<string, string[]>();
+
 EXERCISES.forEach(ex => {
   EXERCISE_BY_ID.set(ex.id, ex);
   EXERCISE_BY_NORM_NAME.set(normalize(ex.name), ex);
+  EXERCISE_TOKENS.set(ex.id, tokenize(ex.name));
 });
 
 // CDN Base URLs (jsDelivr for high-speed global edge distribution)
@@ -159,7 +162,7 @@ export function resolveExercise(nameOrId: string): ExerciseDefinition | null {
   let bestScore = 0;
 
   for (const ex of EXERCISES) {
-    const exTokens = tokenize(ex.name);
+    const exTokens = EXERCISE_TOKENS.get(ex.id) || [];
     let score = 0;
     for (const qt of queryTokens) {
       for (const et of exTokens) {

@@ -25,6 +25,7 @@ import { safeWrite } from '../utils/safeWrite';
 import { awardXP } from './xpSystem';
 import { getGymGeofenceConfig } from './savedPlacesService';
 import type { GymGeofenceConfig } from '../types/locationReminder.types';
+import { dismissActiveWorkoutNotification } from './activeWorkoutNotificationService';
 
 export const GEOFENCE_TASK_NAME = 'ZENTRACK_GEOFENCE_TASK';
 export const TASK_REMINDERS_STORAGE_KEY = '@zentrack_task_location_reminders';
@@ -68,6 +69,15 @@ export async function triggerGymArrival(
     const today = getTodayLocalDateStr();
     const nowMs = Date.now();
 
+    // Guard: ensure gym arrival only triggers ONCE per workout session
+    const arrivalHandledKey = `@zentrack_gym_arrival_handled_${today}`;
+    if (!options?.force) {
+      const alreadyHandled = await AsyncStorage.getItem(arrivalHandledKey);
+      if (alreadyHandled === 'true') {
+        return false;
+      }
+    }
+
     const sessionKey = `@zentrack_active_workout_${today}`;
     const existingRaw = await AsyncStorage.getItem(sessionKey);
     let startTime = nowMs;
@@ -79,11 +89,39 @@ export async function triggerGymArrival(
         if (existing?.completed && !options?.force) {
           return false;
         }
+        // If workout today has already started or arrival was already auto-started, do NOT re-trigger
+        if ((existing?.startTime || existing?.autoStartedByGeofence) && !options?.force) {
+          await AsyncStorage.setItem(arrivalHandledKey, 'true');
+          return false;
+        }
         if (existing?.startTime) {
           startTime = existing.startTime;
         }
       } catch {}
     }
+
+    // Check Firestore if authenticated to see if workout already started or completed
+    try {
+      const user = auth.currentUser;
+      if (user && !options?.force) {
+        const docId = `${user.uid}_${today}`;
+        const docRef = doc(db, COLLECTION.GYM_LOGS, docId);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const existingData = snap.data();
+          if (existingData.completed || existingData.workoutStartTime) {
+            // Already started or completed in cloud — do not re-trigger
+            await AsyncStorage.setItem(arrivalHandledKey, 'true');
+            return false;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Geofence] Firestore gym pre-check error:', e);
+    }
+
+    // Mark arrival handled immediately to prevent any concurrent triggers
+    await AsyncStorage.setItem(arrivalHandledKey, 'true');
 
     const sessionState = {
       date: today,
@@ -174,6 +212,175 @@ export async function triggerGymArrival(
   }
 }
 
+/**
+ * Central Gym Departure Pipeline:
+ * Checks if a workout session is currently active for today.
+ * If active and user has left the gym perimeter:
+ * Finalizes workout duration, computes end time, marks session completed in
+ * Firestore & AsyncStorage, awards completion XP, notifies UI listeners,
+ * dismisses lock screen HUD, and sends actionable departure notification.
+ */
+export async function triggerGymDeparture(
+  gymConfigParam?: GymGeofenceConfig | null,
+  options?: { force?: boolean }
+): Promise<boolean> {
+  try {
+    const gymConfig = gymConfigParam || (await getGymGeofenceConfig());
+    if (!gymConfig || !gymConfig.enabled) return false;
+
+    const placeName = gymConfig.placeName || 'the Gym';
+    const today = getTodayLocalDateStr();
+    const nowMs = Date.now();
+
+    const sessionKey = `@zentrack_active_workout_${today}`;
+    const sessionRaw = await AsyncStorage.getItem(sessionKey);
+    let startTime: number | null = null;
+    let isAlreadyCompleted = false;
+
+    if (sessionRaw) {
+      try {
+        const session = JSON.parse(sessionRaw);
+        if (session?.completed) {
+          isAlreadyCompleted = true;
+        }
+        if (session?.startTime) {
+          startTime = Number(session.startTime);
+        }
+      } catch {}
+    }
+
+    // Inspect Firestore for active workout or cloud start time
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        const docId = `${user.uid}_${today}`;
+        const docRef = doc(db, COLLECTION.GYM_LOGS, docId);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.completed) {
+            isAlreadyCompleted = true;
+          }
+          if (data.workoutStartTime && !startTime) {
+            startTime = Number(data.workoutStartTime);
+          }
+        }
+      } catch (e) {
+        console.warn('[Geofence] Firestore departure check error:', e);
+      }
+    }
+
+    // If workout is already completed and not explicitly forced, nothing to departure-finalize
+    if (isAlreadyCompleted && !options?.force) {
+      return false;
+    }
+
+    // If no active workout session exists in storage or cloud, do nothing
+    if (!startTime && !options?.force) {
+      const activeState = await AsyncStorage.getItem('@zentrack_active_workout_state');
+      if (!activeState) {
+        return false;
+      }
+      try {
+        const parsed = JSON.parse(activeState);
+        if (parsed?.startTime) startTime = Number(parsed.startTime);
+      } catch {}
+    }
+
+    if (!startTime) {
+      return false;
+    }
+
+    // Safety guard: workout must have been running for at least 2 minutes to prevent
+    // premature auto-finish caused by temporary GPS drift immediately after arrival
+    if (!options?.force && nowMs - startTime < 2 * 60 * 1000) {
+      return false;
+    }
+
+    const elapsedMins = Math.max(1, Math.round((nowMs - startTime) / 60000));
+    const startD = new Date(startTime);
+    const endD = new Date(nowMs);
+    const startTimeStr = `${startD.getHours().toString().padStart(2, '0')}:${startD.getMinutes().toString().padStart(2, '0')}`;
+    const endTimeStr = `${endD.getHours().toString().padStart(2, '0')}:${endD.getMinutes().toString().padStart(2, '0')}`;
+
+    const finalizedState = {
+      date: today,
+      startTime: startTimeStr,
+      endTime: endTimeStr,
+      workoutDurationMinutes: elapsedMins,
+      completed: true,
+      autoFinishedByGeofence: true,
+      updatedAt: nowMs,
+    };
+
+    await AsyncStorage.setItem(sessionKey, JSON.stringify(finalizedState));
+    await AsyncStorage.removeItem('@zentrack_active_workout_state');
+
+    // Finalize Firestore log
+    if (user) {
+      try {
+        const docId = `${user.uid}_${today}`;
+        const docRef = doc(db, COLLECTION.GYM_LOGS, docId);
+        const payload: any = {
+          completed: true,
+          workoutStartTime: deleteField(),
+          workoutDurationMinutes: elapsedMins,
+          startTime: startTimeStr,
+          endTime: endTimeStr,
+          updatedAt: serverTimestamp(),
+        };
+        await safeWrite(
+          () => setDoc(docRef, payload, { merge: true }),
+          COLLECTION.GYM_LOGS,
+          'set',
+          payload,
+          docId
+        );
+      } catch (e) {
+        console.warn('[Geofence] Firestore gym departure sync error:', e);
+      }
+    }
+
+    // Dismiss active lock screen notification if active
+    try {
+      await dismissActiveWorkoutNotification();
+    } catch {}
+
+    // Award session XP & notify UI listeners
+    awardXP('GYM_SESSION').catch(() => {});
+    DeviceEventEmitter.emit('gym_workout_auto_finished', { date: today, duration: elapsedMins });
+
+    // Schedule High-Priority Departure Notification
+    const notifDebounceKey = `@zentrack_last_gym_departure_notif_${today}`;
+    const lastNotifStr = await AsyncStorage.getItem(notifDebounceKey);
+    const lastNotifMs = lastNotifStr ? Number(lastNotifStr) : 0;
+    const isRecentlyNotified = nowMs - lastNotifMs < 2 * 60 * 60 * 1000;
+
+    if (!isRecentlyNotified || options?.force) {
+      await AsyncStorage.setItem(notifDebounceKey, String(nowMs));
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `🏁 Left ${placeName} — Workout Saved! (${elapsedMins}m)`,
+          body: `Great session! Workout auto-finished. Tap to view your summary.`,
+          sound: 'default',
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          vibrate: [0, 500, 200, 500, 200, 500],
+          color: '#a599ff',
+          data: { type: 'GYM_DEPARTURE', screen: 'WorkoutSummary', date: today, duration: elapsedMins },
+          categoryIdentifier: 'location_gym_departure',
+          ...(Platform.OS === 'android' ? { channelId: 'location_reminders' } : {}),
+        },
+        trigger: null,
+      });
+    }
+
+    return true;
+  } catch (err: any) {
+    console.warn('[Geofence] triggerGymDeparture failed:', err?.message);
+    return false;
+  }
+}
+
 // ─── 1. Background Task Definition (Registered at JS Boot) ────────────────────
 TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }: any) => {
   if (error) {
@@ -194,10 +401,6 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }: any) => {
       const gymConfig = await getGymGeofenceConfig();
       if (!gymConfig || !gymConfig.enabled) return;
 
-      const placeName = gymConfig.placeName || 'the Gym';
-      const today = getTodayLocalDateStr();
-      const nowMs = Date.now();
-
       // ── SUB-CASE A1: ARRIVAL (AUTO-START WORKOUT) ──────────────────────────
       if (isEnter && gymConfig.promptOnEnter) {
         await triggerGymArrival(gymConfig);
@@ -205,81 +408,7 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }: any) => {
 
       // ── SUB-CASE A2: DEPARTURE (AUTO-FINISH WORKOUT) ────────────────────────
       else if (isExit && gymConfig.promptOnExit) {
-        const sessionKey = `@zentrack_active_workout_${today}`;
-        const sessionRaw = await AsyncStorage.getItem(sessionKey);
-        let startTime = nowMs - (45 * 60 * 1000); // 45m fallback if no start registered
-
-        if (sessionRaw) {
-          try {
-            const session = JSON.parse(sessionRaw);
-            if (session?.startTime) startTime = session.startTime;
-          } catch {}
-        }
-
-        const elapsedMins = Math.max(1, Math.round((nowMs - startTime) / 60000));
-        const startD = new Date(startTime);
-        const endD = new Date(nowMs);
-        const startTimeStr = `${startD.getHours().toString().padStart(2, '0')}:${startD.getMinutes().toString().padStart(2, '0')}`;
-        const endTimeStr = `${endD.getHours().toString().padStart(2, '0')}:${endD.getMinutes().toString().padStart(2, '0')}`;
-
-        const finalizedState = {
-          date: today,
-          startTime: startTimeStr,
-          endTime: endTimeStr,
-          workoutDurationMinutes: elapsedMins,
-          completed: true,
-          autoFinishedByGeofence: true,
-          updatedAt: nowMs,
-        };
-
-        await AsyncStorage.setItem(sessionKey, JSON.stringify(finalizedState));
-        await AsyncStorage.removeItem('@zentrack_active_workout_state');
-
-        // Finalize Firestore log
-        try {
-          const user = auth.currentUser;
-          if (user) {
-            const docId = `${user.uid}_${today}`;
-            const docRef = doc(db, COLLECTION.GYM_LOGS, docId);
-            const payload: any = {
-              completed: true,
-              workoutStartTime: deleteField(),
-              workoutDurationMinutes: elapsedMins,
-              startTime: startTimeStr,
-              endTime: endTimeStr,
-              updatedAt: serverTimestamp(),
-            };
-            await safeWrite(
-              () => setDoc(docRef, payload, { merge: true }),
-              COLLECTION.GYM_LOGS,
-              'set',
-              payload,
-              docId
-            );
-          }
-        } catch (e) {
-          console.warn('[Geofence] Firestore gym departure sync error:', e);
-        }
-
-        // Award session XP & notify UI listeners
-        awardXP('GYM_SESSION').catch(() => {});
-        DeviceEventEmitter.emit('gym_workout_auto_finished', { date: today, duration: elapsedMins });
-
-        // Schedule High-Priority Departure Notification
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: `🏁 Left ${placeName} — Workout Saved! (${elapsedMins}m)`,
-            body: `Great session! Workout auto-finished. Tap to view your summary.`,
-            sound: 'default',
-            priority: Notifications.AndroidNotificationPriority.MAX,
-            vibrate: [0, 500, 200, 500, 200, 500],
-            color: '#a599ff',
-            data: { type: 'GYM_DEPARTURE', screen: 'WorkoutSummary', date: today, duration: elapsedMins },
-            categoryIdentifier: 'location_gym_departure',
-            ...(Platform.OS === 'android' ? { channelId: 'location_reminders' } : {}),
-          },
-          trigger: null,
-        });
+        await triggerGymDeparture(gymConfig);
       }
     } catch (err) {
       console.warn('[Geofence] Gym handler error:', err);
@@ -451,6 +580,11 @@ export async function checkImmediateGymProximity(options?: {
     if (isInside && gymConfig.promptOnEnter) {
       const triggered = await triggerGymArrival(gymConfig, options);
       return { insideGym: true, distanceMeters: distance, triggered };
+    }
+
+    if (!isInside && gymConfig.promptOnExit) {
+      const triggered = await triggerGymDeparture(gymConfig, options);
+      return { insideGym: false, distanceMeters: distance, triggered };
     }
 
     return { insideGym: isInside, distanceMeters: distance, triggered: false };

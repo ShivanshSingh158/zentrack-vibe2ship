@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo, memo, useCallback, Suspense } from 'react';
-import { View, Text, TouchableOpacity, Platform, Alert, Animated, LayoutAnimation, ScrollView, InteractionManager, DeviceEventEmitter } from 'react-native';
+import { View, Text, TouchableOpacity, Platform, Alert, Animated, LayoutAnimation, ScrollView, InteractionManager, DeviceEventEmitter, Linking } from 'react-native';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -133,18 +133,40 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     swapDayRoutine, reorderExercisesFull, triggerDeload, forceOverrideTodayPlan
   } = useGymLog(selectedDate);
 
-  // Autonomous Geofence Arrival: auto-starts local workout session and routes to ActiveLogging
+  // Autonomous Geofence Arrival: auto-starts local workout session and routes to ActiveLogging (ONCE ONLY)
+  const hasAutoNavigatedToWorkoutRef = useRef(false);
+
   useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('gym_workout_auto_started', (event: any) => {
-      if (!log?.workoutStartTime) {
-        startWorkout();
+    if (log?.completed) {
+      hasAutoNavigatedToWorkoutRef.current = false;
+    }
+  }, [log?.completed]);
+
+  useEffect(() => {
+    const startSub = DeviceEventEmitter.addListener('gym_workout_auto_started', (event: any) => {
+      if (hasAutoNavigatedToWorkoutRef.current) {
+        return;
       }
+      if (log?.workoutStartTime) {
+        hasAutoNavigatedToWorkoutRef.current = true;
+        return;
+      }
+      hasAutoNavigatedToWorkoutRef.current = true;
+      startWorkout();
       navigation.navigate('ActiveLogging', {
         date: event?.date || todayStr(),
         initialIndex: 0,
       });
     });
-    return () => sub.remove();
+
+    const finishSub = DeviceEventEmitter.addListener('gym_workout_auto_finished', () => {
+      hasAutoNavigatedToWorkoutRef.current = false;
+    });
+
+    return () => {
+      startSub.remove();
+      finishSub.remove();
+    };
   }, [navigation, log?.workoutStartTime, startWorkout]);
 
   // Extracted AI Plan Manager
@@ -191,8 +213,24 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         refreshGeofenceStatus();
       }
     } else if (!geofenceStatus?.hasBackgroundPermission) {
-      await requestLocationPermissions();
-      refreshGeofenceStatus();
+      const granted = await requestLocationPermissions();
+      if (!granted) {
+        Alert.alert(
+          'Background Location Needed',
+          'To automatically start and finish workouts when your phone is locked or in your pocket:\n\n1. Tap "Open Settings" below\n2. Tap "Permissions" → "Location"\n3. Select "Allow all the time"',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Open Settings',
+              onPress: () => {
+                Linking.openSettings();
+              },
+            },
+          ]
+        );
+      } else {
+        refreshGeofenceStatus();
+      }
     } else {
       setShowLocationModal(true);
     }

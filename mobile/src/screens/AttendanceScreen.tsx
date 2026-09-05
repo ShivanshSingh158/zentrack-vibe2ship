@@ -555,18 +555,18 @@ export default function AttendanceScreen() {
   const getThemeProgressColor = (urgency: string) =>
     urgency === 'danger' ? colors.priorityHigh : urgency === 'warning' ? colors.priorityMed : colors.priorityLow;
 
-  // ── Animated pill visibility: 0 at top (flat/normal), 1 on scroll (glass pills) ──
-  const pillAnim = useRef(new Animated.Value(0)).current;
-  const isPillVisibleRef = useRef(false);
+  // ── Animated pill visibility: 1 at top (pills always visible), fades slightly on scroll ──
+  const pillAnim = useRef(new Animated.Value(1)).current;
+  const isPillVisibleRef = useRef(true);
   const lastScrollY = useRef(0);
 
   const updatePillVisibility = useCallback((offsetY: number) => {
-    const shouldShow = offsetY > 20;
+    const shouldShow = offsetY <= 20 || offsetY > 20; // always show pills
     if (shouldShow !== isPillVisibleRef.current) {
       isPillVisibleRef.current = shouldShow;
       Animated.timing(pillAnim, {
         toValue: shouldShow ? 1 : 0,
-        duration: shouldShow ? 140 : 80, // Instantly disappears in 80ms on scroll-up
+        duration: shouldShow ? 140 : 80,
         useNativeDriver: true,
       }).start();
     }
@@ -952,7 +952,7 @@ export default function AttendanceScreen() {
             data={isSelectedHoliday ? [] : todayFlatSessions}
             keyExtractor={item => item.id}
             showsVerticalScrollIndicator={false}
-            removeClippedSubviews={Platform.OS === 'android'}
+            removeClippedSubviews={false}
             initialNumToRender={6}
             maxToRenderPerBatch={6}
             windowSize={5}

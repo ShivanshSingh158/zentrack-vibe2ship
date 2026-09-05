@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput,
-  ScrollView, ActivityIndicator, Alert, StyleSheet, Switch, Keyboard
+  ScrollView, ActivityIndicator, Alert, StyleSheet, Switch, Keyboard, Linking
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -28,6 +28,7 @@ import {
   syncAllActiveGeofences,
   requestLocationPermissions,
   checkImmediateGymProximity,
+  getGeofenceDiagnosticStatus,
 } from '../../services/geofenceService';
 import type { GymGeofenceConfig } from '../../types/locationReminder.types';
 
@@ -80,15 +81,8 @@ export const GymLocationModal = React.memo(function GymLocationModal({ visible, 
     setLocatingCurrent(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const hasPermission = await requestLocationPermissions();
-    if (!hasPermission) {
-      setLocatingCurrent(false);
-      Alert.alert(
-        'Location Permission Needed',
-        'Please allow ZenTrack to access location (Always/Background) to enable automatic workout detection.'
-      );
-      return;
-    }
+    // Request permissions (will trigger background prompt flow if available)
+    requestLocationPermissions().catch(() => {});
 
     const coords = await getCurrentDeviceCoords();
     setLocatingCurrent(false);
@@ -104,7 +98,14 @@ export const GymLocationModal = React.memo(function GymLocationModal({ visible, 
       Keyboard.dismiss();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } else {
-      Alert.alert('GPS Error', 'Could not fetch current GPS location. Please ensure Location is enabled.');
+      Alert.alert(
+        'GPS Location Error',
+        'Could not fetch current GPS location. Please ensure Location is enabled in Settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() }
+        ]
+      );
     }
   }, []);
 
@@ -205,8 +206,20 @@ export const GymLocationModal = React.memo(function GymLocationModal({ visible, 
       // Close modal immediately so UI navigates smoothly to ActiveLogging.
       onClose();
     } else {
-      Alert.alert('Gym Location Saved', 'ZenTrack will automatically detect and notify you when you arrive at your gym.');
-      onClose();
+      const diag = await getGeofenceDiagnosticStatus();
+      if (isEnabled && !diag.hasBackgroundPermission) {
+        Alert.alert(
+          'Gym Location Saved',
+          'ZenTrack saved your gym location! To auto-detect workouts while your phone is locked or in your pocket, select "Allow all the time" in Location settings.',
+          [
+            { text: 'Got it', onPress: onClose },
+            { text: 'Open Settings', onPress: () => { onClose(); Linking.openSettings(); } },
+          ]
+        );
+      } else {
+        Alert.alert('Gym Location Saved', 'ZenTrack will automatically detect and notify you when you arrive at your gym.');
+        onClose();
+      }
     }
   }, [
     latitude,

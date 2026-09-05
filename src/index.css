@@ -30,15 +30,26 @@ svg.lucide {
 
 body {
   font-family: var(--font-sans);
-  /* Obsidian Cosmos ambient — OLED-true-black base. */
-  background: var(--bg-base);
+  /* Obsidian Cosmos ambient — warm ambient glow matching Login & Landing atmosphere */
+  background:
+    radial-gradient(
+      ellipse 75% 55% at 88% 3%,
+      rgba(196, 149, 106, 0.075) 0%,
+      transparent 62%
+    ),
+    radial-gradient(
+      ellipse 60% 45% at 10% 98%,
+      rgba(165, 153, 255, 0.065) 0%,
+      transparent 60%
+    ),
+    #09080c;
   color: var(--text-primary);
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Ambient glow when agents are active — purple pulse */
+/* Ambient glow when agents are active — warm amber & lavender pulse */
 body.agent-active::after {
   content: '';
   position: fixed;
@@ -46,7 +57,7 @@ body.agent-active::after {
   right: 0;
   width: 500px;
   height: 500px;
-  background: radial-gradient(circle, rgba(165, 153, 255, 0.07) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(219, 168, 126, 0.09) 0%, transparent 70%);
   animation: ambient-breathe 3.5s ease-in-out infinite;
   pointer-events: none;
   z-index: 0;
@@ -56,14 +67,14 @@ body.agent-active::after {
   50%       { opacity: 1;   transform: scale(1.08); }
 }
 
-/* Scrollbar — purple and subtle */
-::-webkit-scrollbar        { width: 4px; height: 4px; }
+/* Scrollbar — warm amber and subtle */
+::-webkit-scrollbar        { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track  { background: transparent; }
 ::-webkit-scrollbar-thumb  {
-  background: rgba(165, 153, 255, 0.20);
+  background: rgba(219, 168, 126, 0.22);
   border-radius: 999px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(165, 153, 255, 0.40); }
+::-webkit-scrollbar-thumb:hover { background: rgba(219, 168, 126, 0.45); }
 
 /* Reduced motion — ALWAYS respect this */
 @media (prefers-reduced-motion: reduce) {
@@ -77,10 +88,74 @@ body.agent-active::after {
 
 
 /* ==========================================================================
-   Buttons — Warm Obsidian system
+   Buttons — Warm Obsidian system matching Login Page
    ========================================================================== */
 
-/* Primary: solid purple pill — the signature CTA (matches mobile btn Primary) */
+/* Gold/Copper Signature Action Button (matches Login Page CTA) */
+.btn-gold {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.4rem;
+  border-radius: 9999px;
+  font-family: var(--font-sans);
+  font-size: 0.825rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, #c4956a 0%, #dba87e 50%, #c4956a 100%);
+  background-size: 200% 100%;
+  border: none;
+  color: #1a110a;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(219, 168, 126, 0.28);
+  transition:
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 180ms ease,
+    background-position 0.4s ease;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.btn-gold:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 6px 24px rgba(219, 168, 126, 0.42);
+  background-position: 100% 0;
+}
+.btn-gold:active {
+  transform: scale(0.97);
+}
+
+/* Warm Frosted Glass Pill Button */
+.btn-glass-warm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  background: rgba(26, 22, 30, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: rgba(235, 224, 204, 0.92);
+  padding: 0.45rem 1rem;
+  border-radius: 9999px;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 180ms ease;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.btn-glass-warm:hover {
+  background: rgba(36, 30, 42, 0.95);
+  border-color: rgba(219, 168, 126, 0.35);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 12px rgba(219, 168, 126, 0.15);
+}
+
+/* Primary: solid purple / warm copper pill */
 .btn-primary {
   position: relative;
   display: inline-flex;
@@ -1492,12 +1567,22 @@ body.ai-panel-open #youtube-floating-pip {
 }
 
 /* ==========================================================================
-   Premium Deep Midnight Aesthetics
+   Premium Warm Obsidian Aesthetics (Aligned with Login & Landing Page)
    ========================================================================== */
 :root {
-  --color-midnight-base: #000000;
-  --color-matte-card: ##141415;
+  --color-midnight-base: #09080c;
+  --color-matte-card: rgba(18, 16, 24, 0.88);
   --color-indigo-glow: rgba(165, 153, 255, 0.45);
+  --color-amber-glow: rgba(219, 168, 126, 0.35);
+
+  /* Warm palette matching Login page */
+  --brand-gold-1: #c4956a;
+  --brand-gold-2: #dba87e;
+  --brand-warm-alabaster: rgba(235, 224, 204, 0.95);
+  --brand-warm-sand: rgba(185, 168, 145, 0.85);
+  --brand-warm-muted: rgba(150, 136, 118, 0.65);
+  --brand-card-border: rgba(255, 255, 255, 0.09);
+  --brand-card-border-hover: rgba(219, 168, 126, 0.35);
 }
 
 .grain-overlay {
@@ -1512,9 +1597,33 @@ body.ai-panel-open #youtube-floating-pip {
 
 .premium-matte-card {
   background: var(--color-matte-card);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 16px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--brand-card-border);
+  border-radius: 20px;
   position: relative;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.premium-matte-card:hover {
+  border-color: var(--brand-card-border-hover);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65), 0 0 24px rgba(219, 168, 126, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.card-rounded-glass {
+  background: linear-gradient(170deg, rgba(22, 19, 28, 0.90) 0%, rgba(16, 14, 20, 0.94) 100%);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 22px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-rounded-glass:hover {
+  border-color: rgba(219, 168, 126, 0.32);
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.65), 0 0 20px rgba(219, 168, 126, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .premium-glow {
@@ -1525,12 +1634,13 @@ body.ai-panel-open #youtube-floating-pip {
   content: '';
   position: absolute;
   inset: -2px;
-  background: linear-gradient(135deg, rgba(165, 153, 255, 0.6) 0%, rgba(139, 92, 246, 0.6) 100%);
+  background: radial-gradient(ellipse at center, rgba(219, 168, 126, 0.28) 0%, rgba(196, 149, 106, 0.12) 60%, transparent 100%);
   border-radius: inherit;
-  filter: blur(40px);
+  filter: blur(18px);
   opacity: 0;
   z-index: -1;
-  transition: opacity 0.4s ease;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
 }
 
 /* For cards that always glow (like SARA dashboard panels) */
@@ -1541,13 +1651,15 @@ body.ai-panel-open #youtube-floating-pip {
   content: '';
   position: absolute;
   inset: -2px;
-  background: linear-gradient(135deg, rgba(165, 153, 255, 0.4) 0%, rgba(139, 92, 246, 0.4) 100%);
+  background: radial-gradient(ellipse at center, rgba(219, 168, 126, 0.25) 0%, rgba(196, 149, 106, 0.1) 60%, transparent 100%);
   border-radius: inherit;
-  filter: blur(40px);
+  filter: blur(20px);
   opacity: 1;
   z-index: -1;
+  pointer-events: none;
 }
 
 .premium-glow:hover::before {
   opacity: 1;
 }
+

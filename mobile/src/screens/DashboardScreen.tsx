@@ -51,6 +51,8 @@ export default function DashboardScreen() {
     holidays: data.holidays,
     zenScore: data.overallAttendancePct,
     streak: data.appStreak,
+    gymLogs: data.gymLogs,
+    userGymPlan: data.userGymPlan,
   });
   const paddingBottom = insets.bottom + 80;
   const levelInfo = getLevel(data.xp);

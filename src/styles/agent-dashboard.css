@@ -1008,7 +1008,10 @@
 }
 
 /* Typography for headers */
-.card-title {
+.active-deployment-card .card-title,
+.urgency-matrix .card-title,
+.roi-card .card-title,
+.workspace-card .card-title {
   color: #fef08a !important;
   text-shadow: 0 0 15px rgba(251, 191, 36, 0.2) !important;
   letter-spacing: 0.02em !important;

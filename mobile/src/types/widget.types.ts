@@ -60,7 +60,8 @@ export type WidgetClickActionType =
   | 'log_workout_set'
   | 'adjust_workout_weight'
   | 'next_workout_exercise'
-  | 'start_workout_session';
+  | 'start_workout_session'
+  | 'finish_workout_session';
 
 export interface WidgetClickActionPayload {
   action: WidgetClickActionType;
@@ -99,9 +100,15 @@ export interface WidgetActiveExercise {
 }
 
 export interface LiveWorkoutWidgetData {
-  isActive: boolean;
-  splitTitle: string; // e.g. "Push Day A"
-  workoutDurationMinutes?: number;
+  dateStr?: string;                     // "YYYY-MM-DD"
+  dayName?: string;                    // "Monday", "Tuesday", etc.
+  displayDate?: string;                // "Mon, Sep 4"
+  isActive: boolean;                   // true if session in progress
+  isCompleted?: boolean;               // true if workout finished today
+  isRestDay?: boolean;                 // true if today is rest day
+  splitTitle: string;                  // e.g. "Push Day A", "Rest & Recovery"
+  splitSubtitle?: string;              // e.g. "Chest · Shoulders · Triceps"
+  workoutDurationMinutes?: number;     // e.g. 45
   currentExerciseIndex: number;
   totalExercises: number;
   currentExercise?: WidgetActiveExercise;
@@ -109,6 +116,16 @@ export interface LiveWorkoutWidgetData {
   restTimerSecondsRemaining?: number;
   completedSetsCount: number;
   totalSetsCount: number;
+  plannedExercisesPreview?: string[];  // names of first few exercises
+  allExercises?: {
+    id: string;
+    name: string;
+    targetSets: number;
+    targetWeight?: number;
+    targetReps?: number;
+    completed: boolean;
+    sets?: WidgetExerciseSet[];
+  }[];
   lastUpdated: number;
 }
 

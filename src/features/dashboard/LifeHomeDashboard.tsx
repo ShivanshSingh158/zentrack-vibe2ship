@@ -1043,14 +1043,17 @@ export const LifeHomeDashboard: React.FC = () => {
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '0.65rem',
-              background: 'var(--color-surface, #141416)',
-              border: '1px solid var(--color-border, #242428)',
-              borderRadius: '14px',
-              padding: '0.6rem 0.95rem',
-              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)'
+              gap: '0.75rem',
+              background: 'rgba(26, 22, 30, 0.85)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '18px',
+              padding: '0.7rem 1.15rem',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
+              transition: 'all 0.2s ease',
             }}>
-              <Sparkles size={16} color="var(--zen-purple, #a599ff)" />
+              <Sparkles size={17} color="#dba87e" />
               <input
                 type="text"
                 value={saraPrompt}
@@ -1061,22 +1064,25 @@ export const LifeHomeDashboard: React.FC = () => {
                   background: 'transparent',
                   border: 'none',
                   outline: 'none',
-                  color: 'var(--text-primary, #ffffff)',
+                  color: 'rgba(235, 224, 204, 0.98)',
                   fontFamily: 'var(--font-sans)',
-                  fontSize: '0.85rem'
+                  fontSize: '0.88rem',
+                  fontWeight: 500,
                 }}
               />
               <button
                 type="submit"
                 style={{
-                  background: 'var(--zen-purple, #a599ff)',
+                  background: 'linear-gradient(135deg, #c4956a 0%, #dba87e 100%)',
                   border: 'none',
-                  borderRadius: '8px',
-                  color: '#000000',
-                  padding: '0.3rem 0.75rem',
-                  fontSize: '0.75rem',
+                  borderRadius: '10px',
+                  color: '#1a110a',
+                  padding: '0.38rem 0.95rem',
+                  fontSize: '0.78rem',
                   fontWeight: 700,
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 10px rgba(219, 168, 126, 0.35)',
+                  transition: 'all 0.15s ease',
                 }}
               >
                 Send

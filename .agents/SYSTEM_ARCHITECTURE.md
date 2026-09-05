@@ -129,7 +129,9 @@ zentrack-vibe2ship/
 │   │   │   ├── CalendarModule.tsx  Calendar with Google Calendar + task overlay (~51KB)
 │   │   │   └── EventPopover.tsx    Event detail popover
 │   │   ├── notes/
-│   │   │   ├── NotesModule.tsx     Note-taking with AI panel + rich editor (~71KB)
+│   │   │   ├── NotesModule.tsx     Note-taking with AI panel, rich editor, and rotatable document/PDF preview (~75KB)
+│   │   │   ├── NotesFeed.tsx       Notes and documents list feed with search and filter
+│   │   │   ├── NotesSidebar.tsx    Vault folders and storage meter sidebar
 │   │   │   ├── NotesEditor.tsx     Rich text editor component
 │   │   │   └── NotesAIPanel.tsx    AI suggestions panel for notes
 │   │   ├── goals/

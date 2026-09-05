@@ -127,7 +127,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
+          "icon": "./assets/logo_white.png",
           "color": "#a599ff"
         }
       ]

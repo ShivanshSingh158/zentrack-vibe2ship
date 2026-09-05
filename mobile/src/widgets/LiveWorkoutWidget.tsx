@@ -1,17 +1,19 @@
 /**
  * LiveWorkoutWidget.tsx — ZenTrack Android Live Gym Workout HUD Widget
- * iOS-native aesthetic: clean typography, hairline dividers, adaptive layout.
- * Matches the design language of TodayAgendaWidget exactly.
  *
- * Two modes:
- *   IDLE  — Shows today's gym split name + "Start Workout" action
- *   LIVE  — Shows current exercise name, set counter, weight × reps, Done Set button
+ * Obsidian Cosmos Glassmorphism aesthetic:
+ *   - Outer hairline border matching TodayAgendaWidget
+ *   - Deep frosted translucent card backdrop
+ *   - High-contrast visible button typography (no transparent text bugs)
+ *   - Adaptive layout across Compact (<150dp), Standard (150–229dp), and Large (>=230dp)
  *
- * Layout strategy:
- *   - Root: `justifyContent: 'space-between'` pins actions to bottom
- *   - Compact (<150dp): header + core info only, no extras
- *   - Standard (150–229dp): header + exercise card + next row + action
- *   - Large (≥230dp): header + exercise card + set progress + next row + action
+ * Three functional modes:
+ *   1. IDLE      — Shows today's split name, day name, muscle focus, exercise count,
+ *                  rest day status, and an interactive "Start Workout" button.
+ *   2. LIVE      — Active workout HUD with current exercise, set counter, weight & reps chips,
+ *                  [-2.5] / [+2.5] micro-adjusters, [Done Set] with finish detection, and [Skip].
+ *   3. COMPLETED — Session Complete celebration card with elapsed duration, completed sets,
+ *                  total exercises, and "View Summary" shortcut.
  */
 
 import React from 'react';
@@ -25,58 +27,94 @@ interface LiveWorkoutWidgetProps {
   height?: number;
 }
 
-// ─── Design Tokens (identical to TodayAgendaWidget) ─────────────────────────
+// ─── Design Tokens (Obsidian Cosmos Glassmorphism) ───────────────────────────
 const C = {
-  bg:           '#00000000' as HexColor, // 100% transparent widget background
-  glassCard:    '#3210101E' as HexColor, // floating glass card
-  glassBorder:  '#25FFFFFF' as HexColor, // subtle translucent hairline border
-  surface:      '#35141424' as HexColor,
-  divider:      '#15FFFFFF' as HexColor,
-  textPrimary:  '#FFFFFF' as HexColor,
-  textSecondary:'#AEAEB2' as HexColor,
-  textTertiary: '#6E6E78' as HexColor,
-  accent:       '#A599FF' as HexColor,   // ZenTrack purple
-  accentSoft:   '#352A2450' as HexColor,
-  green:        '#30D158' as HexColor,   // iOS system green
-  greenSoft:    '#2530D158' as HexColor,
-  orange:       '#FF9F0A' as HexColor,   // iOS system orange — gym accent
-  orangeSoft:   '#25FF9F0A' as HexColor,
-  red:          '#FF453A' as HexColor,
-  redSoft:      '#25FF453A' as HexColor,
+  bg:            '#00000000' as HexColor, // 100% transparent root background
+  outerCard:     '#2410101E' as HexColor, // Deep frosted obsidian cosmos card
+  outerBorder:   '#35A599FF' as HexColor, // Signature purple neon hairline outer border (matches TodayAgendaWidget)
+  headerGlass:   '#181628' as HexColor,   // Frosted header pill
+  headerBorder:  '#2C2842' as HexColor,
+  cardSurface:   '#151420' as HexColor,   // Frosted content card
+  cardBorder:    '#262238' as HexColor,
+  surface2:      '#201D30' as HexColor,
+  divider:       '#221F33' as HexColor,
+
+  textPrimary:   '#FFFFFF' as HexColor,
+  textSecondary: '#AEAEB2' as HexColor,
+  textTertiary:  '#7C7C88' as HexColor,
+
+  accent:        '#A599FF' as HexColor,   // ZenTrack purple
+  accentSoft:    '#251F3D' as HexColor,
+  accentBorder:  '#4A3D7A' as HexColor,
+
+  green:         '#30D158' as HexColor,   // iOS system green
+  greenSoft:     '#16281C' as HexColor,
+  greenBorder:   '#285E37' as HexColor,
+  greenText:     '#000000' as HexColor,   // High-contrast black on green
+
+  orange:        '#FF9F0A' as HexColor,   // iOS system orange — active gym
+  orangeSoft:    '#2E1E12' as HexColor,
+  orangeBorder:  '#6E441D' as HexColor,
+  orangeText:    '#000000' as HexColor,   // High-contrast black on orange
+
+  red:           '#FF453A' as HexColor,
+  redSoft:       '#2E1416' as HexColor,
+
+  // Dedicated Semantic Metric Pills (High Contrast & Legibility)
+  durationPillBg:     '#132517' as HexColor, // Deep dark emerald obsidian
+  durationPillBorder: '#245E35' as HexColor,
+  durationPillText:   '#30D158' as HexColor, // Vivid Apple/iOS emerald green
+
+  setsPillBg:         '#1C1630' as HexColor, // Deep dark violet obsidian
+  setsPillBorder:     '#48387D' as HexColor,
+  setsPillText:       '#B8AEFF' as HexColor, // Signature ZenTrack bright lavender
+
+  exercisesPillBg:     '#281810' as HexColor, // Deep dark warm amber obsidian
+  exercisesPillBorder: '#693F18' as HexColor,
+  exercisesPillText:   '#FFA733' as HexColor, // Bright vivid warm gym orange
+
+  pillSurface:        '#1B192A' as HexColor, // General neutral dark chip
+  pillBorder:         '#312C4A' as HexColor,
 };
 
 export function LiveWorkoutWidget({ data, width = 330, height = 280 }: LiveWorkoutWidgetProps) {
-  const isActive      = data?.isActive ?? false;
-  const splitTitle    = data?.splitTitle || "Today's Gym Split";
-  const currentEx     = data?.currentExercise;
-  const currentSetIdx = currentEx?.currentSetIndex ?? 0;
-  const currentSet    = currentEx?.sets?.[currentSetIdx];
-  const targetWeight  = currentSet?.weight ?? currentEx?.targetWeight ?? 0;
-  const targetReps    = currentSet?.reps ?? currentEx?.targetReps ?? 0;
-  const totalSets     = currentEx?.targetSets ?? 4;
-  const setNumber     = Math.min(totalSets, currentSetIdx + 1);
-  const nextExName    = data?.nextExerciseName;
-  const doneSets      = data?.completedSetsCount ?? 0;
-  const totalSets2    = data?.totalSetsCount ?? 0;
-  const duration      = data?.workoutDurationMinutes;
+  const isActive       = data?.isActive ?? false;
+  const isCompleted    = data?.isCompleted ?? false;
+  const isRestDay      = data?.isRestDay ?? false;
+  const splitTitle     = data?.splitTitle || (isRestDay ? 'Rest & Recovery' : "Today's Split");
+  const splitSubtitle  = data?.splitSubtitle || (isRestDay ? 'Muscles grow while resting' : 'Target: Progressive Overload');
+  const dayName        = data?.dayName || 'Today';
+  const displayDate    = data?.displayDate || 'Today';
 
-  const isCompact  = height < 150;
-  const isLarge    = height >= 230;
+  const currentEx      = data?.currentExercise;
+  const currentSetIdx  = currentEx?.currentSetIndex ?? 0;
+  const currentSet     = currentEx?.sets?.[currentSetIdx];
+  const targetWeight   = currentSet?.weight ?? currentEx?.targetWeight ?? 0;
+  const targetReps     = currentSet?.reps ?? currentEx?.targetReps ?? 0;
+  const totalExSets    = currentEx?.targetSets ?? 3;
+  const setNumber      = Math.min(totalExSets, currentSetIdx + 1);
 
-  // ── Set mini-progress dots for large mode (max 6 shown) ──
-  const setsToShow = Math.min(totalSets, 6);
+  const currentExIdx   = data?.currentExerciseIndex ?? 0;
+  const totalExercises = data?.totalExercises ?? (data?.allExercises?.length || 1);
+  const nextExName     = data?.nextExerciseName;
+  const doneSets       = data?.completedSetsCount ?? 0;
+  const totalSets      = data?.totalSetsCount ?? (totalExercises * 3);
+  const duration       = data?.workoutDurationMinutes;
+
+  const isCompact      = height < 150;
+  const isLarge        = height >= 230;
+
+  // Determine if logging this set will finish the entire workout
+  const isLastSetOfCurEx = currentSetIdx + 1 >= totalExSets;
+  const isLastExercise   = currentExIdx + 1 >= totalExercises;
+  const isFinishingSet   = isLastSetOfCurEx && isLastExercise;
+
+  // Set mini-progress dots for large mode (up to 5 sets)
+  const setsToShow = Math.min(totalExSets, 5);
   const setDots = Array.from({ length: setsToShow }, (_, i) => i < currentSetIdx);
 
-  // ── Idle mode: figure out a subtitle from the split name ──
-  const splitSubtitle = splitTitle.toLowerCase().includes('push')
-    ? 'Chest · Shoulders · Triceps'
-    : splitTitle.toLowerCase().includes('pull')
-    ? 'Back · Biceps · Rear Delts'
-    : splitTitle.toLowerCase().includes('leg') || splitTitle.toLowerCase().includes('lower')
-    ? 'Quads · Hamstrings · Glutes'
-    : splitTitle.toLowerCase().includes('upper')
-    ? 'Chest · Back · Arms'
-    : 'Target: Progressive Overload';
+  // Preview exercises list
+  const previewText = (data?.plannedExercisesPreview || []).slice(0, 3).join(' • ');
 
   return (
     <FlexWidget
@@ -84,318 +122,544 @@ export function LiveWorkoutWidget({ data, width = 330, height = 280 }: LiveWorko
         height: 'match_parent',
         width: 'match_parent',
         backgroundColor: C.bg,
-        borderRadius: 22,
+        padding: 2,
         flexDirection: 'column',
-        // flex:1 on top block handles layout; don't rely on space-between
+        justifyContent: 'flex-start',
       }}
       clickAction="OPEN_URI"
       clickActionData={{ uri: 'zentrack://gym' }}
     >
-      {/* ───── TOP CONTENT (flex:1 pushes actions to bottom) ───── */}
-      <FlexWidget style={{ flexDirection: 'column', width: 'match_parent', flex: 1 }}>
+      {/* ───── OBSIDIAN COSMOS OUTER GLASS CONTAINER ───── */}
+      <FlexWidget
+        style={{
+          height: 'match_parent',
+          width: 'match_parent',
+          backgroundColor: C.outerCard,
+          borderRadius: 22,
+          borderWidth: 1,
+          borderColor: C.outerBorder,
+          paddingHorizontal: isCompact ? 10 : 12,
+          paddingVertical: isCompact ? 8 : 10,
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+        }}
+      >
+        {/* ───── TOP SECTION (flex: 1 pushes action row to bottom) ───── */}
+        <FlexWidget style={{ flexDirection: 'column', width: 'match_parent', flex: 1 }}>
 
-        {/* Header */}
-        <FlexWidget
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            width: 'match_parent',
-            paddingHorizontal: 14,
-            paddingTop: isCompact ? 10 : 13,
-            paddingBottom: isCompact ? 6 : 4,
-          }}
-        >
-          <FlexWidget style={{ flexDirection: 'column' }}>
-            <TextWidget
-              text={isActive ? 'LIVE SESSION' : 'GYM'}
-              style={{
-                fontSize: 8,
-                fontWeight: 'bold',
-                color: isActive ? C.orange : C.accent,
-                letterSpacing: 1.2,
-              }}
-            />
-            {!isCompact ? (
-              <TextWidget
-                text="ZENTRACK"
-                style={{ fontSize: 8, fontWeight: 'bold', color: C.textTertiary, letterSpacing: 0.8 }}
-              />
-            ) : null}
-          </FlexWidget>
-
-          {/* Right badge: duration if live, sets progress if idle */}
+          {/* ── HEADER ── */}
           <FlexWidget
             style={{
-              backgroundColor: isActive ? C.orangeSoft : C.accentSoft,
-              borderRadius: 10,
-              paddingHorizontal: 8,
-              paddingVertical: 3,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              width: 'match_parent',
+              backgroundColor: C.headerGlass,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: C.headerBorder,
+              paddingHorizontal: 10,
+              paddingVertical: isCompact ? 5 : 6,
+              marginBottom: isCompact ? 4 : 6,
             }}
           >
-            <TextWidget
-              text={isActive && duration ? `${duration}m` : `${doneSets}/${totalSets2}`}
-              style={{
-                fontSize: 11,
-                fontWeight: 'bold',
-                color: isActive ? C.orange : C.accent,
-              }}
-            />
-          </FlexWidget>
-        </FlexWidget>
+            {/* Header Title + Dot */}
+            <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <FlexWidget
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: isCompleted ? C.green : isActive ? C.orange : C.accent,
+                  marginRight: 6,
+                }}
+              />
+              <FlexWidget style={{ flexDirection: 'column' }}>
+                <TextWidget
+                  text={
+                    isCompleted
+                      ? 'SESSION COMPLETE'
+                      : isActive
+                      ? 'LIVE WORKOUT'
+                      : `TODAY · ${dayName.toUpperCase()}`
+                  }
+                  style={{
+                    fontSize: isCompact ? 8 : 9,
+                    fontWeight: 'bold',
+                    color: isCompleted ? C.green : isActive ? C.orange : C.accent,
+                    letterSpacing: 1.0,
+                  }}
+                />
+                {!isCompact ? (
+                  <TextWidget
+                    text="ZENTRACK GYM"
+                    style={{ fontSize: 7, fontWeight: 'bold', color: C.textTertiary, letterSpacing: 0.8 }}
+                  />
+                ) : null}
+              </FlexWidget>
+            </FlexWidget>
 
-        {/* Hairline divider */}
-        <FlexWidget style={{ height: 1, backgroundColor: C.divider, marginHorizontal: 14, marginBottom: 8 }} />
-
-        {/* ── LIVE MODE: Current Exercise ── */}
-        {isActive && currentEx ? (
-          <FlexWidget style={{ flexDirection: 'column', width: 'match_parent', paddingHorizontal: 14 }}>
-
-            {/* Set label */}
-            <TextWidget
-              text={`SET ${setNumber} OF ${totalSets}`}
-              style={{ fontSize: 9, fontWeight: 'bold', color: C.textTertiary, letterSpacing: 1.0 }}
-            />
-
-            {/* Exercise name */}
-            <TextWidget
-              text={currentEx.name}
-              style={{ fontSize: isCompact ? 14 : 17, fontWeight: 'bold', color: C.textPrimary }}
-              maxLines={1}
-            />
-
-            {/* Weight × Reps row */}
+            {/* Header Right Status Pill */}
             <FlexWidget
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginTop: 6,
-                marginBottom: isLarge ? 8 : 0,
+                backgroundColor: isCompleted ? C.greenSoft : isActive ? C.orangeSoft : C.accentSoft,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: isCompleted ? C.greenBorder : isActive ? C.orangeBorder : C.accentBorder,
+                paddingHorizontal: 8,
+                paddingVertical: 2,
               }}
             >
-              {targetWeight > 0 ? (
+              <TextWidget
+                text={
+                  isCompleted
+                    ? '✓ Done'
+                    : isActive
+                    ? `${duration ? `${duration}m · ` : ''}${doneSets}/${totalSets}`
+                    : isRestDay
+                    ? 'Rest Day'
+                    : `${totalSets} Sets`
+                }
+                style={{
+                  fontSize: isCompact ? 9 : 10,
+                  fontWeight: 'bold',
+                  color: isCompleted ? C.green : isActive ? C.orange : C.accent,
+                }}
+              />
+            </FlexWidget>
+          </FlexWidget>
+
+          {/* ── BODY CONTENT CARD ── */}
+          {isActive && currentEx ? (
+            /* ─────────────────────────────────────────────────────────────
+               STATE 1: LIVE WORKOUT HUD (In Progress)
+            ───────────────────────────────────────────────────────────── */
+            <FlexWidget
+              style={{
+                flexDirection: 'column',
+                width: 'match_parent',
+                backgroundColor: C.cardSurface,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: C.cardBorder,
+                paddingHorizontal: 10,
+                paddingVertical: isCompact ? 6 : 8,
+                flex: 1,
+                justifyContent: 'center',
+              }}
+            >
+              {/* Exercise meta line */}
+              <TextWidget
+                text={`EXERCISE ${currentExIdx + 1} OF ${totalExercises}   •   SET ${setNumber} OF ${totalExSets}`}
+                style={{ fontSize: 8, fontWeight: 'bold', color: C.textTertiary, letterSpacing: 0.8 }}
+              />
+
+              {/* Current exercise name */}
+              <TextWidget
+                text={currentEx.name}
+                style={{
+                  fontSize: isCompact ? 13 : 16,
+                  fontWeight: 'bold',
+                  color: C.textPrimary,
+                  marginTop: 2,
+                }}
+                maxLines={1}
+              />
+
+              {/* Weight & Reps Stats Chips Row */}
+              <FlexWidget
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginTop: isCompact ? 4 : 6,
+                }}
+              >
+                {targetWeight > 0 ? (
+                  <FlexWidget
+                    style={{
+                      backgroundColor: C.setsPillBg,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: C.setsPillBorder,
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                      marginRight: 6,
+                    }}
+                  >
+                    <TextWidget
+                      text={`${targetWeight} kg`}
+                      style={{ fontSize: 12, fontWeight: 'bold', color: C.setsPillText }}
+                    />
+                  </FlexWidget>
+                ) : null}
+
                 <FlexWidget
                   style={{
-                    backgroundColor: C.surface,
+                    backgroundColor: C.exercisesPillBg,
                     borderRadius: 8,
-                    paddingHorizontal: 10,
-                    paddingVertical: 5,
+                    borderWidth: 1,
+                    borderColor: C.exercisesPillBorder,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
                     marginRight: 8,
-                    flexDirection: 'row',
-                    alignItems: 'center',
                   }}
                 >
                   <TextWidget
-                    text={`${targetWeight} kg`}
-                    style={{ fontSize: 13, fontWeight: 'bold', color: C.textPrimary }}
+                    text={`${targetReps} reps`}
+                    style={{ fontSize: 12, fontWeight: 'bold', color: C.exercisesPillText }}
                   />
                 </FlexWidget>
-              ) : null}
 
-              <FlexWidget
-                style={{
-                  backgroundColor: C.surface,
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                }}
-              >
-                <TextWidget
-                  text={`${targetReps} reps`}
-                  style={{ fontSize: 13, fontWeight: 'bold', color: C.textPrimary }}
-                />
+                {/* Set Mini-Progress Dots (Standard & Large) */}
+                {!isCompact && setsToShow > 0 ? (
+                  <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {setDots.map((done, i) => (
+                      <FlexWidget
+                        key={`d-${i}`}
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: 3,
+                          backgroundColor: done ? C.green : C.surface2,
+                          marginRight: 4,
+                        }}
+                      />
+                    ))}
+                    {/* Active Set indicator */}
+                    <FlexWidget
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: 3,
+                        backgroundColor: C.orange,
+                        marginRight: 4,
+                      }}
+                    />
+                  </FlexWidget>
+                ) : null}
               </FlexWidget>
-            </FlexWidget>
 
-            {/* Set progress dots — large mode only */}
-            {isLarge && setsToShow > 0 ? (
-              <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-                {setDots.map((done, i) => (
-                  <FlexWidget
-                    key={`dot-${i}`}
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 4,
-                      backgroundColor: done ? C.green : C.surface,
-                      marginRight: 5,
-                    }}
-                  />
-                ))}
-                {/* Current set indicator */}
-                <FlexWidget
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: C.orange,
-                    marginRight: 5,
-                  }}
-                />
-                {/* Remaining dots */}
-                {Array.from({ length: setsToShow - currentSetIdx - 1 }, (_, i) => (
-                  <FlexWidget
-                    key={`rem-${i}`}
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 4,
-                      backgroundColor: C.divider,
-                      marginRight: 5,
-                    }}
-                  />
-                ))}
-              </FlexWidget>
-            ) : null}
-
-            {/* Next exercise hint */}
-            {!isCompact && nextExName ? (
-              <FlexWidget style={{ marginTop: 6 }}>
+              {/* Next Exercise Hint */}
+              {!isCompact && nextExName ? (
                 <TextWidget
                   text={`Next: ${nextExName}`}
-                  style={{ fontSize: 10, color: C.textTertiary }}
+                  style={{ fontSize: 9, color: C.textTertiary, marginTop: 4 }}
                   maxLines={1}
                 />
-              </FlexWidget>
-            ) : null}
-          </FlexWidget>
-        ) : (
-          /* ── IDLE MODE: Today's Split Info ── */
-          <FlexWidget style={{ flexDirection: 'column', width: 'match_parent', paddingHorizontal: 14 }}>
-            <TextWidget
-              text="TODAY'S SPLIT"
-              style={{ fontSize: 9, fontWeight: 'bold', color: C.textTertiary, letterSpacing: 1.0 }}
-            />
-            <TextWidget
-              text={splitTitle}
-              style={{ fontSize: isCompact ? 14 : 17, fontWeight: 'bold', color: C.textPrimary }}
-              maxLines={1}
-            />
-            {!isCompact ? (
-              <TextWidget
-                text={splitSubtitle}
-                style={{ fontSize: 11, color: C.textSecondary, marginTop: 2 }}
-                maxLines={1}
-              />
-            ) : null}
-          </FlexWidget>
-        )}
-      </FlexWidget>
-
-      {/* ───── BOTTOM ACTIONS (pinned by space-between) ───── */}
-      <FlexWidget style={{ flexDirection: 'column', width: 'match_parent' }}>
-        <FlexWidget style={{ height: 1, backgroundColor: C.divider, marginHorizontal: 14, marginBottom: 6 }} />
-
-        {isActive && currentEx ? (
-          /* Live mode: weight adjuster + done set */
-          <FlexWidget
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              paddingHorizontal: 12,
-              paddingBottom: 10,
-            }}
-          >
-            {/* -2.5 */}
-            <FlexWidget
-              style={{
-                backgroundColor: C.surface,
-                borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                marginRight: 6,
-              }}
-              clickAction="adjust_workout_weight"
-              clickActionData={{
-                action: 'adjust_workout_weight',
-                exerciseId: currentEx.id,
-                setIndex: currentSetIdx,
-                weightDelta: -2.5,
-              }}
-            >
-              <TextWidget text="-2.5" style={{ fontSize: 11, fontWeight: 'bold', color: C.textSecondary }} />
+              ) : null}
             </FlexWidget>
 
-            {/* +2.5 */}
+          ) : isCompleted ? (
+            /* ─────────────────────────────────────────────────────────────
+               STATE 2: SESSION COMPLETED (Celebration Summary)
+            ───────────────────────────────────────────────────────────── */
             <FlexWidget
               style={{
-                backgroundColor: C.surface,
-                borderRadius: 8,
+                flexDirection: 'column',
+                width: 'match_parent',
+                backgroundColor: C.cardSurface,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: C.greenBorder,
                 paddingHorizontal: 10,
-                paddingVertical: 6,
-                marginRight: 10,
-              }}
-              clickAction="adjust_workout_weight"
-              clickActionData={{
-                action: 'adjust_workout_weight',
-                exerciseId: currentEx.id,
-                setIndex: currentSetIdx,
-                weightDelta: 2.5,
-              }}
-            >
-              <TextWidget text="+2.5" style={{ fontSize: 11, fontWeight: 'bold', color: C.textSecondary }} />
-            </FlexWidget>
-
-            {/* Done Set — grows to fill remaining space */}
-            <FlexWidget
-              style={{
+                paddingVertical: isCompact ? 6 : 8,
                 flex: 1,
-                backgroundColor: C.green,
-                borderRadius: 10,
-                paddingVertical: 7,
-                alignItems: 'center',
                 justifyContent: 'center',
               }}
-              clickAction="log_workout_set"
-              clickActionData={{
-                action: 'log_workout_set',
-                exerciseId: currentEx.id,
-                setIndex: currentSetIdx,
-                weight: targetWeight,
-                reps: targetReps,
+            >
+              <TextWidget
+                text={`${splitTitle} Completed! 💪`}
+                style={{ fontSize: isCompact ? 13 : 16, fontWeight: 'bold', color: C.textPrimary }}
+                maxLines={1}
+              />
+
+              {!isCompact ? (
+                <TextWidget
+                  text="Great consistency! Session recorded in your workout history."
+                  style={{ fontSize: 10, color: C.textSecondary, marginTop: 2 }}
+                  maxLines={1}
+                />
+              ) : null}
+
+              {/* Metrics Row */}
+              <FlexWidget
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginTop: isCompact ? 4 : 6,
+                }}
+              >
+                <FlexWidget
+                  style={{
+                    backgroundColor: C.durationPillBg,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: C.durationPillBorder,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    marginRight: 6,
+                  }}
+                >
+                  <TextWidget
+                    text={`⏱ ${duration || 45}m`}
+                    style={{ fontSize: 11, fontWeight: 'bold', color: C.durationPillText }}
+                  />
+                </FlexWidget>
+
+                <FlexWidget
+                  style={{
+                    backgroundColor: C.setsPillBg,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: C.setsPillBorder,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    marginRight: 6,
+                  }}
+                >
+                  <TextWidget
+                    text={`🏋 ${doneSets || totalSets} Sets`}
+                    style={{ fontSize: 11, fontWeight: 'bold', color: C.setsPillText }}
+                  />
+                </FlexWidget>
+
+                <FlexWidget
+                  style={{
+                    backgroundColor: C.exercisesPillBg,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: C.exercisesPillBorder,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                  }}
+                >
+                  <TextWidget
+                    text={`💪 ${totalExercises} Exercises`}
+                    style={{ fontSize: 11, fontWeight: 'bold', color: C.exercisesPillText }}
+                  />
+                </FlexWidget>
+              </FlexWidget>
+            </FlexWidget>
+
+          ) : (
+            /* ─────────────────────────────────────────────────────────────
+               STATE 3: IDLE / NOT STARTED (Today's Plan Overview)
+            ───────────────────────────────────────────────────────────── */
+            <FlexWidget
+              style={{
+                flexDirection: 'column',
+                width: 'match_parent',
+                backgroundColor: C.cardSurface,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: C.cardBorder,
+                paddingHorizontal: 10,
+                paddingVertical: isCompact ? 6 : 8,
+                flex: 1,
+                justifyContent: 'center',
               }}
             >
               <TextWidget
-                text="Done Set"
-                style={{ fontSize: 12, fontWeight: 'bold', color: C.bg }}
+                text={splitTitle}
+                style={{ fontSize: isCompact ? 13 : 16, fontWeight: 'bold', color: C.textPrimary }}
+                maxLines={1}
               />
-            </FlexWidget>
 
-            {/* Skip exercise */}
-            {!isCompact ? (
+              <TextWidget
+                text={splitSubtitle}
+                style={{ fontSize: 10, color: isRestDay ? C.textSecondary : C.accent, marginTop: 2 }}
+                maxLines={1}
+              />
+
+              {/* Workout Details Pill Row */}
               <FlexWidget
                 style={{
-                  backgroundColor: C.surface,
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  marginLeft: 6,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginTop: isCompact ? 4 : 6,
                 }}
-                clickAction="next_workout_exercise"
-                clickActionData={{ action: 'next_workout_exercise', exerciseId: currentEx.id }}
               >
-                <TextWidget text="Skip" style={{ fontSize: 11, fontWeight: 'bold', color: C.accent }} />
+                {!isRestDay ? (
+                  <>
+                    <FlexWidget
+                      style={{
+                        backgroundColor: C.exercisesPillBg,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: C.exercisesPillBorder,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        marginRight: 6,
+                      }}
+                    >
+                      <TextWidget
+                        text={`💪 ${totalExercises} Exercises`}
+                        style={{ fontSize: 11, fontWeight: 'bold', color: C.exercisesPillText }}
+                      />
+                    </FlexWidget>
+
+                    <FlexWidget
+                      style={{
+                        backgroundColor: C.setsPillBg,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: C.setsPillBorder,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                      }}
+                    >
+                      <TextWidget
+                        text={`🏋 ${totalSets} Sets`}
+                        style={{ fontSize: 11, fontWeight: 'bold', color: C.setsPillText }}
+                      />
+                    </FlexWidget>
+                  </>
+                ) : (
+                  <FlexWidget
+                    style={{
+                      backgroundColor: C.pillSurface,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: C.pillBorder,
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                    }}
+                  >
+                    <TextWidget
+                      text="🛌 Recovery & Growth Day"
+                      style={{ fontSize: 11, fontWeight: 'bold', color: C.textSecondary }}
+                    />
+                  </FlexWidget>
+                )}
               </FlexWidget>
-            ) : null}
-          </FlexWidget>
-        ) : (
-          /* Idle mode: single Start Workout button */
-          <FlexWidget
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              paddingHorizontal: 12,
-              paddingBottom: 10,
-            }}
-          >
+
+              {/* Large mode preview of planned exercises */}
+              {isLarge && previewText ? (
+                <TextWidget
+                  text={`Plan: ${previewText}`}
+                  style={{ fontSize: 9, color: C.textTertiary, marginTop: 5 }}
+                  maxLines={1}
+                />
+              ) : null}
+            </FlexWidget>
+          )}
+        </FlexWidget>
+
+        {/* ───── BOTTOM ACTION BAR ───── */}
+        <FlexWidget
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            width: 'match_parent',
+            marginTop: isCompact ? 4 : 6,
+          }}
+        >
+          {isActive && currentEx ? (
+            /* Active Mode Action Buttons */
+            <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', width: 'match_parent' }}>
+              {/* -2.5 kg button */}
+              <FlexWidget
+                style={{
+                  backgroundColor: C.cardSurface,
+                  borderRadius: 9,
+                  borderWidth: 1,
+                  borderColor: C.cardBorder,
+                  paddingHorizontal: 9,
+                  paddingVertical: isCompact ? 5 : 6,
+                  marginRight: 5,
+                }}
+                clickAction="adjust_workout_weight"
+                clickActionData={{
+                  action: 'adjust_workout_weight',
+                  exerciseId: currentEx.id,
+                  setIndex: currentSetIdx,
+                  weightDelta: -2.5,
+                }}
+              >
+                <TextWidget text="-2.5" style={{ fontSize: 11, fontWeight: 'bold', color: C.textPrimary }} />
+              </FlexWidget>
+
+              {/* +2.5 kg button */}
+              <FlexWidget
+                style={{
+                  backgroundColor: C.cardSurface,
+                  borderRadius: 9,
+                  borderWidth: 1,
+                  borderColor: C.cardBorder,
+                  paddingHorizontal: 9,
+                  paddingVertical: isCompact ? 5 : 6,
+                  marginRight: 7,
+                }}
+                clickAction="adjust_workout_weight"
+                clickActionData={{
+                  action: 'adjust_workout_weight',
+                  exerciseId: currentEx.id,
+                  setIndex: currentSetIdx,
+                  weightDelta: 2.5,
+                }}
+              >
+                <TextWidget text="+2.5" style={{ fontSize: 11, fontWeight: 'bold', color: C.textPrimary }} />
+              </FlexWidget>
+
+              {/* Done Set button (or Finish Workout on final set) */}
+              <FlexWidget
+                style={{
+                  flex: 1,
+                  backgroundColor: C.green,
+                  borderRadius: 10,
+                  paddingVertical: isCompact ? 6 : 7,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                clickAction="log_workout_set"
+                clickActionData={{
+                  action: 'log_workout_set',
+                  exerciseId: currentEx.id,
+                  setIndex: currentSetIdx,
+                  weight: targetWeight,
+                  reps: targetReps,
+                }}
+              >
+                <TextWidget
+                  text={isFinishingSet ? 'Finish Workout ✓' : 'Done Set ✓'}
+                  style={{
+                    fontSize: isCompact ? 11 : 12,
+                    fontWeight: 'bold',
+                    color: C.greenText, // High-contrast black on green!
+                  }}
+                />
+              </FlexWidget>
+
+              {/* Skip button */}
+              {!isCompact ? (
+                <FlexWidget
+                  style={{
+                    backgroundColor: C.cardSurface,
+                    borderRadius: 9,
+                    borderWidth: 1,
+                    borderColor: C.cardBorder,
+                    paddingHorizontal: 9,
+                    paddingVertical: 6,
+                    marginLeft: 6,
+                  }}
+                  clickAction="next_workout_exercise"
+                  clickActionData={{ action: 'next_workout_exercise', exerciseId: currentEx.id }}
+                >
+                  <TextWidget text="Skip" style={{ fontSize: 11, fontWeight: 'bold', color: C.textSecondary }} />
+                </FlexWidget>
+              ) : null}
+            </FlexWidget>
+
+          ) : isCompleted ? (
+            /* Completed Mode: View Summary */
             <FlexWidget
               style={{
                 flex: 1,
-                backgroundColor: C.orange,
+                backgroundColor: C.cardSurface,
                 borderRadius: 10,
-                paddingVertical: 8,
+                borderWidth: 1,
+                borderColor: C.greenBorder,
+                paddingVertical: isCompact ? 6 : 8,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
@@ -403,12 +667,42 @@ export function LiveWorkoutWidget({ data, width = 330, height = 280 }: LiveWorko
               clickActionData={{ uri: 'zentrack://gym' }}
             >
               <TextWidget
-                text="Start Workout"
-                style={{ fontSize: 13, fontWeight: 'bold', color: C.bg }}
+                text="View Summary & PRs  →"
+                style={{ fontSize: 12, fontWeight: 'bold', color: C.green }}
               />
             </FlexWidget>
-          </FlexWidget>
-        )}
+
+          ) : (
+            /* Idle Mode: Start Workout or Open Gym */
+            <FlexWidget
+              style={{
+                flex: 1,
+                backgroundColor: isRestDay ? C.cardSurface : C.orange,
+                borderRadius: 10,
+                borderWidth: isRestDay ? 1 : 0,
+                borderColor: C.cardBorder,
+                paddingVertical: isCompact ? 6 : 8,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              clickAction={isRestDay ? 'OPEN_URI' : 'start_workout_session'}
+              clickActionData={
+                isRestDay
+                  ? { uri: 'zentrack://gym' }
+                  : { action: 'start_workout_session', dateStr: data?.dateStr }
+              }
+            >
+              <TextWidget
+                text={isRestDay ? 'Open Gym Hub  →' : '▶   Start Workout'}
+                style={{
+                  fontSize: isCompact ? 12 : 13,
+                  fontWeight: 'bold',
+                  color: isRestDay ? C.textPrimary : C.orangeText, // High-contrast black on orange!
+                }}
+              />
+            </FlexWidget>
+          )}
+        </FlexWidget>
       </FlexWidget>
     </FlexWidget>
   );

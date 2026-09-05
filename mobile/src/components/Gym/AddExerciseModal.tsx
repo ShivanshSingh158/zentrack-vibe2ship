@@ -18,6 +18,7 @@ import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getCustomPlanDay } from '../../hooks/useGymLog';
 import { autoResolveExerciseVideoId } from '../../services/exerciseVideoResolver';
+import { KNOWN_EXERCISE_VIDEOS, sanitizeName } from '../../services/exerciseVideoDatabase';
 import { aiResolveExercise, AIExerciseInfo } from '../../services/geminiProxy';
 import { GYM_PLAN } from '../../data/gymPlan';
 import { EXERCISE_DATABASE } from '../../data/exerciseDatabase';
@@ -247,7 +248,6 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
   // AI resolver state
   const [aiSuggestion, setAiSuggestion] = useState<AIExerciseInfo | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
-  const [isAdding, setIsAdding] = useState(false);
   const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 0ms Instant Search & Filter Memo
@@ -325,11 +325,13 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
       EXERCISE_CATALOGUE.push(catalogueEntry);
     }
 
-    const videoId = await autoResolveExerciseVideoId(ai.youtubeSearchQuery || ai.canonicalName);
-    if (videoId) {
-      setVideoLink(videoId);
-      persistCustomExercise({ ...catalogueEntry, videoId });
-    }
+    // Resolve video in background without blocking selection UI
+    autoResolveExerciseVideoId(ai.youtubeSearchQuery || ai.canonicalName).then(videoId => {
+      if (videoId) {
+        setVideoLink(videoId);
+        persistCustomExercise({ ...catalogueEntry, videoId });
+      }
+    }).catch(() => {});
   };
 
   const handleNameChange = (text: string) => {
@@ -381,68 +383,66 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
     }
   };
 
-  const handleAddExercise = async () => {
+  const handleAddExercise = () => {
     if (!name.trim()) return;
 
     const parsedSets = parseInt(sets, 10) || 3;
     const parsedRest = parseInt(restTime, 10) || 60;
     let userVideoId = extractVideoId(videoLink.trim());
 
-    setIsAdding(true);
-    try {
-      if (!userVideoId) {
-        userVideoId = (await autoResolveExerciseVideoId(name.trim())) || '';
+    // Instant 0ms dictionary lookup for 400+ known exercises
+    if (!userVideoId) {
+      const sanitized = sanitizeName(name.trim());
+      if (KNOWN_EXERCISE_VIDEOS[sanitized]) {
+        userVideoId = KNOWN_EXERCISE_VIDEOS[sanitized];
       }
-
-      const exId = selectedExerciseId ?? `custom_${Date.now()}`;
-      const lastSets = getLastSessionSets(exId, name.trim());
-
-      const newEx: GymExerciseLog = {
-        exerciseId: exId,
-        name: name.trim(),
-        muscle: muscle === 'None' ? '' : muscle.trim(),
-        targetSets: parsedSets,
-        targetReps: reps.trim(),
-        videoId: userVideoId,
-        restTimeSecs: parsedRest,
-        lastSessionSets: lastSets ?? undefined,
-        setsLog: Array.from({ length: parsedSets }, (_, i) => {
-          const prev = lastSets?.[i];
-          return {
-            setNumber: i + 1,
-            reps: prev?.reps ?? null,
-            weight: prev?.weight ?? null,
-            completed: false,
-          };
-        }),
-        isCustom: !selectedExerciseId || exId.startsWith('custom_'),
-      };
-
-      onAdd(newEx);
-
-      if (savePermanently && planDay) {
-        const currentMasterDay = getCustomPlanDay(userGymPlan?.customDays, planDay.dayIndex) || planDay;
-        const updatedExercises = [...currentMasterDay.exercises];
-        if (!updatedExercises.some((e: any) => e.id === newEx.exerciseId)) {
-          updatedExercises.push({
-            id: newEx.exerciseId,
-            name: newEx.name,
-            muscle: newEx.muscle,
-            targetSets: newEx.targetSets,
-            targetReps: newEx.targetReps,
-            videoId: newEx.videoId,
-            restTimeSecs: newEx.restTimeSecs,
-          });
-          await updateMasterPlan(planDay.dayIndex, { ...currentMasterDay, exercises: updatedExercises }).catch(handleSyncError);
-        }
-      }
-
-      resetAndClose();
-    } catch (err) {
-      console.error('Error adding exercise:', err);
-    } finally {
-      setIsAdding(false);
     }
+
+    const exId = selectedExerciseId ?? `custom_${Date.now()}`;
+    const lastSets = getLastSessionSets(exId, name.trim());
+
+    const newEx: GymExerciseLog = {
+      exerciseId: exId,
+      name: name.trim(),
+      muscle: muscle === 'None' ? '' : muscle.trim(),
+      targetSets: parsedSets,
+      targetReps: reps.trim(),
+      videoId: userVideoId || '',
+      restTimeSecs: parsedRest,
+      lastSessionSets: lastSets ?? undefined,
+      setsLog: Array.from({ length: parsedSets }, (_, i) => {
+        const prev = lastSets?.[i];
+        return {
+          setNumber: i + 1,
+          reps: prev?.reps ?? null,
+          weight: prev?.weight ?? null,
+          completed: false,
+        };
+      }),
+      isCustom: !selectedExerciseId || exId.startsWith('custom_'),
+    };
+
+    // Instant UI insertion without waiting for network
+    onAdd(newEx);
+
+    if (savePermanently && planDay) {
+      const currentMasterDay = getCustomPlanDay(userGymPlan?.customDays, planDay.dayIndex) || planDay;
+      const updatedExercises = [...currentMasterDay.exercises];
+      if (!updatedExercises.some((e: any) => e.id === newEx.exerciseId)) {
+        updatedExercises.push({
+          id: newEx.exerciseId,
+          name: newEx.name,
+          muscle: newEx.muscle,
+          targetSets: newEx.targetSets,
+          targetReps: newEx.targetReps,
+          videoId: newEx.videoId,
+          restTimeSecs: newEx.restTimeSecs,
+        });
+        updateMasterPlan(planDay.dayIndex, { ...currentMasterDay, exercises: updatedExercises }).catch(handleSyncError);
+      }
+    }
+
+    resetAndClose();
   };
 
   const resetAndClose = () => {
@@ -588,18 +588,12 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
 
             {/* Submit CTA */}
             <TouchableOpacity
-              style={[styles.submitBtn, (!name.trim() || isAdding) && styles.submitBtnDisabled]}
-              disabled={!name.trim() || isAdding}
+              style={[styles.submitBtn, !name.trim() && styles.submitBtnDisabled]}
+              disabled={!name.trim()}
               onPress={handleAddExercise}
             >
-              {isAdding ? (
-                <ActivityIndicator color={isDark ? '#000' : '#fff'} size="small" />
-              ) : (
-                <>
-                  <Ionicons name="add" size={18} color={isDark ? '#000' : '#fff'} style={{ marginRight: 6 }} />
-                  <Text style={styles.submitBtnText}>Add Exercise</Text>
-                </>
-              )}
+              <Ionicons name="add" size={18} color={isDark ? '#000' : '#fff'} style={{ marginRight: 6 }} />
+              <Text style={styles.submitBtnText}>Add Exercise</Text>
             </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>

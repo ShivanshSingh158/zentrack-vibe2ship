@@ -20,6 +20,8 @@ import { GYM_PLAN_ARNOLD, GYM_PLAN_PPL } from "../../data/gymPlan";
 import { writeWellnessCache } from "../../utils/domainCache";
 import { loadBootManifest, getBootManifestSync } from "../../utils/bootManifest";
 import { parseGymLog, areItemsEqual } from "../../utils/schemaGuards";
+import { formatLocalDateStr } from "../../utils/dateUtils";
+import { checkAndTriggerWaterMilestones } from "../../services/notifications";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface WellnessContextType {
@@ -449,6 +451,19 @@ export function WellnessProvider({
 
   const optimisticAddWaterLog = (log: WaterLog) => {
     setWaterLogs(prev => {
+      const todayStr = formatLocalDateStr(new Date());
+      const previousToday = prev
+        .filter(w => (w.date || '').slice(0, 10) === todayStr)
+        .reduce((sum, w) => sum + (w.amountMl || 0), 0);
+      const newToday = previousToday + (log.amountMl || 0);
+
+      AsyncStorage.getItem('zentrack_water_goal_ml')
+        .then(savedGoal => {
+          const goal = savedGoal ? parseInt(savedGoal, 10) : 2000;
+          checkAndTriggerWaterMilestones(previousToday, newToday, goal).catch(() => {});
+        })
+        .catch(() => {});
+
       const next = [log, ...prev];
       writeWellnessCache({ waterLogs: next }, true); // immediate: optimistic add
       return next;

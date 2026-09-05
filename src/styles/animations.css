@@ -321,33 +321,33 @@
   transform: translateZ(0);
 }
 
-/* Orb 1 — Purple, bottom-left, slow drift (35s) */
+/* Orb 1 — Warm Amber, top-right, slow drift (35s) */
 .bg-orb-1 {
-  width: 800px;
-  height: 800px;
-  bottom: -20%;
-  left: -20%;
-  background: radial-gradient(circle at center, rgba(165,153,255,0.06) 0%, transparent 60%);
+  width: 900px;
+  height: 900px;
+  top: -15%;
+  right: -10%;
+  background: radial-gradient(circle at center, rgba(219, 168, 126, 0.08) 0%, transparent 65%);
   animation: orb-drift-1 35s ease-in-out infinite;
 }
 
-/* Orb 2 — Green sage, top-right, medium drift (45s) */
+/* Orb 2 — Cosmic Lavender, bottom-left, medium drift (45s) */
 .bg-orb-2 {
-  width: 900px;
-  height: 900px;
-  top: -20%;
-  right: -10%;
-  background: radial-gradient(circle at center, rgba(94, 218, 158, 0.04) 0%, transparent 60%);
+  width: 850px;
+  height: 850px;
+  bottom: -20%;
+  left: -15%;
+  background: radial-gradient(circle at center, rgba(165, 153, 255, 0.07) 0%, transparent 65%);
   animation: orb-drift-2 45s ease-in-out infinite;
 }
 
-/* Orb 3 — Deep purple, center, slow drift (55s) */
+/* Orb 3 — Warm Copper Sun, center-subtle, slow drift (55s) */
 .bg-orb-3 {
-  width: 600px;
-  height: 600px;
-  top: 30%;
-  left: 40%;
-  background: radial-gradient(circle at center, rgba(165,153,255,0.04) 0%, transparent 60%);
+  width: 700px;
+  height: 700px;
+  top: 25%;
+  left: 35%;
+  background: radial-gradient(circle at center, rgba(196, 149, 106, 0.055) 0%, transparent 65%);
   animation: orb-drift-3 55s ease-in-out infinite;
 }
 

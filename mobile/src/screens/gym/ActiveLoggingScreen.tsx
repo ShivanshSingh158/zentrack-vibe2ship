@@ -173,12 +173,19 @@ export default function ActiveLoggingScreen() {
 
   const [showSupersetPicker, setShowSupersetPicker] = useState(false);
   const [activeExIndex, setActiveExIndex] = useState(route.params?.initialIndex ?? 0);
+  const consumedInitialIndexRef = useRef<number | null>(route.params?.initialIndex ?? null);
 
   useEffect(() => {
     if (route.params?.initialIndex !== undefined) {
-      setActiveExIndex(route.params.initialIndex);
+      if (consumedInitialIndexRef.current !== route.params.initialIndex) {
+        consumedInitialIndexRef.current = route.params.initialIndex;
+        setActiveExIndex(route.params.initialIndex);
+      }
+      // Consume & clear initialIndex from navigation route params so it does not persist
+      // and continually reset the user back to the first exercise on re-renders, state changes, or soft navigations
+      navigation.setParams({ initialIndex: undefined } as any);
     }
-  }, [route.params?.initialIndex]);
+  }, [route.params?.initialIndex, navigation]);
 
   const [showVideo, setShowVideo] = useState(false);
   const [showSwapModal, setShowSwapModal] = useState(false);
@@ -218,9 +225,24 @@ export default function ActiveLoggingScreen() {
         0
       );
 
+      const now = new Date();
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const dayName = dayNames[now.getDay()];
+      const displayDate = now.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      });
+
       const widgetData: LiveWorkoutWidgetData = {
+        dateStr: log?.date || todayStr(),
+        dayName,
+        displayDate,
         isActive: !log?.completed,
-        splitTitle: log?.dayPlanIndex !== undefined ? `Routine • Ex ${safeIdx + 1}/${activeExercises.length}` : "Active Workout",
+        isCompleted: Boolean(log?.completed),
+        isRestDay: false,
+        splitTitle: log?.dayPlanIndex !== undefined ? `Routine • Ex ${safeIdx + 1}/${activeExercises.length}` : ((log as any)?.name || "Active Workout"),
+        splitSubtitle: currentEx?.name || 'Target: Progressive Overload',
         workoutDurationMinutes: log?.workoutDurationMinutes,
         currentExerciseIndex: safeIdx,
         totalExercises: activeExercises.length,
@@ -243,6 +265,7 @@ export default function ActiveLoggingScreen() {
         nextExerciseName: nextEx?.name,
         completedSetsCount: completedSets,
         totalSetsCount: totalSets,
+        plannedExercisesPreview: activeExercises.map(e => e.name),
         lastUpdated: Date.now(),
       };
 
@@ -373,20 +396,8 @@ export default function ActiveLoggingScreen() {
     setIsAiSwapLoading(false);
   }, [showSwapModal, exercise?.name, exercise?.muscle]);
 
-  // Auto-resolve video ID
-  useEffect(() => {
-    if (!exercise) return;
-    let isCancelled = false;
-
-    autoResolveExerciseVideoId(exercise.name).then(resolvedId => {
-      if (isCancelled || !resolvedId) return;
-      if (exercise.videoId !== resolvedId) {
-        updateExercise(realExerciseIndex, { ...exercise, videoId: resolvedId });
-      }
-    });
-
-    return () => { isCancelled = true; };
-  }, [exercise?.name, exercise?.videoId]);
+  // Note: Video ID resolution is handled on-demand when user taps onVideoToggle,
+  // preventing re-render stutters while typing weights & reps.
 
   // Last-session stats banner text
   const lastTimeData = useMemo(() => {
@@ -698,8 +709,16 @@ export default function ActiveLoggingScreen() {
         setRestTimerDuration(restTimerInitial + (payload.seconds || 30));
       }
     });
-    return () => sub.remove();
-  }, [activeSetIndex, handleSwipeCompleteSet, handleAdjustWeight, handleNextExercise, clearRestTimer, setRestTimerDuration, restTimerInitial]);
+
+    const finishSub = DeviceEventEmitter.addListener('gym_workout_auto_finished', () => {
+      navigation.goBack();
+    });
+
+    return () => {
+      sub.remove();
+      finishSub.remove();
+    };
+  }, [activeSetIndex, handleSwipeCompleteSet, handleAdjustWeight, handleNextExercise, clearRestTimer, setRestTimerDuration, restTimerInitial, navigation]);
 
   const warmupSets = useMemo(() => exercise?.setsLog.filter(s => s.isWarmup) || [], [exercise?.setsLog]);
   const hasWarmups = warmupSets.length > 0;

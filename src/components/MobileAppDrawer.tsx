@@ -162,22 +162,24 @@ export const MobileAppDrawer: React.FC<MobileAppDrawerProps> = ({ isOpen, onClos
                       onPointerDown={(e) => (e.currentTarget.style.transform = 'scale(0.95)')}
                       onPointerUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                       onPointerLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                    >
                       {app.isLucide ? (
-                        <div style={{ width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px' }}>
+                        <div style={{ width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(219, 168, 126, 0.1)', borderRadius: '12px', border: '1px solid rgba(219, 168, 126, 0.2)' }}>
                           {app.icon}
                         </div>
                       ) : (
                         <img src={(app as any).img} alt={app.name} style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
                       )}
-                      <span style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.8)', fontWeight: 500 }}>
+                      <span style={{ fontSize: '0.75rem', color: 'rgba(235, 224, 204, 0.9)', fontWeight: 500 }}>
                         {app.name}
                       </span>
                       {isEditing && isPinned && (
                         <div style={{
                           position: 'absolute', top: '4px', right: '4px',
-                          background: '#a78bfa', color: 'white', borderRadius: '50%',
+                          background: 'linear-gradient(135deg, #c4956a, #dba87e)', color: '#1a110a', borderRadius: '50%',
                           width: '18px', height: '18px', display: 'flex',
-                          alignItems: 'center', justifyContent: 'center'
+                          alignItems: 'center', justifyContent: 'center',
+                          boxShadow: '0 2px 6px rgba(219, 168, 126, 0.4)'
                         }}>
                           <Check size={12} strokeWidth={3} />
                         </div>

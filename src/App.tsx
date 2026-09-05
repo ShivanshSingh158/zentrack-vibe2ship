@@ -302,6 +302,7 @@ const AnimatedRoutes = () => {
         <Route path="/review"      element={<PageTransition><ErrorBoundary name="Review"><Suspense fallback={<PageLoader />}><WeeklyReviewModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/attendance"  element={<PageTransition><ErrorBoundary name="Attendance"><Suspense fallback={<PageLoader />}><AttendanceModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/grades"      element={<PageTransition><ErrorBoundary name="Grades"><Suspense fallback={<PageLoader />}><GradeCalculatorModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/landing"     element={<PageTransition><Landing onTryNow={() => {}} /></PageTransition>} />
         <Route path="*"            element={<Navigate to="/home" replace />} />
       </Routes>
     </AnimatePresence>

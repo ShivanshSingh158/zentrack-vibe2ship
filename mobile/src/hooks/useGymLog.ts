@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { InteractionManager } from 'react-native';
+import { InteractionManager, DeviceEventEmitter } from 'react-native';
 import { collection, doc, setDoc, updateDoc, serverTimestamp, deleteField } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useWellnessData } from '../contexts/domains/WellnessContext';
@@ -20,7 +20,10 @@ import { COLLECTION } from '../config/constants';
 import { deepSanitize } from '../utils/firebaseUtils';
 import { awardXP } from '../services/xpSystem';
 import { getPreviousExerciseSession, buildExerciseHistoryIndex, normalizeExerciseKey } from '../utils/gymUtils';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { dismissActiveWorkoutNotification } from '../services/activeWorkoutNotificationService';
 import { safeWrite } from '../utils/safeWrite';
+import { buildLiveWorkoutWidgetData, saveCachedLiveWorkoutData, updateLiveWorkoutWidget } from '../services/widgetSyncService';
 
 
 let currentRestTimerNotifId: string | null = null;
@@ -149,6 +152,11 @@ export function useGymLog(dateStr: string) {
           ? existing.updatedAt
           : (existing.updatedAt as any)?.toMillis?.() ?? 0;
       const localTs: number = logRef.current?.updatedAt ?? 0;
+
+      // If local state is already marked completed for today, never let a stale uncompleted snapshot from Firestore revert it
+      if (logRef.current?.completed && !existing.completed && dateStr === todayStr()) {
+        return;
+      }
 
       // Only skip if: local state is newer AND local exercises have actual weight data
       const localHasWeights = (logRef.current?.exercises || []).some((ex: any) =>
@@ -348,6 +356,29 @@ export function useGymLog(dateStr: string) {
       }
     })();
   }, [user, gymLogs, optimisticAddGymLog, optimisticUpdateGymLog]);
+
+  // Autonomous Geofence Departure: if geofence auto-completes workout, update local log immediately
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('gym_workout_auto_finished', (event: any) => {
+      if (event?.date && event.date !== dateStr) return;
+      setLog(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          completed: true,
+          workoutStartTime: undefined,
+          workoutDurationMinutes: event?.duration ?? prev.workoutDurationMinutes,
+          startTime: prev.startTime || event?.startTime,
+          endTime: prev.endTime || event?.endTime,
+          restTimerStartTime: undefined,
+          restTimerDurationSecs: undefined,
+          restTimerExerciseName: undefined,
+          updatedAt: Date.now(),
+        };
+      });
+    });
+    return () => sub.remove();
+  }, [dateStr]);
 
   const updateSet = useCallback((exerciseIndex: number, setIndex: number, set: GymSet) => {
     setLog(prev => {
@@ -639,9 +670,21 @@ export function useGymLog(dateStr: string) {
         updatedAt: Date.now(),
       };
       saveLog(updated);
+
+      try {
+        const today = todayStr();
+        const widgetData = buildLiveWorkoutWidgetData({
+          todayStr: today,
+          gymLogs: [updated, ...(gymLogs || []).filter(l => l.date !== today)],
+          userGymPlan,
+        });
+        saveCachedLiveWorkoutData(widgetData).catch(() => {});
+        updateLiveWorkoutWidget(widgetData).catch(() => {});
+      } catch {}
+
       return updated;
     });
-  }, [saveLog]);
+  }, [saveLog, gymLogs, userGymPlan]);
 
   const endWorkout = useCallback(async (_force?: boolean) => {
     awardXP('GYM_SESSION').catch(() => {});
@@ -669,6 +712,18 @@ export function useGymLog(dateStr: string) {
         updatedAt: Date.now()
       };
       saveLog(updated);
+
+      try {
+        const today = todayStr();
+        const widgetData = buildLiveWorkoutWidgetData({
+          todayStr: today,
+          gymLogs: [updated, ...(gymLogs || []).filter(l => l.date !== today)],
+          userGymPlan,
+        });
+        saveCachedLiveWorkoutData(widgetData).catch(() => {});
+        updateLiveWorkoutWidget(widgetData).catch(() => {});
+      } catch {}
+
       return updated;
     });
 
@@ -676,7 +731,16 @@ export function useGymLog(dateStr: string) {
       await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId);
       currentRestTimerNotifId = null;
     }
-  }, [saveLog]);
+
+    const today = todayStr();
+    AsyncStorage.removeItem('@zentrack_active_workout_state').catch(() => {});
+    AsyncStorage.setItem(`@gym_active_session_${today}`, JSON.stringify({
+      date: today,
+      completed: true,
+      updatedAt: Date.now(),
+    })).catch(() => {});
+    dismissActiveWorkoutNotification().catch(() => {});
+  }, [saveLog, gymLogs, userGymPlan]);
 
   const resumeWorkout = useCallback(() => {
     setLog(prev => {

@@ -50,16 +50,22 @@ export function useGymPlanPreCache() {
     if (planHash === lastPlanHashRef.current || names.length === 0) return;
     lastPlanHashRef.current = planHash;
 
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const task = InteractionManager.runAfterInteractions(() => {
-      preCacheExercises(names).then(count => {
-        if (count > 0) {
-          console.log(`[GymPlanPreCache] Pre-cached ${count} exercise GIFs for offline workouts.`);
-        }
-      }).catch(err => {
-        console.warn('[GymPlanPreCache] Pre-cache error:', err);
-      });
+      timer = setTimeout(() => {
+        preCacheExercises(names).then(count => {
+          if (count > 0) {
+            console.log(`[GymPlanPreCache] Pre-cached ${count} exercise GIFs for offline workouts.`);
+          }
+        }).catch(err => {
+          console.warn('[GymPlanPreCache] Pre-cache error:', err);
+        });
+      }, 3500);
     });
 
-    return () => task.cancel();
+    return () => {
+      task.cancel();
+      if (timer) clearTimeout(timer);
+    };
   }, [userGymPlan]);
 }
