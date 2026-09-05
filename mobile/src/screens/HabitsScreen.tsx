@@ -278,6 +278,7 @@ const HabitCard = React.memo(function HabitCard({
   freezesLeft,
   onOpenDetail,
   onToggleHistoricalDate,
+  cardViewMode = 'heatmap',
 }: {
   habit: Habit;
   isCompleted: boolean;
@@ -290,6 +291,7 @@ const HabitCard = React.memo(function HabitCard({
   freezesLeft?: number;
   onOpenDetail?: (habit: Habit) => void;
   onToggleHistoricalDate?: (habit: Habit, dateStr: string) => void;
+  cardViewMode?: 'heatmap' | 'strip';
 }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
@@ -300,6 +302,50 @@ const HabitCard = React.memo(function HabitCard({
   const today = getTodayStr();
 
   const [activeTile, setActiveTile] = useState<TilePressEvent | null>(null);
+
+  // Pre-calculate 7-day rolling week history for ultra-compact strip mode
+  const weekHistory = useMemo(() => {
+    if (isNegative) return null;
+    const days: Array<{
+      dateStr: string;
+      dayLabel: string;
+      isToday: boolean;
+      status: 'completed' | 'missed' | 'freeze';
+      log?: HabitLog;
+    }> = [];
+
+    const now = new Date();
+    const todayStr = formatLocalDateStr(now);
+    const logMap = new Map<string, HabitLog>();
+    for (const l of habitLogs) {
+      if (l.date) logMap.set(l.date.slice(0, 10), l);
+    }
+
+    const DAY_CHARS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = formatLocalDateStr(d);
+      const dayLabel = DAY_CHARS[d.getDay()];
+      const isToday = dateStr === todayStr;
+      const log = logMap.get(dateStr);
+
+      let status: 'completed' | 'missed' | 'freeze' = 'missed';
+      if (log) {
+        if (log.isFreeze) {
+          status = 'freeze';
+        } else if (habit.targetCount && habit.targetCount > 0) {
+          status = (log.count || 0) >= habit.targetCount ? 'completed' : 'missed';
+        } else {
+          status = 'completed';
+        }
+      }
+
+      days.push({ dateStr, dayLabel, isToday, status, log });
+    }
+    return days;
+  }, [isNegative, habitLogs, habit.targetCount]);
 
   let daysClean = 0;
   let moneySaved = 0;
@@ -503,15 +549,61 @@ const HabitCard = React.memo(function HabitCard({
         )}
       </View>
 
-      {/* ── BOTTOM SECTION: GitHub-Style Contribution Heatmap Matrix (35 Days) ── */}
-      <HabitHeatmapGrid
-        habit={habit}
-        habitLogs={habitLogs}
-        weeksCount={5}
-        onTilePress={(tileEvent) => {
-          setActiveTile(tileEvent);
-        }}
-      />
+      {/* ── BOTTOM SECTION: Heatmap or 7-Day Precision Strip ── */}
+      {cardViewMode === 'strip' && !isNegative && weekHistory ? (
+        <View style={styles.weekStripContainer}>
+          {weekHistory.map((item, idx) => {
+            const isDone = item.status === 'completed';
+            const isFreeze = item.status === 'freeze';
+            const isCurrentDay = item.isToday;
+
+            return (
+              <TouchableOpacity
+                key={idx}
+                activeOpacity={0.7}
+                onPress={() => onToggleHistoricalDate && onToggleHistoricalDate(habit, item.dateStr)}
+                style={styles.weekDayColumn}
+              >
+                <Text
+                  style={[
+                    styles.weekDayLabel,
+                    isCurrentDay && { color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold },
+                  ]}
+                >
+                  {item.dayLabel}
+                </Text>
+                <View
+                  style={[
+                    styles.weekDayDot,
+                    isDone && { backgroundColor: habitColor, borderColor: habitColor },
+                    isFreeze && { backgroundColor: '#06B6D4', borderColor: '#06B6D4' },
+                    !isDone && !isFreeze && isCurrentDay && {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F0EFF7',
+                      borderWidth: 1.5,
+                      borderColor: habitColor,
+                    },
+                    !isDone && !isFreeze && !isCurrentDay && {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#ECEBF2',
+                      borderColor: 'transparent',
+                    },
+                  ]}
+                >
+                  {isDone && <Ionicons name="checkmark" size={11} color={isDark ? '#000000' : '#FFFFFF'} />}
+                  {isFreeze && <Ionicons name="snow" size={10} color="#FFFFFF" />}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : (
+        <HabitHeatmapGrid
+          habit={habit}
+          habitLogs={habitLogs}
+          onTilePress={(tileEvent) => {
+            setActiveTile(tileEvent);
+          }}
+        />
+      )}
 
       {/* ── INTERACTIVE HISTORICAL TILE TOOLTIP HUD ── */}
       {activeTile && (
@@ -595,6 +687,21 @@ export default function HabitsScreen() {
   // ── Detail Modal & Filtering ──
   const [detailHabit, setDetailHabit] = useState<Habit | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'positive' | 'negative'>('all');
+
+  // ── Card View Mode: 'heatmap' (compact contribution grid) | 'strip' (ultra-compact 7-day strip) ──
+  const [cardViewMode, setCardViewMode] = useState<'heatmap' | 'strip'>('heatmap');
+
+  useEffect(() => {
+    AsyncStorage.getItem('@zentrack_habit_view_mode').then((val) => {
+      if (val === 'heatmap' || val === 'strip') setCardViewMode(val);
+    }).catch(() => {});
+  }, []);
+
+  const handleToggleCardViewMode = useCallback((mode: 'heatmap' | 'strip') => {
+    import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Light));
+    setCardViewMode(mode);
+    AsyncStorage.setItem('@zentrack_habit_view_mode', mode).catch(() => {});
+  }, []);
 
   // ── Streak Freeze Evaluator ──
   const [freezes, setFreezes] = useState<number>(0);
@@ -1050,10 +1157,11 @@ export default function HabitsScreen() {
           freezesLeft={freezes}
           onOpenDetail={(habit) => setDetailHabit(habit)}
           onToggleHistoricalDate={handleToggleHistoricalDate}
+          cardViewMode={cardViewMode}
         />
       </Reanimated.View>
     );
-  }, [positiveHabits.length, negativeHabits.length, styles.sectionHeader, todayLogsByHabitId, logsByHabitId, toggleHabit, handleArchive, handleDelete, handleFireConfetti, freezes, handleToggleHistoricalDate]);
+  }, [positiveHabits.length, negativeHabits.length, styles.sectionHeader, todayLogsByHabitId, logsByHabitId, toggleHabit, handleArchive, handleDelete, handleFireConfetti, freezes, handleToggleHistoricalDate, cardViewMode]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -1073,7 +1181,7 @@ export default function HabitsScreen() {
         </View>
       </Animated.View>
 
-      {/* ── Segmented Filter Pills (HabitKit Style) ── */}
+      {/* ── Segmented Filter Pills & View Mode Toggle (HabitKit Style) ── */}
       <View style={styles.segmentBar}>
         <TouchableOpacity
           activeOpacity={0.7}
@@ -1104,6 +1212,40 @@ export default function HabitsScreen() {
             Avoiding ({negativeHabits.length})
           </Text>
         </TouchableOpacity>
+
+        {/* View Mode Toggle: Compact Heatmap vs 7-Day Precision Strip */}
+        <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => handleToggleCardViewMode('heatmap')}
+            style={[
+              styles.viewToggleBtn,
+              cardViewMode === 'heatmap' && styles.viewToggleBtnActive,
+            ]}
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+          >
+            <Ionicons
+              name="grid-outline"
+              size={13}
+              color={cardViewMode === 'heatmap' ? colors.accentPrimary : colors.textTertiary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => handleToggleCardViewMode('strip')}
+            style={[
+              styles.viewToggleBtn,
+              cardViewMode === 'strip' && styles.viewToggleBtnActive,
+            ]}
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+          >
+            <Ionicons
+              name="ellipsis-horizontal"
+              size={13}
+              color={cardViewMode === 'strip' ? colors.accentPrimary : colors.textTertiary}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* —————————————————————————————————————————————————————————————————————— */}
@@ -1235,9 +1377,9 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
 
   habitCard: {
     backgroundColor: isDark ? colors.surface : '#FFFFFF',
-    padding: 16,
-    borderRadius: 20,
-    marginBottom: 12,
+    padding: 13,
+    borderRadius: 18,
+    marginBottom: 10,
     borderWidth: 1, 
     borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
     flexDirection: 'column',
@@ -1251,10 +1393,10 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     opacity: isDark ? 0.85 : 0.9,
   },
   avatar: {
-    width: 46, height: 46, borderRadius: 14,
+    width: 42, height: 42, borderRadius: 13,
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarEmoji: { fontSize: 24 },
+  avatarEmoji: { fontSize: 22 },
   habitName: { 
     fontFamily: FONT_FAMILY.bold, 
     fontSize: 16, 
@@ -1273,9 +1415,9 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     alignSelf: 'flex-start',
   },
   actionCheckRing: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1284,8 +1426,8 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 14,
-    paddingTop: 12,
+    marginTop: 10,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
   },
@@ -1592,5 +1734,19 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   segmentBtnTextActiveNeg: {
     fontFamily: FONT_FAMILY.bold,
     color: isDark ? '#EF4444' : '#DC2626',
+  },
+  viewToggleBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+  },
+  viewToggleBtnActive: {
+    backgroundColor: isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.12)',
+    borderColor: colors.accentPrimary,
   },
 });

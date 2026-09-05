@@ -25,18 +25,26 @@ export const PlaylistImportModal: React.FC<PlaylistImportModalProps> = ({ onImpo
 
     setLoading(true);
     try {
-      const items = await fetchYouTubePlaylist(playlistId);
-      if (!items || items.length === 0) {
+      const result: any = await fetchYouTubePlaylist(playlistId);
+      const videoList: any[] = Array.isArray(result) ? result : (result?.videos || []);
+      if (!videoList || videoList.length === 0) {
         toast.error('No videos found in this playlist. Ensure it is public or unlisted.');
         setLoading(false);
         return;
       }
 
-      const defaultTitle = topicTitle.trim() || `YouTube Course: ${playlistId.slice(0, 8)}`;
-      const lectures = items.map(it => ({
-        title: it.title,
-        url: it.url,
-      }));
+      const playlistTitle = (!Array.isArray(result) && result?.title) ? result.title : '';
+      const defaultTitle = topicTitle.trim() || playlistTitle || `YouTube Course: ${playlistId.slice(0, 8)}`;
+      const lectures = videoList.map((it: any) => ({
+        title: it.title || 'Untitled Lecture',
+        url: it.link || it.url || (it.videoId ? `https://www.youtube.com/watch?v=${it.videoId}` : ''),
+      })).filter((l: any) => Boolean(l.url));
+
+      if (lectures.length === 0) {
+        toast.error('Could not extract video links from playlist.');
+        setLoading(false);
+        return;
+      }
 
       await onImport(defaultTitle, lectures);
       toast.success(`🎉 Imported ${lectures.length} lectures successfully!`);

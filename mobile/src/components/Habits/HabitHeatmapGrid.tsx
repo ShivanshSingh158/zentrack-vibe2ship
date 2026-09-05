@@ -15,7 +15,7 @@
  */
 
 import React, { useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Habit, HabitLog } from '../../contexts/MobileDataContext';
@@ -38,7 +38,7 @@ export interface TilePressEvent {
 interface HabitHeatmapGridProps {
   habit: Habit;
   habitLogs: HabitLog[];
-  weeksCount?: number; // default: 5 (35 days)
+  weeksCount?: number;
   onTilePress?: (event: TilePressEvent) => void;
   compact?: boolean;
   showWeekLabels?: boolean;
@@ -49,7 +49,7 @@ const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 export const HabitHeatmapGrid = React.memo(function HabitHeatmapGrid({
   habit,
   habitLogs,
-  weeksCount = 5,
+  weeksCount,
   onTilePress,
   compact = false,
   showWeekLabels = true,
@@ -58,6 +58,22 @@ export const HabitHeatmapGrid = React.memo(function HabitHeatmapGrid({
   const habitColor = habit.color || (isDark ? colors.accentPrimary : '#6C5CE7');
   const targetCount = habit.targetCount && habit.targetCount > 0 ? habit.targetCount : null;
   const isNegative = habit.type === 'negative';
+
+  // Compact tile sizes: 10px standard, 8.5px compact
+  const tileSize = compact ? 8.5 : 10;
+  const tileGap = compact ? 2 : 2.5;
+  const tileRadius = habit.tileShape === 'circle' ? tileSize / 2 : habit.tileShape === 'square' ? 1.5 : 2.5;
+
+  // Auto-fit weeks count so tiles fill the card width with uniform natural gaps (no 60px stretching)
+  const effectiveWeeksCount = useMemo(() => {
+    if (weeksCount !== undefined && weeksCount !== 5) return weeksCount;
+    const screenWidth = Dimensions.get('window').width;
+    const labelWidth = showWeekLabels ? 16 : 0;
+    // Available card width: screen - padding(32) - cardPadding(28) - trayPadding(16) - labels
+    const availableWidth = screenWidth - 32 - 28 - 16 - labelWidth;
+    const colWidth = tileSize + tileGap;
+    return Math.max(7, Math.floor((availableWidth + tileGap) / colWidth));
+  }, [weeksCount, showWeekLabels, tileSize, tileGap]);
 
   // O(N) pre-indexed log map for O(1) tile lookup
   const logMap = useMemo(() => {
@@ -80,7 +96,7 @@ export const HabitHeatmapGrid = React.memo(function HabitHeatmapGrid({
     const endOfWeek = new Date(now);
     endOfWeek.setDate(now.getDate() + (6 - todayDayOfWeek));
 
-    const totalDays = weeksCount * 7;
+    const totalDays = effectiveWeeksCount * 7;
     const startMatrixDate = new Date(endOfWeek);
     startMatrixDate.setDate(endOfWeek.getDate() - totalDays + 1);
 
@@ -103,7 +119,7 @@ export const HabitHeatmapGrid = React.memo(function HabitHeatmapGrid({
     let pastCount = 0;
 
     const curr = new Date(startMatrixDate);
-    for (let w = 0; w < weeksCount; w++) {
+    for (let w = 0; w < effectiveWeeksCount; w++) {
       const currentWeek: typeof generatedWeeks[0] = [];
       for (let d = 0; d < 7; d++) {
         const dateStr = formatLocalDateStr(curr);
@@ -165,11 +181,7 @@ export const HabitHeatmapGrid = React.memo(function HabitHeatmapGrid({
       completedDaysCount: completedCount,
       totalPastDaysCount: pastCount,
     };
-  }, [weeksCount, habit.startDate, logMap, targetCount]);
-
-  const tileSize = compact ? 13 : 16;
-  const tileRadius = habit.tileShape === 'circle' ? tileSize / 2 : habit.tileShape === 'square' ? 2 : 4;
-  const tileGap = compact ? 3 : 4;
+  }, [effectiveWeeksCount, habit.startDate, logMap, targetCount]);
 
   const handleTilePress = useCallback(
     (tile: typeof weeks[0][0], e: any) => {
@@ -265,19 +277,36 @@ export const HabitHeatmapGrid = React.memo(function HabitHeatmapGrid({
   const completionRate = totalPastDaysCount > 0 ? Math.round((completedDaysCount / totalPastDaysCount) * 100) : 0;
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: isDark ? 'rgba(0, 0, 0, 0.22)' : 'rgba(0, 0, 0, 0.025)',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
+        },
+      ]}
+    >
       <View style={styles.matrixRow}>
-        {/* Day-of-week Row Guides (M, W, F) */}
+        {/* Day-of-week Row Guides (M, W, F) perfectly aligned with rows 1, 3, 5 */}
         {showWeekLabels && (
-          <View style={[styles.dayLabelsColumn, { gap: tileGap, marginRight: 6 }]}>
+          <View style={[styles.dayLabelsColumn, { marginRight: 6 }]}>
             {DAY_LABELS.map((label, idx) => (
-              <View key={idx} style={{ height: tileSize, justifyContent: 'center' }}>
+              <View
+                key={idx}
+                style={{
+                  height: tileSize,
+                  marginBottom: idx < 6 ? tileGap : 0,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+              >
                 <Text
                   style={[
                     styles.dayLabelText,
                     {
                       color: idx === 1 || idx === 3 || idx === 5 ? colors.textTertiary : 'transparent',
-                      fontSize: compact ? 8 : 9,
+                      fontSize: compact ? 7.5 : 8,
+                      lineHeight: tileSize,
                     },
                   ]}
                 >
@@ -288,7 +317,7 @@ export const HabitHeatmapGrid = React.memo(function HabitHeatmapGrid({
           </View>
         )}
 
-        {/* 2D Week Columns */}
+        {/* 2D Week Columns with uniform natural gaps (no 60px space-between stretching) */}
         <View style={[styles.weeksContainer, { gap: tileGap }]}>
           {weeks.map((week, weekIdx) => (
             <View key={weekIdx} style={[styles.weekColumn, { gap: tileGap }]}>
@@ -300,6 +329,7 @@ export const HabitHeatmapGrid = React.memo(function HabitHeatmapGrid({
                     key={tile.dateStr}
                     activeOpacity={tile.isFuture ? 1 : 0.7}
                     onPress={(e) => handleTilePress(tile, e)}
+                    hitSlop={{ top: 2, bottom: 2, left: 2, right: 2 }}
                     style={[
                       styles.tile,
                       {
@@ -311,12 +341,12 @@ export const HabitHeatmapGrid = React.memo(function HabitHeatmapGrid({
                     ]}
                   >
                     {tile.status === 'freeze' && (
-                      <Ionicons name="snow" size={compact ? 7 : 8} color="#FFFFFF" />
+                      <Ionicons name="snow" size={compact ? 5 : 6} color="#FFFFFF" />
                     )}
                     {tile.status === 'completed' && !isNegative && (
                       <Ionicons
                         name="checkmark"
-                        size={compact ? 8 : 9}
+                        size={compact ? 6 : 7}
                         color={isDark ? '#000000' : '#FFFFFF'}
                       />
                     )}
@@ -332,7 +362,7 @@ export const HabitHeatmapGrid = React.memo(function HabitHeatmapGrid({
       <View style={styles.footerRow}>
         <Text style={[styles.footerText, { color: colors.textTertiary }]}>
           {isNegative
-            ? `${totalPastDaysCount - completedDaysCount} days clean`
+            ? `${totalPastDaysCount - completedDaysCount}d clean`
             : `${completionRate}% consistency (${completedDaysCount}/${totalPastDaysCount}d)`}
         </Text>
 
@@ -348,7 +378,7 @@ export const HabitHeatmapGrid = React.memo(function HabitHeatmapGrid({
         ) : (
           <View style={styles.legendRow}>
             <View style={[styles.legendDot, { backgroundColor: habitColor }]} />
-            <Text style={[styles.legendLabel, { color: colors.textTertiary }]}>Past {weeksCount * 7}d</Text>
+            <Text style={[styles.legendLabel, { color: colors.textTertiary }]}>Past {effectiveWeeksCount * 7}d</Text>
           </View>
         )}
       </View>
@@ -360,10 +390,11 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'column',
     width: '100%',
-    marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.05)',
+    marginTop: 8,
+    padding: 8,
+    paddingBottom: 6,
+    borderRadius: 12,
+    borderWidth: 1,
   },
   matrixRow: {
     flexDirection: 'row',
@@ -372,19 +403,17 @@ const styles = StyleSheet.create({
   },
   dayLabelsColumn: {
     flexDirection: 'column',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     alignItems: 'center',
   },
   dayLabelText: {
     fontFamily: FONT_FAMILY.bold,
     textAlign: 'center',
-    lineHeight: 12,
   },
   weeksContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
   },
   weekColumn: {
     flexDirection: 'column',
@@ -397,31 +426,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 6,
     paddingHorizontal: 2,
   },
   footerText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontFamily: FONT_FAMILY.medium,
   },
   legendRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 2.5,
   },
   legendLabel: {
-    fontSize: 8,
+    fontSize: 7.5,
     fontFamily: FONT_FAMILY.bold,
     textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   legendTile: {
-    width: 7,
-    height: 7,
+    width: 6,
+    height: 6,
     borderRadius: 1.5,
   },
   legendDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
   },
 });
+

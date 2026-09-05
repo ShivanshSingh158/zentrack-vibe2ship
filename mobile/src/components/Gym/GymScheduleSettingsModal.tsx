@@ -8,8 +8,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, ScrollView,
-  Platform, SafeAreaView, Alert,
+  Platform, Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -48,6 +49,7 @@ export function GymScheduleSettingsModal({
   onSaveOverride,
   onNotifSaved,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const s = useMemo(() => makeGymScheduleStyles(colors, isDark), [colors, isDark]);
 
@@ -218,13 +220,13 @@ export function GymScheduleSettingsModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={s.overlay}>
-        <View style={s.card}>
-          <SafeAreaView style={{ flex: 1 }}>
+      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity style={s.card} activeOpacity={1} onPress={e => e.stopPropagation?.()}>
+          <View style={{ flex: 1, paddingBottom: Math.max(insets.bottom, 16) }}>
             {/* Header */}
             <View style={s.header}>
-              <Text style={s.title}>Gym Settings</Text>
-              <TouchableOpacity onPress={onClose} style={s.closeBtn}>
+              <Text style={s.title}>Schedule Settings</Text>
+              <TouchableOpacity onPress={onClose} style={s.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={24} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -246,7 +248,12 @@ export function GymScheduleSettingsModal({
               </View>
             )}
 
-            <ScrollView style={s.contentContainer} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={s.contentContainer}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               {/* --- WEEKLY TAB --- */}
               {activeTab === 'weekly' && editingDayIdx === null && (
                 <>
@@ -458,9 +465,9 @@ export function GymScheduleSettingsModal({
                 />
               )}
             </ScrollView>
-          </SafeAreaView>
-        </View>
-      </View>
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 }

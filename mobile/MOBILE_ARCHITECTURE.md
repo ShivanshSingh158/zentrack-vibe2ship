@@ -449,8 +449,9 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/screens/attendance/HorizontalWeekStrip.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/HorizontalWeekStrip.tsx) | `HorizontalWeekStrip` | Zero-virtualization 7-day Flexbox week strip with PanResponder horizontal week swiping, spring micro-transitions, guaranteed minHeight (never collapses to 0 on offscreen warm mounting), and seamless Date Picker synchronization. |
 | [`src/screens/attendance/attendanceConstants.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/attendanceConstants.ts) | `ATTENDANCE_STATUS_COLORS` | Constants for Present, Absent, and Cancelled attendance statuses. |
 | [`src/screens/attendance/attendanceStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/attendanceStyles.ts) | `makeAttendanceStyles(colors, isDark)` | Dynamic style factory for Attendance screen. |
-| [`src/screens/calendar/useCalendarData.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/useCalendarData.ts) | `useCalendarData()` | Aggregates tasks, timetable classes, and custom events into unified calendar matrix. |
-| [`src/screens/calendar/CalendarDayView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/CalendarDayView.tsx) | `CalendarDayView` | 24-hour day schedule view with live real-time indicator line. |
+| [`src/components/Calendar/CalendarWeekStripPager.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Calendar/CalendarWeekStripPager.tsx) | `CalendarWeekStripPager` | Zero-virtualization 7-day Flexbox week strip with PanResponder horizontal week swiping, directional spring micro-transitions, static day labels (0 Hermes crashes), guaranteed minHeight (never blanks on background autofetch), and multi-colored event dots. |
+| [`src/screens/calendar/useCalendarData.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/useCalendarData.ts) | `useCalendarData()` | Aggregates tasks, timetable classes, and custom events into unified calendar matrix. Provides multi-stage `scrollToCurrentTime` cascade positioning current time line in comfortable upper-middle (~180px offset). |
+| [`src/screens/calendar/CalendarDayView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/CalendarDayView.tsx) | `CalendarDayView` | 24-hour day schedule view with live real-time indicator line, ScrollView `onLayout` auto-scroll trigger, post-background fetch data auto-scroll synchronization, and 180px viewport offset. |
 | [`src/screens/calendar/CalendarWeekView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/CalendarWeekView.tsx) | `CalendarWeekView` | 7-day multi-column calendar view. |
 | [`src/screens/calendar/CalendarAgendaView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/CalendarAgendaView.tsx) | `CalendarAgendaView` | Chronological agenda list view of upcoming schedule items. |
 | [`src/screens/calendar/CalendarGymModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/CalendarGymModal.tsx) | `CalendarGymModal` | Modal displaying gym workout logs scheduled on a calendar day. |
@@ -638,7 +639,8 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/utils/academicMath.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/academicMath.ts) | `calculateBunkMath` | `(attended: number, total: number, targetPct?: number) => BunkMathResult` | Calculates exact number of classes user can safely bunk or must attend consecutively to maintain target %. |
 | [`src/utils/gymUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/gymUtils.ts) | `calculate1RM` | `(weight: number, reps: number) => number` | Calculates Estimated 1-Rep Max using Brzycki formula. |
 | | `calculateVolume` | `(sets: GymSet[]) => number` | Sums weight × reps for completed workout sets. |
-| | `toCanonicalMuscle` | `(raw: string) => string` | Maps micro-target muscle strings to 1 of 12 canonical muscle groups. |
+| | `toCanonicalMuscle`, `canonicalizeMuscle` | `(raw: string) => string` | Maps micro-target muscle strings to 1 of 12 canonical muscle groups. |
+| | `resolveExerciseTargetMuscle` | `(name: string, rawMuscle?: string) => { targetMuscle: string, canonicalGroup: string }` | Multi-tier canonical muscle resolver with generic tag auto-healing (`'general'`, `'none'`, `'unknown'`, `'mixed'`) via canonical database mapping and keyword heuristics. |
 | [`src/utils/exportUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/exportUtils.ts) | `exportToCSV`, `exportToExcel` | File Exporters | Generates downloadable CSV and Excel spreadsheets using `xlsx` and `expo-sharing`. |
 | [`src/utils/errorUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/errorUtils.ts) | `handleSyncError` | `(err: any) => void` | Non-blocking error handler suppressing transient network timeouts in console. |
 | [`src/utils/firebaseUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/firebaseUtils.ts) | `deepSanitize` | `(obj: any) => any` | Recursively strips `undefined` keys to prevent Firestore write crashes. |
@@ -1161,4 +1163,64 @@ All storage keys must be imported from `src/config/constants.ts → STORAGE_KEYS
   - **Undated/inbox tasks silently dropped**: Added new section **3b** — tasks with no `date` field now receive a single "Inbox Check 📥" nudge at the next upcoming check-in slot (or tomorrow morning if all today's slots have passed). Previously, creating a task without a due date produced zero notifications with no warning.
 
 - **VERIFIED**: `npx tsc --noEmit` passes with 0 errors after all changes.
+
+### 2026-09-05 — Gym Schedule Settings Modal Flex Collapse Fix & Header Action Remapping
+- **ROOT CAUSE OF SCHEDULE SETTINGS BLANK SCREEN**:
+  - In [`GymScheduleSettingsModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/GymScheduleSettingsModal.tsx) and [`gymScheduleStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/gymScheduleStyles.ts), `card` only had `maxHeight: '90%'` without a defined height. Its sole child was `<SafeAreaView style={{ flex: 1 }}>` imported from `react-native`.
+  - In React Native's Yoga flex engine (particularly on Android), a `flex: 1` child inside an auto-height container resolves its height to `0px`. The modal opened with a dimmed backdrop, but the card content collapsed to 0 height, rendering it completely invisible.
+- **FIXED** [`mobile/src/components/Gym/GymScheduleSettingsModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/GymScheduleSettingsModal.tsx) & [`gymScheduleStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/gymScheduleStyles.ts):
+  - Set explicit `height: '88%'` and `maxHeight: '92%'` on `s.card` with `overflow: 'hidden'`.
+  - Replaced legacy `react-native` `SafeAreaView` with `useSafeAreaInsets` from `react-native-safe-area-context`.
+  - Configured `ScrollView` with `style={{ flex: 1 }}` and `contentContainerStyle={s.contentContainer}` (`paddingBottom: 40`), enabling smooth scrolling across all days.
+  - Enabled tap-to-dismiss on the background backdrop overlay.
+- **UPDATED** [`mobile/src/screens/gym/GymHomeScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/GymHomeScreen.tsx):
+  - Replaced the `Profile` button in the sticky Gym header with `Schedule` (`calendar-outline`), opening `GymScheduleSettingsModal` directly.
+  - Removed the `Alert.alert` option chooser from the `Plan` button so clicking `Plan` directly opens `GymTemplateModal` (`Workout Templates`).
+- **VERIFIED**: `npx tsc --noEmit` passes with 0 errors.
+
+### 2026-09-05 — Calendar Date Strip Disappearing on Background Autofetch & Auto-Scroll Fixes
+- **ROOT CAUSE 1: Date Strip Disappearing on Background Autofetch**:
+  - `CalendarWeekStripPager` used a `FlatList` with `initialScrollIndex={10}` (centered on current week among 21 weeks) but initialized with `initialNumToRender={3}` and `windowSize={5}`, with no `onScrollToIndexFailed` handler.
+  - When the screen was mounted or when background listeners hydrated (`tasks`, `customEvents`, `attendance`, `gymLogs`), native Android dropped the initial scroll to index 10, resting at index 0 (10 weeks past).
+  - Because `currentPage` state was already set to `10`, the sync effect `if (targetPage !== currentPage)` evaluated to `10 !== 10` (false) and never re-scrolled to index 10.
+  - Furthermore, when background autofetch updated `markedDates`, `FlatList` lacked `extraData={markedDates}`. Virtualization rendered only pages near index 10 (at x ≈ 4120px) while the viewport was at x = 0, leaving the visible date strip completely blank.
+- **ROOT CAUSE 2: Auto-Scroll to Current Time Not Working**:
+  - `useCalendarData` had an early guard `if (!scrollViewRef.current) return;` in its `useEffect`. On frame 0, the hook runs before `CalendarDayView` mounts and attaches the ref to the native `ScrollView`, so the effect silently aborted and never ran again since ref mutation does not trigger re-renders.
+  - On native Android, calling `scrollTo` with a fixed 120ms timeout is often ignored if the `ScrollView` has not finished measuring its `contentSize`.
+  - Switching between bottom tabs kept the component mounted, so the effect was never re-triggered on tab focus.
+- **FIXED** [`mobile/src/components/Calendar/CalendarWeekStripPager.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Calendar/CalendarWeekStripPager.tsx):
+  - Added `onScrollToIndexFailed` with safe retry timeout and fallback offset computation.
+  - Raised `initialNumToRender` from `3` to `15` (ensuring page 10 is guaranteed to be rendered on frame 0) and `windowSize` to `11`.
+  - Added `extraData={markedDates}` so background autofetch updates re-render week strip markers without blanking cells.
+  - Added layout mount insurance effect and explicit `minHeight: 74` / row `minHeight: 64` to prevent height collapse.
+- **FIXED** [`mobile/src/screens/calendar/CalendarDayView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/CalendarDayView.tsx):
+  - Added `onContentSizeChange` handler to the timeline `ScrollView` that triggers `scrollToCurrentTime(false)` as soon as native Android calculates timeline dimensions.
+  - Added `hasAutoScrolledRef` to ensure auto-scroll runs reliably on initial measurement without interrupting manual scrolling.
+- **FIXED** [`mobile/src/screens/calendar/useCalendarData.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/useCalendarData.ts):
+  - Created and exported `scrollToCurrentTime(animated)` with precise positioning formula: `y = 20 + indicatorTop - (minHour * HOUR_HEIGHT) - 140`.
+  - Added multi-tier fallback timer (100ms and 400ms) to ensure native view attachment.
+- **FIXED** [`mobile/src/screens/CalendarScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/CalendarScreen.tsx):
+  - Integrated `useFocusEffect` from `@react-navigation/native` so returning to the Calendar tab smoothly re-aligns to the current time indicator.
+  - Connected the "Today" header button to trigger `scrollToCurrentTime(true)`.
+- **VERIFIED**: `npx tsc --noEmit` passes with 0 errors.
+
+### 2026-09-05 — Habit Heatmap Structure, Alignment & Compact Placement Optimization
+- **ROOT CAUSE OF BULKY & MISALIGNED HEATMAP**:
+  - `HabitHeatmapGrid` previously used `tileSize={16}` and `tileGap={4}`, requiring $7 \times 16 + 24 = 136\text{px}$ of vertical height just for tile content, and $\approx 185\text{px}$ for the entire heatmap block.
+  - `HabitsScreen.tsx` hardcoded `weeksCount={5}` while `HabitHeatmapGrid` set `weeksContainer: { flex: 1, justifyContent: 'space-between' }`. Across a $\approx 320\text{px}$ card, this distributed $5 \times 16 = 80\text{px}$ across the full width, ballooning the horizontal gap between columns to $55\text{px}-65\text{px}$ (a 1:15 aspect ratio distortion vs the $4\text{px}$ vertical gap).
+  - The day labels (`M`, `W`, `F`) in `dayLabelsColumn` were aligned with `justifyContent: 'space-between'`, causing vertical position drift relative to week column rows.
+- **FIXED** [`mobile/src/components/Habits/HabitHeatmapGrid.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Habits/HabitHeatmapGrid.tsx):
+  - Reduced `tileSize` from $16\text{px}$ to $10\text{px}$ ($8.5\text{px}$ on compact) and `tileGap` from $4\text{px}$ to $2.5\text{px}$, cutting total vertical grid height from $136\text{px}$ to $85\text{px}$ (~40% height reduction).
+  - Replaced `justifyContent: 'space-between'` with uniform $2.5\text{px}$ horizontal and vertical spacing (`justifyContent: 'flex-start'`).
+  - Added dynamic row auto-fit calculation: computes exact number of weeks (typically 18–24 weeks) that naturally fill the card width with $2.5\text{px}$ gaps, terminating with Today on the rightmost column.
+  - Aligned day labels (`M`, `W`, `F`) pixel-perfectly with exact row heights ($10\text{px}$) and margins ($2.5\text{px}$), locking them to rows 1, 3, and 5.
+  - Wrapped the grid into a sleek recessed HUD container (`backgroundColor: rgba(0,0,0,0.22)`, `borderRadius: 12`, `borderWidth: 1`, `borderColor: rgba(255,255,255,0.04)`), giving it a purposeful telemetry frame.
+- **UPDATED** [`mobile/src/screens/HabitsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/HabitsScreen.tsx):
+  - Tightened card padding ($13\text{px}$), avatar ($42\text{px}$), and check ring ($36\text{px}$), reducing total card height from $\approx 270\text{px}$ to $\approx 155\text{px}$ (~45% total reduction).
+  - Added dual view mode: toggles between **Heatmap View** (compact auto-fit contribution grid) and **7-Day Strip View** (ultra-compact single-row pill strip), with state persisted in `AsyncStorage` (`@zentrack_habit_view_mode`).
+  - Added grid vs strip toggle controls to the right side of `segmentBar`.
+- **UPDATED** [`mobile/src/components/Habits/HabitsSkeleton.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Habits/HabitsSkeleton.tsx):
+  - Updated shimmer skeleton cards to mirror the $10\text{px}$ tile size, $2.5\text{px}$ gaps, and recessed tray structure, eliminating layout shifts.
+
+
 

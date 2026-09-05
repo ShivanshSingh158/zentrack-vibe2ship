@@ -141,7 +141,6 @@ export function LiveWorkoutWidget({ data, width = 330, height = 280 }: LiveWorko
           paddingHorizontal: isCompact ? 10 : 12,
           paddingVertical: isCompact ? 8 : 10,
           flexDirection: 'column',
-          justifyContent: 'space-between',
         }}
       >
         {/* ───── TOP SECTION (flex: 1 pushes action row to bottom) ───── */}
@@ -480,41 +479,43 @@ export function LiveWorkoutWidget({ data, width = 330, height = 280 }: LiveWorko
                 }}
               >
                 {!isRestDay ? (
-                  <>
-                    <FlexWidget
-                      style={{
-                        backgroundColor: C.exercisesPillBg,
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderColor: C.exercisesPillBorder,
-                        paddingHorizontal: 8,
-                        paddingVertical: 3,
-                        marginRight: 6,
-                      }}
-                    >
-                      <TextWidget
-                        text={`💪 ${totalExercises} Exercises`}
-                        style={{ fontSize: 11, fontWeight: 'bold', color: C.exercisesPillText }}
-                      />
-                    </FlexWidget>
+                  <FlexWidget
+                    style={{
+                      backgroundColor: C.exercisesPillBg,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: C.exercisesPillBorder,
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                      marginRight: 6,
+                    }}
+                  >
+                    <TextWidget
+                      text={`💪 ${totalExercises} Exercises`}
+                      style={{ fontSize: 11, fontWeight: 'bold', color: C.exercisesPillText }}
+                    />
+                  </FlexWidget>
+                ) : null}
 
-                    <FlexWidget
-                      style={{
-                        backgroundColor: C.setsPillBg,
-                        borderRadius: 8,
-                        borderWidth: 1,
-                        borderColor: C.setsPillBorder,
-                        paddingHorizontal: 8,
-                        paddingVertical: 3,
-                      }}
-                    >
-                      <TextWidget
-                        text={`🏋 ${totalSets} Sets`}
-                        style={{ fontSize: 11, fontWeight: 'bold', color: C.setsPillText }}
-                      />
-                    </FlexWidget>
-                  </>
-                ) : (
+                {!isRestDay ? (
+                  <FlexWidget
+                    style={{
+                      backgroundColor: C.setsPillBg,
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: C.setsPillBorder,
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                    }}
+                  >
+                    <TextWidget
+                      text={`🏋 ${totalSets} Sets`}
+                      style={{ fontSize: 11, fontWeight: 'bold', color: C.setsPillText }}
+                    />
+                  </FlexWidget>
+                ) : null}
+
+                {isRestDay ? (
                   <FlexWidget
                     style={{
                       backgroundColor: C.pillSurface,
@@ -530,7 +531,7 @@ export function LiveWorkoutWidget({ data, width = 330, height = 280 }: LiveWorko
                       style={{ fontSize: 11, fontWeight: 'bold', color: C.textSecondary }}
                     />
                   </FlexWidget>
-                )}
+                ) : null}
               </FlexWidget>
 
               {/* Large mode preview of planned exercises */}

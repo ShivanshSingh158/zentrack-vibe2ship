@@ -8,7 +8,7 @@
  * - Past events render at 40% opacity so "where you are now" is visually obvious
  * - Empty hour slot tap pre-fills the event modal with that exact time
  */
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { getEventColors, format12Hour, HOUR_HEIGHT, parseTimeTo24h } from './calendarUtils';
 
@@ -60,6 +60,35 @@ export const CalendarDayView = React.memo(function CalendarDayView({
     [maxHour, minHour]
   );
 
+  const hasAutoScrolledRef = useRef(false);
+  const dataLoadedRef = useRef(false);
+
+  const scrollToCurrentTime = useCallback((animated = false) => {
+    const doScroll = () => {
+      if (!scrollViewRef?.current) return;
+      const lineY = 20 + indicatorTop - (minHour * HOUR_HEIGHT);
+      const targetY = Math.max(0, lineY - 180);
+      scrollViewRef.current.scrollTo({ y: targetY, animated });
+    };
+
+    doScroll();
+    requestAnimationFrame(doScroll);
+    setTimeout(doScroll, 100);
+    setTimeout(doScroll, 300);
+  }, [indicatorTop, minHour, scrollViewRef]);
+
+  useEffect(() => {
+    hasAutoScrolledRef.current = false;
+  }, [isToday, minHour]);
+
+  // When background events arrive on initial load, ensure auto-scroll runs once data is populated
+  useEffect(() => {
+    if (isToday && !dataLoadedRef.current && (processedEvents.length > 0 || unscheduledDayEvents.length > 0)) {
+      dataLoadedRef.current = true;
+      scrollToCurrentTime(false);
+    }
+  }, [isToday, processedEvents.length, unscheduledDayEvents.length, scrollToCurrentTime]);
+
   return (
     <View style={{ flex: 1 }}>
       {/* Unscheduled strip */}
@@ -98,7 +127,25 @@ export const CalendarDayView = React.memo(function CalendarDayView({
         </View>
       )}
 
-      <ScrollView ref={scrollViewRef} style={styles.timelineScroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.timelineScroll}
+        showsVerticalScrollIndicator={false}
+        onLayout={() => {
+          if (isToday && !hasAutoScrolledRef.current) {
+            hasAutoScrolledRef.current = true;
+            scrollToCurrentTime(false);
+          }
+        }}
+        onContentSizeChange={(contentWidth, contentHeight) => {
+          if (isToday && contentHeight > 200) {
+            if (!hasAutoScrolledRef.current) {
+              hasAutoScrolledRef.current = true;
+              scrollToCurrentTime(false);
+            }
+          }
+        }}
+      >
         <View style={[styles.timelineInner, { height: timelineHeight, marginTop: 20 }]}>
           {/* Hour Grid Lines — tap to quick-create event at that time */}
           {DYNAMIC_HOURS.map(hour => {

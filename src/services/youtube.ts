@@ -69,6 +69,7 @@ export const fetchYouTubePlaylist = async (playlistId: string) => {
       videos: data.videos.map((v: { videoId: string; title: string; durationStr?: string }) => ({
         title: v.title,
         link: `https://www.youtube.com/watch?v=${v.videoId}`,
+        url: `https://www.youtube.com/watch?v=${v.videoId}`,
         videoId: v.videoId,
         durationStr: v.durationStr || ''
       })),

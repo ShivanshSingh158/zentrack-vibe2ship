@@ -12,9 +12,11 @@ export const makeGymScheduleStyles = (colors: any, isDark: boolean = true) =>
       backgroundColor: isDark ? '#1C1C1E' : colors.surface,
       borderTopLeftRadius: RADIUS.xxl,
       borderTopRightRadius: RADIUS.xxl,
-      maxHeight: '90%',
+      height: '88%',
+      maxHeight: '92%',
       borderTopWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+      overflow: 'hidden',
     },
     header: {
       flexDirection: 'row',

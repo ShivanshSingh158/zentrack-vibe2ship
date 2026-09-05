@@ -119,6 +119,7 @@
               "maxResizeHeight": "600dp",
               "resizeMode": "horizontal|vertical",
               "description": "Live active gym set logger and routine tracker",
+              "updatePeriodMillis": 1800000
             }
           ]
         }

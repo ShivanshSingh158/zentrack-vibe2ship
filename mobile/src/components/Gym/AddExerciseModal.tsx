@@ -29,7 +29,7 @@ import { handleSyncError } from '../../utils/errorUtils';
 import { makeAddExerciseStyles } from './addExerciseStyles';
 import ExerciseSearchDropdown, { ExerciseCatalogEntry } from './ExerciseSearchDropdown';
 import ExerciseCustomFields from './ExerciseCustomFields';
-import { getBiomechanicalPrescription, normalizeExerciseKey } from '../../utils/gymUtils';
+import { getBiomechanicalPrescription, normalizeExerciseKey, resolveExerciseTargetMuscle } from '../../utils/gymUtils';
 
 /** Build a full deduplicated exercise catalogue from our database + plan + dataset with calibrated tiers. */
 function buildCatalogue(): ExerciseCatalogEntry[] {
@@ -400,11 +400,13 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
 
     const exId = selectedExerciseId ?? `custom_${Date.now()}`;
     const lastSets = getLastSessionSets(exId, name.trim());
+    const rawMuscle = muscle === 'None' ? '' : muscle.trim();
+    const resolvedMuscle = resolveExerciseTargetMuscle(name.trim(), rawMuscle).targetMuscle;
 
     const newEx: GymExerciseLog = {
       exerciseId: exId,
       name: name.trim(),
-      muscle: muscle === 'None' ? '' : muscle.trim(),
+      muscle: resolvedMuscle || rawMuscle,
       targetSets: parsedSets,
       targetReps: reps.trim(),
       videoId: userVideoId || '',

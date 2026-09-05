@@ -19,7 +19,7 @@ import * as Haptics from 'expo-haptics';
 import { COLLECTION } from '../config/constants';
 import { deepSanitize } from '../utils/firebaseUtils';
 import { awardXP } from '../services/xpSystem';
-import { getPreviousExerciseSession, buildExerciseHistoryIndex, normalizeExerciseKey } from '../utils/gymUtils';
+import { getPreviousExerciseSession, buildExerciseHistoryIndex, normalizeExerciseKey, resolveExerciseTargetMuscle } from '../utils/gymUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { dismissActiveWorkoutNotification } from '../services/activeWorkoutNotificationService';
 import { safeWrite } from '../utils/safeWrite';
@@ -186,6 +186,11 @@ export function useGymLog(dateStr: string) {
             }
           }
 
+          let patchedMuscle = ex.muscle;
+          if (!patchedMuscle || ['general', 'unknown', 'none', 'mixed', 'null', 'undefined'].includes(patchedMuscle.trim().toLowerCase())) {
+            patchedMuscle = resolveExerciseTargetMuscle(ex.name, ex.muscle).targetMuscle;
+          }
+
           // Pre-fill unlogged set values with last session's exact set data
           const patchedSetsLog = (ex.setsLog || []).map((s: any, sIdx: number) => {
             const lastSet = lastSets?.[sIdx] || lastValidSet;
@@ -206,6 +211,7 @@ export function useGymLog(dateStr: string) {
           return {
             ...ex,
             _idx: idx,
+            muscle: patchedMuscle,
             videoId: patchedVideoId,
             lastSessionSets: ex.lastSessionSets || lastSets || undefined,
             setsLog: patchedSetsLog,
@@ -217,13 +223,18 @@ export function useGymLog(dateStr: string) {
           const lastSets = prevSession?.sets || null;
           const lastValidSet = lastSets && lastSets.length > 0 ? lastSets[lastSets.length - 1] : null;
 
+          let patchedMuscle = e.muscle;
+          if (!patchedMuscle || ['general', 'unknown', 'none', 'mixed', 'null', 'undefined'].includes(patchedMuscle.trim().toLowerCase())) {
+            patchedMuscle = resolveExerciseTargetMuscle(e.name, e.muscle).targetMuscle;
+          }
+
           return {
             _idx: idx,
             exerciseId: e.id,
             name: e.name,
             targetSets: e.targetSets,
             targetReps: e.targetReps,
-            muscle: e.muscle,
+            muscle: patchedMuscle,
             videoId: e.videoId,
             restTimeSecs: e.restTimeSecs,
             lastSessionSets: lastSets ?? undefined,
@@ -259,13 +270,18 @@ export function useGymLog(dateStr: string) {
         const lastValidSet = lastSets && lastSets.length > 0 ? lastSets[lastSets.length - 1] : null;
         const defaultTargetReps = parseInt(String(e.targetReps || '8-12').split('-')[0], 10) || 8;
 
+        let patchedMuscle = e.muscle;
+        if (!patchedMuscle || ['general', 'unknown', 'none', 'mixed', 'null', 'undefined'].includes(patchedMuscle.trim().toLowerCase())) {
+          patchedMuscle = resolveExerciseTargetMuscle(e.name, e.muscle).targetMuscle;
+        }
+
         return {
           _idx: idx,
           exerciseId: e.id,
           name: e.name,
           targetSets: e.targetSets,
           targetReps: e.targetReps,
-          muscle: e.muscle,
+          muscle: patchedMuscle,
           videoId: e.videoId,
           restTimeSecs: e.restTimeSecs,
           lastSessionSets: lastSets ?? undefined,
@@ -435,7 +451,11 @@ export function useGymLog(dateStr: string) {
     setLog(prev => {
       if (!prev) return prev;
       const idx = prev.exercises.length;
-      const exercises = [...prev.exercises, { ...exercise, _idx: idx }];
+      let patchedMuscle = exercise.muscle;
+      if (!patchedMuscle || ['general', 'unknown', 'none', 'mixed', 'null', 'undefined'].includes(patchedMuscle.trim().toLowerCase())) {
+        patchedMuscle = resolveExerciseTargetMuscle(exercise.name, exercise.muscle).targetMuscle;
+      }
+      const exercises = [...prev.exercises, { ...exercise, muscle: patchedMuscle, _idx: idx }];
       const updated = { ...prev, exercises, updatedAt: Date.now() };
       saveLog(updated);
       return updated;
@@ -603,12 +623,18 @@ export function useGymLog(dateStr: string) {
     });
   }, [saveLog]);
 
-  const swapExercise = useCallback((exerciseIndex: number, newName: string, newVideoId?: string) => {
+  const swapExercise = useCallback((exerciseIndex: number, newName: string, newVideoId?: string, newMuscle?: string) => {
     setLog(prev => {
       if (!prev) return prev;
       const exercises = prev.exercises.map((ex, i) => {
         if (i !== exerciseIndex) return ex;
-        return { ...ex, name: newName, ...(newVideoId !== undefined ? { videoId: newVideoId } : {}) };
+        const resolvedMuscle = resolveExerciseTargetMuscle(newName, newMuscle || ex.muscle).targetMuscle;
+        return {
+          ...ex,
+          name: newName,
+          muscle: resolvedMuscle,
+          ...(newVideoId !== undefined ? { videoId: newVideoId } : {})
+        };
       });
       const updated = { ...prev, exercises, updatedAt: Date.now() };
       saveLog(updated);
@@ -616,7 +642,7 @@ export function useGymLog(dateStr: string) {
     });
   }, [saveLog]);
 
-  const makeSwapPermanent = useCallback(async (origName: string, newName: string, newVideoId?: string) => {
+  const makeSwapPermanent = useCallback(async (origName: string, newName: string, newVideoId?: string, newMuscle?: string) => {
     if (!user || !userGymPlan) return;
 
     const newPlan = JSON.parse(JSON.stringify(userGymPlan));
@@ -638,6 +664,7 @@ export function useGymLog(dateStr: string) {
         targetDay.exercises.forEach((ex: any) => {
           if (ex.name === origName) {
             ex.name = newName;
+            ex.muscle = resolveExerciseTargetMuscle(newName, newMuscle || ex.muscle).targetMuscle;
             if (newVideoId !== undefined) ex.videoId = newVideoId;
             changed = true;
             currentCustomDays[dayIndex] = targetDay;

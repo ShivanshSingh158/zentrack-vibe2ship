@@ -6,7 +6,7 @@ import { Calendar } from 'react-native-calendars';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { AddEventModal } from '../components/Calendar/AddEventModal';
 import { CalendarWeekStripPager } from '../components/Calendar/CalendarWeekStripPager';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { callGeminiProxy } from '../services/geminiProxy';
 import { useTheme } from "../contexts/ThemeContext";
 import AnimatedPressable from '../components/AnimatedPressable';
@@ -53,8 +53,29 @@ export default function CalendarScreen() {
     timedDayEvents, unscheduledDayEvents, dayEvents, processedEvents, weekEvents,
     minHour, maxHour, DYNAMIC_HOURS,
     handleSaveGymTime,
-    tasks, attendance, customEvents, gymLogs, userGymPlan
+    tasks, attendance, customEvents, gymLogs, userGymPlan,
+    scrollToCurrentTime,
   } = data;
+
+  const todayStr = useMemo(() => formatLocalDateStr(currentTime), [currentTime]);
+  const isToday = selectedDate === todayStr;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (currentView === 'Day' && isToday) {
+        const timer1 = setTimeout(() => {
+          scrollToCurrentTime(false);
+        }, 120);
+        const timer2 = setTimeout(() => {
+          scrollToCurrentTime(false);
+        }, 320);
+        return () => {
+          clearTimeout(timer1);
+          clearTimeout(timer2);
+        };
+      }
+    }, [currentView, isToday, scrollToCurrentTime])
+  );
 
   const [selY, selM, selD] = useMemo(() => selectedDate.split('-').map(Number), [selectedDate]);
   const selectedLocalDate = useMemo(() => new Date(selY, (selM || 1) - 1, selD || 1), [selY, selM, selD]);
@@ -69,8 +90,6 @@ export default function CalendarScreen() {
   const currentHour = currentTime.getHours();
   const currentMinutes = currentTime.getMinutes();
   const indicatorTop = (currentHour * HOUR_HEIGHT) + ((currentMinutes / 60) * HOUR_HEIGHT);
-  const todayStr = useMemo(() => formatLocalDateStr(currentTime), [currentTime]);
-  const isToday = selectedDate === todayStr;
   const currentTimeMins = currentHour * 60 + currentMinutes;
 
   // Pre-indexed timetable cache: computes which day indices (0-6) have classes/labs
@@ -336,6 +355,9 @@ export default function CalendarScreen() {
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setSelectedDate(todayStr);
+              setTimeout(() => {
+                scrollToCurrentTime(true);
+              }, 120);
             }}
             style={{
               paddingVertical: 5,

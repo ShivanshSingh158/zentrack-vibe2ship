@@ -20,6 +20,7 @@ import { makeStyles } from './gymHomeStyles';
 import { ZenGymAiFab } from '../../components/Gym/ZenGymAiFab';
 import { getOverloadSuggestion } from '../../services/progressiveOverload';
 import { setTabBarVisible } from '../../utils/tabBarScroll';
+import { resolveExerciseTargetMuscle } from '../../utils/gymUtils';
 import { GymExerciseOptionsSheet } from '../../components/Gym/GymExerciseOptionsSheet';
 import { useGymAiPlanManager } from '../../hooks/useGymAiPlanManager';
 import GymExerciseDraggableRow from '../../components/Gym/GymExerciseDraggableRow';
@@ -44,7 +45,7 @@ const LogCardioModal = React.lazy(() => import('../../components/Gym/LogCardioMo
 const SwapRoutineModal = React.lazy(() => import('../../components/Gym/SwapRoutineModal').then(m => ({ default: m.SwapRoutineModal })));
 const GymProfileModal = React.lazy(() => import('../../components/Gym/GymProfileModal').then(m => ({ default: m.GymProfileModal })));
 const GymTemplateModal = React.lazy(() => import('../../components/Gym/GymTemplateModal').then(m => ({ default: m.GymTemplateModal })));
-const GymScheduleSettingsModal = React.lazy(() => import('../../components/Gym/GymScheduleSettingsModal').then(m => ({ default: m.GymScheduleSettingsModal })));
+const GymScheduleSettingsModal = React.lazy(() => import('../../components/Gym/GymScheduleSettingsModal').then(m => ({ default: m.GymScheduleSettingsModal || m.default })));
 const GymLocationModal = React.lazy(() => import('../../components/Gym/GymLocationModal').then(m => ({ default: m.GymLocationModal })));
 const BodyMetricsSheet = React.lazy(() => import('../../components/Gym/BodyMetricsSheet'));
 const PRHallOfFameSheet = React.lazy(() => import('../../components/Gym/PRHallOfFameSheet'));
@@ -424,7 +425,8 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     if (!activeExercisesData || activeExercisesData.length === 0) return [];
     const muscleCounts: Record<string, number> = {};
     activeExercisesData.forEach(ex => {
-      const m = ex.muscle || 'Mixed';
+      const resolved = resolveExerciseTargetMuscle(ex.name, ex.muscle).targetMuscle;
+      const m = resolved || 'Mixed';
       muscleCounts[m] = (muscleCounts[m] || 0) + 1;
     });
 
@@ -730,21 +732,17 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
                 <Text style={s.headerBtnText}>Recap</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={() => { hapticMedium(); setShowProfileModal(true); }} style={s.morphBtn} activeOpacity={0.7}>
+              <TouchableOpacity onPress={() => { hapticMedium(); setShowScheduleSettingsModal(true); }} style={s.morphBtn} activeOpacity={0.7}>
                 <View style={s.morphBtnIconWrap}>
                   <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
-                  <Ionicons name="person-outline" size={16} color={COLORS.textMuted} />
+                  <Ionicons name="calendar-outline" size={16} color={COLORS.textMuted} />
                 </View>
-                <Text style={s.headerBtnText}>Profile</Text>
+                <Text style={s.headerBtnText}>Schedule</Text>
               </TouchableOpacity>
 
               <TouchableOpacity onPress={() => {
                 hapticMedium();
-                Alert.alert('Planning', 'Choose an option', [
-                  { text: 'Workout Templates', onPress: () => setShowTemplateModal(true) },
-                  { text: 'Schedule Settings', onPress: () => setShowScheduleSettingsModal(true) },
-                  { text: 'Cancel', style: 'cancel' }
-                ]);
+                setShowTemplateModal(true);
               }} style={s.morphBtn} activeOpacity={0.7}>
                 <View style={s.morphBtnIconWrap}>
                   <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />

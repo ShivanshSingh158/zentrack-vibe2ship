@@ -14,7 +14,7 @@ import { FONT_FAMILY } from '../../theme/tokens';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { useGymLog, planDayIndexForDate, getCustomPlanDay } from '../../hooks/useGymLog';
 import { GYM_PLAN } from '../../data/gymPlan';
-import { hexToRgba, MUSCLE_CANONICAL } from '../../utils/gymUtils';
+import { hexToRgba, MUSCLE_CANONICAL, resolveExerciseTargetMuscle } from '../../utils/gymUtils';
 import { GymExerciseLog, GymNavigationParamList } from '../../types/gym.types';
 import { hapticMedium, hapticLight, hapticSuccess } from '../../utils/haptics';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -79,7 +79,8 @@ export default function ExerciseDetailScreen() {
   useEffect(() => {
     if (currentExercise) {
       setName(currentExercise.name || '');
-      setMuscle(currentExercise.muscle || 'General');
+      const resolved = resolveExerciseTargetMuscle(currentExercise.name, currentExercise.muscle).targetMuscle;
+      setMuscle(resolved || currentExercise.muscle || 'General');
       setTargetSets(currentExercise.targetSets?.toString() || '');
       setTargetReps(currentExercise.targetReps || '');
       setRestTimeSecs(currentExercise.restTimeSecs?.toString() || '90');
@@ -94,7 +95,8 @@ export default function ExerciseDetailScreen() {
       });
       if (fallbackDef) {
         setName(fallbackDef.name || '');
-        setMuscle(fallbackDef.muscle || 'General');
+        const resolved = resolveExerciseTargetMuscle(fallbackDef.name, fallbackDef.muscle).targetMuscle;
+        setMuscle(resolved || fallbackDef.muscle || 'General');
         setTargetSets(fallbackDef.targetSets?.toString() || '');
         setTargetReps(fallbackDef.targetReps || '');
         setRestTimeSecs('90');
@@ -198,11 +200,12 @@ export default function ExerciseDetailScreen() {
     if (index === -1) return;
 
     const parsedTargetSets = parseInt(targetSets, 10) || 1;
+    const resolvedMuscle = resolveExerciseTargetMuscle(name, muscle).targetMuscle;
 
     const updated: GymExerciseLog = {
       ...currentExercise,
       name: name || 'Custom Exercise',
-      muscle: muscle || 'General',
+      muscle: resolvedMuscle || muscle || 'General',
       targetSets: parsedTargetSets,
       targetReps: targetReps || '10',
       restTimeSecs: parseInt(restTimeSecs, 10) || 90,

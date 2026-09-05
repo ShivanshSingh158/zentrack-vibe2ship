@@ -638,3 +638,15 @@ User clicks "Connect Google" → signInWithGoogle() in googleCalendar.ts
 ### 2026-07-09 — Proxy Bug Fixes
 - **FIXED** `api/gemini-proxy-stream.js` — was missing `tools` and `toolConfig` forwarding (silently broke all streaming agent tool calls)
 - **FIXED** `api/gemini-proxy.js` (TTS) — server-side Sarvam was hardcoded to `hi-IN` + `pace:1.1`. Now auto-detects language + `pace:1.0`
+
+### 2026-09-05 — YouTube Playlist Import "n.map is not a function" Fix
+- **ROOT CAUSE**:
+  - `src/services/youtube.ts`'s `fetchYouTubePlaylist` returns an object: `{ title: string, videos: Array<{ title, link, videoId, durationStr }> }`.
+  - In `src/features/learning/PlaylistImportModal.tsx`, the return value was assigned to `const items = await fetchYouTubePlaylist(playlistId)` and directly called `items.map(...)`.
+  - Because `items` is an Object (not an Array), `items.map` was `undefined`, throwing `TypeError: items.map is not a function` (minified in production as `Failed to import playlist: n.map is not a function`).
+  - Additionally, `PlaylistImportModal` read `it.url` while `fetchYouTubePlaylist` returned `it.link`.
+- **FIXED**:
+  - `src/features/learning/PlaylistImportModal.tsx`: Safely extracted `videoList` from `result?.videos || (Array.isArray(result) ? result : [])`, adopted `result?.title` when user title is blank, and supported both `it.link` and `it.url`.
+  - `src/services/youtube.ts`: Added `url` property alongside `link` in each video item for seamless cross-component compatibility.
+- **VERIFIED**: `npx tsc --noEmit` passes with 0 errors.
+

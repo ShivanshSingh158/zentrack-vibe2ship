@@ -527,21 +527,36 @@ export function useCalendarData() {
     return hours;
   }, [minHour, maxHour]);
 
-  // Scroll to current time on mount and when switching to Day view on today
+  const scrollToCurrentTime = useCallback((animated = false) => {
+    const doScroll = () => {
+      if (!scrollViewRef.current) return;
+      const currentHour = new Date().getHours();
+      const currentMin  = new Date().getMinutes();
+      const lineY = 20 + (currentHour * HOUR_HEIGHT) + ((currentMin / 60) * HOUR_HEIGHT) - (minHour * HOUR_HEIGHT);
+      const targetY = Math.max(0, lineY - 180);
+      scrollViewRef.current?.scrollTo({ y: targetY, animated });
+    };
+
+    doScroll();
+    requestAnimationFrame(doScroll);
+    setTimeout(doScroll, 100);
+    setTimeout(doScroll, 300);
+  }, [minHour]);
+
+  // Scroll to current time on mount, when switching to Day view on today, or when events/minHour change
   useEffect(() => {
     if (currentView !== 'Day') return;
     if (selectedDate !== formatLocalDateStr(new Date())) return;
-    if (!scrollViewRef.current) return;
-    const currentHour = new Date().getHours();
-    const currentMin  = new Date().getMinutes();
-    const targetY = Math.max(0, (currentHour * HOUR_HEIGHT) + ((currentMin / 60) * HOUR_HEIGHT) - (minHour * HOUR_HEIGHT) - 100);
-    const timer = setTimeout(() => {
-      scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
-    }, 120);
-    return () => clearTimeout(timer);
-  }, [selectedDate, currentView, minHour]);
+    const timer1 = setTimeout(() => scrollToCurrentTime(false), 100);
+    const timer2 = setTimeout(() => scrollToCurrentTime(false), 400);
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
+  }, [selectedDate, currentView, minHour, scrollToCurrentTime]);
 
   return {
+    scrollToCurrentTime,
     now, selectedDate, setSelectedDate,
     showEventModal, setShowEventModal,
     showAddModal, setShowAddModal,

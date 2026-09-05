@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, RADIUS } from '../../theme/tokens';
-import { hexToRgba } from '../../utils/gymUtils';
+import { hexToRgba, resolveExerciseTargetMuscle } from '../../utils/gymUtils';
 
 export interface ActiveExerciseHeaderProps {
   exercise: any;
@@ -37,7 +37,9 @@ export const ActiveExerciseHeader: React.FC<ActiveExerciseHeaderProps> = React.m
   onVideoToggle,
   onSwitchToPartner,
 }) => {
-  const muscleName = (exercise.muscle || 'Mixed').toUpperCase();
+  const rawMuscle = exercise.muscle;
+  const resolved = resolveExerciseTargetMuscle(exercise.name, rawMuscle).targetMuscle;
+  const muscleName = (resolved || rawMuscle || 'Mixed').toUpperCase();
   // Dynamic font sizing for long muscle group names (e.g., TRANSVERSE ABS, ANTERIOR DELTOID)
   const muscleFontSize = muscleName.length > 13 ? 9.5 : muscleName.length > 9 ? 10.5 : 11.5;
 

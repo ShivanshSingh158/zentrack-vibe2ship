@@ -4,6 +4,7 @@ import {
   Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Animated
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -555,13 +556,20 @@ export default function AttendanceScreen() {
   const getThemeProgressColor = (urgency: string) =>
     urgency === 'danger' ? colors.priorityHigh : urgency === 'warning' ? colors.priorityMed : colors.priorityLow;
 
-  // ── Animated pill visibility: 1 at top (pills always visible), fades slightly on scroll ──
-  const pillAnim = useRef(new Animated.Value(1)).current;
-  const isPillVisibleRef = useRef(true);
+  // ── Animated pill visibility: 0 at top (pills invisible), fades in on scroll past 20px ──
+  const pillAnim = useRef(new Animated.Value(0)).current;
+  const isPillVisibleRef = useRef(false);
   const lastScrollY = useRef(0);
 
+  useFocusEffect(
+    useCallback(() => {
+      isPillVisibleRef.current = false;
+      pillAnim.setValue(0);
+    }, [pillAnim])
+  );
+
   const updatePillVisibility = useCallback((offsetY: number) => {
-    const shouldShow = offsetY <= 20 || offsetY > 20; // always show pills
+    const shouldShow = offsetY > 20;
     if (shouldShow !== isPillVisibleRef.current) {
       isPillVisibleRef.current = shouldShow;
       Animated.timing(pillAnim, {
@@ -961,27 +969,27 @@ export default function AttendanceScreen() {
               const y = e?.nativeEvent?.contentOffset?.y ?? 0;
               updatePillVisibility(y);
             }}
-          onScrollEndDrag={(e: any) => {
-            const y = e?.nativeEvent?.contentOffset?.y ?? 0;
-            if (y <= 30) {
-              setTabBarVisible(true);
-            }
-            if (y <= 20 && isPillVisibleRef.current) {
-              isPillVisibleRef.current = false;
-              Animated.timing(pillAnim, { toValue: 0, duration: 50, useNativeDriver: true }).start();
-            }
-          }}
-          onMomentumScrollEnd={(e: any) => {
-            const y = e?.nativeEvent?.contentOffset?.y ?? 0;
-            if (y <= 30) {
-              setTabBarVisible(true);
-            }
-            if (y <= 20 && isPillVisibleRef.current) {
-              isPillVisibleRef.current = false;
-              Animated.timing(pillAnim, { toValue: 0, duration: 50, useNativeDriver: true }).start();
-            }
-          }}
-          scrollEventThrottle={64}
+            onScrollEndDrag={(e: any) => {
+              const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+              if (y <= 30) {
+                setTabBarVisible(true);
+              }
+              if (y <= 20 && isPillVisibleRef.current) {
+                isPillVisibleRef.current = false;
+                Animated.timing(pillAnim, { toValue: 0, duration: 80, useNativeDriver: true }).start();
+              }
+            }}
+            onMomentumScrollEnd={(e: any) => {
+              const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+              if (y <= 30) {
+                setTabBarVisible(true);
+              }
+              if (y <= 20 && isPillVisibleRef.current) {
+                isPillVisibleRef.current = false;
+                Animated.timing(pillAnim, { toValue: 0, duration: 80, useNativeDriver: true }).start();
+              }
+            }}
+            scrollEventThrottle={16}
           ListHeaderComponent={listHeader}
           ListEmptyComponent={
             <EmptyState

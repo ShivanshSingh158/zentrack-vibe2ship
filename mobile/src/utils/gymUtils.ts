@@ -481,7 +481,12 @@ export function resolveExerciseTargetMuscle(
   if (exerciseName) {
     const key = normalizeExerciseKey(exerciseName);
     const dbMatch = EXERCISE_DATABASE.find(e => normalizeExerciseKey(e.name) === key);
-    if (dbMatch && dbMatch.muscle && dbMatch.muscle !== 'None') {
+    if (
+      dbMatch &&
+      dbMatch.muscle &&
+      dbMatch.muscle.trim().length > 0 &&
+      !['none', 'general', 'unknown', 'mixed', 'null', 'undefined'].includes(dbMatch.muscle.trim().toLowerCase())
+    ) {
       return {
         targetMuscle: dbMatch.muscle,
         canonicalGroup: canonicalizeMuscle(dbMatch.muscle),
@@ -490,7 +495,11 @@ export function resolveExerciseTargetMuscle(
   }
 
   // 2. Try explicitMuscle if valid and not generic
-  if (explicitMuscle && explicitMuscle !== 'None' && explicitMuscle.trim().length > 0) {
+  if (
+    explicitMuscle &&
+    explicitMuscle.trim().length > 0 &&
+    !['none', 'general', 'unknown', 'mixed', 'null', 'undefined'].includes(explicitMuscle.trim().toLowerCase())
+  ) {
     return {
       targetMuscle: explicitMuscle.trim(),
       canonicalGroup: canonicalizeMuscle(explicitMuscle),
@@ -653,7 +662,8 @@ export function resolveExerciseTargetMuscle(
     lower.includes('leg raise') ||
     lower.includes('knee raise') ||
     lower.includes('rollout') ||
-    lower.includes('woodchopper')
+    lower.includes('woodchopper') ||
+    lower.includes('pallof')
   ) {
     return { targetMuscle: 'Abs', canonicalGroup: 'Abs' };
   }

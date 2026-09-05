@@ -357,11 +357,13 @@ Return ONLY a raw valid JSON array of 6 objects:
     const lastSession = getPreviousExerciseSession(newExDef.name, gymLogs);
     const lastSets = lastSession?.sets;
 
+    const targetMuscleResolved = resolveExerciseTargetMuscle(newExDef.name, newExDef.muscle || existingLog.muscle).targetMuscle;
+
     const updatedExercise = {
       ...existingLog,
       exerciseId: newExDef.id || `swap_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       name: newExDef.name,
-      muscle: newExDef.muscle || existingLog.muscle,
+      muscle: targetMuscleResolved || newExDef.muscle || existingLog.muscle,
       videoId: resolvedVideoId,
       targetSets,
       targetReps,
@@ -405,7 +407,7 @@ Return ONLY a raw valid JSON array of 6 objects:
                   updatedExercises[matchIndex] = {
                     ...updatedExercises[matchIndex],
                     name: newExDef.name,
-                    muscle: newExDef.muscle || updatedExercises[matchIndex].muscle,
+                    muscle: targetMuscleResolved || newExDef.muscle || updatedExercises[matchIndex].muscle,
                     targetSets,
                     targetReps,
                     restTimeSecs,
@@ -415,7 +417,7 @@ Return ONLY a raw valid JSON array of 6 objects:
                   updatedExercises.push({
                     id: updatedExercise.exerciseId,
                     name: newExDef.name,
-                    muscle: newExDef.muscle || updatedExercise.muscle,
+                    muscle: targetMuscleResolved || newExDef.muscle || updatedExercise.muscle,
                     targetSets,
                     targetReps,
                     restTimeSecs,

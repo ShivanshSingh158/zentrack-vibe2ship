@@ -14,6 +14,7 @@ import {
   AttendanceLog, Assignment, Semester, SemesterSubject,
   LearningTopic, LearningSubTask, JobApplication, WeeklyReview, ContentLog
 } from '../contexts/MobileDataContext';
+import { resolveExerciseTargetMuscle } from './gymUtils';
 
 // ─── Helper Primitives ────────────────────────────────────────────────────────
 
@@ -152,40 +153,45 @@ export function parseGymLog(docData: any, docId: string): GymLog {
   const id = sanitizeString(docId || d.id, 'gym_' + Date.now());
 
   const exercises = Array.isArray(d.exercises)
-    ? d.exercises.map((ex: any, idx: number) => ({
-        _idx: ex?._idx !== undefined ? sanitizeNumber(ex._idx, idx, 0) : idx,
-        id: sanitizeString(ex?.id || ex?.exerciseId, ''),
-        exerciseId: sanitizeString(ex?.exerciseId || ex?.id, ''),
-        name: sanitizeString(ex?.name, 'Exercise', 150),
-        targetSets: sanitizeNumber(ex?.targetSets, 3, 1, 20),
-        targetReps: sanitizeString(ex?.targetReps, '10-12', 30),
-        muscle: sanitizeString(ex?.muscle, 'general', 50),
-        notes: ex?.notes ? sanitizeString(ex.notes, '', 300) : undefined,
-        videoId: ex?.videoId ? sanitizeString(ex.videoId, '', 100) : undefined,
-        supersetGroup: ex?.supersetGroup ? sanitizeString(ex.supersetGroup, undefined as any, 20) : undefined,
-        restTimeSecs: ex?.restTimeSecs !== undefined ? sanitizeNumber(ex.restTimeSecs, 90, 0, 600) : undefined,
-        skipped: Boolean(ex?.skipped),
-        lastSessionSets: Array.isArray(ex?.lastSessionSets) ? ex.lastSessionSets : undefined,
-        setsLog: Array.isArray(ex?.setsLog)
-          ? ex.setsLog.map((s: any, sIdx: number) => {
-              const rawWeight = s?.weight !== undefined ? s.weight : s?.weightKg;
-              const weight = rawWeight !== null && rawWeight !== undefined && rawWeight !== '' && !isNaN(Number(rawWeight))
-                ? Number(rawWeight)
-                : null;
-              const rawReps = s?.reps;
-              const reps = rawReps !== null && rawReps !== undefined && rawReps !== '' && !isNaN(Number(rawReps))
-                ? Number(rawReps)
-                : null;
-              return {
-                setNumber: sanitizeNumber(s?.setNumber, sIdx + 1, 1, 99),
-                reps,
-                weight,
-                weightKg: weight ?? 0,
-                completed: Boolean(s?.completed),
-              };
-            })
-          : [],
-      }))
+    ? d.exercises.map((ex: any, idx: number) => {
+        const name = sanitizeString(ex?.name, 'Exercise', 150);
+        const rawMuscle = ex?.muscle ? sanitizeString(ex.muscle, '', 50) : '';
+        const resolvedMuscle = resolveExerciseTargetMuscle(name, rawMuscle).targetMuscle;
+        return {
+          _idx: ex?._idx !== undefined ? sanitizeNumber(ex._idx, idx, 0) : idx,
+          id: sanitizeString(ex?.id || ex?.exerciseId, ''),
+          exerciseId: sanitizeString(ex?.exerciseId || ex?.id, ''),
+          name,
+          targetSets: sanitizeNumber(ex?.targetSets, 3, 1, 20),
+          targetReps: sanitizeString(ex?.targetReps, '10-12', 30),
+          muscle: sanitizeString(resolvedMuscle, 'Mixed', 50),
+          notes: ex?.notes ? sanitizeString(ex.notes, '', 300) : undefined,
+          videoId: ex?.videoId ? sanitizeString(ex.videoId, '', 100) : undefined,
+          supersetGroup: ex?.supersetGroup ? sanitizeString(ex.supersetGroup, undefined as any, 20) : undefined,
+          restTimeSecs: ex?.restTimeSecs !== undefined ? sanitizeNumber(ex.restTimeSecs, 90, 0, 600) : undefined,
+          skipped: Boolean(ex?.skipped),
+          lastSessionSets: Array.isArray(ex?.lastSessionSets) ? ex.lastSessionSets : undefined,
+          setsLog: Array.isArray(ex?.setsLog)
+            ? ex.setsLog.map((s: any, sIdx: number) => {
+                const rawWeight = s?.weight !== undefined ? s.weight : s?.weightKg;
+                const weight = rawWeight !== null && rawWeight !== undefined && rawWeight !== '' && !isNaN(Number(rawWeight))
+                  ? Number(rawWeight)
+                  : null;
+                const rawReps = s?.reps;
+                const reps = rawReps !== null && rawReps !== undefined && rawReps !== '' && !isNaN(Number(rawReps))
+                  ? Number(rawReps)
+                  : null;
+                return {
+                  setNumber: sanitizeNumber(s?.setNumber, sIdx + 1, 1, 99),
+                  reps,
+                  weight,
+                  weightKg: weight ?? 0,
+                  completed: Boolean(s?.completed),
+                };
+              })
+            : [],
+        };
+      })
     : [];
 
   const cardio = Array.isArray(d.cardio)
