@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useCallback, useState, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView
@@ -18,6 +18,7 @@ import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { BlurView } from 'expo-blur';
 import { useTheme } from "../contexts/ThemeContext";
 import { DynamicCalendarIcon } from '../components/ui/DynamicCalendarIcon';
+import { prefetchRemainingModules } from '../utils/ModulePrefetcher';
 
 // ─── Module Definitions ───────────────────────────────────────────────────────
 
@@ -57,6 +58,11 @@ export default function MoreScreen() {
   const effectivePinned = useMemo(() => {
     return (pinnedModules && pinnedModules.length > 0) ? pinnedModules : DEFAULT_PINNED_MODULES;
   }, [pinnedModules]);
+
+  // Warm remaining unpinned screens immediately when user enters More screen
+  useEffect(() => {
+    prefetchRemainingModules();
+  }, []);
 
   const [isEditing, setIsEditing] = useState(false);
   const [selected, setSelected] = useState<string[]>(() => effectivePinned);

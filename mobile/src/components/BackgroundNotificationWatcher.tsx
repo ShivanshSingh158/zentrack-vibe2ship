@@ -18,10 +18,18 @@ export function BackgroundNotificationWatcher() {
   const planner = usePlannerData();
 
   const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitialBootRef = useRef(true);
 
   useEffect(() => {
     if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+
+    // On cold boot, delay notification rescheduling by 4 seconds to allow initial UI paint,
+    // animations, and multi-domain Firestore snapshots to settle before running the heavy scheduler.
+    // Subsequent updates use a snappy 600ms debounce.
+    const delay = isInitialBootRef.current ? 4000 : 600;
+
     notifTimerRef.current = setTimeout(() => {
+      isInitialBootRef.current = false;
       scheduleAllNotifications({
         tasks: core.tasks,
         customEvents: planner.customEvents,
@@ -35,7 +43,7 @@ export function BackgroundNotificationWatcher() {
         sleepLogs: wellness.sleepLogs,
         userGymPlan: wellness.userGymPlan,
       }).catch(console.warn);
-    }, 600); // 600ms debounce ensures rapid scheduling of new reminders without blocking UI
+    }, delay);
 
     return () => {
       if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
