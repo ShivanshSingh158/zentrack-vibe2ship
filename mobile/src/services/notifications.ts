@@ -170,10 +170,10 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     .join(';');
   const taskFingerprint = (params.tasks || [])
     .filter(t => t.status !== 'completed')
-    .map(t => `${t.id}_${t.date}_${t.timeSlot || ''}_${t.isReminder ? '1' : '0'}`)
+    .map(t => `${t.id}_${t.title || ''}_${t.date}_${t.timeSlot || ''}_${t.isReminder ? '1' : '0'}`)
     .join(';');
   const eventFingerprint = (params.customEvents || [])
-    .map(e => `${e.id}_${e.date}_${e.startTime || ''}`)
+    .map(e => `${e.id}_${e.title || ''}_${e.date}_${e.startTime || ''}`)
     .join(';');
 
   const attendanceLogFingerprint = (params.attendanceLogs || [])
@@ -182,6 +182,10 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
 
   const flashcardDueCount = (params.flashcards || [])
     .filter(f => f.nextReviewDate && f.nextReviewDate <= formatLocalDateStr(new Date())).length;
+
+  const gymPlanFingerprint = params.userGymPlan
+    ? `${params.userGymPlan.id || ''}_${params.userGymPlan.templateId || ''}_${params.userGymPlan.updatedAt || ''}_${params.userGymPlan.schedulePattern || ''}`
+    : '';
 
   // Track today's total water logged to invalidate fingerprint immediately when goal is hit
   const todayDateStr = formatLocalDateStr(new Date());
@@ -211,6 +215,7 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
   return [
     taskFingerprint,
     eventFingerprint,
+    gymPlanFingerprint,
     (params.habitLogs || []).length,
     (params.gymLogs || []).length,
     (params.assignments || []).length,
@@ -1471,7 +1476,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       }
       console.log(`[Notifications] Schedule Complete: ${scheduledCount}/${ALARM_CAP} alarms set (${Platform.OS}) ✅`);
       _lastScheduledCount = scheduledCount;
-      if (scheduledCount > 0) {
+      if (scheduledCount > 0 || pendingQueue.length === 0) {
         _lastScheduleFingerprint = fingerprint;
         _lastScheduleError = null;
         AsyncStorage.setItem(NOTIF_FINGERPRINT_KEY, fingerprint).catch(() => {});

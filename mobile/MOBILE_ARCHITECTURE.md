@@ -1387,6 +1387,12 @@ All storage keys must be imported from `src/config/constants.ts → STORAGE_KEYS
      - Once recurring tasks have spawned for the session, subsequent task mutations return in 0.00 ms without registering redundant interaction handles or macrotasks.
 - **VERIFIED**:
   - `npx tsc --noEmit` exited with code 0 (0 errors).
+  - **Notification Edge-Case Hardening**:
+    - Fixed empty-schedule loop bug (`pendingQueue.length === 0`) so zero-alarm days persist their fingerprint and never re-trigger rescheduling loops.
+    - Added task titles, custom event titles, and `userGymPlan` (`templateId`, `updatedAt`, `schedulePattern`) into `_buildFingerprint`.
+    - Bound `clearScheduleCache()` and `Notifications.cancelAllScheduledNotificationsAsync()` to `performSignOut()` to prevent alarm and cache bleed across user sessions.
+    - Set `interactionHandleRef.current = null` immediately on interaction execution in `BackgroundNotificationWatcher`.
+
 
 
 

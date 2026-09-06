@@ -19,7 +19,7 @@ import type { Task, Habit, HabitLog } from "../MobileDataContext";
 import { writeCoreCacheMulti, readCoreCacheMulti, clearCoreCache } from "../../utils/coreCache";
 import { loadBootManifest, getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
 import { clearAllDomainCaches } from "../../utils/domainCache";
-import { registerForPushNotificationsAsync } from "../../services/notifications";
+import { registerForPushNotificationsAsync, clearScheduleCache } from "../../services/notifications";
 import { handleSyncError } from '../../utils/errorUtils';
 import { parseTask, parseHabit, parseHabitLog, areItemsEqual } from "../../utils/schemaGuards";
 import { syncXPWithFirestore } from "../../services/xpSystem";
@@ -542,6 +542,8 @@ export async function performSignOut() {
     await auth.signOut();
     await clearCoreCache();
     await clearAllDomainCaches();
+    clearScheduleCache();
+    await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
   } catch (err) {
     console.warn('[Auth] Sign out error:', err);
   }

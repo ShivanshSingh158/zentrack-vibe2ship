@@ -34,6 +34,7 @@ export function BackgroundNotificationWatcher() {
     notifTimerRef.current = setTimeout(() => {
       isInitialBootRef.current = false;
       interactionHandleRef.current = InteractionManager.runAfterInteractions(() => {
+        interactionHandleRef.current = null;
         scheduleAllNotifications({
           tasks: core.tasks,
           customEvents: planner.customEvents,
