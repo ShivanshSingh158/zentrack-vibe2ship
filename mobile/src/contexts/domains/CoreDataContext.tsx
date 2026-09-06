@@ -24,6 +24,7 @@ import { handleSyncError } from '../../utils/errorUtils';
 import { parseTask, parseHabit, parseHabitLog, areItemsEqual } from "../../utils/schemaGuards";
 import { syncXPWithFirestore } from "../../services/xpSystem";
 import { clearOrchestratorCache } from "../../agent/orchestrator";
+import { usePinnedModules } from "../PinnedModulesContext";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface CoreDataContextType {
@@ -127,29 +128,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     if (habitLogWriteLockRef.current) clearTimeout(habitLogWriteLockRef.current);
     habitLogWriteLockRef.current = setTimeout(() => { isHabitLogLocked.current = false; }, 2000);
   };
-  const DEFAULT_PINNED_MODULES = ["Tasks", "Gym", "Calendar", "Attendance"];
-  const [pinnedModules, setPinnedModulesState]    = useState<string[]>(initialManifest?.pinnedModules ?? DEFAULT_PINNED_MODULES);
-
-  const setPinnedModules = (mods: string[]) => {
-    const clamped = mods.length > 0 ? mods.slice(0, 4) : DEFAULT_PINNED_MODULES;
-    setPinnedModulesState(clamped);
-    updateL1Cache('pinnedModules', clamped);
-    AsyncStorage.setItem("@zentrack_pinned_modules", JSON.stringify(clamped)).catch(console.warn);
-    if (auth.currentUser?.uid) {
-      setDoc(doc(db, COLLECTION.USER_PROFILES, auth.currentUser.uid), {
-        pinnedModules: clamped,
-      }, { merge: true }).catch(() => {});
-    }
-  };
-
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('pinned_modules_changed', (newMods: string[]) => {
-      if (Array.isArray(newMods) && newMods.length > 0) {
-        setPinnedModulesState(newMods.slice(0, 4));
-      }
-    });
-    return () => sub.remove();
-  }, []);
+  const { pinnedModules, setPinnedModules } = usePinnedModules();
 
   // ── Listener auto-restart on error ───────────────────────────────────────
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
@@ -224,8 +203,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           } catch {}
         }
         if (userPinned && userPinned.length > 0) {
-          setPinnedModulesState(userPinned);
-          updateL1Cache('pinnedModules', userPinned);
+          setPinnedModules(userPinned);
         }
 
         // 3. Resolve user from auth state or optimistic storage
@@ -383,9 +361,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           }
           if (Array.isArray(data?.pinnedModules) && data.pinnedModules.length > 0) {
             const remotePinned = data.pinnedModules.slice(0, 4);
-            setPinnedModulesState(remotePinned);
-            updateL1Cache('pinnedModules', remotePinned);
-            AsyncStorage.setItem('@zentrack_pinned_modules', JSON.stringify(remotePinned)).catch(() => {});
+            setPinnedModules(remotePinned);
           }
           if (Array.isArray(data?.savedPlaces)) {
             AsyncStorage.setItem(STORAGE_KEYS.SAVED_PLACES || '@zentrack_saved_places', JSON.stringify(data.savedPlaces)).catch(() => {});

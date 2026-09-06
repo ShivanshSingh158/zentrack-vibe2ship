@@ -28,11 +28,15 @@ export function useRecurringSpawn(
   useEffect(() => {
     if (!userId || tasks.length === 0) return;
 
-    const handle = InteractionManager.runAfterInteractions(async () => {
-      const today = getToday(); // fresh call — correct date even after midnight
+    const today = getToday(); // fresh call — correct date even after midnight
+    const sessionKey = `${userId}|${today}`;
 
-      // Dedup guard: if we've already spawned for this user+date in this session, skip.
-      const sessionKey = `${userId}|${today}`;
+    // Synchronous dedup guard: if we've already spawned for this user+date in this session,
+    // exit immediately in 0ms without queuing an InteractionManager callback on every task mutation.
+    if (_spawnedThisSession.has(sessionKey)) return;
+
+    const handle = InteractionManager.runAfterInteractions(async () => {
+      // Re-verify guard inside callback in case of concurrent execution
       if (_spawnedThisSession.has(sessionKey)) return;
 
       // Only look at daily-type recurring tasks that haven't ended

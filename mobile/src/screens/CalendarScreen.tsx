@@ -63,16 +63,10 @@ export default function CalendarScreen() {
   useFocusEffect(
     useCallback(() => {
       if (currentView === 'Day' && isToday) {
-        const timer1 = setTimeout(() => {
+        const timer = setTimeout(() => {
           scrollToCurrentTime(false);
         }, 120);
-        const timer2 = setTimeout(() => {
-          scrollToCurrentTime(false);
-        }, 320);
-        return () => {
-          clearTimeout(timer1);
-          clearTimeout(timer2);
-        };
+        return () => clearTimeout(timer);
       }
     }, [currentView, isToday, scrollToCurrentTime])
   );

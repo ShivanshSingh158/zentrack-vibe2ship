@@ -527,32 +527,29 @@ export function useCalendarData() {
     return hours;
   }, [minHour, maxHour]);
 
-  const scrollToCurrentTime = useCallback((animated = false) => {
-    const doScroll = () => {
-      if (!scrollViewRef.current) return;
-      const currentHour = new Date().getHours();
-      const currentMin  = new Date().getMinutes();
-      const lineY = 20 + (currentHour * HOUR_HEIGHT) + ((currentMin / 60) * HOUR_HEIGHT) - (minHour * HOUR_HEIGHT);
-      const targetY = Math.max(0, lineY - 180);
-      scrollViewRef.current?.scrollTo({ y: targetY, animated });
-    };
+  const hasAutoScrolledRef = useRef<string | null>(null);
 
-    doScroll();
-    requestAnimationFrame(doScroll);
-    setTimeout(doScroll, 100);
-    setTimeout(doScroll, 300);
+  const scrollToCurrentTime = useCallback((animated = false) => {
+    if (!scrollViewRef.current) return;
+    const currentHour = new Date().getHours();
+    const currentMin  = new Date().getMinutes();
+    const lineY = 20 + (currentHour * HOUR_HEIGHT) + ((currentMin / 60) * HOUR_HEIGHT) - (minHour * HOUR_HEIGHT);
+    const targetY = Math.max(0, lineY - 180);
+    scrollViewRef.current?.scrollTo({ y: targetY, animated });
   }, [minHour]);
 
   // Scroll to current time on mount, when switching to Day view on today, or when events/minHour change
   useEffect(() => {
     if (currentView !== 'Day') return;
-    if (selectedDate !== formatLocalDateStr(new Date())) return;
-    const timer1 = setTimeout(() => scrollToCurrentTime(false), 100);
-    const timer2 = setTimeout(() => scrollToCurrentTime(false), 400);
-    return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-    };
+    const today = formatLocalDateStr(new Date());
+    if (selectedDate !== today) return;
+
+    const scrollKey = `${today}_${minHour}`;
+    if (hasAutoScrolledRef.current === scrollKey) return;
+    hasAutoScrolledRef.current = scrollKey;
+
+    const timer = setTimeout(() => scrollToCurrentTime(false), 150);
+    return () => clearTimeout(timer);
   }, [selectedDate, currentView, minHour, scrollToCurrentTime]);
 
   return {

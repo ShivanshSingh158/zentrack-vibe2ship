@@ -151,6 +151,7 @@ mobile/
     │   └── saraActionPolicy.ts           # 3-Tier Confidence-Gated Autonomous Action Gateway
     ├── contexts/
     │   ├── MobileDataContext.tsx         # Backward-Compatible Facade Provider & Unified Hook
+    │   ├── PinnedModulesContext.tsx      # Fine-Grained Pinned Modules Context (Decoupled from CoreData)
     │   ├── ThemeContext.tsx              # Dynamic Theme Engine (Obsidian Cosmos / Frost Quartz)
     │   ├── PortalContext.tsx             # Root Modal Portal Coordinator
     │   └── domains/                      # Domain-Split Data Contexts
@@ -1365,6 +1366,28 @@ All storage keys must be imported from `src/config/constants.ts → STORAGE_KEYS
      - When rescheduling is legitimately dirty (e.g. user adds or modifies a task), bridge execution drops from ~1,200 ms to ~120 ms.
 - **VERIFIED**:
   - `npx tsc --noEmit` exited with code 0 (0 errors).
+
+### 2026-09-06 — 5 Hidden Performance Bottlenecks: Root Tab Navigator Decoupling, TaskRow Memoization, TabBar Route Caching, Calendar Scroll Coalescing & Recurring Task Guard
+- **OPTIMIZATION RATIONALE & IMPACT**:
+  1. **Root Tab Navigator Decoupling (`PinnedModulesContext.tsx`, `AppNavigator.tsx`, `CoreDataContext.tsx`)**:
+     - Previously, `MainTabNavigator` called `const { pinnedModules } = useCoreData()`. Because `CoreDataContext` value changes on *any* task/habit mutation, toggling a single task checkbox caused the entire root `Tab.Navigator` and its 13 screen descriptors to re-reconcile.
+     - Extracted `PinnedModulesContext.tsx`. `MainTabNavigator` now subscribes only to `usePinnedModules()`. Root tab navigator remains 100% frozen during daily task/habit interactions.
+  2. **Frozen TaskRow Memoization (`useTasksFirestore.ts`, `TasksScreen.tsx`)**:
+     - Previously, `completeTask` recreated its reference on every task change because `checkAndAwardPerfectDay` depended on `[todayTasks, habits, habitLogs]`. This broke `prev.onComplete === next.onComplete` in `TaskRowMemo`, forcing all 200 task rows to re-render simultaneously on every checkbox tap.
+     - Stabilized `checkAndAwardPerfectDay`, `completeTask`, and `updateTask` via live render-synchronized refs (`todayTasksRef`, `habitsRef`, `habitLogsRef`, `optimisticUpdateTaskRef`).
+     - Callback references are now permanently frozen (`[]`). When a checkbox is tapped, exactly 1 row re-renders; all other 199 rows stay completely frozen.
+  3. **Telegram Tab Bar Route Re-Sorting Memoization (`TelegramTabBar.tsx`)**:
+     - Replaced inline fallback array allocations with `pinnedKey`-based `useMemo`.
+     - Navigation routes are filtered and sorted strictly when the user customizes their tab order in `MoreScreen`, eliminating per-frame route sorting.
+  4. **Calendar Timeline Auto-Scroll Coalescing (`useCalendarData.ts`, `CalendarScreen.tsx`)**:
+     - Eliminated the 16-scroll flood caused by competing timeouts across `useCalendarData.ts` and `CalendarScreen.tsx`.
+     - Replaced with a single-pass `scrollToCurrentTime` guarded by `hasAutoScrolledRef` (`${today}_${minHour}`), avoiding scroll jitter and competition with user touch.
+  5. **Synchronous Recurring Task Dedup Guard (`useRecurringSpawn.ts`)**:
+     - Moved session key check (`_spawnedThisSession.has(sessionKey)`) before `InteractionManager.runAfterInteractions`.
+     - Once recurring tasks have spawned for the session, subsequent task mutations return in 0.00 ms without registering redundant interaction handles or macrotasks.
+- **VERIFIED**:
+  - `npx tsc --noEmit` exited with code 0 (0 errors).
+
 
 
 

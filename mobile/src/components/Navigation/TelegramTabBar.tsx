@@ -15,7 +15,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY } from '../../theme/tokens';
 import { useTabBarBadges } from '../../hooks/useTabBarBadges';
 import { DynamicCalendarIcon } from '../ui/DynamicCalendarIcon';
-import { useCoreData } from '../../contexts/domains/CoreDataContext';
+import { usePinnedModules } from '../../contexts/PinnedModulesContext';
 
 // ─── Module Icons Configuration ───────────────────────────────────────────────
 export const SPOTIFY_TAB_CONFIG: Record<string, {
@@ -178,13 +178,15 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
 }: TelegramTabBarProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { pinnedModules } = useCoreData();
+  const { pinnedModules } = usePinnedModules();
   const hookBadges = useTabBarBadges();
   const badges = (passedBadges && Object.keys(passedBadges).length > 0) ? passedBadges : hookBadges;
 
-  const effectivePinned = (Array.isArray(pinnedModules) && pinnedModules.length > 0)
-    ? pinnedModules
-    : ['Tasks', 'Gym', 'Calendar', 'Attendance'];
+  const pinnedKey = (Array.isArray(pinnedModules) && pinnedModules.length > 0)
+    ? pinnedModules.join(',')
+    : 'Tasks,Gym,Calendar,Attendance';
+
+  const effectivePinned = useMemo(() => pinnedKey.split(','), [pinnedKey]);
 
   // Filter visible routes based on custom style and TabBarNullButton
   const visibleRoutes = useMemo(() => {

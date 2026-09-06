@@ -29,11 +29,12 @@ import { WellnessProvider, useWellnessData } from "./domains/WellnessContext";
 import { AcademicProvider, useAcademicData } from "./domains/AcademicContext";
 import { CreativeProvider, useCreativeData } from "./domains/CreativeContext";
 import { PlannerProvider, usePlannerData }   from "./domains/PlannerContext";
+import { PinnedModulesProvider, usePinnedModules } from "./PinnedModulesContext";
 import { BackgroundNotificationWatcher }     from "../components/BackgroundNotificationWatcher";
 import { handleSyncError } from '../utils/errorUtils';
 
 // Export domain hooks for fine-grained, zero-overhead subscriptions
-export { useCoreData, useWellnessData, useAcademicData, useCreativeData, usePlannerData };
+export { useCoreData, useWellnessData, useAcademicData, useCreativeData, usePlannerData, usePinnedModules };
 
 
 // ΓöÇΓöÇΓöÇ Type Exports (all preserved ΓÇö no consumer changes needed) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -378,10 +379,12 @@ function _DomainProviders({ children }: { children: React.ReactNode }) {
  */
 export function MobileDataProvider({ children }: { children: React.ReactNode }) {
   return (
-    <CoreDataProvider>
-      <_DomainProviders>
-        {children}
-      </_DomainProviders>
-    </CoreDataProvider>
+    <PinnedModulesProvider>
+      <CoreDataProvider>
+        <_DomainProviders>
+          {children}
+        </_DomainProviders>
+      </CoreDataProvider>
+    </PinnedModulesProvider>
   );
 }

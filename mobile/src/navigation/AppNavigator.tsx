@@ -198,7 +198,7 @@ function NestedHeader({ title }: { title: string }) {
   );
 }
 
-import { useCoreData } from '../contexts/domains/CoreDataContext';
+import { usePinnedModules } from '../contexts/PinnedModulesContext';
 import { TelegramTabBar } from '../components/Navigation/TelegramTabBar';
 
 // --- SafeDashboard & SafeMore (defined before MainTabNavigator that uses them) -------------
@@ -210,9 +210,9 @@ const TabBarNullButton = () => null;
 // --- Main Tab Navigator ------------------------------------------------------
 //
 // WHATSAPP / INSTAGRAM ARCHITECTURE:
-// Uses useCoreData() for pinnedModules so background domain streaming (wellness/academic/planner)
+// Uses usePinnedModules() so domain mutations (tasks, habits, etc.) NEVER trigger a root Tab Navigator re-render.
 function MainTabNavigator() {
-  const { pinnedModules } = useCoreData();
+  const { pinnedModules } = usePinnedModules();
   const { colors } = useTheme();
 
   const pinnedKey = (Array.isArray(pinnedModules) && pinnedModules.length > 0)

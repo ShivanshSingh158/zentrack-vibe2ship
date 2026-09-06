@@ -53,25 +53,39 @@ export function useTasksFirestore({
   habitLogs,
   todayDateStr,
 }: UseTasksFirestoreProps) {
+  // Live props synchronized via refs to prevent callback re-creation on data mutations
+  const todayTasksRef = useRef(todayTasks);
+  const habitsRef = useRef(habits);
+  const habitLogsRef = useRef(habitLogs);
+  const todayDateStrRef = useRef(todayDateStr);
+  const optimisticUpdateTaskRef = useRef(optimisticUpdateTask);
+
+  todayTasksRef.current = todayTasks;
+  habitsRef.current = habits;
+  habitLogsRef.current = habitLogs;
+  todayDateStrRef.current = todayDateStr;
+  optimisticUpdateTaskRef.current = optimisticUpdateTask;
 
   // Helper: award PERFECT_DAY if all today's tasks done AND all positive habits logged
   const checkAndAwardPerfectDay = useCallback(async (justCompletedTaskId: string) => {
     try {
-      const perfectDayKey = `zentrack_perfect_day_${todayDateStr}`;
+      const todayDate = todayDateStrRef.current;
+      const perfectDayKey = `zentrack_perfect_day_${todayDate}`;
       const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
       const alreadyClaimed = await AsyncStorage.getItem(perfectDayKey);
       if (alreadyClaimed) return;
 
+      const currentTodayTasks = todayTasksRef.current;
       // All today's tasks must be completed (include the one just completed optimistically)
-      const allTasksDone = todayTasks.every(
+      const allTasksDone = currentTodayTasks.every(
         t => t.status === 'completed' || t.id === justCompletedTaskId
       );
-      if (!allTasksDone || todayTasks.length === 0) return;
+      if (!allTasksDone || currentTodayTasks.length === 0) return;
 
       // All positive non-archived habits must have a log today
-      const positiveHabits = habits.filter(h => h.type !== 'negative' && !h.archived);
+      const positiveHabits = habitsRef.current.filter(h => h.type !== 'negative' && !h.archived);
       if (positiveHabits.length === 0) return;
-      const todayHabitLogs = habitLogs.filter(l => l.date === todayDateStr);
+      const todayHabitLogs = habitLogsRef.current.filter(l => l.date === todayDate);
       const allHabitsDone = positiveHabits.every(h => {
         const log = todayHabitLogs.find(l => l.habitId === h.id);
         if (!log) return false;
@@ -84,9 +98,9 @@ export function useTasksFirestore({
       await awardXP('PERFECT_DAY');
       import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
       const { DeviceEventEmitter } = await import('react-native');
-      DeviceEventEmitter.emit('zentrack_perfect_day', { date: todayDateStr });
+      DeviceEventEmitter.emit('zentrack_perfect_day', { date: todayDate });
     } catch (e) { /* non-critical — never block task completion */ }
-  }, [todayTasks, habits, habitLogs, todayDateStr]);
+  }, []);
 
   // IDEMPOTENCY GUARD: Per-task action timestamp lock prevents double-tap race conditions
   const inFlightTaskLocks = useRef<Map<string, number>>(new Map());
@@ -103,7 +117,7 @@ export function useTasksFirestore({
     const newStatus = task.status === 'completed' ? 'pending' : 'completed';
     const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
     // Optimistic update first — UI is instant regardless of connectivity
-    optimisticUpdateTask(task.id, { status: newStatus, completedAt });
+    optimisticUpdateTaskRef.current(task.id, { status: newStatus, completedAt });
     if (newStatus === 'completed') {
       import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
     }
@@ -122,7 +136,7 @@ export function useTasksFirestore({
         );
       } catch (error) { console.error('[useTasksFirestore] completeTask error', error); }
     })();
-  }, [optimisticUpdateTask, checkAndAwardPerfectDay]);
+  }, [checkAndAwardPerfectDay]);
 
   const clearCompletedTasks = useCallback(async (tasks: Task[]) => {
     try {
@@ -211,12 +225,12 @@ export function useTasksFirestore({
     updates: Partial<Task>,
     optimistic = true,
   ) => {
-    if (optimistic) optimisticUpdateTask(id, updates);
+    if (optimistic) optimisticUpdateTaskRef.current(id, updates);
     // safeUpdate: online → Firestore; offline → queue
     safeUpdate(id, COLLECTION.TASKS, updates as Record<string, any>,
       () => updateDoc(doc(db, COLLECTION.TASKS, id), updates)
     ).catch(handleSyncError);
-  }, [optimisticUpdateTask]);
+  }, []);
 
   const addTaskFromTemplate = useCallback(async (
     userId: string,
