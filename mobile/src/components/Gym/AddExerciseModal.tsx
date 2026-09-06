@@ -4,7 +4,7 @@
  * Fast exercise catalogue search, auto-fill, custom exercise creation,
  * and AI fallback integration.
  */
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity, TextInput,
@@ -105,7 +105,35 @@ function buildCatalogue(): ExerciseCatalogEntry[] {
   return result;
 }
 
-const EXERCISE_CATALOGUE = buildCatalogue();
+// Lazy singleton — built once on first AddExerciseModal open, never at module parse time.
+// Prevents the 4800-op buildCatalogue() (1600 items × 3 fn calls) from blocking the JS
+// thread during React.lazy() module evaluation.
+let _exerciseCatalogue: ExerciseCatalogEntry[] | null = null;
+let _categoryMap: Record<string, ExerciseCatalogEntry[]> | null = null;
+
+function getExerciseCatalogue(): ExerciseCatalogEntry[] {
+  if (!_exerciseCatalogue) {
+    _exerciseCatalogue = buildCatalogue();
+    loadCustomExercisesToCatalogue().catch(() => {});
+  }
+  return _exerciseCatalogue;
+}
+
+function getCategoryMap(): Record<string, ExerciseCatalogEntry[]> {
+  if (!_categoryMap) {
+    const cat = getExerciseCatalogue();
+    _categoryMap = {
+      Chest:     sortTierWise(cat.filter(e => checkCategoryMatch(e.muscle, 'Chest'))),
+      Back:      sortTierWise(cat.filter(e => checkCategoryMatch(e.muscle, 'Back'))),
+      Legs:      sortTierWise(cat.filter(e => checkCategoryMatch(e.muscle, 'Legs'))),
+      Shoulders: sortTierWise(cat.filter(e => checkCategoryMatch(e.muscle, 'Shoulders'))),
+      Arms:      sortTierWise(cat.filter(e => checkCategoryMatch(e.muscle, 'Arms'))),
+      Abs:       sortTierWise(cat.filter(e => checkCategoryMatch(e.muscle, 'Abs'))),
+    };
+  }
+  return _categoryMap;
+}
+
 const CUSTOM_EXERCISES_KEY = '@zentrack_custom_exercises';
 
 async function loadCustomExercisesToCatalogue(): Promise<void> {
@@ -113,10 +141,11 @@ async function loadCustomExercisesToCatalogue(): Promise<void> {
     const raw = await AsyncStorage.getItem(CUSTOM_EXERCISES_KEY);
     if (!raw) return;
     const customs: ExerciseCatalogEntry[] = JSON.parse(raw);
+    const catalogue = getExerciseCatalogue();
     for (const ex of customs) {
       const key = ex.name.toLowerCase().trim();
-      if (!EXERCISE_CATALOGUE.some(e => e.name.toLowerCase().trim() === key)) {
-        EXERCISE_CATALOGUE.push(ex);
+      if (!catalogue.some(e => e.name.toLowerCase().trim() === key)) {
+        catalogue.push(ex);
       }
     }
   } catch (_) {}
@@ -133,8 +162,6 @@ async function persistCustomExercise(entry: ExerciseCatalogEntry): Promise<void>
     }
   } catch (_) {}
 }
-
-loadCustomExercisesToCatalogue();
 
 const extractVideoId = (urlOrId: string) => {
   if (!urlOrId) return '';
@@ -218,20 +245,25 @@ function checkCategoryMatch(m: string, category: string): boolean {
   return l.includes(cat);
 }
 
-// Pre-computed category lists (0ms latency on chip clicks)
-const PRECOMPUTED_CATEGORY_MAP: Record<string, ExerciseCatalogEntry[]> = {
-  Chest: sortTierWise(EXERCISE_CATALOGUE.filter(e => checkCategoryMatch(e.muscle, 'Chest'))),
-  Back: sortTierWise(EXERCISE_CATALOGUE.filter(e => checkCategoryMatch(e.muscle, 'Back'))),
-  Legs: sortTierWise(EXERCISE_CATALOGUE.filter(e => checkCategoryMatch(e.muscle, 'Legs'))),
-  Shoulders: sortTierWise(EXERCISE_CATALOGUE.filter(e => checkCategoryMatch(e.muscle, 'Shoulders'))),
-  Arms: sortTierWise(EXERCISE_CATALOGUE.filter(e => checkCategoryMatch(e.muscle, 'Arms'))),
-  Abs: sortTierWise(EXERCISE_CATALOGUE.filter(e => checkCategoryMatch(e.muscle, 'Abs'))),
-};
-
 export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeAddExerciseStyles(colors, isDark), [colors, isDark]);
   const { userGymPlan, updateMasterPlan, gymLogs } = useWellnessData();
+
+  // Ensure catalogue is built lazily on first open (off the module parse critical path)
+  const [catalogueReady, setCatalogueReady] = useState(!!_exerciseCatalogue);
+  useEffect(() => {
+    if (!_exerciseCatalogue) {
+      // Build off the interaction critical path so modal opens instantly
+      const { InteractionManager } = require('react-native');
+      const handle = InteractionManager.runAfterInteractions(() => {
+        getExerciseCatalogue(); // populates lazy singleton
+        getCategoryMap();
+        setCatalogueReady(true);
+      });
+      return () => handle.cancel();
+    }
+  }, []);
 
   // Form state
   const [name, setName] = useState('');
@@ -250,16 +282,28 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
   const [aiLoading, setAiLoading] = useState(false);
   const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 0ms Instant Search & Filter Memo
+  // 150ms debounced search query — prevents the 1600-item filter from running
+  // on every keystroke. Filter only fires when user pauses typing.
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setDebouncedQuery(name.trim().toLowerCase()), 150);
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
+  }, [name]);
+
+  // 0ms Instant Search & Filter Memo (gated on debouncedQuery)
   const suggestions = useMemo(() => {
-    const q = name.trim().toLowerCase();
+    const q = debouncedQuery;
+    const catalogue = getExerciseCatalogue();
+    const categoryMap = getCategoryMap();
 
     if (muscleSearchFilter && !q) {
-      return PRECOMPUTED_CATEGORY_MAP[muscleSearchFilter] || [];
+      return categoryMap[muscleSearchFilter] || [];
     }
     if (!q || q.length < 1) return [];
 
-    const baseList = muscleSearchFilter ? (PRECOMPUTED_CATEGORY_MAP[muscleSearchFilter] || EXERCISE_CATALOGUE) : EXERCISE_CATALOGUE;
+    const baseList = muscleSearchFilter ? (categoryMap[muscleSearchFilter] || catalogue) : catalogue;
     const searchFiltered = baseList.filter(e => {
       return (
         e.name.toLowerCase().includes(q) ||
@@ -267,7 +311,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
       );
     });
     return searchFiltered;
-  }, [name, muscleSearchFilter]);
+  }, [debouncedQuery, muscleSearchFilter]);
 
   const getLastSessionSets = (exerciseId: string, exerciseName: string) => {
     if (!gymLogs) return null;
@@ -321,8 +365,9 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
     };
     persistCustomExercise(catalogueEntry);
     const nameKey = ai.canonicalName.toLowerCase().trim();
-    if (!EXERCISE_CATALOGUE.some(e => e.name.toLowerCase().trim() === nameKey)) {
-      EXERCISE_CATALOGUE.push(catalogueEntry);
+    const catalogue = getExerciseCatalogue();
+    if (!catalogue.some(e => e.name.toLowerCase().trim() === nameKey)) {
+      catalogue.push(catalogueEntry);
     }
 
     // Resolve video in background without blocking selection UI
@@ -345,9 +390,10 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
     if (text.trim().length >= 3) {
       aiDebounceRef.current = setTimeout(async () => {
         const q = text.trim().toLowerCase();
-        const hasMatches = EXERCISE_CATALOGUE.some(e =>
+        const cat = getExerciseCatalogue();
+        const hasMatches = cat.some(e =>
           e.name.toLowerCase().includes(q) ||
-          (e.aliases && e.aliases.some(a => a.toLowerCase().includes(q)))
+          (e.aliases && e.aliases.some((a: string) => a.toLowerCase().includes(q)))
         );
 
         if (!hasMatches) {

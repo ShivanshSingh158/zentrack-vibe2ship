@@ -58,23 +58,26 @@ export default function WorkoutSummaryScreen() {
       if (!todayLog?.exercises) { setNewPR(null); return; }
 
       const pastLogs = gymLogs.filter(l => l.date < logDate!);
-      let found: { name: string; weight: number } | null = null;
 
+      // O(N×K) pre-indexed Map — one pass over all past sets, then O(1) lookup per today's exercise.
+      // Replaces the old O(N×M×K) triple-nested loop (N=today's exercises, M=past logs, K=exercises/log).
+      const pastMaxByKey = new Map<string, number>();
+      for (const pl of pastLogs) {
+        for (const ex of (pl.exercises || [])) {
+          const key = (ex.exerciseId || ex.name || '').toLowerCase();
+          if (!key) continue;
+          const m = calculateExerciseMaxWeight(ex as any);
+          if (m > (pastMaxByKey.get(key) || 0)) pastMaxByKey.set(key, m);
+        }
+      }
+
+      let found: { name: string; weight: number } | null = null;
       for (const ex of todayLog.exercises) {
         if (!ex.setsLog) continue;
         const todayMax = calculateExerciseMaxWeight(ex as any);
         if (todayMax === 0) continue;
-
-        let pastMax = 0;
-        for (const pl of pastLogs) {
-          const pastEx = pl.exercises?.find(
-            e => e.exerciseId === ex.exerciseId || e.name === ex.name
-          );
-          if (pastEx?.setsLog) {
-            const m = calculateExerciseMaxWeight(pastEx as any);
-            if (m > pastMax) pastMax = m;
-          }
-        }
+        const key = (ex.exerciseId || ex.name || '').toLowerCase();
+        const pastMax = pastMaxByKey.get(key) || 0;
         if (todayMax > pastMax) {
           found = { name: ex.name, weight: todayMax };
           break;
@@ -90,12 +93,18 @@ export default function WorkoutSummaryScreen() {
 
   const isPR = !!newPR;
 
-  const sessionData = useMemo(() => {
+  // Pre-find the target log in its own memo so sessionData deps on [targetLog] (stable
+  // once found), not on full [gymLogs] which changes on every unrelated workout update.
+  const targetLog = useMemo(() => {
     let logDate = targetDate;
     if (!logDate && gymLogs && gymLogs.length > 0) {
       logDate = [...gymLogs].sort((a, b) => b.date.localeCompare(a.date))[0]?.date;
     }
-    const todayLog = gymLogs?.find(l => l.date === logDate);
+    return gymLogs?.find(l => l.date === logDate) || null;
+  }, [gymLogs, targetDate]);
+
+  const sessionData = useMemo(() => {
+    const todayLog = targetLog;
 
     let totalSets = 0;
     let totalVolume = 0;
@@ -138,7 +147,7 @@ export default function WorkoutSummaryScreen() {
     const notes = todayLog?.notes;
 
     return { totalSets, totalVolume, totalExercises, duration, exercises, notes };
-  }, [gymLogs, targetDate]);
+  }, [targetLog]);
 
   const displayedExercises = showAllExercises
     ? sessionData.exercises

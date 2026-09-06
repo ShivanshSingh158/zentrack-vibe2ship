@@ -438,11 +438,19 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     });
   }, [activeExercisesData]);
 
+  // Stable derivations from log — passed as individual props to GymExerciseDraggableRow
+  // so React.memo can bail out when only unrelated log fields change (notes, timer, etc.)
+  const logCompleted = log?.completed ?? false;
+  const logWorkoutStartTime = log?.workoutStartTime ?? null;
+  const logExercises = log?.exercises;
+
   // Item Renderer
   const renderExerciseItem = useCallback((itemParams: RenderItemParams<any>) => (
     <GymExerciseDraggableRow
       itemParams={itemParams}
-      log={log}
+      logCompleted={logCompleted}
+      logWorkoutStartTime={logWorkoutStartTime}
+      logExercises={logExercises}
       s={s}
       selectedDate={selectedDate}
       navigation={navigation}
@@ -450,7 +458,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
       onShowHistory={setHistoryFor}
       onShowMenu={setExerciseMenuFor}
     />
-  ), [log, s, selectedDate, navigation, handleResumeWorkout]);
+  ), [logCompleted, logWorkoutStartTime, logExercises, s, selectedDate, navigation, handleResumeWorkout]);
 
   // Header Renderer
   const renderHeader = useCallback(() => (
@@ -616,6 +624,13 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   ), [s, weekDates, selectedDate, planDay?.isRest, gymLogs, userGymPlan, sleepLogs, triggerDeload, log, currentStreak, animBanner, navigation, handleStartWorkout, handleResumeWorkout, endWorkout, resumeWorkout, activeExercisesData.length, geofenceStatus, handleResolveLocationIssue]);
 
   // Cardio Renderer
+  // Stable Animated interpolation node — hoisted out of renderCardio so it isn't
+  // recreated on every render (which disconnects the native Animated driver).
+  const animListTranslateY = useMemo(
+    () => animList.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }),
+    [animList]
+  );
+
   const renderCardio = useCallback(() => {
     const cardioItems = log?.cardio || [];
     return (
@@ -625,7 +640,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         {cardioItems.map(c => {
           const isDone = c.completed;
           return (
-            <Animated.View key={c.id} style={{ opacity: animList, transform: [{ translateY: animList.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }}>
+            <Animated.View key={c.id} style={{ opacity: animList, transform: [{ translateY: animListTranslateY }] }}>
               <TouchableOpacity style={s.row} activeOpacity={0.7} onPress={() => setLogCardioFor(c)}>
                 <View style={s.cardioSquare}>
                   {isDone ? (
@@ -675,7 +690,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </TouchableOpacity>
       </View>
     );
-  }, [log?.cardio, s, animList]);
+  }, [log?.cardio, s, animList, animListTranslateY]);
 
   // Footer Renderer
   const renderFooter = useCallback(() => (

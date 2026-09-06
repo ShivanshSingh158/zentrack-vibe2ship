@@ -123,6 +123,148 @@ function findNextSupersetExerciseIndex(exercises: any[], currentIdx: number, sup
   return -1;
 }
 
+// ─── Extracted React.memo SetList Component ──────────────────────────────────
+// Prevents all set rows and phase headers from re-evaluating on unrelated parent
+// re-renders (such as the 1Hz rest-timer countdown, duration ticks, or video toggles).
+interface SetListProps {
+  setsLog: any[];
+  activeSetIndex: number;
+  setInputs: SetInputState[];
+  allWarmupsCompleted: boolean;
+  showCompletedWarmups: boolean;
+  warmupSetsCount: number;
+  hasWarmups: boolean;
+  colors: any;
+  isDark: boolean;
+  styles: any;
+  onSetAction: (idx: number, action: 'textChange' | 'blur' | 'toggle' | 'delete' | 'swipe', payload?: any) => void;
+  onToggleShowWarmups: (show: boolean) => void;
+}
+
+const SetList: React.FC<SetListProps> = React.memo(({
+  setsLog,
+  activeSetIndex,
+  setInputs,
+  allWarmupsCompleted,
+  showCompletedWarmups,
+  warmupSetsCount,
+  hasWarmups,
+  colors,
+  isDark,
+  styles,
+  onSetAction,
+  onToggleShowWarmups,
+}) => {
+  return (
+    <>
+      {setsLog.map((set, idx) => {
+        const isActive = idx === activeSetIndex;
+        const inputState = setInputs[idx] || { weight: '', reps: '' };
+        const setWeightStr = (set.weight !== null && set.weight !== undefined && Number(set.weight) > 0) ? String(set.weight) : '';
+        const setRepsStr = (set.reps !== null && set.reps !== undefined && Number(set.reps) > 0) ? String(set.reps) : '';
+
+        const isInputReady = setInputs.length > idx;
+        const displayWeight = set.completed
+          ? (setWeightStr || inputState.weight || '')
+          : (isInputReady ? inputState.weight : (setWeightStr || ''));
+
+        const displayReps = set.completed
+          ? (setRepsStr || inputState.reps || '')
+          : (isInputReady ? inputState.reps : (setRepsStr || ''));
+
+        const prevSet = idx > 0 ? setsLog[idx - 1] : null;
+        const isFirstWarmup = set.isWarmup && idx === 0;
+        const isFirstWorking = !set.isWarmup && (idx === 0 || !!prevSet?.isWarmup);
+
+        // Auto-collapse completed warm-up sets
+        if (set.isWarmup && allWarmupsCompleted && !showCompletedWarmups) {
+          if (isFirstWarmup) {
+            return (
+              <TouchableOpacity
+                key="warmup-collapsed-summary"
+                activeOpacity={0.75}
+                onPress={() => {
+                  hapticLight();
+                  onToggleShowWarmups(true);
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  backgroundColor: 'rgba(255, 159, 77, 0.08)',
+                  borderColor: 'rgba(255, 159, 77, 0.22)',
+                  borderWidth: 1,
+                  borderRadius: RADIUS.md,
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
+                  marginBottom: 8,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="checkmark-circle" size={14} color="#ff9f4d" />
+                  <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 11.5, color: '#ff9f4d' }}>
+                    Warm-up Completed ({warmupSetsCount} {warmupSetsCount === 1 ? 'set' : 'sets'})
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                  <Text style={{ fontFamily: FONT_FAMILY.regular, fontSize: 11, color: colors.textMuted }}>Show</Text>
+                  <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
+                </View>
+              </TouchableOpacity>
+            );
+          }
+          return null;
+        }
+
+        return (
+          <React.Fragment key={`set-frag-${idx}`}>
+            {isFirstWarmup && (
+              <View style={[styles.phaseHeaderRow, allWarmupsCompleted && { justifyContent: 'space-between' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                  <Ionicons name="layers-outline" size={13} color="#ff9f4d" />
+                  <Text style={[styles.phaseHeaderText, { color: '#ff9f4d' }]}>WARM-UP SETS</Text>
+                  <View style={styles.phaseHeaderLine} />
+                </View>
+                {allWarmupsCompleted && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      hapticLight();
+                      onToggleShowWarmups(false);
+                    }}
+                    style={{ paddingHorizontal: 6, paddingVertical: 2 }}
+                  >
+                    <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 11, color: colors.textMuted }}>Hide</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+            {isFirstWorking && hasWarmups && (!allWarmupsCompleted || showCompletedWarmups) && (
+              <View style={styles.phaseHeaderRow}>
+                <Ionicons name="barbell-outline" size={13} color={colors.accentPrimary} />
+                <Text style={[styles.phaseHeaderText, { color: colors.accentPrimary }]}>WORKING SETS</Text>
+                <View style={styles.phaseHeaderLine} />
+              </View>
+            )}
+            <SwipeableSetRow
+              key={`set-${idx}`}
+              set={set}
+              idx={idx}
+              isActive={isActive}
+              isCompleted={!!set.completed}
+              displayWeight={displayWeight}
+              displayReps={displayReps}
+              colors={colors}
+              isDark={isDark}
+              styles={styles}
+              onAction={onSetAction}
+            />
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
+});
+
 export default function ActiveLoggingScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeActiveLoggingStyles(colors, isDark), [colors, isDark]);
@@ -210,10 +352,18 @@ export default function ActiveLoggingScreen() {
   const safeIdx = Math.min(activeExIndex, Math.max(0, activeExercises.length - 1));
   const exercise = activeExercises[safeIdx];
 
+  // Debounce ref for widget sync — prevents bridge calls on every rest-timer tick
+  const widgetSyncDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // ── Sync Live Workout State with Android Home Screen Widget ───────────────
+  // Debounced 500ms — widget/notification don't need to update every rest-timer second.
+  // Separates the fast notification path (immediate) from the heavy widget data build.
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    if (activeExercises && activeExercises.length > 0) {
+    if (Platform.OS !== 'android') return; // iOS early return before any computation
+    if (!activeExercises || activeExercises.length === 0) return;
+
+    if (widgetSyncDebounceRef.current) clearTimeout(widgetSyncDebounceRef.current);
+    widgetSyncDebounceRef.current = setTimeout(() => {
       const currentEx = activeExercises[safeIdx] || activeExercises[0];
       const nextEx = activeExercises[safeIdx + 1];
       const completedSets = activeExercises.reduce(
@@ -294,7 +444,7 @@ export default function ActiveLoggingScreen() {
           nextExerciseName: nextEx?.name,
         });
       }
-    }
+    }, 500); // 500ms debounce — widget doesn't need 1Hz updates
   }, [activeExercises, safeIdx, log?.completed, log?.workoutDurationMinutes, restTimerStartTime, restTimerDurationSecs]);
 
   // Clean up lock screen notification on unmount or workout completion
@@ -321,20 +471,19 @@ export default function ActiveLoggingScreen() {
   }, [exercise?.supersetGroup, activeExercises, safeIdx]);
 
   // Progressive overload suggestion
+  // Deps use exercise (stable memo ref) instead of full log — stops O(N) gymLogs scan
+  // from re-running on every set completion, note change, or timer update.
   const overloadSuggestion = useMemo(() => {
-    if (!log?.exercises || !gymLogs) return null;
-    const activeList = log.exercises.filter((ex: any) => !ex.skipped);
-    const cur = activeList[Math.min(activeExIndex, Math.max(0, activeList.length - 1))];
-    if (!cur) return null;
-    const curWeight = calculateExerciseMaxWeight(cur as any);
+    if (!exercise || !gymLogs) return null;
+    const curWeight = calculateExerciseMaxWeight(exercise as any);
     return getOverloadSuggestion(
-      cur,
+      exercise,
       curWeight,
-      cur.targetSets || 3,
-      String(cur.targetReps || '8'),
+      exercise.targetSets || 3,
+      String(exercise.targetReps || '8'),
       gymLogs
     );
-  }, [log, gymLogs, activeExIndex]);
+  }, [exercise, activeExIndex, gymLogs]);
 
   // Initialize input state when exercise or set count changes
   useEffect(() => {
@@ -837,6 +986,18 @@ export default function ActiveLoggingScreen() {
     updateExercise(realExerciseIndex, newEx);
   }, [exercise, setInputs, realExerciseIndex, updateExercise]);
 
+  // Stable unified set action dispatcher \u2014 passed to SwipeableSetRow instead of 5 inline
+  // arrow functions, so React.memo can bail out on unrelated re-renders (timer ticks, etc.).
+  const handleSetAction = useCallback((idx: number, action: 'textChange' | 'blur' | 'toggle' | 'delete' | 'swipe', payload?: any) => {
+    switch (action) {
+      case 'textChange': handleTextChange(idx, payload.field, payload.text); break;
+      case 'blur':       handleBlur(idx); break;
+      case 'toggle':     handleToggleSetComplete(idx); break;
+      case 'delete':     handleDeleteSet(idx); break;
+      case 'swipe':      handleSwipeCompleteSet(idx); break;
+    }
+  }, [handleTextChange, handleBlur, handleToggleSetComplete, handleDeleteSet, handleSwipeCompleteSet]);
+
   // Loading skeleton
   if (!log || !log.exercises) {
     return (
@@ -964,115 +1125,21 @@ export default function ActiveLoggingScreen() {
               />
             )}
 
-            {/* Set Rows with Warmup / Working Phase Dividers */}
-            {exercise.setsLog.map((set, idx) => {
-              const isActive = idx === activeSetIndex;
-              const inputState = setInputs[idx] || { weight: '', reps: '' };
-              const setWeightStr = (set.weight !== null && set.weight !== undefined && Number(set.weight) > 0) ? String(set.weight) : '';
-              const setRepsStr = (set.reps !== null && set.reps !== undefined && Number(set.reps) > 0) ? String(set.reps) : '';
-
-              const isInputReady = setInputs.length > idx;
-              const displayWeight = set.completed
-                ? (setWeightStr || inputState.weight || '')
-                : (isInputReady ? inputState.weight : (setWeightStr || ''));
-
-              const displayReps = set.completed
-                ? (setRepsStr || inputState.reps || '')
-                : (isInputReady ? inputState.reps : (setRepsStr || ''));
-
-              const prevSet = idx > 0 ? exercise.setsLog[idx - 1] : null;
-              const isFirstWarmup = set.isWarmup && idx === 0;
-              const isFirstWorking = !set.isWarmup && (idx === 0 || !!prevSet?.isWarmup);
-
-              // Auto-collapse completed warm-up sets
-              if (set.isWarmup && allWarmupsCompleted && !showCompletedWarmups) {
-                if (isFirstWarmup) {
-                  return (
-                    <TouchableOpacity
-                      key="warmup-collapsed-summary"
-                      activeOpacity={0.75}
-                      onPress={() => {
-                        hapticLight();
-                        setShowCompletedWarmups(true);
-                      }}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        backgroundColor: 'rgba(255, 159, 77, 0.08)',
-                        borderColor: 'rgba(255, 159, 77, 0.22)',
-                        borderWidth: 1,
-                        borderRadius: RADIUS.md,
-                        paddingHorizontal: 12,
-                        paddingVertical: 7,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Ionicons name="checkmark-circle" size={14} color="#ff9f4d" />
-                        <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 11.5, color: '#ff9f4d' }}>
-                          Warm-up Completed ({warmupSets.length} {warmupSets.length === 1 ? 'set' : 'sets'})
-                        </Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                        <Text style={{ fontFamily: FONT_FAMILY.regular, fontSize: 11, color: colors.textMuted }}>Show</Text>
-                        <Ionicons name="chevron-down" size={12} color={colors.textMuted} />
-                      </View>
-                    </TouchableOpacity>
-                  );
-                }
-                return null;
-              }
-
-              return (
-                <React.Fragment key={`set-frag-${idx}`}>
-                  {isFirstWarmup && (
-                    <View style={[styles.phaseHeaderRow, allWarmupsCompleted && { justifyContent: 'space-between' }]}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                        <Ionicons name="layers-outline" size={13} color="#ff9f4d" />
-                        <Text style={[styles.phaseHeaderText, { color: '#ff9f4d' }]}>WARM-UP SETS</Text>
-                        <View style={styles.phaseHeaderLine} />
-                      </View>
-                      {allWarmupsCompleted && (
-                        <TouchableOpacity
-                          onPress={() => {
-                            hapticLight();
-                            setShowCompletedWarmups(false);
-                          }}
-                          style={{ paddingHorizontal: 6, paddingVertical: 2 }}
-                        >
-                          <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 11, color: colors.textMuted }}>Hide</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  )}
-                  {isFirstWorking && hasWarmups && (!allWarmupsCompleted || showCompletedWarmups) && (
-                    <View style={styles.phaseHeaderRow}>
-                      <Ionicons name="barbell-outline" size={13} color={colors.accentPrimary} />
-                      <Text style={[styles.phaseHeaderText, { color: colors.accentPrimary }]}>WORKING SETS</Text>
-                      <View style={styles.phaseHeaderLine} />
-                    </View>
-                  )}
-                  <SwipeableSetRow
-                    key={`set-${idx}`}
-                    set={set}
-                    idx={idx}
-                    isActive={isActive}
-                    isCompleted={!!set.completed}
-                    displayWeight={displayWeight}
-                    displayReps={displayReps}
-                    colors={colors}
-                    isDark={isDark}
-                    styles={styles}
-                    onTextChange={(field, text) => handleTextChange(idx, field, text)}
-                    onBlur={() => handleBlur(idx)}
-                    onToggleComplete={() => handleToggleSetComplete(idx)}
-                    onLongPress={() => handleDeleteSet(idx)}
-                    onSwipeComplete={() => handleSwipeCompleteSet(idx)}
-                  />
-                </React.Fragment>
-              );
-            })}
+            {/* Set Rows with Warmup / Working Phase Dividers (Memoized) */}
+            <SetList
+              setsLog={exercise.setsLog}
+              activeSetIndex={activeSetIndex}
+              setInputs={setInputs}
+              allWarmupsCompleted={allWarmupsCompleted}
+              showCompletedWarmups={showCompletedWarmups}
+              warmupSetsCount={warmupSets.length}
+              hasWarmups={hasWarmups}
+              colors={colors}
+              isDark={isDark}
+              styles={styles}
+              onSetAction={handleSetAction}
+              onToggleShowWarmups={setShowCompletedWarmups}
+            />
 
             {/* Set Actions: Balanced Clean Pills for Add Set & Auto Warm-up */}
             <View style={[styles.setActionsRow, hasAnyWarmupCompleted && { justifyContent: 'center' }]}>

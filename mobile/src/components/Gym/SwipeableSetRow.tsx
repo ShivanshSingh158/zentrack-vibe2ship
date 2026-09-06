@@ -14,11 +14,14 @@ export interface SwipeableSetRowProps {
   colors: any;
   isDark: boolean;
   styles: any;
-  onTextChange: (field: 'weight' | 'reps', text: string) => void;
-  onBlur: () => void;
-  onToggleComplete: () => void;
-  onLongPress: () => void;
-  onSwipeComplete: () => void;
+  onTextChange?: (field: 'weight' | 'reps', text: string) => void;
+  onBlur?: () => void;
+  onToggleComplete?: () => void;
+  onLongPress?: () => void;
+  onSwipeComplete?: () => void;
+  // Stable unified set action dispatcher - allows passing a single stable function
+  // from parent without inline arrow closures, enabling React.memo bailouts.
+  onAction?: (idx: number, action: 'textChange' | 'blur' | 'toggle' | 'delete' | 'swipe', payload?: any) => void;
 }
 
 export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
@@ -36,6 +39,7 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
   onToggleComplete,
   onLongPress,
   onSwipeComplete,
+  onAction,
 }) => {
   const translateX = useRef(new Animated.Value(0)).current;
   const isTriggeringRef = useRef(false);
@@ -47,22 +51,63 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
     }
   }, [isCompleted]);
 
+  // Unified callback delegator
+  const handleTextChangeInternal = useCallback((field: 'weight' | 'reps', text: string) => {
+    if (onAction) {
+      onAction(idx, 'textChange', { field, text });
+    } else if (onTextChange) {
+      onTextChange(field, text);
+    }
+  }, [idx, onAction, onTextChange]);
+
+  const handleBlurInternal = useCallback(() => {
+    if (onAction) {
+      onAction(idx, 'blur');
+    } else if (onBlur) {
+      onBlur();
+    }
+  }, [idx, onAction, onBlur]);
+
+  const handleToggleCompleteInternal = useCallback(() => {
+    if (onAction) {
+      onAction(idx, 'toggle');
+    } else if (onToggleComplete) {
+      onToggleComplete();
+    }
+  }, [idx, onAction, onToggleComplete]);
+
+  const handleLongPressInternal = useCallback(() => {
+    if (onAction) {
+      onAction(idx, 'delete');
+    } else if (onLongPress) {
+      onLongPress();
+    }
+  }, [idx, onAction, onLongPress]);
+
+  const handleSwipeCompleteInternal = useCallback(() => {
+    if (onAction) {
+      onAction(idx, 'swipe');
+    } else if (onSwipeComplete) {
+      onSwipeComplete();
+    }
+  }, [idx, onAction, onSwipeComplete]);
+
   // Stepper Handlers (+/- 2.5kg for Weight up to 1000kg, +/- 1 for Reps up to 50)
   const handleWeightAdjust = useCallback((delta: number) => {
     if (isCompleted) return;
     hapticLight();
     const currentVal = parseFloat(displayWeight) || 0;
     const newVal = Math.min(1000, Math.max(0, Math.round((currentVal + delta) * 10) / 10));
-    onTextChange('weight', newVal === 0 ? '' : String(newVal));
-  }, [isCompleted, displayWeight, onTextChange]);
+    handleTextChangeInternal('weight', newVal === 0 ? '' : String(newVal));
+  }, [isCompleted, displayWeight, handleTextChangeInternal]);
 
   const handleRepsAdjust = useCallback((delta: number) => {
     if (isCompleted) return;
     hapticLight();
     const currentVal = parseInt(displayReps, 10) || 0;
     const newVal = Math.min(50, Math.max(0, currentVal + delta));
-    onTextChange('reps', newVal === 0 ? '' : String(newVal));
-  }, [isCompleted, displayReps, onTextChange]);
+    handleTextChangeInternal('reps', newVal === 0 ? '' : String(newVal));
+  }, [isCompleted, displayReps, handleTextChangeInternal]);
 
   const panResponder = useMemo(
     () =>
@@ -98,7 +143,7 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
               useNativeDriver: true,
             }).start(() => {
               translateX.setValue(0);
-              onSwipeComplete();
+              handleSwipeCompleteInternal();
               setTimeout(() => {
                 isTriggeringRef.current = false;
               }, 250);
@@ -123,7 +168,7 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
           }
         },
       }),
-    [isCompleted, onSwipeComplete]
+    [isCompleted, handleSwipeCompleteInternal]
   );
 
   const trackOpacity = translateX.interpolate({
@@ -163,8 +208,8 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
       >
         {/* Tap checkmark circle to toggle completed, long-press to delete */}
         <TouchableOpacity
-          onPress={onToggleComplete}
-          onLongPress={onLongPress}
+          onPress={handleToggleCompleteInternal}
+          onLongPress={handleLongPressInternal}
           style={styles.setIndexArea}
         >
           {isCompleted ? (
@@ -208,8 +253,8 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
               value={displayWeight}
               keyboardType="decimal-pad"
               editable={!isCompleted}
-              onChangeText={(text) => onTextChange('weight', text)}
-              onBlur={onBlur}
+              onChangeText={(text) => handleTextChangeInternal('weight', text)}
+              onBlur={handleBlurInternal}
               selectTextOnFocus
             />
           </View>
@@ -246,8 +291,8 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
               value={displayReps}
               keyboardType="number-pad"
               editable={!isCompleted}
-              onChangeText={(text) => onTextChange('reps', text)}
-              onBlur={onBlur}
+              onChangeText={(text) => handleTextChangeInternal('reps', text)}
+              onBlur={handleBlurInternal}
               selectTextOnFocus
             />
           </View>
@@ -273,6 +318,22 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
       </Animated.View>
     </View>
   );
-});
+}, (prev, next) =>
+  prev.set === next.set &&
+  prev.idx === next.idx &&
+  prev.isActive === next.isActive &&
+  prev.isCompleted === next.isCompleted &&
+  prev.displayWeight === next.displayWeight &&
+  prev.displayReps === next.displayReps &&
+  prev.isDark === next.isDark &&
+  prev.colors === next.colors &&
+  prev.styles === next.styles &&
+  prev.onAction === next.onAction &&
+  prev.onTextChange === next.onTextChange &&
+  prev.onBlur === next.onBlur &&
+  prev.onToggleComplete === next.onToggleComplete &&
+  prev.onLongPress === next.onLongPress &&
+  prev.onSwipeComplete === next.onSwipeComplete
+);
 
 export default SwipeableSetRow;

@@ -7,7 +7,11 @@ import { hapticLight, hapticMedium } from '../../utils/haptics';
 
 export interface GymExerciseDraggableRowProps {
   itemParams: RenderItemParams<any>;
-  log: any;
+  // Stable individual log fields — avoid passing full log object so React.memo
+  // can bail out when unrelated log data (notes, timer, water) changes.
+  logCompleted: boolean;
+  logWorkoutStartTime: number | null;
+  logExercises: any[] | undefined;
   s: any;
   selectedDate: string;
   navigation: any;
@@ -18,7 +22,9 @@ export interface GymExerciseDraggableRowProps {
 
 export const GymExerciseDraggableRow: React.FC<GymExerciseDraggableRowProps> = React.memo(({
   itemParams,
-  log,
+  logCompleted,
+  logWorkoutStartTime,
+  logExercises,
   s,
   selectedDate,
   navigation,
@@ -41,9 +47,9 @@ export const GymExerciseDraggableRow: React.FC<GymExerciseDraggableRowProps> = R
   }
 
   let isPartnerWithPrevious = false;
-  if (ex.supersetGroup && log?.exercises) {
+  if (ex.supersetGroup && logExercises) {
     for (let i = ex.originalIndex - 1; i >= 0; i--) {
-      const prev = log.exercises[i];
+      const prev = logExercises[i];
       if (prev && !prev.skipped) {
         if (prev.supersetGroup === ex.supersetGroup) {
           isPartnerWithPrevious = true;
@@ -78,7 +84,7 @@ export const GymExerciseDraggableRow: React.FC<GymExerciseDraggableRowProps> = R
         onPress={() => {
           if (isActive) return;
           hapticLight();
-          if (log?.workoutStartTime) {
+          if (logWorkoutStartTime) {
             onResumeWorkout(ex.originalIndex);
           } else {
             Alert.alert(
@@ -163,6 +169,16 @@ export const GymExerciseDraggableRow: React.FC<GymExerciseDraggableRowProps> = R
       </TouchableOpacity>
     </ScaleDecorator>
   );
-});
+// Custom comparator: only re-render if the item's own sets, the exercise selection,
+// or the critical log fields (completed, workoutStartTime) change.
+}, (prev, next) =>
+  prev.itemParams.item === next.itemParams.item &&
+  prev.itemParams.isActive === next.itemParams.isActive &&
+  prev.logCompleted === next.logCompleted &&
+  prev.logWorkoutStartTime === next.logWorkoutStartTime &&
+  prev.logExercises === next.logExercises &&
+  prev.s === next.s &&
+  prev.selectedDate === next.selectedDate
+);
 
 export default GymExerciseDraggableRow;
