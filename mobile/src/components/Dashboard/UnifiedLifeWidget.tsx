@@ -147,6 +147,27 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
     return waterTotal >= 100 ? (waterTotal / 1000).toFixed(1) : String(waterTotal);
   }, [waterTotal]);
 
+  // Extract attendance metric derivations from render body IIFE to useMemo.
+  // Prevents recomputing 5 values on every render cycle, bypassing React.memo.
+  const attendanceMetrics = useMemo(() => {
+    const pct = Math.round(overallAttendancePct || 0);
+    const isSafe = pct >= 75;
+    const isWarning = pct >= 65 && pct < 75;
+    const accentColor = isSafe ? '#32D74B' : isWarning ? '#FFD60A' : '#FF453A';
+    const bgColor = isSafe
+      ? (isDark ? 'rgba(50, 215, 75, 0.08)' : 'rgba(50, 215, 75, 0.10)')
+      : isWarning
+      ? (isDark ? 'rgba(255, 214, 10, 0.10)' : 'rgba(255, 214, 10, 0.10)')
+      : (isDark ? 'rgba(255, 69, 58, 0.10)' : 'rgba(255, 69, 58, 0.08)');
+    const fillColor = isSafe
+      ? (isDark ? 'rgba(50, 215, 75, 0.14)' : 'rgba(50, 215, 75, 0.12)')
+      : isWarning
+      ? (isDark ? 'rgba(255, 214, 10, 0.14)' : 'rgba(255, 214, 10, 0.12)')
+      : (isDark ? 'rgba(255, 69, 58, 0.16)' : 'rgba(255, 69, 58, 0.12)');
+    const label = isSafe ? 'Safe Zone' : isWarning ? 'At Risk' : 'Critical';
+    return { pct, isSafe, isWarning, accentColor, bgColor, fillColor, label };
+  }, [overallAttendancePct, isDark]);
+
   return (
     <View style={styles.card}>
       {/* MAIN BODY: Donut (Left) | Compact Metrics (Right) */}
@@ -261,59 +282,42 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
           </AnimatedPressable>
 
           {/* CLASS ATTENDANCE AVERAGE (replaces Steps) */}
-          {(() => {
-            const pct = Math.round(overallAttendancePct || 0);
-            const isSafe     = pct >= 75;
-            const isWarning  = pct >= 65 && pct < 75;
-            const accentColor = isSafe ? '#32D74B' : isWarning ? '#FFD60A' : '#FF453A';
-            const bgColor     = isSafe
-              ? (isDark ? 'rgba(50, 215, 75, 0.08)' : 'rgba(50, 215, 75, 0.10)')
-              : isWarning
-              ? (isDark ? 'rgba(255, 214, 10, 0.10)' : 'rgba(255, 214, 10, 0.10)')
-              : (isDark ? 'rgba(255, 69, 58, 0.10)' : 'rgba(255, 69, 58, 0.08)');
-            const label = isSafe ? 'Safe Zone' : isWarning ? 'At Risk' : 'Critical';
-            return (
-              <AnimatedPressable
-                style={[
-                  styles.compactMetricRow,
-                  {
-                    backgroundColor: isDark ? '#1C1C20' : bgColor,
-                    borderColor: isDark ? 'rgba(255,255,255,0.08)' : accentColor + '33',
-                    borderWidth: 1,
-                    overflow: 'hidden',
-                  },
-                ]}
-                activeOpacity={0.75}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  if (onPressAttendance) onPressAttendance();
-                }}
-              >
-                {/* Attendance progress fill */}
-                <View
-                  style={{
-                    position: 'absolute',
-                    top: 0, bottom: 0, left: 0,
-                    width: `${Math.min(100, pct)}%`,
-                    backgroundColor: isSafe
-                      ? (isDark ? 'rgba(50, 215, 75, 0.14)' : 'rgba(50, 215, 75, 0.12)')
-                      : isWarning
-                      ? (isDark ? 'rgba(255, 214, 10, 0.14)' : 'rgba(255, 214, 10, 0.12)')
-                      : (isDark ? 'rgba(255, 69, 58, 0.16)' : 'rgba(255, 69, 58, 0.12)'),
-                  }}
-                />
-                <View style={styles.compactLeftGroup}>
-                  <Text style={styles.compactEmoji}>🎓</Text>
-                  <Text style={[styles.compactLabel, { color: accentColor }]}>
-                    Attendance
-                  </Text>
-                </View>
-                <Text style={[styles.valuePillText, { color: accentColor }]}>
-                  {pct}%
-                </Text>
-              </AnimatedPressable>
-            );
-          })()}
+          {/* CLASS ATTENDANCE AVERAGE (replaces Steps) */}
+          <AnimatedPressable
+            style={[
+              styles.compactMetricRow,
+              {
+                backgroundColor: isDark ? '#1C1C20' : attendanceMetrics.bgColor,
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : attendanceMetrics.accentColor + '33',
+                borderWidth: 1,
+                overflow: 'hidden',
+              },
+            ]}
+            activeOpacity={0.75}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              if (onPressAttendance) onPressAttendance();
+            }}
+          >
+            {/* Attendance progress fill */}
+            <View
+              style={{
+                position: 'absolute',
+                top: 0, bottom: 0, left: 0,
+                width: `${Math.min(100, attendanceMetrics.pct)}%`,
+                backgroundColor: attendanceMetrics.fillColor,
+              }}
+            />
+            <View style={styles.compactLeftGroup}>
+              <Text style={styles.compactEmoji}>🎓</Text>
+              <Text style={[styles.compactLabel, { color: attendanceMetrics.accentColor }]}>
+                Attendance
+              </Text>
+            </View>
+            <Text style={[styles.valuePillText, { color: attendanceMetrics.accentColor }]}>
+              {attendanceMetrics.pct}%
+            </Text>
+          </AnimatedPressable>
         </View>
       </View>
 

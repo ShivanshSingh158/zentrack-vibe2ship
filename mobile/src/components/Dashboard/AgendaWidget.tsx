@@ -4,11 +4,11 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import VoiceDictationOverlay from '../Tasks/VoiceDictationOverlay';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { WEEKDAY_TO_PLAN, GYM_PLAN } from '../../data/gymPlan';
 import { getCustomPlanDay } from '../../hooks/useGymLog';
+import { parseTimeToMins, getEndTimeMins, formatTimeStr } from '../../utils/timeUtils';
 
 interface AgendaWidgetProps {
   tasks: any[];
@@ -19,6 +19,8 @@ interface AgendaWidgetProps {
   todayStr: string;
   nowDate: Date;
   holidays?: string[];
+  /** Pass data.user?.uid from DashboardScreen — avoids subscribing to the full CoreDataContext */
+  userId?: string;
 }
 
 export const AgendaWidget = React.memo(function AgendaWidget({
@@ -29,14 +31,17 @@ export const AgendaWidget = React.memo(function AgendaWidget({
   attendanceLogs,
   todayStr,
   nowDate,
-  holidays = []
+  holidays = [],
+  userId,
 }: AgendaWidgetProps) {
   const { colors, isDark } = useTheme();
-  const { user } = useCoreData();
   const navigation = useNavigation<any>();
   const [isVoiceDictationOpen, setIsVoiceDictationOpen] = useState(false);
 
-  const { todayTasks, todayClasses, todayGym, shouldShowGymInAgenda, plannedDay, formatTimeStr } = useMemo(() => {
+  // Memoized to prevent agendaItems recomputing every 60s clock tick when items haven't changed
+  const nowMins = useMemo(() => nowDate.getHours() * 60 + nowDate.getMinutes(), [nowDate]);
+
+  const { todayTasks, todayClasses, todayGym, shouldShowGymInAgenda, plannedDay } = useMemo(() => {
     const isHoliday = holidays?.includes(todayStr) || false;
     const todayTasks = tasks.filter(t => t.date === todayStr);
     
@@ -91,65 +96,15 @@ export const AgendaWidget = React.memo(function AgendaWidget({
     // Show gym in agenda ONLY IF: (1) user has a real active workout log today OR (2) today is a planned non-rest workout day
     const shouldShowGymInAgenda = hasRealWorkoutLog || isGymScheduled;
 
-    const formatTimeStr = (tStr: string): string => {
-      if (!tStr) return '';
-      if (tStr.includes('-')) return tStr.split('-').map(s => formatTimeStr(s.trim())).join(' - ');
-      const lower = tStr.toLowerCase();
-      if (lower.includes('am') || lower.includes('pm')) return lower.replace(/\s+/g, '');
-      const parts = tStr.split(':');
-      if (parts.length < 2) return tStr;
-      const h = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10);
-      if (isNaN(h) || isNaN(m)) return tStr;
-      const ampm = h >= 12 ? 'pm' : 'am';
-      const hr   = h % 12 || 12;
-      return `${hr}:${m.toString().padStart(2, '0')}${ampm}`;
-    };
-
-    return { todayTasks, todayClasses, todayGym, shouldShowGymInAgenda, plannedDay, formatTimeStr };
+    return { todayTasks, todayClasses, todayGym, shouldShowGymInAgenda, plannedDay };
   }, [tasks, gymLogs, userGymPlan, attendance, attendanceLogs, todayStr, nowDate, holidays]);
 
-  const nowMins = nowDate.getHours() * 60 + nowDate.getMinutes();
 
   // ── Memoized Agenda Items Generation & Sorting ───────────────────────────
+  // parseTimeToMins, getEndTimeMins, formatTimeStr are imported from
+  // utils/timeUtils.ts — stable module-level references, not inline functions,
+  // so this memo only re-runs when the actual data changes.
   const agendaItems = useMemo(() => {
-    const parseTimeToMins = (tStr: string): number => {
-      if (!tStr) return 9999;
-      const startStr = tStr.split('-')[0].trim().toLowerCase();
-      let h = 0; let m = 0;
-      const isPM = startStr.includes('pm');
-      const isAM = startStr.includes('am');
-      const cleanStr = startStr.replace(/[a-z\s]/g, '');
-      const parts = cleanStr.split(':');
-      if (parts.length >= 2) {
-        h = parseInt(parts[0], 10) || 0; m = parseInt(parts[1], 10) || 0;
-      } else {
-        h = parseInt(parts[0], 10) || 0;
-      }
-      if (isPM && h < 12) h += 12;
-      if (isAM && h === 12) h = 0;
-      return h * 60 + m;
-    };
-
-    const getEndTimeMins = (tStr: string): number => {
-      if (!tStr) return 9999;
-      const parts = tStr.split('-');
-      const endStr = (parts.length > 1 ? parts[1] : parts[0]).trim().toLowerCase();
-      let h = 0; let m = 0;
-      const isPM = endStr.includes('pm');
-      const isAM = endStr.includes('am');
-      const cleanStr = endStr.replace(/[a-z\s]/g, '');
-      const timeParts = cleanStr.split(':');
-      if (timeParts.length >= 2) {
-        h = parseInt(timeParts[0], 10) || 0; m = parseInt(timeParts[1], 10) || 0;
-      } else {
-        h = parseInt(timeParts[0], 10) || 0;
-      }
-      if (isPM && h < 12) h += 12;
-      if (isAM && h === 12) h = 0;
-      return h * 60 + m;
-    };
-
     const items: any[] = [];
 
     if (shouldShowGymInAgenda) {
@@ -269,7 +224,7 @@ export const AgendaWidget = React.memo(function AgendaWidget({
     });
 
     return items;
-  }, [shouldShowGymInAgenda, todayGym, plannedDay, todayClasses, todayTasks, nowMins, colors, formatTimeStr, navigation]);
+  }, [shouldShowGymInAgenda, todayGym, plannedDay, todayClasses, todayTasks, nowMins, colors, navigation]);
 
   if (agendaItems.length === 0) {
     return (
@@ -317,7 +272,7 @@ export const AgendaWidget = React.memo(function AgendaWidget({
             visible={isVoiceDictationOpen}
             onClose={() => setIsVoiceDictationOpen(false)}
             selectedDate={todayStr}
-            userId={user?.uid}
+            userId={userId}
           />
         )}
       </View>
@@ -370,7 +325,7 @@ export const AgendaWidget = React.memo(function AgendaWidget({
           visible={isVoiceDictationOpen}
           onClose={() => setIsVoiceDictationOpen(false)}
           selectedDate={todayStr}
-          userId={user?.uid}
+          userId={userId}
         />
       )}
     </View>

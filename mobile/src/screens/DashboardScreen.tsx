@@ -7,6 +7,7 @@ import Animated, {
   withTiming,
   interpolate,
   Easing,
+  runOnJS,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { LEVEL_THRESHOLDS } from '../services/xpSystem';
@@ -64,6 +65,9 @@ export default function DashboardScreen() {
 
   // ── Voice Task Dictation State (FAB replaces previous Sara button) ──
   const [isVoiceDictationOpen, setIsVoiceDictationOpen] = useState(false);
+  // ── One-time entrance animation guard — prevents FadeInDown re-firing on
+  //    every Firestore update that causes a parent re-render.
+  const hasAnimatedRef = useRef(false);
 
   const refreshFlashcards = useCallback(async () => {
     if (!data.user?.uid) return;
@@ -194,11 +198,12 @@ export default function DashboardScreen() {
   const closeMenu = useCallback(() => {
     if (menuOpen) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      // Use runOnJS callback so setMenuOpen fires exactly when animation
+      // ends — not 190ms later on the JS thread via setTimeout.
       rotateVal.value = withTiming(0, { duration: 200, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
-      animVal.value = withTiming(0, { duration: 180, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
-      setTimeout(() => {
-        setMenuOpen(false);
-      }, 190);
+      animVal.value = withTiming(0, { duration: 180, easing: Easing.bezier(0.25, 0.1, 0.25, 1) }, (finished) => {
+        if (finished) runOnJS(setMenuOpen)(false);
+      });
     }
   }, [menuOpen, rotateVal, animVal]);
 
@@ -253,15 +258,16 @@ export default function DashboardScreen() {
         actionLabel={data.surfaceActionLabel || undefined}
       />
       
+      {/* Backdrop OUTSIDE ScrollView so it captures taps without ScrollView intercepting them */}
+      {menuOpen && (
+        <Pressable
+          style={[StyleSheet.absoluteFillObject, { zIndex: 1 }]}
+          onPress={closeMenu}
+        />
+      )}
+      
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView scrollEnabled={!menuOpen} contentContainerStyle={[s.scroll, { paddingBottom }]} showsVerticalScrollIndicator={false}>
-          {/* Tap-outside transparent backdrop to dismiss dropdown */}
-          {menuOpen && (
-            <Pressable
-              style={[StyleSheet.absoluteFillObject, { zIndex: 1 }]}
-              onPress={closeMenu}
-            />
-          )}
           
           <Animated.View entering={FadeInDown.duration(200)} style={[s.greetingContainer, { zIndex: 99999, elevation: 9999 }]}>
             <View style={{ flex: 1, paddingRight: 8 }}>
@@ -438,9 +444,14 @@ export default function DashboardScreen() {
               {data.layout.map((layoutItem) => {
             if (layoutItem.hidden) return null;
 
+            // One-time entrance animation: only animate on the very first mount.
+            // Prevents FadeInDown re-firing every time a Firestore update causes
+            // a parent re-render (tasks, waterLogs, habitLogs, etc.).
+            const entering = !hasAnimatedRef.current ? FadeInDown.duration(200) : undefined;
+
             if (layoutItem.id === 'quote') {
               return (
-                <Animated.View key={"quote" as any} entering={FadeInDown.duration(200)} style={{ marginTop: 6, marginBottom: 12 }}>
+                <Animated.View key={layoutItem.id} entering={entering} style={{ marginTop: 6, marginBottom: 12 }}>
                   <Pressable
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -458,7 +469,7 @@ export default function DashboardScreen() {
 
             if (layoutItem.id === 'stats') {
               return (
-                <Animated.View key={"stats" as any} entering={FadeInDown.duration(200)}>
+                <Animated.View key={layoutItem.id} entering={entering}>
                   <UnifiedLifeWidget
                     currentStreak={data.appStreak}
                     streakAtRisk={false}
@@ -494,7 +505,7 @@ export default function DashboardScreen() {
 
             if (layoutItem.id === 'agenda') {
               return (
-                <Animated.View key={"agenda" as any} entering={FadeInDown.duration(200)}>
+                <Animated.View key={layoutItem.id} entering={entering}>
                   <AgendaWidget
                     tasks={data.tasks}
                     gymLogs={data.gymLogs}
@@ -504,12 +515,15 @@ export default function DashboardScreen() {
                     todayStr={data.todayStr}
                     nowDate={data.nowDate}
                     holidays={data.holidays}
+                    userId={data.user?.uid}
                   />
                 </Animated.View>
               );
             }
             return null;
           })}
+          {/* Mark first render complete so subsequent re-renders skip entrance animations */}
+          {!hasAnimatedRef.current && (() => { hasAnimatedRef.current = true; return null; })()}
           </>
         )}
         </ScrollView>

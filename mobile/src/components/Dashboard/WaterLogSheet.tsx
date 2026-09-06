@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, ScrollView, InteractionManager } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, ScrollView, InteractionManager, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
@@ -52,6 +52,11 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   const [showCustomLog, setShowCustomLog] = useState(false);
   const [customMlInput, setCustomMlInput] = useState('');
 
+  // Guard: auto-calculate water goal only ONCE per app session, not on every sheet open.
+  // Previously this fired on every open: read AsyncStorage, ignored the result, and
+  // unconditionally wrote a new goal — causing 3 redundant side effects per tap.
+  const hasAutoCalculated = useRef(false);
+
   // User weight: check gymProfile first, then weightLogs
   const userWeight = gymProfile.weightKg || (weightLogs && weightLogs.length > 0 ? ((weightLogs[0] as any).weightKg || (weightLogs[0] as any).weight) : null);
 
@@ -63,16 +68,22 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
     });
   }, []);
 
-  // Smart water auto-calculation on first load if no custom target saved
+  // Smart water auto-calculation: runs AT MOST ONCE per app session.
+  // Only applies the 40ml/kg formula if no custom target has been saved by the user.
+  // Previously this ran on EVERY sheet open and always overwrote with computed value,
+  // ignoring any saved custom target and triggering 3 extra side effects per tap.
   useEffect(() => {
-    if (visible && userWeight && userWeight > 0) {
-      AsyncStorage.getItem(WATER_GOAL_KEY).then(saved => {
-        // Forced override of all old data to use the 40ml formula
+    if (!visible || !userWeight || userWeight <= 0) return;
+    if (hasAutoCalculated.current) return; // already ran this session
+    AsyncStorage.getItem(WATER_GOAL_KEY).then(saved => {
+      if (!saved) {
+        // No custom target set — apply formula and save for future sessions
         const autoGoal = Math.round(userWeight * 40); // 40ml per kg formula
         onUpdateTarget(autoGoal);
         AsyncStorage.setItem(WATER_GOAL_KEY, String(autoGoal));
-      });
-    }
+      }
+      hasAutoCalculated.current = true;
+    });
   }, [visible, userWeight]);
 
   const handleFreqChange = async (freq: string) => {

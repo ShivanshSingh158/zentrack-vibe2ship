@@ -26,6 +26,7 @@ import { LayoutItem } from '../../components/Dashboard/DashboardLayoutSheet';
 import { NextClassData } from '../../components/Dashboard/UnifiedLifeWidget';
 import { calculateAppStreak } from '../../utils/streakUtils';
 import { formatLocalDateStr } from '../../utils/dateUtils';
+import { parseTimeToMins, getEndTimeMins, formatTimeStr } from '../../utils/timeUtils';
 import { getBootManifestSync, loadBootManifest, updateL1Cache } from '../../utils/bootManifest';
 import { subscribeXPChanges } from '../../services/xpSystem';
 import { computeOrGetHotCache, generateDatasetFingerprint } from '../../utils/hotCacheStore';
@@ -270,60 +271,11 @@ export function useDashboardData() {
   }, [attendance, nowDate, holidays, todayStr]);
 
   // ── Next Class Logic ───────────────────────────────────────────────────────
+  // Utility functions (parseTimeToMins, getEndTimeMins, formatTimeStr) are
+  // imported from utils/timeUtils.ts — no longer defined inline to prevent
+  // fresh function references invalidating this memo on every render.
   const nextClass = useMemo<NextClassData | null>(() => {
     if (todayClasses.length === 0) return null;
-
-    const parseTimeToMins = (tStr: string): number => {
-      if (!tStr) return 9999;
-      const startStr = tStr.split(/[-–—•]| to /i)[0].trim().toLowerCase();
-      let h = 0; let m = 0;
-      const isPM = startStr.includes('pm');
-      const isAM = startStr.includes('am');
-      const cleanStr = startStr.replace(/[a-z\s]/g, '');
-      const parts = cleanStr.split(':');
-      if (parts.length >= 2) { h = parseInt(parts[0], 10) || 0; m = parseInt(parts[1], 10) || 0; } 
-      else { h = parseInt(parts[0], 10) || 0; }
-      if (isPM && h < 12) h += 12;
-      if (isAM && h === 12) h = 0;
-      return h * 60 + m;
-    };
-
-    const getEndTimeMins = (tStr: string, type: string): number => {
-      if (!tStr) return 9999;
-      const parts = tStr.split(/[-–—•]| to /i);
-      const hasExplicitEnd = parts.length > 1;
-      const endStr = (hasExplicitEnd ? parts[1] : parts[0]).trim().toLowerCase();
-      let h = 0; let m = 0;
-      const isPM = endStr.includes('pm');
-      const isAM = endStr.includes('am');
-      const cleanStr = endStr.replace(/[a-z\s]/g, '');
-      const timeParts = cleanStr.split(':');
-      if (timeParts.length >= 2) { h = parseInt(timeParts[0], 10) || 0; m = parseInt(timeParts[1], 10) || 0; } 
-      else { h = parseInt(timeParts[0], 10) || 0; }
-      if (isPM && h < 12) h += 12;
-      if (isAM && h === 12) h = 0;
-      let totalMins = h * 60 + m;
-      if (!hasExplicitEnd) {
-        totalMins += type === 'lab' ? 120 : 60; // 2 hour default for labs, 1 hour for classes
-      }
-      return totalMins;
-    };
-
-    const formatTimeStr = (tStr: string): string => {
-      if (!tStr) return '';
-      if (tStr.search(/[-–—•]| to /i) !== -1) {
-        return tStr.split(/[-–—•]| to /i).map(s => formatTimeStr(s.trim())).join(' - ');
-      }
-      const lower = tStr.toLowerCase();
-      if (lower.includes('am') || lower.includes('pm')) return lower.replace(/\s+/g, '');
-      const parts = tStr.split(':');
-      if (parts.length < 2) return tStr;
-      const h = parseInt(parts[0], 10); const m = parseInt(parts[1], 10);
-      if (isNaN(h) || isNaN(m)) return tStr;
-      const ampm = h >= 12 ? 'pm' : 'am';
-      const hr   = h % 12 || 12;
-      return `${hr}:${m.toString().padStart(2, '0')}${ampm}`;
-    };
 
     const nowMins = nowDate.getHours() * 60 + nowDate.getMinutes();
 

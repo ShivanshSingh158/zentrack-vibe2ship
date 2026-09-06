@@ -1,12 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
-import { STORAGE_KEYS } from '../../config/constants';
 
 export interface LayoutItem {
   id: string;
@@ -39,8 +37,9 @@ export default function DashboardLayoutSheet({ visible, onClose, layout, setLayo
     const temp = newLayout[index];
     newLayout[index] = newLayout[index - 1];
     newLayout[index - 1] = temp;
+    // Persistence is handled by the parent setLayout handler in useDashboardData.
+    // Writing AsyncStorage here was a duplicate call (2 bridge calls per tap).
     setLayout(newLayout);
-    AsyncStorage.setItem(STORAGE_KEYS.DASHBOARD_LAYOUT, JSON.stringify(newLayout));
   };
 
   const moveDown = (index: number) => {
@@ -50,53 +49,69 @@ export default function DashboardLayoutSheet({ visible, onClose, layout, setLayo
     newLayout[index] = newLayout[index + 1];
     newLayout[index + 1] = temp;
     setLayout(newLayout);
-    AsyncStorage.setItem(STORAGE_KEYS.DASHBOARD_LAYOUT, JSON.stringify(newLayout));
   };
 
   const toggleHidden = (index: number) => {
     const newLayout = [...layout];
     newLayout[index] = { ...newLayout[index], hidden: !newLayout[index].hidden };
     setLayout(newLayout);
-    AsyncStorage.setItem(STORAGE_KEYS.DASHBOARD_LAYOUT, JSON.stringify(newLayout));
   };
+
+  const sheetContent = (
+    <>
+      <View style={s.header}>
+        <Text style={s.title}>Customize Layout</Text>
+        <TouchableOpacity onPress={onClose} style={s.closeBtn}>
+          <Ionicons name="close" size={24} color={colors.textPrimary} />
+        </TouchableOpacity>
+      </View>
+
+      <Text style={s.subtitle}>Move widgets to change their order on the Dashboard.</Text>
+
+      <View style={s.list}>
+        {layout.map((item, index) => (
+          <View key={item.id} style={[s.row, item.hidden && { opacity: 0.5 }]}>
+            <Text style={[s.rowText, item.hidden && { textDecorationLine: 'line-through' }]}>
+              {WIDGET_NAMES[item.id] || item.id}
+            </Text>
+            <View style={s.actions}>
+              <TouchableOpacity onPress={() => toggleHidden(index)} style={s.iconBtn}>
+                <Ionicons name={item.hidden ? "eye-off-outline" : "eye-outline"} size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <View style={s.vertDivider} />
+              <TouchableOpacity onPress={() => moveUp(index)} disabled={index === 0} style={s.iconBtn}>
+                <Ionicons name="arrow-up" size={20} color={index === 0 ? colors.border : colors.textPrimary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => moveDown(index)} disabled={index === layout.length - 1} style={s.iconBtn}>
+                <Ionicons name="arrow-down" size={20} color={index === layout.length - 1 ? colors.border : colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+      </View>
+    </>
+  );
 
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent>
-      <BlurView intensity={isDark ? 50 : 20} tint={isDark ? "dark" : "light"} style={s.overlay}>
-        <TouchableOpacity style={{ flex: 1, width: '100%' }} activeOpacity={1} onPress={onClose} />
-        <View style={s.sheet}>
-          <View style={s.header}>
-            <Text style={s.title}>Customize Layout</Text>
-            <TouchableOpacity onPress={onClose} style={s.closeBtn}>
-              <Ionicons name="close" size={24} color={colors.textPrimary} />
-            </TouchableOpacity>
+      {/* BlurView is GPU-accelerated on iOS. On Android it recalculates blur
+          on every animation frame during the native modal slide, causing jank.
+          Use a plain opaque overlay on Android instead. */}
+      {Platform.OS === 'ios' ? (
+        <BlurView intensity={isDark ? 50 : 20} tint={isDark ? 'dark' : 'light'} style={s.overlay}>
+          <TouchableOpacity style={{ flex: 1, width: '100%' }} activeOpacity={1} onPress={onClose} />
+          <View style={s.sheet}>
+            {sheetContent}
           </View>
-
-          <Text style={s.subtitle}>Move widgets to change their order on the Dashboard.</Text>
-
-          <View style={s.list}>
-            {layout.map((item, index) => (
-              <View key={item.id} style={[s.row, item.hidden && { opacity: 0.5 }]}>
-                <Text style={[s.rowText, item.hidden && { textDecorationLine: 'line-through' }]}>
-                  {WIDGET_NAMES[item.id] || item.id}
-                </Text>
-                <View style={s.actions}>
-                  <TouchableOpacity onPress={() => toggleHidden(index)} style={s.iconBtn}>
-                    <Ionicons name={item.hidden ? "eye-off-outline" : "eye-outline"} size={20} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                  <View style={s.vertDivider} />
-                  <TouchableOpacity onPress={() => moveUp(index)} disabled={index === 0} style={s.iconBtn}>
-                    <Ionicons name="arrow-up" size={20} color={index === 0 ? colors.border : colors.textPrimary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => moveDown(index)} disabled={index === layout.length - 1} style={s.iconBtn}>
-                    <Ionicons name="arrow-down" size={20} color={index === layout.length - 1 ? colors.border : colors.textPrimary} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
+        </BlurView>
+      ) : (
+        <View style={[s.overlay, { backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.45)' }]}>
+          <TouchableOpacity style={{ flex: 1, width: '100%' }} activeOpacity={1} onPress={onClose} />
+          <View style={s.sheet}>
+            {sheetContent}
           </View>
         </View>
-      </BlurView>
+      )}
     </Modal>
   );
 }
