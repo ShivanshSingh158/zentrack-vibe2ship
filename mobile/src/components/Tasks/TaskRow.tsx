@@ -10,6 +10,7 @@ import Animated, {
   FadeInDown,
   FadeOut,
   LinearTransition,
+  runOnJS,
 } from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +20,10 @@ import { formatDateShort } from '../../utils/dateUtils';
 import { useTheme } from '../../contexts/ThemeContext';
 
 const today = new Date().toISOString().slice(0, 10);
+
+// Module-level constant — avoids creating a new animation config object on every
+// renderItem call. Reanimated uses reference equality to bail out no-op updates.
+const TASK_ENTER_ANIM = FadeInDown.duration(220).springify().damping(20).stiffness(200);
 
 interface TaskRowProps {
   task: Task;
@@ -131,14 +136,13 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
       // Completing a pending task — optimistic animation
       if (onCompleteStart) onCompleteStart();
       setIsCompleting(true);
+      // Use runOnJS to fire onComplete exactly when the last animation step
+      // finishes — frame-accurate, no setTimeout race on a loaded JS thread.
       checkScale.value = withSequence(
         withTiming(0.8, { duration: 100 }),
         withTiming(1.2, { duration: 150 }),
-        withTiming(1.0, { duration: 100 })
+        withTiming(1.0, { duration: 100 }, () => { runOnJS(onComplete)(); })
       );
-      setTimeout(() => {
-        onComplete();
-      }, 350);
     } else {
       // Un-completing — reset the local optimistic flag so isDone clears immediately
       setIsCompleting(false);
@@ -188,7 +192,7 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
       containerStyle={{ backgroundColor: 'transparent' }}
     >
       <Animated.View
-        entering={FadeInDown.duration(220).springify().damping(20).stiffness(200)}
+        entering={TASK_ENTER_ANIM}
         exiting={FadeOut.duration(160)}
         layout={LinearTransition.springify().damping(20).stiffness(200)}
         style={animatedRowStyle}

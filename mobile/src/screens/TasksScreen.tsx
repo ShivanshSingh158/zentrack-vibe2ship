@@ -10,8 +10,11 @@ import { requestNotificationPermissions } from '../services/notifications';
 import Svg, { Circle } from 'react-native-svg';
 
 import { useCoreData } from '../contexts/domains/CoreDataContext';
+import { useAcademicData } from '../contexts/domains/AcademicContext';
+import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatDateWithDay, formatLocalDateStr } from '../utils/dateUtils';
+import { formatTimeStr } from '../utils/timeUtils';
 import { triggerLayoutAnimation } from '../theme/animations';
 import { setTabBarVisible } from '../utils/tabBarScroll';
 import { today } from './tasks/taskConstants';
@@ -115,21 +118,6 @@ const TaskRowMemo = React.memo(function TaskRowMemo({
   prev.onPress === next.onPress
 );
 
-function formatTimeStr(raw: string): string {
-  if (!raw) return '';
-  const t = raw.trim().toUpperCase();
-  const isPM = t.includes('PM');
-  const isAM = t.includes('AM');
-  const cleaned = t.replace(/[\sAPM]+$/i, '').trim();
-  const parts = cleaned.split(':');
-  let h = parseInt(parts[0], 10);
-  const m = parts.length >= 2 ? (parseInt(parts[1], 10) || 0) : 0;
-  if (isNaN(h)) return raw.trim().toLowerCase();
-  if (isPM || isAM) {
-    return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${isPM ? 'pm' : 'am'}`;
-  }
-  return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
-}
 
 const PROGRESS_SIZE = 44;
 const PROGRESS_STROKE = 3;
@@ -145,6 +133,11 @@ export default function TasksScreen() {
   
   const { tasks, user, habits, habitLogs, tasksReady, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
   const isInitialLoading = !tasksReady && (!tasks || tasks.length === 0);
+  // Lift academic & wellness data to screen level so TimelineView doesn't
+  // subscribe to these contexts directly (prevents re-renders from unrelated
+  // data changes like water logs, assignments, or weight entries).
+  const { attendance, attendanceLogs } = useAcademicData();
+  const { gymLogs, userGymPlan } = useWellnessData();
   const { openPomodoro } = usePomodoro();
   const todayDateStr = useMemo(() => formatLocalDateStr(new Date()), []);
 
@@ -279,6 +272,27 @@ export default function TasksScreen() {
   const onPressRef = useCallback((task: any) => setEditingTask(task), [setEditingTask]);
   const onToggleSelectRef = useCallback((taskId: string) => toggleTaskSelection(taskId), [toggleTaskSelection]);
   const onUpdateTaskRef = useCallback((id: string, updates: any) => updateTask(id, updates), [updateTask]);
+
+  // Modal-specific stable press handlers — close the modal first, then open edit.
+  // Passed to TaskRowMemo inside Overdue/Inbox so those rows stay frozen on parent re-renders.
+  const onOverduePressRef = useCallback((task: any) => {
+    setIsOverdueModalOpen(false);
+    setEditingTask(task);
+  }, [setIsOverdueModalOpen, setEditingTask]);
+  const onOverdueRescheduleRef = useCallback((taskId: string) => {
+    setIsOverdueModalOpen(false);
+    setSelectedTaskIds(new Set([taskId]));
+    setBulkRescheduleModal(true);
+  }, [setIsOverdueModalOpen, setSelectedTaskIds, setBulkRescheduleModal]);
+  const onInboxPressRef = useCallback((task: any) => {
+    setIsInboxModalOpen(false);
+    setEditingTask(task);
+  }, [setIsInboxModalOpen, setEditingTask]);
+  const onInboxRescheduleRef = useCallback((taskId: string) => {
+    setIsInboxModalOpen(false);
+    setSelectedTaskIds(new Set([taskId]));
+    setBulkRescheduleModal(true);
+  }, [setIsInboxModalOpen, setSelectedTaskIds, setBulkRescheduleModal]);
 
   const renderItem = useCallback(({ item }: { item: any }) => (
     <TaskRowMemo
@@ -530,6 +544,10 @@ export default function TasksScreen() {
             colors={colors}
             isDark={isDark}
             selectedDate={selectedDate}
+            attendance={attendance}
+            attendanceLogs={attendanceLogs}
+            gymLogs={gymLogs}
+            userGymPlan={userGymPlan}
           />
         </View>
       ) : viewMode === 'kanban' ? (
@@ -633,23 +651,15 @@ export default function TasksScreen() {
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
               {overdueTasks.map(t => (
-                <TaskRow
+                <TaskRowMemo
                   key={t.id}
                   task={t}
                   isOverdue={true}
-                  onComplete={() => completeTask(t)}
-                  onReschedule={() => {
-                    setIsOverdueModalOpen(false);
-                    setSelectedTaskIds(new Set([t.id!]));
-                    setBulkRescheduleModal(true);
-                  }}
-                  onPress={() => { setIsOverdueModalOpen(false); setEditingTask(t); }}
-                  onLongPress={() => { setIsOverdueModalOpen(false); setEditingTask(t); }}
-                  onUpdateTask={(id, updates) => updateTask(id, updates)}
-                  onAddSubtask={() => {
-                    setIsOverdueModalOpen(false);
-                    setEditingTask(t);
-                  }}
+                  onComplete={onCompleteRef}
+                  onReschedule={onOverdueRescheduleRef}
+                  onPress={onOverduePressRef}
+                  onToggleSelect={onToggleSelectRef}
+                  onUpdateTask={onUpdateTaskRef}
                 />
               ))}
             </ScrollView>
@@ -670,26 +680,17 @@ export default function TasksScreen() {
             ) : (
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
                 {inboxTasks.map(t => (
-                  <TaskRow
+                  <TaskRowMemo
                     key={t.id}
                     task={t}
                     isOverdue={false}
-                    onComplete={() => completeTask(t)}
-                    onReschedule={() => {
-                      setIsInboxModalOpen(false);
-                      setSelectedTaskIds(new Set([t.id!]));
-                      setBulkRescheduleModal(true);
-                    }}
-                    onPress={() => { setIsInboxModalOpen(false); setEditingTask(t); }}
-                    onLongPress={() => { setIsInboxModalOpen(false); setEditingTask(t); }}
+                    onComplete={onCompleteRef}
+                    onReschedule={onInboxRescheduleRef}
+                    onPress={onInboxPressRef}
                     isBulkEdit={isBulkEdit}
                     isSelected={selectedTaskIds.has(t.id!)}
-                    onToggleSelect={() => toggleTaskSelection(t.id!)}
-                    onUpdateTask={(id, updates) => updateTask(id, updates)}
-                    onAddSubtask={() => {
-                      setIsInboxModalOpen(false);
-                      setEditingTask(t);
-                    }}
+                    onToggleSelect={onToggleSelectRef}
+                    onUpdateTask={onUpdateTaskRef}
                   />
                 ))}
               </ScrollView>

@@ -8,7 +8,7 @@
  * Features full NLP natural language parsing, live token chips & highlights,
  * voice dictation overlay, and synchronous re-parsing on save.
  */
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, ScrollView,
   Alert, Platform, Keyboard,
@@ -60,7 +60,7 @@ const PRIORITY_DATA = [
 
 function EditTaskModalComponent({ visible, onClose, task }: Props) {
   const { colors, isDark } = useTheme();
-  const styles = makeTasksStyles(colors, isDark);
+  const styles = useMemo(() => makeTasksStyles(colors, isDark), [colors, isDark]);
 
   const lastTaskRef = useRef<Task | null>(task);
   if (task) {

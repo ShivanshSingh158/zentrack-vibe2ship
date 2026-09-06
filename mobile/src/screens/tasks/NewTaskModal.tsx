@@ -6,7 +6,7 @@
  * import (Calendar inside UniversalCalendarModal) is only parsed when this
  * modal is first opened — not at Tasks screen mount.
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput,
   Platform, ScrollView, Keyboard
@@ -53,7 +53,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   visible, onClose, userId, selectedDate, listCount,
 }: Props) {
   const { colors, isDark } = useTheme();
-  const styles = makeTasksStyles(colors, isDark);
+  const styles = useMemo(() => makeTasksStyles(colors, isDark), [colors, isDark]);
   const { optimisticAddTask } = useCoreData();
 
   const [title, setTitle] = useState('');

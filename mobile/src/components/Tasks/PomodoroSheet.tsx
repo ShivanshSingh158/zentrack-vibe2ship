@@ -227,7 +227,10 @@ export default function PomodoroSheet({
     return formatDurationLabel(s);
   }, [linkedTask]);
 
-  const s = makeStyles(colors, isDark, currentAccent, insets);
+  const s = useMemo(
+    () => makeStyles(colors, isDark, currentAccent, insets),
+    [colors, isDark, currentAccent, insets]
+  );
 
   if (!isVisible) return null;
 

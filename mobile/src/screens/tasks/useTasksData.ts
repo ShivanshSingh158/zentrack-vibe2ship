@@ -7,7 +7,7 @@
  */
 import { useState, useMemo, useEffect } from 'react';
 import { Task } from '../../contexts/MobileDataContext';
-import { getToday } from './taskConstants';
+import { getToday, parseTimeFloat } from './taskConstants';
 
 export type ViewMode = 'list' | 'timeline' | 'kanban';
 export type SortBy = 'default' | 'priority';
@@ -32,19 +32,6 @@ export interface TasksUIState {
   conflicts: any[];
 }
 
-function parseTimeFloat(timeStr?: string | null): number {
-  if (!timeStr) return Infinity;
-  const t = timeStr.trim().toUpperCase();
-  const isPM = t.includes('PM'), isAM = t.includes('AM');
-  const cleaned = t.replace(/[\sAPM]+$/i, '').trim();
-  const parts = cleaned.split(':');
-  let h = parseInt(parts[0], 10);
-  if (isNaN(h)) return Infinity;
-  const m = parts.length >= 2 ? (parseInt(parts[1], 10) || 0) : 0;
-  if (isPM && h !== 12) h += 12;
-  if (isAM && h === 12) h = 0;
-  return h + m / 60;
-}
 
 export function useTasksData(tasks: Task[]) {
   // ── UI State ────────────────────────────────────────────────────────────────

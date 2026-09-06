@@ -59,10 +59,11 @@ interface Props {
 }
 
 const KanbanView = React.memo(function KanbanView({ tasks, onTaskPress, colors }: Props) {
-  const weekEnd = getWeekEnd();
-
   const columns: Column[] = useMemo(() => {
+    // Both dates computed inside the memo — stable per render cycle, no
+    // need to re-derive on every parent state change from the component body.
     const todayStr = getTodayStr();
+    const weekEnd = getWeekEnd();
     const backlog: Task[] = [];
     const today: Task[] = [];
     const week: Task[] = [];
@@ -87,7 +88,7 @@ const KanbanView = React.memo(function KanbanView({ tasks, onTaskPress, colors }
       { id: "week",    label: "This Week", icon: "calendar-outline",      accent: "#60a5fa", tasks: week   },
       { id: "done",    label: "Done",      icon: "checkmark-circle-outline", accent: "#34d399", tasks: done },
     ];
-  }, [tasks, weekEnd]);
+  }, [tasks]);
 
   const moveTask = useCallback(async (task: Task, targetColumnId: Column["id"]) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

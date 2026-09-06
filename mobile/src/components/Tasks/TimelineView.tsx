@@ -13,8 +13,6 @@ import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { db } from '../../services/firebase';
 import { feedback } from '../../utils/haptics';
 import { formatLocalDateStr } from '../../utils/dateUtils';
-import { useAcademicData } from '../../contexts/domains/AcademicContext';
-import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
 // Extracted math, subcomponents & styles
@@ -34,10 +32,13 @@ interface TimelineViewProps {
   onTaskPress: (task: Task) => void;
   colors?: any;
   isDark?: boolean;
-  attendance?: AttendanceSubject[];
-  attendanceLogs?: AttendanceLog[];
-  gymLogs?: GymLog[];
-  userGymPlan?: UserGymPlanDoc | null;
+  // Data props passed from the screen coordinator — prevents TimelineView from
+  // subscribing directly to AcademicContext and WellnessContext (which would
+  // cause full re-renders on every water log, assignment, or weight update).
+  attendance: AttendanceSubject[];
+  attendanceLogs: AttendanceLog[];
+  gymLogs: GymLog[];
+  userGymPlan: UserGymPlanDoc | null | undefined;
   selectedDate?: string;
 }
 
@@ -48,24 +49,16 @@ const TimelineView = React.memo(function TimelineView({
   onTaskPress,
   colors: propColors,
   isDark: propIsDark,
-  attendance: propAttendance,
-  attendanceLogs: propAttendanceLogs,
-  gymLogs: propGymLogs,
-  userGymPlan: propUserGymPlan,
+  attendance,
+  attendanceLogs,
+  gymLogs,
+  userGymPlan,
   selectedDate,
 }: TimelineViewProps) {
   const theme = useTheme();
   const colors = propColors || theme.colors;
   const isDark = propIsDark !== undefined ? propIsDark : theme.isDark;
-
-  const academicData = useAcademicData();
-  const wellnessData = useWellnessData();
   const navigation = useNavigation<any>();
-
-  const attendance = propAttendance || academicData.attendance;
-  const attendanceLogs = propAttendanceLogs || academicData.attendanceLogs;
-  const gymLogs = propGymLogs || wellnessData.gymLogs;
-  const userGymPlan = propUserGymPlan !== undefined ? propUserGymPlan : wellnessData.userGymPlan;
 
   // Live time tracking for "Current Time" indicator
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -225,6 +218,17 @@ const TimelineView = React.memo(function TimelineView({
     const dayKey = dayOfWeek.toString();
     const blocks: ClassBlock[] = [];
 
+    // O(N) pre-index: one pass over attendanceLogs for today's date only.
+    // Replaces the O(N²) .filter() called inside each subject × class/lab loop.
+    // Key format: "${subjectId}_class" or "${subjectId}_lab"
+    const logsByKey = new Map<string, any[]>();
+    for (const l of (attendanceLogs || [])) {
+      if (l.date !== selectedDate || l.isExtra) continue;
+      const key = `${l.subjectId}_${l.type || 'class'}`;
+      const arr = logsByKey.get(key);
+      if (arr) { arr.push(l); } else { logsByKey.set(key, [l]); }
+    }
+
     attendance.forEach(subject => {
       const sch =
         subject.schedule?.[dayKey] ||
@@ -243,9 +247,8 @@ const TimelineView = React.memo(function TimelineView({
           const top = (startFloat - START_HOUR) * HOUR_HEIGHT;
           const height = (endFloat - startFloat) * HOUR_HEIGHT;
 
-          const subLogs = (attendanceLogs || []).filter(
-            (l: any) => l.date === selectedDate && l.subjectId === subject.id && !l.isExtra && (l.type === 'class' || !l.type)
-          );
+          // O(1) Map lookup instead of O(N) filter
+          const subLogs = logsByKey.get(`${subject.id}_class`) || [];
           const matchLog = subLogs[i] || (subLogs.length === 1 ? subLogs[0] : null);
           const logStatus: 'attended' | 'missed' | 'cancelled' | 'unlogged' = matchLog ? (matchLog.action as any) : 'unlogged';
           const isOngoing = isToday && nowHours >= startFloat && nowHours < endFloat;
@@ -275,9 +278,8 @@ const TimelineView = React.memo(function TimelineView({
           const top = (startFloat - START_HOUR) * HOUR_HEIGHT;
           const height = (endFloat - startFloat) * HOUR_HEIGHT;
 
-          const subLogs = (attendanceLogs || []).filter(
-            (log: any) => log.date === selectedDate && log.subjectId === subject.id && !log.isExtra && log.type === 'lab'
-          );
+          // O(1) Map lookup instead of O(N) filter
+          const subLogs = logsByKey.get(`${subject.id}_lab`) || [];
           const matchLog = subLogs[i] || (subLogs.length === 1 ? subLogs[0] : null);
           const logStatus: 'attended' | 'missed' | 'cancelled' | 'unlogged' = matchLog ? (matchLog.action as any) : 'unlogged';
           const isOngoing = isToday && nowHours >= startFloat && nowHours < endFloat;
