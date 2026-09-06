@@ -49,6 +49,7 @@ export const BOOT_KEYS = {
   LEARNING_TOPICS:    '@zentrack_cache_learning_topics',
   JOBS:               '@zentrack_cache_jobs',
   CONTENT_LOGS:       '@zentrack_cache_content_logs',
+  NOTIF_FINGERPRINT:  '@zentrack_notif_fingerprint',
 } as const;
 
 export interface BootManifest {
@@ -83,6 +84,7 @@ export interface BootManifest {
   learningTopics: any[];
   jobs: any[];
   contentLogs: any[];
+  notifFingerprint: string | null;
 }
 
 const DEFAULT_PINNED = ['Tasks', 'Gym', 'Calendar', 'Attendance'];
@@ -299,6 +301,8 @@ export async function loadBootManifest(): Promise<BootManifest> {
         try { const p = JSON.parse(contentLogsRaw); if (Array.isArray(p)) contentLogs = p; } catch {}
       }
 
+      const notifFingerprint = map.get(BOOT_KEYS.NOTIF_FINGERPRINT) || null;
+
       const manifest: BootManifest = {
         lastRoute,
         onboarded,
@@ -330,6 +334,7 @@ export async function loadBootManifest(): Promise<BootManifest> {
         learningTopics,
         jobs,
         contentLogs,
+        notifFingerprint,
       };
 
       _memoryBootCache = manifest;
@@ -367,6 +372,7 @@ export async function loadBootManifest(): Promise<BootManifest> {
         learningTopics: [],
         jobs: [],
         contentLogs: [],
+        notifFingerprint: null,
       };
       _memoryBootCache = fallback;
       return fallback;

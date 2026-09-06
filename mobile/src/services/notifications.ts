@@ -26,6 +26,7 @@ import { formatLocalDateStr } from '../utils/dateUtils';
 
 import { auth } from './firebase';
 import { calculateBunkMath } from '../utils/academicMath';
+import { getBootManifestSync, updateL1Cache } from '../utils/bootManifest';
 
 // Extracted channels, priorities & pools
 import { PRIORITY, ALARM_CAP, requestNotificationPermissions, ensureNotificationChannels } from './notificationChannels';
@@ -128,14 +129,31 @@ export interface ScheduleParams {
   userName?: string;
 }
 
-// ── Data Fingerprint Cache ────────────────────────────────────────────────────
+// ── Data Fingerprint Cache (Persisted to Disk) ─────────────────────────────────
+export const NOTIF_FINGERPRINT_KEY = '@zentrack_notif_fingerprint';
 let _lastScheduleFingerprint: string | null = null;
 let _lastScheduleError: string | null = null;
 let _lastScheduledCount: number = 0;
 
+// Eager initialization: hydrate from in-memory L1 boot cache or AsyncStorage
+try {
+  const initialBootFp = getBootManifestSync()?.notifFingerprint;
+  if (initialBootFp) {
+    _lastScheduleFingerprint = initialBootFp;
+  } else {
+    AsyncStorage.getItem(NOTIF_FINGERPRINT_KEY).then(val => {
+      if (val && !_lastScheduleFingerprint) {
+        _lastScheduleFingerprint = val;
+      }
+    }).catch(() => {});
+  }
+} catch {}
+
 export function clearScheduleCache() {
   _lastScheduleFingerprint = null;
   _lastScheduleError = null;
+  AsyncStorage.removeItem(NOTIF_FINGERPRINT_KEY).catch(() => {});
+  updateL1Cache('notifFingerprint', null);
 }
 
 export function getLastScheduleStatus() {
@@ -204,7 +222,7 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     attendanceFingerprint,
     flashcardDueCount,
     prefsFingerprint,
-    new Date().toISOString().slice(0, 13),
+    todayDateStr,
   ].join('|');
 }
 
@@ -328,6 +346,11 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       const allPairs = await AsyncStorage.multiGet([...BOOL_KEYS, ...STR_KEYS]);
       const kv: Record<string, string | null> = {};
       allPairs.forEach(([k, v]) => { kv[k] = v; });
+
+      if (!_lastScheduleFingerprint) {
+        const cached = getBootManifestSync()?.notifFingerprint || (await AsyncStorage.getItem(NOTIF_FINGERPRINT_KEY).catch(() => null));
+        if (cached) _lastScheduleFingerprint = cached;
+      }
 
       const fingerprint = _buildFingerprint(currentParams, kv);
       if (fingerprint === _lastScheduleFingerprint) {
@@ -1337,14 +1360,28 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       // Critical notifications always win the budget race.
       // On iOS (cap=64): low-priority items are dropped before any high-priority one is.
       // On Android (cap=450): virtually all notifications fit; sorted order still applies.
+      // ── Flush Priority Queue in Concurrent Chunks of 6 ─────────────────────
+      // Sort: ascending priority (1=Critical first), then ascending trigger time.
       pendingQueue.sort((a, b) => a.priority - b.priority || a.trigger.getTime() - b.trigger.getTime());
 
       const scheduledKeys = new Set<string>();
       let scheduledCount = 0;
       let droppedCount = 0;
 
+      interface PreparedNotif {
+        title: string;
+        body: string;
+        data?: any;
+        categoryId?: string;
+        channel: string;
+        notifPriority: any;
+        triggerConfig: any;
+      }
+
+      const preparedList: PreparedNotif[] = [];
+
       for (const notif of pendingQueue) {
-        if (scheduledCount >= ALARM_CAP) {
+        if (preparedList.length >= ALARM_CAP) {
           droppedCount++;
           continue;
         }
@@ -1369,44 +1406,63 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         if (scheduledKeys.has(dedupeKey)) continue;
         scheduledKeys.add(dedupeKey);
 
-        try {
-          const delaySeconds = Math.max(3, Math.round((finalTrigger.getTime() - Date.now()) / 1000));
-          const notifPriority = (notif.channel === 'reminders' || notif.channel === 'sara_critical' || notif.channel === 'wellness')
-            ? (Notifications.AndroidNotificationPriority?.MAX ?? ('max' as any))
-            : (Notifications.AndroidNotificationPriority?.HIGH ?? ('high' as any));
+        const delaySeconds = Math.max(3, Math.round((finalTrigger.getTime() - Date.now()) / 1000));
+        const notifPriority = (notif.channel === 'reminders' || notif.channel === 'sara_critical' || notif.channel === 'wellness')
+          ? (Notifications.AndroidNotificationPriority?.MAX ?? ('max' as any))
+          : (Notifications.AndroidNotificationPriority?.HIGH ?? ('high' as any));
 
-          const triggerConfig: any = Platform.OS === 'android'
-            ? {
-                type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval',
-                seconds: delaySeconds,
-                repeats: false,
-                channelId: notif.channel,
-              }
-            : {
-                type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
-                date: new Date(Math.max(finalTrigger.getTime(), Date.now() + 3000)),
-              };
-
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: notif.title,
-              body: notif.body,
-              // Data: Omit on Android to prevent NotSerializableException (org.json.JSONObject).
-              // In Android precompiled AAR, non-null data creates a JSONObject that cannot be serialized by Java ObjectOutputStream.
-              data: Platform.OS === 'ios' ? notif.data : undefined,
-              categoryIdentifier: notif.categoryId,
+        const triggerConfig: any = Platform.OS === 'android'
+          ? {
+              type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval',
+              seconds: delaySeconds,
+              repeats: false,
               channelId: notif.channel,
-              // Sound: OMIT on Android to prevent NotSerializableException (android.net.Uri$HierarchicalUri).
-              // Android 8+ notification sound is governed by NotificationChannel.
-              ...(Platform.OS === 'ios' ? { sound: 'default' } : {}),
-              priority: notifPriority,
-            } as any,
-            trigger: triggerConfig,
-          });
-          scheduledCount++;
-        } catch (e: any) {
-          _lastScheduleError = e?.message || String(e);
-          console.warn('[Notifications] Failed to schedule notification:', notif.title, e);
+            }
+          : {
+              type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
+              date: new Date(Math.max(finalTrigger.getTime(), Date.now() + 3000)),
+            };
+
+        preparedList.push({
+          title: notif.title,
+          body: notif.body,
+          data: Platform.OS === 'ios' ? notif.data : undefined,
+          categoryId: notif.categoryId,
+          channel: notif.channel,
+          notifPriority,
+          triggerConfig,
+        });
+      }
+
+      // Schedule in concurrent batches of 6 with event loop yields between batches
+      const CHUNK_SIZE = 6;
+      for (let i = 0; i < preparedList.length; i += CHUNK_SIZE) {
+        const chunk = preparedList.slice(i, i + CHUNK_SIZE);
+        await Promise.all(
+          chunk.map(async (item) => {
+            try {
+              await Notifications.scheduleNotificationAsync({
+                content: {
+                  title: item.title,
+                  body: item.body,
+                  data: item.data,
+                  categoryIdentifier: item.categoryId,
+                  channelId: item.channel,
+                  ...(Platform.OS === 'ios' ? { sound: 'default' } : {}),
+                  priority: item.notifPriority,
+                } as any,
+                trigger: item.triggerConfig,
+              });
+              scheduledCount++;
+            } catch (e: any) {
+              _lastScheduleError = e?.message || String(e);
+              console.warn('[Notifications] Failed to schedule notification:', item.title, e);
+            }
+          })
+        );
+        // Yield to JS event loop so UI / touch / animation events process with 0 lag
+        if (i + CHUNK_SIZE < preparedList.length) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
         }
       }
 
@@ -1418,6 +1474,8 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       if (scheduledCount > 0) {
         _lastScheduleFingerprint = fingerprint;
         _lastScheduleError = null;
+        AsyncStorage.setItem(NOTIF_FINGERPRINT_KEY, fingerprint).catch(() => {});
+        updateL1Cache('notifFingerprint', fingerprint);
       } else if (pendingQueue.length > 0) {
         console.warn(`[Notifications] 0 of ${pendingQueue.length} notifications scheduled! Last error: ${_lastScheduleError}`);
       }
