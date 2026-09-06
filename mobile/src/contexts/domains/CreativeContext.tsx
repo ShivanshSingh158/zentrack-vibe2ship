@@ -29,6 +29,10 @@ export interface CreativeContextType {
   ensureSubscribed: () => void;
   optimisticUpdateLearningTopic: (id: string, updates: Partial<LearningTopic>) => void;
   optimisticToggleSubtask: (topicId: string, subtaskId: string, isCompleted: boolean) => void;
+  optimisticAddStorageNode: (node: StorageNode) => void;
+  optimisticUpdateStorageNode: (id: string, updates: Partial<StorageNode>) => void;
+  optimisticDeleteStorageNode: (id: string) => void;
+  optimisticBatchDeleteStorageNodes: (ids: string[]) => void;
 }
 
 const DEFAULT_CREATIVE_DATA: CreativeContextType = {
@@ -40,6 +44,10 @@ const DEFAULT_CREATIVE_DATA: CreativeContextType = {
   ensureSubscribed: () => {},
   optimisticUpdateLearningTopic: () => {},
   optimisticToggleSubtask: () => {},
+  optimisticAddStorageNode: () => {},
+  optimisticUpdateStorageNode: () => {},
+  optimisticDeleteStorageNode: () => {},
+  optimisticBatchDeleteStorageNodes: () => {},
 };
 
 const CreativeContext = createContext<CreativeContextType | null>(null);
@@ -270,12 +278,48 @@ export function CreativeProvider({
     });
   }, []);
 
+  const optimisticAddStorageNode = useCallback((node: StorageNode) => {
+    setStorageNodes(prev => {
+      const filtered = node.id ? prev.filter(n => n.id !== node.id) : prev;
+      const fresh = [node, ...filtered];
+      writeCreativeCache({ storageNodes: fresh }, true);
+      return fresh;
+    });
+  }, []);
+
+  const optimisticUpdateStorageNode = useCallback((id: string, updates: Partial<StorageNode>) => {
+    setStorageNodes(prev => {
+      const fresh = prev.map(n => n.id === id ? { ...n, ...updates } : n);
+      writeCreativeCache({ storageNodes: fresh }, true);
+      return fresh;
+    });
+  }, []);
+
+  const optimisticDeleteStorageNode = useCallback((id: string) => {
+    setStorageNodes(prev => {
+      const fresh = prev.filter(n => n.id !== id);
+      writeCreativeCache({ storageNodes: fresh }, true);
+      return fresh;
+    });
+  }, []);
+
+  const optimisticBatchDeleteStorageNodes = useCallback((ids: string[]) => {
+    const idSet = new Set(ids);
+    setStorageNodes(prev => {
+      const fresh = prev.filter(n => !n.id || !idSet.has(n.id));
+      writeCreativeCache({ storageNodes: fresh }, true);
+      return fresh;
+    });
+  }, []);
+
   const value = useMemo(() => ({
     storageNodes, notes, learningTopics, jobs, contentLogs, ensureSubscribed,
     optimisticUpdateLearningTopic, optimisticToggleSubtask,
+    optimisticAddStorageNode, optimisticUpdateStorageNode, optimisticDeleteStorageNode, optimisticBatchDeleteStorageNodes,
   }), [
     storageNodes, notes, learningTopics, jobs, contentLogs, ensureSubscribed,
     optimisticUpdateLearningTopic, optimisticToggleSubtask,
+    optimisticAddStorageNode, optimisticUpdateStorageNode, optimisticDeleteStorageNode, optimisticBatchDeleteStorageNodes,
   ]);
 
   return (
