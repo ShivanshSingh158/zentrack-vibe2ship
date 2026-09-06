@@ -187,7 +187,7 @@ mobile/
     │   ├── GoalsScreen.tsx               # OKR Goal Tracker & Milestone Breakdown
     │   ├── GradesScreen.tsx              # SGPA/CGPA University Grade Calculator
     │   ├── LearningScreen.tsx            # Video Lecture Player, Flashcards, AI Tutor, MindMap
-    │   ├── AnalyticsScreen.tsx           # Productivity Graphs, Discipline Score, XP Radar
+    │   ├── AnalyticsScreen.tsx           # Telemetry Dashboard: Concentric Score Ring, 4-Pillar Balance, Spline Wave, Attendance Safety Gauge
     │   ├── WellbeingDashboardScreen.tsx  # Hydration, Recovery & Work-Life Balance
     │   ├── XPConstellationScreen.tsx     # Gamification Constellation Map & Tier Badges
     │   ├── StreakDetailScreen.tsx        # Deep Streak Analytics & Habit Continuity
@@ -1220,7 +1220,94 @@ All storage keys must be imported from `src/config/constants.ts → STORAGE_KEYS
   - Added dual view mode: toggles between **Heatmap View** (compact auto-fit contribution grid) and **7-Day Strip View** (ultra-compact single-row pill strip), with state persisted in `AsyncStorage` (`@zentrack_habit_view_mode`).
   - Added grid vs strip toggle controls to the right side of `segmentBar`.
 - **UPDATED** [`mobile/src/components/Habits/HabitsSkeleton.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Habits/HabitsSkeleton.tsx):
-  - Updated shimmer skeleton cards to mirror the $10\text{px}$ tile size, $2.5\text{px}$ gaps, and recessed tray structure, eliminating layout shifts.
+### 2026-09-05 — Voice Task Dictation Speed, Accuracy & Local NLP Parity
+- **ROOT CAUSE 1: Fake Task Creation on Slow Network / Abort Timeout**:
+  - `callProxy()` in `geminiProxy.ts` caught client abort timeouts (`AbortError` after 30s) or offline errors and returned a mock payload `{ candidates: [{ content: { parts: [{ text: "Network is too weak right now." }] } }] }`.
+  - `transcribeAudioViaProxy()` parsed this response as the user's spoken words, and `parseNLTasks()` created a task titled *"Network Is Too Weak Right Now"*.
+  - Voice recording timeout was 30s, causing unacceptable lag when network dropped.
+- **ROOT CAUSE 2: STT Homophone Miss ("hi" vs "high priority")**:
+  - Gemini STT system prompt had no task dictation domain context, transcribing phonetic `/haɪ/` as the conversational greeting *"hi"*.
+  - `priorityPatterns` in `dateUtils.ts` lacked rules for *"hi priority"*, *"priority hi"*, *"p:hi"*, or trailing *"hi"*, resulting in priority defaulting to `'low'` while leaving *"hi priority"* embedded in the task title.
+- **ROOT CAUSE 3: NLP Disconnect Between Voice Overlay & NewTaskModal**:
+  - In `NewTaskModal`, manual title input ran debounced 0ms on-device `parseNLTask` extraction for dates, times, priorities, recurrence, duration, and subtasks, and re-parsed synchronously on save.
+  - In `VoiceDictationOverlay`, manual typing merely set `title: val` without triggering NLP parsing, chip synchronization, or title cleanup.
+- **FIXED & UPGRADED** [`mobile/src/services/geminiProxy.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/geminiProxy.ts):
+  - Added configurable `timeoutMs` (default 15s) and `allowOfflineFallback` (default `false`) to `callProxy()`.
+  - Prohibited `callProxy()` from returning mock text candidates on timeout or network abort; it now strictly throws clean network errors.
+  - Enhanced `transcribeAudioViaProxy()` with a strict 8s timeout, specialized task dictation prompt instructing Gemini to transcribe `/haɪ/` as "high" in priority contexts, and piped output through `normalizeVoiceTranscript()`.
+- **FIXED & UPGRADED** [`mobile/src/utils/dateUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/dateUtils.ts):
+  - Created and exported `normalizeVoiceTranscript()` to map STT homophones (`"hi priority"`, `"p:hi"`, `"priority hi"`, `"priority one"`, trailing `"hi"`) to standard task syntax.
+  - Expanded `priorityPatterns` in `parseNLTask()` to match spoken and shorthand priority expressions with 100% accuracy.
+  - Updated `cleanTaskTitle()` to strip voice homophones cleanly without leaving trailing artifacts.
+- **FIXED & UPGRADED** [`mobile/src/services/voiceEngine.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/voiceEngine.ts):
+  - Added network error phrases (`"network is too weak right now"`, etc.) to `isSilenceOrNoise()` filter to guarantee error strings never become tasks.
+  - Optimized `VAD_SILENCE_DURATION_MS = 850;` for snappier speech submission.
+- **FIXED & UPGRADED** [`mobile/src/components/Tasks/VoiceDictationOverlay.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/VoiceDictationOverlay.tsx):
+  - Integrated `parseNLTask` debounced at 250ms on title typing, providing 1:1 NLP parity with `NewTaskModal`.
+  - Added synchronous re-parse on save (`parseNLTask(normalizeVoiceTranscript(t.title))`) to capture any last-millisecond edits.
+  - Added `offlineNLPMode` with `handleSwitchToManualNLP()`, allowing 0ms local task entry even when offline or on weak cellular connections.
+  - Added UI indicators: card header badge (`⚡ LOCAL NLP ACTIVE · 0MS OFFLINE`), error card fallback button, and idle view hint button.
 
+### 2026-09-05 — Title Cleansing Engine, Subtask Auto-Extraction, Dismissible Chips & 1-Tap Quick Templates
+- **UPGRADED `cleanTaskTitle()`** in [`mobile/src/utils/dateUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/dateUtils.ts):
+  - **Spoken Filler & Hesitation Stripper**: Automatically strips leading hesitation words (`"um"`, `"uh"`, `"like"`, `"you know"`, `"basically"`, `"actually"`, `"just"`, `"so"`, `"well"`) and intent preambles (`"I want you to"`, `"Can you help me"`, `"Don't forget to"`, `"Make sure to"`, `"Note to self"`).
+  - **Multi-Pass Preposition & Punctuation Scrubber Loop**: Eliminates trailing dangling prepositions (`at`, `from`, `to`, `by`, `on`, `in`, `for`, `with`, `until`, `till`, `and`, `or`, `during`, `of`, `about`, `then`) and trailing/leading punctuation in up to 6 iterative passes, guaranteeing that tokens removed before punctuation leave behind zero artifacts.
+  - **Expanded SOV -> SVO Grammar Inversion**: Automatically converts spoken noun-first expressions into natural imperative verbs (`"groceries buy"` -> `"buy groceries"`, `"haircut book"` -> `"book haircut"`, `"car wash"` -> `"wash car"`, `"fees pay"` -> `"pay fees"`, `"room clean"` -> `"clean room"`, `"food order"` -> `"order food"`).
+  - **Comprehensive Acronym & Brand Dictionary**: Added 50+ modern engineering and productivity terms (`PR`, `SDK`, `CI/CD`, `CLI`, `DSA`, `DBMS`, `AWS`, `GCP`, `Figma`, `GitHub`, `GitLab`, `VSCode`, `LeetCode`, `NextJS`, `Docker`, `Postman`, `WhatsApp`, `YouTube`, `LinkedIn`, `Notion`, `Slack`, `Spotify`, `Zoom`).
+- **UPGRADED `parseNLTask()`** in [`mobile/src/utils/dateUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/dateUtils.ts):
+  - **Subtask & Checklist Extraction**: Enhanced regex to extract embedded lists (`"Buy groceries: milk, eggs, bread and bananas"`, `"Pack bag with items: towel, shoes, water bottle"`, `"including X, Y, Z"`). Automatically registers the list as a subtask token so items are extracted into subtasks and excluded from the main title.
+- **UPGRADED `parseNLTasks()`** in [`mobile/src/utils/dateUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/dateUtils.ts):
+  - **Compound Multi-Task Speech Splitting**: Splits multi-task speech across transition connectors (`"and also"`, `"and then"`, `"after that"`, `"followed by"`, `"then"`, `"aur phir"`), sanitizes leading conjunctions per segment, and creates cleanly separated task cards.
+- **UPGRADED `VoiceDictationOverlay.tsx`** in [`mobile/src/components/Tasks/VoiceDictationOverlay.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/VoiceDictationOverlay.tsx):
+  - **Dismissible NLP Attribute Chips**: Added tap-to-dismiss `close-circle` buttons on Date, Duration, Priority, and Reminder chips with haptic feedback, allowing instant token cancellation and title synchronization.
+  - **1-Tap Quick Action Templates**: Added a high-speed template row with instant 0ms offline chips (`Gym workout at 6pm`, `Study DSA tomorrow 4pm p1`, `Team sync meeting 10am`, `Buy groceries: milk, eggs`, `Submit lab report Friday 5pm`) in both Idle and Error states.
+
+### 2026-09-06 — Gym Exercise Database Uncoupling & Biomechanical Precision Normalization
+- **ROOT CAUSE OF OVER-AGGRESSIVE CLUBBING**:
+  - A previous deduplication pass over-generalized exercise aliasing by clubbing exercises with distinct movement mechanics, resistance profiles, or target muscle emphasis under arbitrary parents:
+    - `Ab Wheel Rollout` and `Bodyweight Plank` were mis-aliased to `transverse_abs_pallof_press` (anti-extension vs anti-rotation).
+    - `Russian Twists`, `Bicycle Crunches`, and `Side Plank` were mis-aliased to `obliques_cable_woodchoppers` (rotational flexion vs cable rotary vs lateral isometric).
+    - `Tricep Kickbacks` was mis-aliased to `long_tricep_dumbbell_overhead_triceps_extension` (shortened lateral/medial vs long-head overhead stretch).
+    - `Decline Dumbbell Flyes` was mis-aliased to `lower_chest_decline_dumbbell_press` (fly vs press).
+    - `Barbell Floor Press` was mis-aliased to `mid_chest_flat_barbell_bench_press` (partial ROM floor lock vs full ROM bench).
+    - `Donkey Calf Raise` and `Leg Press Calf Extension` were mis-aliased to `gastrocnemius_standing_machine_calf_raises`.
+    - `Lying Leg Raise` was mis-aliased to `lower_abs_reverse_crunches` (hip flexor/straight-leg lever vs posterior pelvic tilt).
+- **RESTORED & ADDED CANONICAL EXERCISES** in [`mobile/src/data/exerciseDatabase.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/data/exerciseDatabase.ts):
+  - Created dedicated canonical entries with independent IDs, targeting, instructions, and equipment:
+    - `transverse_abs_ab_wheel_rollout` (*Ab Wheel Rollout*)
+    - `mid_chest_barbell_floor_press` (*Barbell Floor Press*)
+    - `lower_chest_decline_dumbbell_flyes` (*Decline Dumbbell Flyes*)
+    - `gastrocnemius_donkey_calf_raise` (*Donkey Calf Raise*)
+    - `lower_abs_lying_leg_raise` (*Lying Leg Raise*)
+    - `obliques_side_plank` (*Side Plank*)
+  - Associated aliases to existing canonical entries: `Bodyweight Plank` (`abs_plank`), `Weighted Russian Twist` (`obliques_russian_twists`), `Bicycle Crunch` (`obliques_bicycle_crunches`), `Dumbbell Tricep Kickbacks` (`lateral_tricep_dumbbell_kickbacks`), `Leg Press Calf Extension` (`gastrocnemius_leg_press_calf_raises`).
+  - Disambiguated duplicate ID `mid_back_seal_row` to `mid_back_seal_row_bench_elevated`.
+  - Maintained strict true-synonym grouping (e.g. *Pec Deck* / *Pec Deck Fly* / *Butterfly Machine Fly*, *Barbell Bench Press* / *Bench Press*, *Incline DB Press* / *Incline Dumbbell Bench Press*). Total canonical exercises: 361.
+- **NORMALIZED ALIAS MAP** in [`mobile/src/data/exerciseAliasMap.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/data/exerciseAliasMap.ts):
+  - Remapped uncoupled exercise lookup keys to their dedicated canonical entries.
+  - Removed duplicate object key `"abroller"` and removed corrupt combo alias `"hacksquatsorlegpress"`.
+- **ENRICHED VIDEO GUIDES** in [`mobile/src/services/exerciseVideoDatabase.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/exerciseVideoDatabase.ts):
+  - Added dedicated video IDs for `tricep kickbacks` (`b5le--KkyH0`), `leg press calf extension` (`n-5T_oYc1oU`), and `lying leg raise` (`Fl8rJJ7mZJM`).
+- **VERIFIED**:
+  - `verify_uncoupling.js`: 31/31 unit test cases passed across uncoupled and preserved synonyms.
+  - Exercise ID uniqueness: 361 total exercises, 0 duplicates.
+  - `npx tsc --noEmit` exited with code 0 (0 errors).
+
+### 2026-09-06 — Analytics Screen Overhaul: Concentric Hero, 4-Pillar Balance, Interactive Wave & Attendance Gauge
+- **DESIGN & VISUAL POLISH RATIONALE**:
+  - Previously, `AnalyticsScreen.tsx` stacked 4 repetitive and identical bar charts (Tasks, Habits, Attendance, Gym Volume) with no interactive inspection, static blur blobs that caused banding, and uncontextualized metrics.
+- **UPGRADED `AnalyticsScreen.tsx`** in [`mobile/src/screens/AnalyticsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AnalyticsScreen.tsx):
+  - **Concentric Dual-Ring Hero Card**: Outer SVG progress arc shows overall Zen Score (0–100) with gradient stroke and delta badge (`+4 pts`); inner concentric ring shows habit consistency; center displays score and dynamic tier badge (`✦ Zen Master 90+`, `⚡ Peak Flow 80–89`, `Momentum 65–79`, `Recharge <65`).
+  - **4-Pillar Life Balance Breakdown**: Integrated horizontal progress breakdown visualizing contribution from Tasks (25%), Habits (20%), Gym (30%), and Focus/Attendance (25%).
+  - **2x2 High-Signal Telemetry Grid**: 4 contextualized tiles showing Task Velocity (`24 completed`), Active Streak (`12d • Best 18d`), Attendance Safety (`87.5% • Safe to miss 3`), and Deep Work Focus (`8h 45m`).
+  - **Interactive Task Velocity Chart**: Rounded capsule bars with tap-to-inspect floating HUD tooltip (Date, exact count, delta vs average) and dashed daily average guideline.
+  - **Habit Momentum Spline Wave**: Replaced repetitive bar chart with a smooth cubic bezier spline area chart (`generateSplinePath`) featuring an emerald gradient fill, grid guidelines, and interactive node tapping with haptics.
+  - **Academic Attendance Safety Card**: Replaced stacked bars with a circular safety gauge arc, 75% university requirement tracking, and a dynamic Bunk Safety margin calculator (`Safe to miss N` vs `Attend next N to reach 75%`).
+  - **Gym Physical Vitality Card**: Workouts completed vs weekly target, total tonnage lifted, and volume bar graph.
+  - **35-Day Discipline Grid (Heatmap 2.0)**: 5-week matrix with 4-level graduated purple luminance, day headers, and an interactive day inspector displaying that day's tasks, gym session, and habits completed.
+- **SYNCHRONIZED `AnalyticsSkeleton.tsx`** in [`mobile/src/components/Analytics/AnalyticsSkeleton.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Analytics/AnalyticsSkeleton.tsx):
+  - Updated skeleton layout to match the new concentric hero card, 4-pillar tracks, 2x2 grid, and chart cards 1:1, guaranteeing zero layout shift on cold boot.
+- **VERIFIED**:
+  - `npx tsc --noEmit` exited with code 0 (0 errors).
 
 

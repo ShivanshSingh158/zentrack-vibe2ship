@@ -29,7 +29,16 @@ import {
   VoiceState
 } from '../../services/voiceEngine';
 import { transcribeAudioViaProxy } from '../../services/geminiProxy';
-import { parseNLTasks, parseLocalDate, toYMD, ParsedTask, cleanTaskTitle, formatRecurrenceLabel } from '../../utils/dateUtils';
+import {
+  parseNLTasks,
+  parseNLTask,
+  parseLocalDate,
+  toYMD,
+  ParsedTask,
+  cleanTaskTitle,
+  formatRecurrenceLabel,
+  normalizeVoiceTranscript,
+} from '../../utils/dateUtils';
 import { today, formatTimeDisplay, formatDisplayDate, Priority, TAG_STORAGE_KEY, tagColorFor } from '../../screens/tasks/taskConstants';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { scheduleSingleTaskReminder } from '../../services/notifications';
@@ -70,6 +79,14 @@ export interface EditableVoiceTask {
   locationName?: string;
   rawSegment?: string;
 }
+
+const QUICK_TEMPLATES = [
+  { icon: 'barbell-outline', text: 'Gym workout at 6pm', color: '#FF6961' },
+  { icon: 'code-slash-outline', text: 'Study DSA tomorrow 4pm p1', color: '#60A5FA' },
+  { icon: 'briefcase-outline', text: 'Team sync meeting tomorrow 10am', color: '#FBBF24' },
+  { icon: 'cart-outline', text: 'Buy groceries: milk, eggs, bread', color: '#34D399' },
+  { icon: 'school-outline', text: 'Submit lab report Friday 5pm', color: '#C084FC' },
+];
 
 // Sub-component: Soundwave Equalizer Bars for voice visualizer
 function SoundWaveBars({ active }: { active: boolean }) {
@@ -204,6 +221,9 @@ export default function VoiceDictationOverlay({
   const [newTagText, setNewTagText] = useState('');
   const [tagLibrary, setTagLibrary] = useState<string[]>([]);
 
+  const [offlineNLPMode, setOfflineNLPMode] = useState(false);
+  const nlpDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const glowScale = useSharedValue(1);
   const glowOpacity = useSharedValue(0.4);
 
@@ -259,6 +279,8 @@ export default function VoiceDictationOverlay({
     setRawTranscript('');
     setTasks([]);
     setActiveTaskIdx(0);
+    setOfflineNLPMode(false);
+    if (nlpDebounceRef.current) clearTimeout(nlpDebounceRef.current);
     closeAllModals();
   };
 
@@ -268,6 +290,8 @@ export default function VoiceDictationOverlay({
     setRawTranscript('');
     setTasks([]);
     setActiveTaskIdx(0);
+    setOfflineNLPMode(false);
+    if (nlpDebounceRef.current) clearTimeout(nlpDebounceRef.current);
     closeAllModals();
   };
 
@@ -296,6 +320,84 @@ export default function VoiceDictationOverlay({
     });
   }, [activeTaskIdx]);
 
+  // ─── Live NLP Parser for Title Input (Matches NewTaskModal Behavior) ─────────
+  const handleTitleChange = useCallback((text: string) => {
+    updateActiveTask({ title: text });
+
+    if (nlpDebounceRef.current) clearTimeout(nlpDebounceRef.current);
+
+    if (text.trim().length < 2) return;
+
+    nlpDebounceRef.current = setTimeout(() => {
+      const normalized = normalizeVoiceTranscript(text);
+      const parsed = parseNLTask(normalized);
+      const updates: Partial<EditableVoiceTask> = {};
+
+      if (parsed.date && parsed.tokens.some(t => t.type === 'date')) {
+        updates.date = parsed.date;
+      }
+      if (parsed.timeSlot && parsed.tokens.some(t => t.type === 'time')) {
+        updates.timeSlot = parsed.timeSlot;
+        if (parsed.endTimeSlot) updates.endTimeSlot = parsed.endTimeSlot;
+      }
+      if (parsed.tokens.some(t => t.type === 'priority')) {
+        updates.priority = parsed.priority as Priority;
+      }
+      if (parsed.isRecurring && parsed.recurrenceRule && parsed.tokens.some(t => t.type === 'recurrence')) {
+        updates.isRecurring = true;
+        updates.recurrenceRule = parsed.recurrenceRule as any;
+      }
+      if (parsed.isReminder) {
+        updates.isReminder = true;
+      }
+      if (parsed.durationMinutes != null) {
+        updates.durationMinutes = parsed.durationMinutes;
+      }
+      if (parsed.subtasks && parsed.subtasks.length > 0) {
+        updates.subtasks = parsed.subtasks;
+      }
+      if (parsed.locationReminder) {
+        updates.locationReminder = parsed.locationReminder;
+        updates.locationName = parsed.locationName;
+      }
+
+      setTasks(prev => {
+        if (prev.length === 0) return prev;
+        const idx = activeTaskIdx >= prev.length ? 0 : activeTaskIdx;
+        const current = prev[idx];
+        const newTags = (parsed.tags && parsed.tags.length > 0)
+          ? Array.from(new Set([...current.tags, ...parsed.tags]))
+          : current.tags;
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], ...updates, tags: newTags };
+        return updated;
+      });
+    }, 250);
+  }, [activeTaskIdx, updateActiveTask]);
+
+  // ─── Instant Switch to Manual/Offline NLP Mode ───────────────────────────
+  const handleSwitchToManualNLP = () => {
+    setErrorMsg('');
+    setOfflineNLPMode(true);
+    setTasks([{
+      id: `voice_${Date.now()}_0`,
+      title: '',
+      date: selectedDate || today,
+      timeSlot: null,
+      endTimeSlot: null,
+      priority: 'low',
+      isRecurring: false,
+      recurrenceRule: null,
+      tags: [],
+      subtasks: [],
+      durationMinutes: 0,
+      isReminder: false,
+      locationReminder: null,
+    }]);
+    setActiveTaskIdx(0);
+    setState('preview');
+  };
+
   const removeTaskAt = (idx: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setTasks(prev => {
@@ -313,11 +415,12 @@ export default function VoiceDictationOverlay({
 
   // ─── Parsing & Multi-Task Setup ──────────────────────────────────────────
   const handleParsedSpokenText = (spokenText: string) => {
+    const normalized = normalizeVoiceTranscript(spokenText);
     setRawTranscript(spokenText);
-    const parsedList: ParsedTask[] = parseNLTasks(spokenText);
+    const parsedList: ParsedTask[] = parseNLTasks(normalized);
 
     if (parsedList.length === 0) {
-      setErrorMsg("Couldn't extract tasks. Tap mic to try again.");
+      setErrorMsg("Couldn't recognize any task speech. Tap mic to try again or type below.");
       setState('idle');
       return;
     }
@@ -325,7 +428,7 @@ export default function VoiceDictationOverlay({
     const mappedTasks: EditableVoiceTask[] = parsedList.map((pt, idx) => {
       return {
         id: `voice_${Date.now()}_${idx}`,
-        title: cleanTaskTitle(pt.title?.trim() || spokenText.trim()),
+        title: cleanTaskTitle(pt.title?.trim() || normalized.trim()),
         date: pt.date || selectedDate || today,
         timeSlot: pt.timeSlot || null,
         endTimeSlot: pt.endTimeSlot || null,
@@ -343,8 +446,14 @@ export default function VoiceDictationOverlay({
 
     setTasks(mappedTasks);
     setActiveTaskIdx(0);
+    setOfflineNLPMode(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setState('preview');
+  };
+
+  const handleApplyTemplate = (tmplText: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    handleParsedSpokenText(tmplText);
   };
 
   // ─── High-Speed Direct Voice Extraction (Fast STT + Instant Local NLP) ─────
@@ -353,10 +462,10 @@ export default function VoiceDictationOverlay({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     try {
-      // 1. Fast Single-Shot Transcription via Gemini Proxy (< 1s)
-      const transcribedText = await transcribeAudioViaProxy(base64Audio);
+      // 1. Fast Single-Shot Transcription via Gemini Proxy (8s strict timeout)
+      const transcribedText = await transcribeAudioViaProxy(base64Audio, 8000);
       if (!transcribedText || isSilenceOrNoise(transcribedText)) {
-        setErrorMsg("Couldn't recognize any task speech. Please tap the mic and try again.");
+        setErrorMsg("Weak network or no speech detected. Tap mic to retry or type below.");
         setState('idle');
         return;
       }
@@ -365,8 +474,8 @@ export default function VoiceDictationOverlay({
       handleParsedSpokenText(transcribedText.trim());
 
     } catch (err) {
-      console.error('[VoiceDictation] Audio processing error:', err);
-      setErrorMsg('Failed to process voice audio. Please try again.');
+      console.warn('[VoiceDictation] Audio processing error:', err);
+      setErrorMsg('Network is weak. Type your task below with instant local NLP.');
       setState('idle');
     }
   };
@@ -517,20 +626,30 @@ export default function VoiceDictationOverlay({
       const savedTasksForCallback: any[] = [];
 
       for (const t of tasks) {
-        const cleanTitle = cleanTaskTitle(t.title);
+        // Re-parse with parseNLTask on save to ensure any manual edits or late-typed priority/time tokens are captured
+        const parsedAgain = parseNLTask(normalizeVoiceTranscript(t.title));
+        const cleanTitle = cleanTaskTitle(parsedAgain.title || t.title);
         if (!cleanTitle) continue;
 
-        const finalDate = t.date || selectedDate || today;
-        const finalTime = t.timeSlot ? (t.endTimeSlot ? `${t.timeSlot} - ${t.endTimeSlot}` : t.timeSlot) : null;
-        const finalPriority = t.priority;
-        const estMinutes = t.durationMinutes || (t.timeSlot && t.endTimeSlot ? calcEstMinutes(t.timeSlot, t.endTimeSlot) : 0);
-        const subtaskObjects = t.subtasks.map((st, i) => ({ id: `st-${i}`, title: st, completed: false }));
+        const finalDate = t.date || parsedAgain.date || selectedDate || today;
+        const timeSlotToUse = t.timeSlot || parsedAgain.timeSlot;
+        const endTimeSlotToUse = t.endTimeSlot || parsedAgain.endTimeSlot;
+        const finalTime = timeSlotToUse ? (endTimeSlotToUse ? `${timeSlotToUse} - ${endTimeSlotToUse}` : timeSlotToUse) : null;
+        const finalPriority = (t.priority && t.priority !== 'low') ? t.priority : (parsedAgain.priority || t.priority || 'low');
+        const estMinutes = t.durationMinutes || parsedAgain.durationMinutes || (timeSlotToUse && endTimeSlotToUse ? calcEstMinutes(timeSlotToUse, endTimeSlotToUse) : 0);
+        const subtasksList = (t.subtasks && t.subtasks.length > 0) ? t.subtasks : (parsedAgain.subtasks || []);
+        const subtaskObjects = subtasksList.map((st, i) => ({ id: `st-${i}`, title: st, completed: false }));
+        const tagsCombined = Array.from(new Set([...(t.tags || []), ...(parsedAgain.tags || [])]));
+        const isRecur = t.isRecurring || parsedAgain.isRecurring || false;
+        const recurRule = t.recurrenceRule || parsedAgain.recurrenceRule || null;
+        const isReminderFinal = t.isReminder || parsedAgain.isReminder || false;
+        const locationReminderFinal = t.locationReminder || parsedAgain.locationReminder || undefined;
 
-        if (t.isRecurring && t.recurrenceRule) {
+        if (isRecur && recurRule) {
           // Recurring task series creation
           let startRecurrenceDate = parseLocalDate(finalDate);
-          if (t.recurrenceRule.type === 'weekly' && t.recurrenceRule.daysOfWeek && t.recurrenceRule.daysOfWeek.length > 0) {
-            while (!t.recurrenceRule.daysOfWeek.includes(startRecurrenceDate.getDay())) {
+          if (recurRule.type === 'weekly' && recurRule.daysOfWeek && recurRule.daysOfWeek.length > 0) {
+            while (!recurRule.daysOfWeek.includes(startRecurrenceDate.getDay())) {
               startRecurrenceDate.setDate(startRecurrenceDate.getDate() + 1);
             }
           }
@@ -557,11 +676,11 @@ export default function VoiceDictationOverlay({
               timeSlot: finalTime || undefined,
               estimatedMinutes: estMinutes,
               isRecurring: true,
-              recurrenceRule: t.recurrenceRule,
+              recurrenceRule: recurRule,
               recurringSourceId: sourceId,
               order: 0,
               subtasks: subtaskObjects,
-              tags: t.tags,
+              tags: tagsCombined,
             });
 
             batch.set(docRef, {
@@ -574,26 +693,26 @@ export default function VoiceDictationOverlay({
               timeSlot: finalTime || null,
               estimatedMinutes: estMinutes,
               isRecurring: true,
-              recurrenceRule: t.recurrenceRule,
+              recurrenceRule: recurRule,
               recurringSourceId: sourceId,
               createdAt: serverTimestamp(),
               order: 0,
               subtasks: subtaskObjects,
-              tags: t.tags,
+              tags: tagsCombined,
             });
 
             count++;
-            if (t.recurrenceRule.type === 'daily' || (t.recurrenceRule as any).type === 'custom') {
-              current.setDate(current.getDate() + (t.recurrenceRule.interval || 1));
-            } else if (t.recurrenceRule.type === 'weekly') {
-              if (t.recurrenceRule.daysOfWeek && t.recurrenceRule.daysOfWeek.length > 0) {
+            if (recurRule.type === 'daily' || (recurRule as any).type === 'custom') {
+              current.setDate(current.getDate() + (recurRule.interval || 1));
+            } else if (recurRule.type === 'weekly') {
+              if (recurRule.daysOfWeek && recurRule.daysOfWeek.length > 0) {
                 do { current.setDate(current.getDate() + 1); }
-                while (current <= end && !t.recurrenceRule.daysOfWeek.includes(current.getDay()));
+                while (current <= end && !recurRule.daysOfWeek.includes(current.getDay()));
               } else {
-                current.setDate(current.getDate() + 7 * (t.recurrenceRule.interval || 1));
+                current.setDate(current.getDate() + 7 * (recurRule.interval || 1));
               }
-            } else if (t.recurrenceRule.type === 'monthly') {
-              current.setMonth(current.getMonth() + (t.recurrenceRule.interval || 1));
+            } else if (recurRule.type === 'monthly') {
+              current.setMonth(current.getMonth() + (recurRule.interval || 1));
             } else {
               current.setDate(current.getDate() + 1);
             }
@@ -616,26 +735,26 @@ export default function VoiceDictationOverlay({
             isRecurring: false,
             order: 0,
             subtasks: subtaskObjects,
-            tags: t.tags,
-            isReminder: t.isReminder,
-            locationReminder: t.locationReminder || undefined,
+            tags: tagsCombined,
+            isReminder: isReminderFinal,
+            locationReminder: locationReminderFinal || undefined,
           };
 
           optimisticAddTask(newTaskPayload);
 
-          if (finalTime || t.isReminder) {
+          if (finalTime || isReminderFinal) {
             scheduleSingleTaskReminder(newTaskPayload).catch(e => console.warn('[VoiceDictation] Reminder schedule error:', e));
           }
 
-          if (t.locationReminder) {
+          if (locationReminderFinal) {
             saveTaskLocationReminder({
               taskId,
               taskTitle: cleanTitle,
-              placeName: t.locationReminder.placeName,
-              latitude: t.locationReminder.latitude,
-              longitude: t.locationReminder.longitude,
-              radius: t.locationReminder.radius,
-              triggerType: t.locationReminder.triggerType,
+              placeName: locationReminderFinal.placeName,
+              latitude: locationReminderFinal.latitude,
+              longitude: locationReminderFinal.longitude,
+              radius: locationReminderFinal.radius,
+              triggerType: locationReminderFinal.triggerType,
             }).catch(console.warn);
           }
 
@@ -655,9 +774,9 @@ export default function VoiceDictationOverlay({
             createdAt: serverTimestamp(),
             order: 0,
             subtasks: subtaskObjects,
-            tags: t.tags,
-            isReminder: t.isReminder || false,
-            locationReminder: t.locationReminder || null,
+            tags: tagsCombined,
+            isReminder: isReminderFinal || false,
+            locationReminder: locationReminderFinal || null,
           };
 
           await safeWrite(
@@ -806,8 +925,12 @@ export default function VoiceDictationOverlay({
                       source={require('../../../assets/images/sara-idle.png')}
                       style={styles.mascotCardIcon}
                     />
-                    <Text style={[styles.cardHeaderText, { color: '#FF6961' }]}>
-                      {tasks.length > 1 ? `${tasks.length} TASKS DETECTED · TAP TO EDIT` : 'DETECTED TASK · ALL NLP CONNECTED'}
+                    <Text style={[styles.cardHeaderText, { color: offlineNLPMode ? '#34D399' : '#FF6961' }]}>
+                      {offlineNLPMode
+                        ? '⚡ LOCAL NLP ACTIVE · 0MS OFFLINE'
+                        : tasks.length > 1
+                        ? `${tasks.length} TASKS DETECTED · TAP TO EDIT`
+                        : 'DETECTED TASK · ALL NLP CONNECTED'}
                     </Text>
                   </>
                 ) : errorMsg ? (
@@ -828,6 +951,32 @@ export default function VoiceDictationOverlay({
                 <Animated.View entering={FadeIn} exiting={FadeOut}>
                   <Text style={styles.errorText}>{errorMsg}</Text>
                   <Text style={styles.errorHint}>Tap the microphone below to speak again.</Text>
+                  <TouchableOpacity
+                    style={styles.offlineTypeBtn}
+                    onPress={handleSwitchToManualNLP}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="create-outline" size={15} color="#FF6961" />
+                    <Text style={styles.offlineTypeBtnText}>Type Task with Instant NLP (Offline)</Text>
+                  </TouchableOpacity>
+
+                  {/* 1-Tap Quick Action Templates on Error */}
+                  <View style={styles.quickTemplatesWrapper}>
+                    <Text style={styles.quickTemplatesLabel}>OR PICK A QUICK TEMPLATE (0MS OFFLINE)</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickTemplatesRow}>
+                      {QUICK_TEMPLATES.map((tmpl, idx) => (
+                        <TouchableOpacity
+                          key={idx}
+                          style={styles.quickTemplatePill}
+                          onPress={() => handleApplyTemplate(tmpl.text)}
+                          activeOpacity={0.75}
+                        >
+                          <Ionicons name={tmpl.icon as any} size={13} color={tmpl.color} />
+                          <Text style={styles.quickTemplatePillText}>{tmpl.text}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
                 </Animated.View>
               ) : state === 'processing' ? (
                 <Animated.View entering={FadeIn} style={styles.processingContent}>
@@ -877,8 +1026,8 @@ export default function VoiceDictationOverlay({
                     <TextInput
                       style={styles.detectedTitleInput}
                       value={currentTask.title}
-                      onChangeText={(val) => updateActiveTask({ title: val })}
-                      placeholder="Task title..."
+                      onChangeText={handleTitleChange}
+                      placeholder={offlineNLPMode ? "Type task, e.g. Buy groceries tmrw 5pm p1..." : "Task title..."}
                       placeholderTextColor="rgba(255,255,255,0.4)"
                       multiline={false}
                       returnKeyType="done"
@@ -900,6 +1049,18 @@ export default function VoiceDictationOverlay({
                       >
                         <Ionicons name="calendar-outline" size={13} color="#60a5fa" />
                         <Text style={styles.dateChipText}>{activeDateLabel}</Text>
+                        {currentTask.date !== today && (
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              updateActiveTask({ date: today });
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name="close-circle" size={13} color="#60a5fa" style={{ marginLeft: 2 }} />
+                          </TouchableOpacity>
+                        )}
                       </TouchableOpacity>
 
                       {/* Recurrence Chip (Prominent position right next to Date) */}
@@ -993,6 +1154,18 @@ export default function VoiceDictationOverlay({
                         <Text style={[styles.durationChipText, currentTask.durationMinutes <= 0 && { color: '#8e8e93' }]}>
                           {formatDurationText(currentTask.durationMinutes)}
                         </Text>
+                        {currentTask.durationMinutes > 0 && (
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              updateActiveTask({ durationMinutes: 0 });
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name="close-circle" size={13} color="#fbbf24" style={{ marginLeft: 2 }} />
+                          </TouchableOpacity>
+                        )}
                       </TouchableOpacity>
 
                       {/* Priority Chip */}
@@ -1008,6 +1181,18 @@ export default function VoiceDictationOverlay({
                         <Text style={[styles.priorityChipText, { color: priorityColor }]}>
                           {currentTask.priority === 'high' ? 'P1 High' : currentTask.priority === 'medium' ? 'P2 Medium' : 'Priority'}
                         </Text>
+                        {currentTask.priority !== 'low' && (
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              updateActiveTask({ priority: 'low' });
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name="close-circle" size={13} color={priorityColor} style={{ marginLeft: 2 }} />
+                          </TouchableOpacity>
+                        )}
                       </TouchableOpacity>
 
                       {/* Reminder / Alarm Chip */}
@@ -1023,6 +1208,18 @@ export default function VoiceDictationOverlay({
                         <Text style={[styles.reminderChipText, !currentTask.isReminder && { color: '#8e8e93' }]}>
                           {currentTask.isReminder ? (currentTask.timeSlot ? `Alarm ${formatTimeDisplay(currentTask.timeSlot)}` : 'Alarm ON') : 'Reminder'}
                         </Text>
+                        {currentTask.isReminder && (
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              updateActiveTask({ isReminder: false });
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name="close-circle" size={13} color="#f59e0b" style={{ marginLeft: 2 }} />
+                          </TouchableOpacity>
+                        )}
                       </TouchableOpacity>
 
                       {/* Location Chip */}
@@ -1172,6 +1369,32 @@ export default function VoiceDictationOverlay({
                     {currentExample.mid}
                     <Text style={styles.highlightText}>{currentExample.highlight2}</Text>"
                   </Text>
+                  <TouchableOpacity
+                    style={styles.typeInsteadHint}
+                    onPress={handleSwitchToManualNLP}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="create-outline" size={13} color="rgba(255,255,255,0.5)" />
+                    <Text style={styles.typeInsteadHintText}>Or tap here to type with instant local NLP</Text>
+                  </TouchableOpacity>
+
+                  {/* 1-Tap Quick Action Templates */}
+                  <View style={styles.quickTemplatesWrapper}>
+                    <Text style={styles.quickTemplatesLabel}>QUICK 1-TAP TEMPLATES (0MS NLP)</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickTemplatesRow}>
+                      {QUICK_TEMPLATES.map((tmpl, idx) => (
+                        <TouchableOpacity
+                          key={idx}
+                          style={styles.quickTemplatePill}
+                          onPress={() => handleApplyTemplate(tmpl.text)}
+                          activeOpacity={0.75}
+                        >
+                          <Ionicons name={tmpl.icon as any} size={13} color={tmpl.color} />
+                          <Text style={styles.quickTemplatePillText}>{tmpl.text}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
                 </Animated.View>
               )}
             </LinearGradient>
@@ -1956,6 +2179,71 @@ const styles = StyleSheet.create({
   retryPillText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 14,
+    color: '#FFFFFF',
+  },
+  offlineTypeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 69, 58, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 69, 58, 0.28)',
+  },
+  offlineTypeBtnText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 13,
+    color: '#FF6961',
+  },
+  typeInsteadHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 4,
+  },
+  typeInsteadHintText: {
+    fontFamily: FONT_FAMILY.regular,
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.5)',
+    textDecorationLine: 'underline',
+  },
+  quickTemplatesWrapper: {
+    marginTop: 12,
+    width: '100%',
+  },
+  quickTemplatesLabel: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: 'rgba(255, 255, 255, 0.4)',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  quickTemplatesRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 2,
+  },
+  quickTemplatePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  quickTemplatePillText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 12,
     color: '#FFFFFF',
   },
 });

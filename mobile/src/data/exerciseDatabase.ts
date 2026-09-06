@@ -91,9 +91,20 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
       "Barbell Bench Press",
       "Flat Barbell Press",
       "Bench Press",
-      "Barbell Floor Press",
       "Flat Bench Press",
       "Smith Machine Bench Press"
+    ]
+  },
+  {
+    "id": "mid_chest_barbell_floor_press",
+    "name": "Barbell Floor Press",
+    "muscle": "Mid Chest",
+    "tier": "B Tier",
+    "aliases": [
+      "Floor Press",
+      "BB Floor Press",
+      "Dumbbell Floor Press",
+      "DB Floor Press"
     ]
   },
   {
@@ -106,7 +117,6 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
       "Dumbbell Bench Press",
       "Dumbbell Press",
       "Flat DB Press",
-      "Dumbbell Floor Press",
       "DB Bench Press"
     ]
   },
@@ -227,7 +237,18 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "aliases": [
       "Decline Dumbbell Bench Press",
       "Decline DB Press",
-      "Decline Dumbbell Flyes"
+      "DB Decline Press"
+    ]
+  },
+  {
+    "id": "lower_chest_decline_dumbbell_flyes",
+    "name": "Decline Dumbbell Flyes",
+    "muscle": "Lower Chest",
+    "tier": "B Tier",
+    "aliases": [
+      "Decline DB Fly",
+      "Decline Dumbbell Fly",
+      "Decline DB Flyes"
     ]
   },
   {
@@ -857,8 +878,8 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
       "Seated Dumbbell Overhead Extension",
       "Single-Arm Dumbbell Overhead Extension",
       "Dumbbell French Press",
-      "Tricep Kickbacks",
-      "Dumbbell Kickbacks"
+      "DB Overhead Extension",
+      "Overhead Dumbbell Triceps Extension"
     ]
   },
   {
@@ -885,8 +906,7 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "aliases": [
       "Hack Squat",
       "Machine Hack Squat",
-      "Reverse Hack Squat",
-      "Hack Squats OR Leg Press"
+      "Reverse Hack Squat"
     ]
   },
   {
@@ -1035,9 +1055,17 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
       "Standing Calf Raise",
       "Machine Calf Raise",
       "Smith Machine Calf Raise",
-      "Leg Press Calf Raise",
-      "Donkey Calf Raise",
       "Calf Raises"
+    ]
+  },
+  {
+    "id": "gastrocnemius_donkey_calf_raise",
+    "name": "Donkey Calf Raise",
+    "muscle": "Gastrocnemius",
+    "tier": "B Tier",
+    "aliases": [
+      "Donkey Calf Raises",
+      "Machine Donkey Calf Raise"
     ]
   },
   {
@@ -1096,8 +1124,18 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "tier": "A Tier",
     "aliases": [
       "Reverse Crunch",
-      "Decline Reverse Crunch",
-      "Lying Leg Raise"
+      "Decline Reverse Crunch"
+    ]
+  },
+  {
+    "id": "lower_abs_lying_leg_raise",
+    "name": "Lying Leg Raise",
+    "muscle": "Lower Abs",
+    "tier": "B Tier",
+    "aliases": [
+      "Lying Leg Raises",
+      "Floor Leg Raise",
+      "Straight Leg Raise"
     ]
   },
   {
@@ -1108,9 +1146,22 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "aliases": [
       "Woodchoppers",
       "Cable Woodchopper",
-      "Russian Twists",
-      "Bicycle Crunches",
-      "Side Plank"
+      "High to Low Woodchoppers",
+      "Low to High Woodchoppers"
+    ]
+  },
+  {
+    "id": "transverse_abs_ab_wheel_rollout",
+    "name": "Ab Wheel Rollout",
+    "muscle": "Transverse Abs (Deep core)",
+    "tier": "A+ Tier",
+    "aliases": [
+      "Ab Wheel Rollouts",
+      "Ab Rollout",
+      "Ab Roller",
+      "Wheel Rollout",
+      "Ab Wheel",
+      "Abs Wheel Roller"
     ]
   },
   {
@@ -1121,9 +1172,8 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "aliases": [
       "Cable Pallof Press",
       "Band Pallof Press",
-      "Ab Wheel Rollout",
-      "Plank",
-      "Ab Rollout"
+      "Pallof Press Hold",
+      "Kneeling Pallof Press"
     ]
   },
   {
@@ -1474,7 +1524,13 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "name": "Dumbbell Tricep Kickbacks",
     "muscle": "Lat/Med Tricep (Lateral / Medial Head)",
     "tier": "C Tier",
-    "aliases": []
+    "aliases": [
+      "Tricep Kickbacks",
+      "Dumbbell Kickbacks",
+      "Tricep Kickback",
+      "Kickbacks",
+      "Dumbbell Tricep Kickback"
+    ]
   },
   {
     "id": "lat_med_tricep__lateral___medial_head__reverse_grip_tricep_pushdown",
@@ -1959,7 +2015,9 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "name": "Bicycle Crunch",
     "muscle": "Upper Abs",
     "tier": "C Tier",
-    "aliases": []
+    "aliases": [
+      "Bicycle Crunches"
+    ]
   },
   {
     "id": "upper_abs_cable_ab_crunches",
@@ -2024,7 +2082,12 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "name": "Bodyweight Plank",
     "muscle": "Transverse Abs (Deep core)",
     "tier": "B Tier",
-    "aliases": []
+    "aliases": [
+      "Plank",
+      "Planks",
+      "Front Plank",
+      "Standard Plank"
+    ]
   },
   {
     "id": "transverse_abs__deep_core__wrist_roller",
@@ -2056,7 +2119,11 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "name": "Weighted Russian Twist",
     "muscle": "Obliques",
     "tier": "B Tier",
-    "aliases": []
+    "aliases": [
+      "Russian Twists",
+      "Russian Twist",
+      "Weighted Russian Twists"
+    ]
   },
   {
     "id": "obliques_woodchopper",
@@ -2614,7 +2681,7 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     ]
   },
   {
-    "id": "mid_back_seal_row",
+    "id": "mid_back_seal_row_bench_elevated",
     "name": "Seal Row (Bench Elevated)",
     "muscle": "Mid-Back",
     "tier": "C Tier",
@@ -3223,7 +3290,10 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "muscle": "Gastrocnemius (Upper calf)",
     "tier": "A+ Tier",
     "aliases": [
-      "45 degree leg press calf press"
+      "45 degree leg press calf press",
+      "Leg Press Calf Raise",
+      "Leg Press Calf Raises",
+      "Calf Press on Leg Press"
     ]
   },
   {
@@ -3324,6 +3394,17 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "tier": "B Tier",
     "aliases": [
       "side plank hip drops"
+    ]
+  },
+  {
+    "id": "obliques_side_plank",
+    "name": "Side Plank",
+    "muscle": "Obliques",
+    "tier": "B Tier",
+    "aliases": [
+      "Side Planks",
+      "Isometric Side Plank",
+      "Bodyweight Side Plank"
     ]
   },
   {

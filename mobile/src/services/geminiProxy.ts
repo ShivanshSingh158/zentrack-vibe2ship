@@ -18,6 +18,7 @@
 import NetInfo from '@react-native-community/netinfo';
 import { signInAnonymously } from 'firebase/auth';
 import { auth } from './firebase';
+import { normalizeVoiceTranscript } from '../utils/dateUtils';
 
 const RAW_KEYS = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 const GEMINI_KEYS: string[] = RAW_KEYS.split(',').map((k: string) => k.trim()).filter(Boolean);
@@ -61,13 +62,15 @@ function getNextKey(): string | null {
   return key;
 }
 
-// ΓöÇΓöÇΓöÇ Core Interface ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ──────────────────────────────────────────────────────────────────
 
 export interface ProxyCallOptions {
   model?: string;
   contents: any[];
   systemInstruction?: string;
   tools?: any[];
+  timeoutMs?: number;
+  allowOfflineFallback?: boolean;
   generationConfig?: {
     temperature?: number;
     maxOutputTokens?: number;
@@ -76,7 +79,7 @@ export interface ProxyCallOptions {
   };
 }
 
-// ΓöÇΓöÇΓöÇ Core Gemini call with key rotation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ──────────────── Core Gemini call with key rotation ────────────────
 
 export async function callProxy(options: ProxyCallOptions): Promise<any> {
   const {
@@ -85,17 +88,22 @@ export async function callProxy(options: ProxyCallOptions): Promise<any> {
     systemInstruction,
     tools,
     generationConfig,
+    timeoutMs = 15000,
+    allowOfflineFallback = false,
   } = options;
 
-  // FIX #4: Use static import (moved to top of file) ΓÇö no more dynamic resolution per-call
+  // FIX #4: Use static import (moved to top of file) — no more dynamic resolution per-call
   const netState = await NetInfo.fetch();
   if (!netState.isConnected) {
     console.warn('[GeminiProxy] Offline. Intercepting Gemini call.');
-    return {
-      candidates: [{
-        content: { parts: [{ text: "I cannot reach the network right now, but your logs will be saved locally." }] }
-      }]
-    };
+    if (allowOfflineFallback) {
+      return {
+        candidates: [{
+          content: { parts: [{ text: "I cannot reach the network right now, but your logs will be saved locally." }] }
+        }]
+      };
+    }
+    throw new Error('Network offline: No internet connection');
   }
 
   const body: any = { contents };
@@ -119,7 +127,7 @@ export async function callProxy(options: ProxyCallOptions): Promise<any> {
       : `https://myzentrack.vercel.app/api/gemini-proxy`;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30-second strict timeout
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs); // Strict timeout
 
     try {
       const token = !key ? await getValidAuthToken() : null;
@@ -141,7 +149,7 @@ export async function callProxy(options: ProxyCallOptions): Promise<any> {
         return resp.json();
       }
 
-      // 429 = rate limited, 5xx = server error, 401/403 = bad/revoked key ΓÇö try next key
+      // 429 = rate limited, 5xx = server error, 401/403 = bad/revoked key — try next key
       if (resp.status === 429 || resp.status >= 500 || resp.status === 401 || resp.status === 403 || resp.status === 400) {
         if (attempt === 0) {
           console.warn(`[GeminiProxy] Rate-limit/Auth error (${resp.status}), rotating through keys...`);
@@ -150,7 +158,7 @@ export async function callProxy(options: ProxyCallOptions): Promise<any> {
         continue;
       }
 
-      // 400/404 = bad request or invalid model ΓÇö don't retry
+      // 400/404 = bad request or invalid model — don't retry
       let errData: any = {};
       try { errData = await resp.json(); } catch (_) {}
       const msg = errData?.error?.message || `Gemini API error: HTTP ${resp.status}`;
@@ -161,16 +169,19 @@ export async function callProxy(options: ProxyCallOptions): Promise<any> {
       clearTimeout(timeoutId);
       
       if (fetchErr.name === 'AbortError') {
-        console.warn('[GeminiProxy] Request timed out (30s limit). Returning offline fallback.');
-        return {
-          candidates: [{
-            content: { parts: [{ text: "Network is too weak right now." }] }
-          }]
-        };
+        console.warn(`[GeminiProxy] Request timed out (${timeoutMs}ms limit).`);
+        if (allowOfflineFallback) {
+          return {
+            candidates: [{
+              content: { parts: [{ text: "Network is too weak right now." }] }
+            }]
+          };
+        }
+        throw new Error(`Network timeout: Request exceeded ${timeoutMs}ms`);
       }
 
       if (fetchErr.message && !fetchErr.message.includes('API Error')) {
-        // Real error (not rate limit) ΓÇö propagate immediately
+        // Real error (not rate limit) — propagate immediately
         throw fetchErr;
       }
       lastError = fetchErr;
@@ -253,26 +264,51 @@ export function parseProxyResponse(data: any): {
   return { text: text.trim(), functionCall: null };
 }
 
-// ΓöÇΓöÇΓöÇ Convenience: transcribe audio ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Convenience: transcribe audio with task context & homophone rules ─────────────
 
-export async function transcribeAudioViaProxy(base64Audio: string): Promise<string | null> {
+export async function transcribeAudioViaProxy(
+  base64Audio: string,
+  timeoutMs: number = 8000
+): Promise<string | null> {
   try {
     const data = await callProxy({
       model: 'gemini-2.5-flash',
+      timeoutMs,
       contents: [
         {
           role: 'user',
           parts: [
             { inlineData: { mimeType: 'audio/wav', data: base64Audio } },
-            { text: 'Transcribe this voice recording exactly. Return ONLY the transcribed text, nothing else.' },
+            {
+              text: `You are an expert, high-accuracy speech-to-text transcriber for ZenTrack, a task management and productivity app.
+Transcribe this user voice audio recording accurately into text.
+
+CRITICAL TASK VOCABULARY RULES:
+1. PRIORITY HOMOPHONES:
+   - When the user dictates task priorities, words sounding like "high" or "hi" MUST be transcribed as "high" (NEVER "hi", "hey", or "bye").
+   - E.g.: "submit report tomorrow 5pm high" -> "submit report tomorrow 5pm high"
+   - E.g.: "call mentor high priority" -> "call mentor high priority"
+   - E.g.: "study physics at 6pm priority high" -> "study physics at 6pm priority high"
+2. PRIORITY TERMS:
+   - "high priority", "urgent", "critical", "p1", "p2", "p3", "medium priority", "low priority", "asap".
+3. TASK DATES & TIMES:
+   - E.g. "tomorrow", "today", "tonight", "5pm", "9:30 am", "noon", "next Monday", "every day", "every weekday".
+4. SUBTASKS & TAGS:
+   - E.g. "with subtasks...", "checklist...", "tag...", "hashtag...".
+
+Return ONLY the raw transcribed text with no quotes, explanations, or commentary.`,
+            },
           ],
         },
       ],
-      generationConfig: { temperature: 0, maxOutputTokens: 200 },
+      generationConfig: { temperature: 0, maxOutputTokens: 250 },
     });
-    return parseProxyResponse(data).text || null;
+    const parsed = parseProxyResponse(data);
+    const text = parsed.text?.trim() || null;
+    if (!text) return null;
+    return normalizeVoiceTranscript(text);
   } catch (err) {
-    console.error('[GeminiProxy] Transcription failed:', err);
+    console.warn('[GeminiProxy] Transcription failed or timed out:', err);
     return null;
   }
 }

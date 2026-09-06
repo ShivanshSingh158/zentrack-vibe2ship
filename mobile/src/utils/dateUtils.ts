@@ -193,6 +193,11 @@ export function cleanTaskTitle(rawTitle: string): string {
     /^(?:log|record|enter|track)\s+(?:a\s+|the\s+)?(?:task\s+)?(?:to|for)?\s*/i,
     // Prefixes like "todo:", "task:", "new task:"
     /^(?:to-?do|task|action\s+item|new\s+task|note)\s*[:\-]\s*/i,
+    // Conversational spoken fillers & hesitation markers
+    /^(?:um+|uh+|er+|ah+|like|you\s+know|basically|actually|literally|just|so|well)[,\s]+/i,
+    /^(?:i\s+want\s+you\s+to|can\s+you\s+help\s+me\s+to|help\s+me\s+to|i\s+need\s+you\s+to)\s+/i,
+    /^(?:make\s+sure\s+(?:that\s+)?(?:i|we)\s+(?:have\s+to|need\s+to|don'?t\s+forget\s+to)?|ensure\s+(?:that\s+)?)\s*/i,
+    /^(?:note\s+to\s+self|memo|quick\s+note)[,\s:]+/i,
     // Hinglish command prefixes
     /^(?:mujhe\s+)?(?:ek\s+)?task\s+(?:bana\s+(?:do|o)|add\s+(?:karo|kar\s+do)|create\s+(?:karo|kar\s+do))\s*/i,
     /^mujhe\s+/i,
@@ -311,126 +316,104 @@ export function cleanTaskTitle(rawTitle: string): string {
   // 3. Strip leading connector prepositions and articles left over
   t = t.replace(/^(?:to|for|about|of|regarding|that|a|an|the)\s+/i, '').trim();
 
-  // 4. Strip trailing conversational / filler suffixes & Hinglish
-  t = t.replace(/\s+(?:please|as\s+well|also|too|for\s+me|bhai|yaar|bro)$/i, '').trim();
+  // 4. Strip specific conversational / voice filler clauses
   t = t.replace(/\s+(?:dena|deni|bhejna|bhejni|lena|leni|jana|aana|khatam\s+karna)\s+(?:hai|h)$/i, '').trim();
   t = t.replace(/\s+(?:karna|krna|karni|krni)\s+(?:hai|h)$/i, '').trim();
   t = t.replace(/\s+(?:kar\s+dena|kar\s+lena|de\s+dena|kar\s+do|karo)$/i, '').trim();
-
-  // 4b. Strip trailing am/pm, p.m., a.m., time indicators left over from speech
-  t = t.replace(/\s+(?:[ap]\.?m\.?|am|pm|o'?clock)$/i, '').trim();
-
-  // 4c. Strip trailing "task for everyday", "task to ...", "task" (e.g. "chest workout task for everyday" -> "chest workout")
   t = t.replace(/\s+(?:task|todo|to-do|item|reminder)(?:\s+(?:for|to|at|on|about))?(?:\s+(?:everyday|daily|each\s+day|today|tomorrow))?$/i, '').trim();
   t = t.replace(/\s+(?:for\s+everyday|for\s+daily|everyday|daily)$/i, '').trim();
-
-  // 4d. Strip trailing orphaned period-of-day words left over
-  t = t.replace(/\s+(?:in\s+the\s+)?(?:early\s+morning|morning|afternoon|evening|night|tonight|today|tomorrow|yesterday)$/i, '').trim();
   t = t.replace(/\s+(?:shaam\s+ko|sham\s+ko|shaam|sham|subah\s+ko|subah|dopahar\s+ko|dopahar|raat\s+ko|raat)$/i, '').trim();
-
-  // 4e. Strip "with alarm", "with a reminder", "with notification", "with an alert" etc.
-  // These are the most common voice speech modifiers that bleed into titles
   t = t.replace(/\s+with\s+(?:a(?:n)?\s+)?(?:alarm|reminder|alert|notification|buzz|ping|bell|chime|sound|vibration|notify|toast|pop.?up|snooze|push\s+notification)s?$/i, '').trim();
   t = t.replace(/\s+(?:with\s+)?(?:set(?:\s+an?)?\s+)?(?:alarm|reminder|alert|notification)\s+(?:for|at|on|to)\s*$/i, '').trim();
-  // Strip "and remind me", "and set alarm", "and notify me" trailing clauses
   t = t.replace(/\s+and\s+(?:remind\s+(?:me\s+)?(?:to\s+|about\s+)?|set\s+(?:a[n]?\s+)?(?:alarm|reminder)|notify\s+(?:me\s+)?)$/i, '').trim();
-  // Strip trailing "at 4:30", "at 4pm" (bare time specifiers left after token strip)
   t = t.replace(/\s+at\s+\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm|a\.?m\.?|p\.?m\.?)?$/i, '').trim();
-  // Strip trailing "today", "tomorrow", "tonight" when lonely at end
   t = t.replace(/\s+(?:today|tomorrow|tonight|aaj|kal|parso)$/i, '').trim();
-  // Strip trailing "high priority", "medium priority" alone at end
-  t = t.replace(/\s+(?:high|medium|low)\s+priority$/i, '').trim();
-  // Strip trailing "urgent", "asap"
-  t = t.replace(/\s+(?:urgent|asap|important)$/i, '').trim();
 
-  // 5. Strip trailing dangling prepositions and connectors
-  t = t.replace(/\s+(?:at|from|to|by|on|in|for|with|until|till|and|or|during|of|about)$/i, '').trim();
-  t = t.replace(/^[\s,.:;\-]+|[\s,.:;\-]+$/g, '').trim();
-
-  // 6. Inverted action normalization (SOV -> SVO for task intents)
-  // e.g. "dsa study" -> "study dsa", "physics study" -> "study physics"
-  const studyMatch = t.match(/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+study$/i);
-  if (studyMatch && studyMatch[1].toLowerCase() !== 'case') {
-    t = `study ${studyMatch[1]}`;
+  // 5. Multi-pass trailing connector, preposition & punctuation scrubber
+  let trailChanged = true;
+  let trailPasses = 0;
+  while (trailChanged && trailPasses < 6) {
+    trailChanged = false;
+    trailPasses++;
+    const prev = t;
+    // Strip trailing/leading punctuation
+    t = t.replace(/^[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+|[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+$/g, '').trim();
+    // Strip trailing prepositions & connectors
+    t = t.replace(/\s+(?:at|from|to|by|on|in|for|with|until|till|and|or|during|of|about|then|also)$/i, '').trim();
+    // Strip trailing conversational / polite / Hinglish suffixes
+    t = t.replace(/\s+(?:please|pls|as\s+well|too|for\s+me|bhai|yaar|bro|dude|na|karo|do|h|hai)$/i, '').trim();
+    // Strip trailing conversational time / urgency fillers
+    t = t.replace(/\s+(?:if\s+possible|as\s+soon\s+as\s+possible|right\s+now|or\s+something|you\s+know|at\s+the\s+earliest)$/i, '').trim();
+    // Strip trailing orphaned period-of-day or time indicators
+    t = t.replace(/\s+(?:[ap]\.?m\.?|am|pm|o'?clock)$/i, '').trim();
+    t = t.replace(/\s+(?:in\s+the\s+)?(?:early\s+morning|morning|afternoon|evening|night|tonight|today|tomorrow|yesterday)$/i, '').trim();
+    // Strip trailing orphaned priority expressions
+    t = t.replace(/\s+(?:hi|high|medium|mid|low)\s+(?:priority|prio|importance)$/i, '').trim();
+    t = t.replace(/\s+priority\s*(?:is\s+|:\s*|\s+)?(?:hi|high|medium|mid|low|1|2|3|one|two|three)$/i, '').trim();
+    t = t.replace(/\s+(?:p:hi|p:high|p:med|p:low|!1|!2|!3|p1|p2|p3|hi)$/i, '').trim();
+    t = t.replace(/\s+(?:urgent|asap|important|critical|fire|blocker)$/i, '').trim();
+    // Strip trailing/leading punctuation again after word removal
+    t = t.replace(/^[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+|[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+$/g, '').trim();
+    if (t !== prev) trailChanged = true;
   }
 
-  const practiceMatch = t.match(/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+practice$/i);
-  if (practiceMatch) {
-    t = `practice ${practiceMatch[1]}`;
+  // Internal cleanup: remove duplicated punctuation & consecutive spaces
+  t = t.replace(/\s*,\s*,+/g, ', ');
+  t = t.replace(/\s{2,}/g, ' ').trim();
+
+  // 6. Expanded Inverted action normalization (SOV -> SVO for task intents)
+  // e.g. "dsa study" -> "study dsa", "groceries buy" -> "buy groceries"
+  const sovPatterns: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+study$/i, m => m[1].toLowerCase() !== 'case' ? `study ${m[1]}` : m[0]],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+practice$/i, m => `practice ${m[1]}`],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:revision|revise)$/i, m => `revise ${m[1]}`],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:prep|preparation)$/i, m => `prep for ${m[1]}`],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:submission|submit)$/i, m => `submit ${m[1]}`],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:payment|pay)$/i, m => `pay ${m[1]}`],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:booking|book)$/i, m => `book ${m[1]}`],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:cleaning|clean)$/i, m => `clean ${m[1]}`],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:washing|wash)$/i, m => `wash ${m[1]}`],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:buying|buy)$/i, m => `buy ${m[1]}`],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:calling|call)$/i, m => `call ${m[1]}`],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:reviewing|review)$/i, m => `review ${m[1]}`],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:scheduling|schedule)$/i, m => `schedule ${m[1]}`],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:sending|send)$/i, m => `send ${m[1]}`],
+    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:ordering|order)$/i, m => `order ${m[1]}`],
+  ];
+
+  for (const [pat, replacer] of sovPatterns) {
+    const sm = t.match(pat);
+    if (sm) {
+      t = replacer(sm);
+      break;
+    }
   }
 
-  const revisionMatch = t.match(/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+revision$/i);
-  if (revisionMatch) {
-    t = `revise ${revisionMatch[1]}`;
-  }
-
-  const prepMatch = t.match(/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:prep|preparation)$/i);
-  if (prepMatch) {
-    t = `prep for ${prepMatch[1]}`;
-  }
-
-  const subMatch = t.match(/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:submission|submit)$/i);
-  if (subMatch) {
-    t = `submit ${subMatch[1]}`;
-  }
-
-  const payMatch = t.match(/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:payment|pay)$/i);
-  if (payMatch) {
-    t = `pay ${payMatch[1]}`;
-  }
-
-  // 7. Acronym normalization & smart title capitalization
+  // 7. Acronym & Brand normalization with smart title capitalization
   const ACRONYMS: Record<string, string> = {
-    'dsa': 'DSA',
-    'dbms': 'DBMS',
-    'os': 'OS',
-    'ai': 'AI',
-    'ml': 'ML',
-    'dl': 'DL',
-    'nlp': 'NLP',
-    'cn': 'CN',
-    'oop': 'OOP',
-    'oops': 'OOPs',
-    'sql': 'SQL',
-    'api': 'API',
-    'apis': 'APIs',
-    'html': 'HTML',
-    'css': 'CSS',
-    'js': 'JS',
-    'ts': 'TS',
-    'pr': 'PR',
-    'sde': 'SDE',
-    'hr': 'HR',
-    'ui': 'UI',
-    'ux': 'UX',
-    'pdf': 'PDF',
-    'llm': 'LLM',
-    'cgpa': 'CGPA',
-    'sgpa': 'SGPA',
-    'aws': 'AWS',
-    'gcp': 'GCP',
-    'toc': 'TOC',
-    'ppl': 'PPL',
-    'hiit': 'HIIT',
-    '1rm': '1RM',
-    'bmi': 'BMI',
-    'vad': 'VAD',
-    'rest': 'REST',
-    'crud': 'CRUD',
-    'leetcode': 'LeetCode',
-    'gfg': 'GFG',
-    'codeforces': 'Codeforces',
-    'codechef': 'CodeChef',
-    'nptel': 'NPTEL',
-    'neet': 'NEET',
-    'gate': 'GATE',
-    'cat': 'CAT',
-    'upsc': 'UPSC',
-    'iit': 'IIT',
-    'nit': 'NIT',
-    'bits': 'BITS',
-    'gre': 'GRE',
-    'toefl': 'TOEFL',
+    // Tech acronyms
+    'dsa': 'DSA', 'dbms': 'DBMS', 'os': 'OS', 'ai': 'AI', 'ml': 'ML', 'dl': 'DL',
+    'nlp': 'NLP', 'cn': 'CN', 'oop': 'OOP', 'oops': 'OOPs', 'sql': 'SQL', 'nosql': 'NoSQL',
+    'api': 'API', 'apis': 'APIs', 'html': 'HTML', 'css': 'CSS', 'js': 'JS', 'ts': 'TS',
+    'pr': 'PR', 'prs': 'PRs', 'sde': 'SDE', 'hr': 'HR', 'ui': 'UI', 'ux': 'UX',
+    'pdf': 'PDF', 'llm': 'LLM', 'llms': 'LLMs', 'cgpa': 'CGPA', 'sgpa': 'SGPA',
+    'aws': 'AWS', 'gcp': 'GCP', 'toc': 'TOC', 'ppl': 'PPL', 'hiit': 'HIIT',
+    '1rm': '1RM', 'bmi': 'BMI', 'vad': 'VAD', 'rest': 'REST', 'crud': 'CRUD',
+    'sdk': 'SDK', 'sdks': 'SDKs', 'cli': 'CLI', 'ci': 'CI', 'cd': 'CD', 'cicd': 'CI/CD',
+    'iot': 'IoT', 'ip': 'IP', 'vpn': 'VPN', 'url': 'URL', 'urls': 'URLs',
+    'json': 'JSON', 'jwt': 'JWT', 'ssh': 'SSH', 'ssl': 'SSL', 'tls': 'TLS',
+    'dns': 'DNS', 'http': 'HTTP', 'https': 'HTTPS', 'ftp': 'FTP', 'ide': 'IDE',
+    'gui': 'GUI', 'seo': 'SEO', 'mvp': 'MVP', 'kpi': 'KPI', 'okr': 'OKR', 'okrs': 'OKRs',
+    // Exams & Academic
+    'leetcode': 'LeetCode', 'gfg': 'GFG', 'codeforces': 'Codeforces', 'codechef': 'CodeChef',
+    'nptel': 'NPTEL', 'neet': 'NEET', 'gate': 'GATE', 'cat': 'CAT', 'upsc': 'UPSC',
+    'iit': 'IIT', 'nit': 'NIT', 'bits': 'BITS', 'gre': 'GRE', 'toefl': 'TOEFL',
+    // Brands & Apps
+    'whatsapp': 'WhatsApp', 'youtube': 'YouTube', 'instagram': 'Instagram',
+    'linkedin': 'LinkedIn', 'github': 'GitHub', 'gitlab': 'GitLab', 'figma': 'Figma',
+    'vscode': 'VS Code', 'nextjs': 'Next.js', 'react': 'React', 'nodejs': 'Node.js',
+    'mongodb': 'MongoDB', 'docker': 'Docker', 'postman': 'Postman', 'slack': 'Slack',
+    'notion': 'Notion', 'spotify': 'Spotify', 'gmail': 'Gmail', 'zoom': 'Zoom',
   };
 
   const MINOR_WORDS = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'for', 'nor', 'on', 'at', 'to', 'from', 'by', 'of', 'in', 'with']);
@@ -449,6 +432,42 @@ export function cleanTaskTitle(rawTitle: string): string {
   t = formattedWords.join(' ').trim();
 
   return t || rawTitle.trim();
+}
+
+/**
+ * Normalizes common voice transcription homophones and speech-to-text artifacts
+ * in productivity and task dictation contexts.
+ * Specifically fixes "hi" -> "high", "hi priority" -> "high priority",
+ * "priority hi" -> "priority high", and spoken priorities.
+ */
+export function normalizeVoiceTranscript(raw: string): string {
+  if (!raw) return '';
+  let text = raw.trim();
+
+  // 1. Explicit priority phrases with "hi" homophone
+  text = text.replace(/\b(?:with\s+)?hi\s+(?:priority|prio|importance)\b/gi, 'high priority');
+  text = text.replace(/\bpriority\s+(?:is\s+|:\s*)?hi\b/gi, 'priority high');
+  text = text.replace(/\bp:\s*hi\b/gi, 'p:high');
+  text = text.replace(/\bmark\s+(?:as\s+)?hi\b/gi, 'mark as high');
+  text = text.replace(/\bmake\s+(?:it\s+)?hi\b/gi, 'make it high');
+  text = text.replace(/\bset\s+(?:to\s+)?hi\b/gi, 'set to high');
+  text = text.replace(/\bhi\s+prio\b/gi, 'high priority');
+  text = text.replace(/\bhigh\s+prio\b/gi, 'high priority');
+  text = text.replace(/\bmed\s+prio\b/gi, 'medium priority');
+  text = text.replace(/\blow\s+prio\b/gi, 'low priority');
+
+  // 2. Numbered priorities
+  text = text.replace(/\bpriority\s+one\b/gi, 'priority 1');
+  text = text.replace(/\bpriority\s+two\b/gi, 'priority 2');
+  text = text.replace(/\bpriority\s+three\b/gi, 'priority 3');
+
+  // 3. Trailing "hi" after time/date tokens: e.g. "submit report tomorrow 5pm hi" -> "...5pm high"
+  text = text.replace(/(\b(?:at\s+\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,2}(?::\d{2})?(?:am|pm)|today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday))\s+hi\b/gi, '$1 high');
+
+  // 4. Trailing "hi" at end of command or sentence: e.g. "finish assignment hi" -> "finish assignment high"
+  text = text.replace(/\s+hi$/i, ' high');
+
+  return text;
 }
 
 export function parseNLTask(rawInput: string): ParsedTask {
@@ -517,19 +536,27 @@ export function parseNLTask(rawInput: string): ParsedTask {
     }
   }
 
-  // ── 0b. SUBTASKS ("with subtasks A, B, C", "subtasks: 1, 2, 3", "checklist: ...") ───
+  // ── 0b. SUBTASKS & EMBEDDED CHECKLISTS ────────────────────────────────────
   const extractedSubtasks: string[] = [];
   {
-    const subtaskRe = /\b(?:with\s+subtasks?|subtasks?\s*(?:are|include)?|sub-tasks?\s*(?:are|include)?|checklist|with\s+items?)\s*[:\-]?\s*([^.]+?)(?=\s*(?:\b(?:tomorrow|today|tonight|next|every|at\s+\d|am|pm|high|medium|low|p1|p2|p3|urgent|#|\.|$)))/i;
-    const sm = text.match(subtaskRe);
+    // Pattern 1: Explicit subtask keywords: "with subtasks", "subtasks are", "checklist:", "with items", "including items", "steps to take:"
+    const subtaskRe = /\b(?:with\s+subtasks?|subtasks?\s*(?:are|include)?|sub-tasks?\s*(?:are|include)?|checklist|with\s+items?|including(?:\s+items?)?|todo\s+list|steps?(?:\s+to\s+take)?)\s*[:\-]?\s*([^.]+?)(?=\s*(?:\b(?:tomorrow|today|tonight|next|every|at\s+\d|am|pm|high|medium|low|p1|p2|p3|urgent|#|\.|$)))/i;
+    let sm = text.match(subtaskRe);
+
+    // Pattern 2: Natural colon list after action tasks: e.g. "Buy groceries: milk, eggs, bread and bananas"
+    if (!sm) {
+      const colonListRe = /(?::|\s+namely\s+)\s*([a-zA-Z0-9\s,\-_*•]+(?:,\s*(?:and\s+)?[a-zA-Z0-9\s\-_*•]+|\s+and\s+[a-zA-Z0-9\s\-_*•]+))(?=\s*(?:\b(?:tomorrow|today|tonight|next|every|at\s+\d|am|pm|high|medium|low|p1|p2|p3|urgent|#|\.|$)))/i;
+      sm = text.match(colonListRe);
+    }
+
     if (sm) {
       const rawSubtasks = sm[1].trim();
       // Split on comma, "and", semicolon, or numbered bullets "1. ", "2) "
       const items = rawSubtasks
         .split(/(?:,\s*(?:and\s+)?|\s+and\s+|\s*;\s*|(?:^|\s+)\d+[\.\)]\s*)/i)
         .map(s => s.trim().replace(/^[\-•*]\s*/, ''))
-        .filter(s => s.length > 0);
-      if (items.length > 0) {
+        .filter(s => s.length > 0 && !/^(?:tomorrow|today|tonight|next|every|at|high|medium|low|urgent|priority)$/i.test(s));
+      if (items.length > 1 || (items.length === 1 && items[0].length >= 2)) {
         extractedSubtasks.push(...items);
         registerToken('subtask', sm[0], `${items.length} Subtask${items.length > 1 ? 's' : ''}`);
       }
@@ -587,24 +614,35 @@ export function parseNLTask(rawInput: string): ParsedTask {
   // Supports: p:high !1 urgent 🔴🟡🟢 emoji flags  "low key"  "not urgent"  etc.
   const priorityPatterns: Array<[RegExp, 'high' | 'medium' | 'low', string]> = [
     // Explicit p: prefix
-    [/\bp:(?:high|1|urgent|critical)\b/i,               'high',   'High'],
-    [/\bp:(?:medium|2|mid|normal|med)\b/i,              'medium', 'Medium'],
-    [/\bp:(?:low|3|someday|whenever)\b/i,               'low',    'Low'],
+    [/\bp:(?:high|hi|1|urgent|critical)\b/i,                                              'high',   'High'],
+    [/\bp:(?:medium|mid|2|normal|med)\b/i,                                               'medium', 'Medium'],
+    [/\bp:(?:low|3|someday|whenever)\b/i,                                                'low',    'Low'],
     // Bang shortcuts
-    [/\b!1\b/,                                          'high',   'High'],
-    [/\b!2\b/,                                          'medium', 'Medium'],
-    [/\b!3\b/,                                          'low',    'Low'],
+    [/\b!1\b/,                                                                           'high',   'High'],
+    [/\b!2\b/,                                                                           'medium', 'Medium'],
+    [/\b!3\b/,                                                                           'low',    'Low'],
     // Emoji priority flags (must come before word patterns to take precedence)
-    [/🔴|❗|🚨/,                                           'high',   'High'],   // red circle / exclamation / siren
-    [/🟡|⚠️|⏰/,                                           'medium', 'Medium'], // yellow / warning / alarm
-    [/🟢|✅|💤/,                                           'low',    'Low'],    // green / check / zzz
+    [/🔴|❗|🚨/,                                                                            'high',   'High'],   // red circle / exclamation / siren
+    [/🟡|⚠️|⏰/,                                                                            'medium', 'Medium'], // yellow / warning / alarm
+    [/🟢|✅|💤/,                                                                            'low',    'Low'],    // green / check / zzz
+    // Structured priority phrases: "priority is high", "priority: high", "priority 1"
+    [/\b(?:priority\s*(?:is\s+|:\s*|\s+)?(?:high|hi|1|one|highest|top))\b/i,            'high',   'High'],
+    [/\b(?:priority\s*(?:is\s+|:\s*|\s+)?(?:medium|mid|med|2|two|normal))\b/i,          'medium', 'Medium'],
+    [/\b(?:priority\s*(?:is\s+|:\s*|\s+)?(?:low|3|three|minimum|lowest))\b/i,           'low',    'Low'],
+    // Phrases with priority keyword (including "hi priority", "hi prio")
+    [/\b(?:(?:mark\s+as\s+|set\s+(?:to\s+)?)?(?:high|hi)\s+(?:priority|prio|importance))\b/i, 'high',   'High'],
+    [/\b(?:(?:mark\s+as\s+|set\s+(?:to\s+)?)?(?:medium|mid|med)\s+(?:priority|prio|importance))\b/i, 'medium', 'Medium'],
+    [/\b(?:(?:mark\s+as\s+|set\s+(?:to\s+)?)?(?:low)\s+(?:priority|prio|importance))\b/i, 'low',    'Low'],
     // Keyword phrases (order matters: more specific first)
-    [/\b(urgent|critical|asap|p1|fire|blocker|high\s+priority|highest\s+priority|super\s+important)\b/i, 'high',   'High'],
-    [/\b(important|p2|medium\s+priority|mid\s+priority|kinda\s+important|semi.?urgent)\b/i,              'medium', 'Medium'],
-    [/\b(low\s+priority|p3|someday|whenever|not\s+urgent|low\s+key|no\s+rush|chill|whenever\s+you\s+can|when\s+free)\b/i, 'low', 'Low'],
+    [/\b(urgent|critical|asap|p1|fire|blocker|top\s+priority|highest\s+priority|max\s+priority|super\s+important|crucial|vital|must\s+do)\b/i, 'high', 'High'],
+    [/\b(important|p2|kinda\s+important|semi.?urgent|normal\s+priority)\b/i,             'medium', 'Medium'],
+    [/\b(p3|someday|whenever|not\s+urgent|low\s+key|no\s+rush|chill|whenever\s+you\s+can|when\s+free)\b/i, 'low', 'Low'],
     // Single-word fallbacks (must be last to avoid false positives)
-    [/\bhigh\b/i,                                       'high',   'High'],
-    [/\bmedium\b/i,                                     'medium', 'Medium'],
+    [/\bhigh\b/i,                                                                        'high',   'High'],
+    [/\bmedium\b/i,                                                                      'medium', 'Medium'],
+    // Phonetic STT voice fallback for "hi" after date/time or at end of utterance
+    [/(?:\b(?:at\s+\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,2}(?::\d{2})?(?:am|pm)|tomorrow|today|tonight)\s+)hi\b/i, 'high', 'High'],
+    [/\bhi\s*$/i,                                                                        'high',   'High'],
   ];
   for (const [pat, pri, label] of priorityPatterns) {
     const m = text.match(pat);
@@ -1489,11 +1527,20 @@ export function parseNLTasks(raw: string): ParsedTask[] {
   if (!raw || !raw.trim()) return [];
   const text = raw.trim();
 
+  // Helper to sanitize and parse a task segment
+  const sanitizeAndParse = (segment: string): ParsedTask => {
+    const cleanSegment = segment
+      .trim()
+      .replace(/^(?:and\s+also|and\s+then|and|then|also|plus|next|after\s+that|followed\s+by|aur\s+phir|aur|phir)\s+/i, '')
+      .trim();
+    return parseNLTask(cleanSegment);
+  };
+
   // 1. Check for numbered lists: "1. ... 2. ..." or "1) ... 2) ..."
   if (/(?:^|\s+)(?:[1-9]\.|\([1-9]\)|[1-9]\))\s+/.test(text)) {
     const parts = text.split(/(?:^|\s+)(?:[1-9]\.|\([1-9]\)|[1-9]\))\s+/).filter(p => p.trim().length > 1);
     if (parts.length > 1) {
-      return parts.map(p => parseNLTask(p.trim())).filter(t => t.title.length > 0);
+      return parts.map(sanitizeAndParse).filter(t => t.title.length > 0);
     }
   }
 
@@ -1501,7 +1548,7 @@ export function parseNLTasks(raw: string): ParsedTask[] {
   if (/[\n•*]\s*/.test(text)) {
     const parts = text.split(/[\n•*]\s*/).filter(p => p.trim().length > 1);
     if (parts.length > 1) {
-      return parts.map(p => parseNLTask(p.trim())).filter(t => t.title.length > 0);
+      return parts.map(sanitizeAndParse).filter(t => t.title.length > 0);
     }
   }
 
@@ -1509,34 +1556,35 @@ export function parseNLTasks(raw: string): ParsedTask[] {
   if (/;\s*/.test(text)) {
     const parts = text.split(/;\s*/).filter(p => p.trim().length > 1);
     if (parts.length > 1) {
-      return parts.map(p => parseNLTask(p.trim())).filter(t => t.title.length > 0);
+      return parts.map(sanitizeAndParse).filter(t => t.title.length > 0);
     }
   }
 
-  // 4. Check for compound transitional connectors: "and also", "and then", "additionally", "followed by"
-  const transitionRegex = /\b(?:and\s+also|and\s+then|additionally|followed\s+by)\b/i;
+  // 4. Check for compound transitional connectors: "and also", "and then", "after that", "followed by", "additionally", "plus also", "and next"
+  const transitionRegex = /\b(?:and\s+also|and\s+then|after\s+that|followed\s+by|additionally|plus\s+also|and\s+next|aur\s+phir)\b/i;
   if (transitionRegex.test(text)) {
     const parts = text.split(transitionRegex).filter(p => p.trim().length > 1);
     if (parts.length > 1) {
-      return parts.map(p => parseNLTask(p.trim())).filter(t => t.title.length > 0);
+      return parts.map(sanitizeAndParse).filter(t => t.title.length > 0);
     }
   }
 
-  // 5. Check for "and" / ", and " when both left and right contain task action verbs or time/date tokens
-  // E.g.: "Gym workout at 6am and study physics tomorrow 10am"
-  const taskVerbPattern = /\b(?:create|add|make|remind|buy|call|meet|submit|finish|complete|do|start|go|workout|study|prepare|clean|read|write|email|send|schedule|review|pay|attend|check|update|fix|code|order|take|cook|wash|learn|practice|visit|revise)\b/i;
+  // 5. Check for "and" / ", and " / "then" when both left and right contain task action verbs or time/date tokens
+  // E.g.: "Gym workout at 6am and study physics tomorrow 10am" or "Submit lab report 2pm then call mom 7pm"
+  const taskVerbPattern = /\b(?:create|add|make|remind|buy|call|meet|submit|finish|complete|do|start|go|workout|study|prepare|clean|read|write|email|send|schedule|review|pay|attend|check|update|fix|code|order|take|cook|wash|learn|practice|visit|revise|pack)\b/i;
   const tokenHintPattern = /\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun|every|at\s+\d|am|pm|p1|p2|p3|urgent|high\s+priority|reminder|alarm|#)\b/i;
 
-  const andSplitParts = text.split(/,\s*and\s+|\s+and\s+/i);
-  if (andSplitParts.length > 1) {
-    // Verify that every segment looks like a distinct task (has a verb OR a token hint)
-    const allLookLikeTasks = andSplitParts.every(part => {
+  const compoundSplitRegex = /,\s*(?:and|then)\s+|\s+(?:and\s+then|then)\s+|\s+and\s+/i;
+  const compoundParts = text.split(compoundSplitRegex);
+  if (compoundParts.length > 1) {
+    // Verify that every segment looks like an independent actionable task
+    const allLookLikeTasks = compoundParts.every(part => {
       const p = part.trim();
       return p.length >= 3 && (taskVerbPattern.test(p) || tokenHintPattern.test(p));
     });
 
     if (allLookLikeTasks) {
-      return andSplitParts.map(p => parseNLTask(p.trim())).filter(t => t.title.length > 0);
+      return compoundParts.map(sanitizeAndParse).filter(t => t.title.length > 0);
     }
   }
 

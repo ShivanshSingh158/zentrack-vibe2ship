@@ -32,7 +32,7 @@ let _lastAudioLevel = 0;
 // VAD constants
 const VAD_POLL_INTERVAL_MS = 100;      // Check RMS every 100ms
 const VAD_SILENCE_THRESHOLD = -32;     // dB level below which = silence (real speech > -32dB)
-const VAD_SILENCE_DURATION_MS = 900;   // 900ms silence → auto-submit (Todoist-speed responsive tuning)
+const VAD_SILENCE_DURATION_MS = 850;   // 850ms silence → auto-submit (snappy, responsive tuning)
 
 export async function requestMicPermission(): Promise<boolean> {
   const { status } = await Audio.requestPermissionsAsync();
@@ -82,6 +82,19 @@ export function isSilenceOrNoise(text: string | null | undefined): boolean {
     'sound of',
     'you',
     'the',
+    // Network fallback / error strings that must never become tasks
+    'network is too weak right now',
+    'network is too weak right now.',
+    'network is too weak',
+    'network is too weak.',
+    'i cannot reach the network right now',
+    'i cannot reach the network right now.',
+    'i cannot reach the network right now, but your logs will be saved locally.',
+    'i cannot reach the network right now, but your logs will be saved locally',
+    'i cannot reach the network',
+    'network offline',
+    'connection timed out',
+    'network error',
   ];
 
   if (silenceTokens.includes(clean)) return true;
