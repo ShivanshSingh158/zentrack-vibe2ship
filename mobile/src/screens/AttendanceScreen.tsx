@@ -76,42 +76,30 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
   const handlePressPresent = useCallback(() => {
     if (isPresent) {
       setLocalAction(null);
-      setTimeout(() => {
-        if (log?.id) onUndo(log.id);
-      }, 0);
+      if (log?.id) onUndo(log.id);
     } else {
       setLocalAction('attended');
-      setTimeout(() => {
-        onLog(subject, type, 'attended', log?.id, sessionIdx);
-      }, 0);
+      onLog(subject, type, 'attended', log?.id, sessionIdx);
     }
   }, [isPresent, log?.id, onUndo, onLog, subject, type, sessionIdx]);
 
   const handlePressAbsent = useCallback(() => {
     if (isAbsent) {
       setLocalAction(null);
-      setTimeout(() => {
-        if (log?.id) onUndo(log.id);
-      }, 0);
+      if (log?.id) onUndo(log.id);
     } else {
       setLocalAction('missed');
-      setTimeout(() => {
-        onLog(subject, type, 'missed', log?.id, sessionIdx);
-      }, 0);
+      onLog(subject, type, 'missed', log?.id, sessionIdx);
     }
   }, [isAbsent, log?.id, onUndo, onLog, subject, type, sessionIdx]);
 
   const handlePressCancelled = useCallback(() => {
     if (isCancelled) {
       setLocalAction(null);
-      setTimeout(() => {
-        if (log?.id) onUndo(log.id);
-      }, 0);
+      if (log?.id) onUndo(log.id);
     } else {
       setLocalAction('cancelled');
-      setTimeout(() => {
-        onLog(subject, type, 'cancelled', log?.id, sessionIdx);
-      }, 0);
+      onLog(subject, type, 'cancelled', log?.id, sessionIdx);
     }
   }, [isCancelled, log?.id, onUndo, onLog, subject, type, sessionIdx]);
 
@@ -193,7 +181,7 @@ interface SubjectSummaryRowProps {
   colors: any;
   isDark: boolean;
   styles: any;
-  onPress: () => void;
+  onSelect: (subject: AttendanceSubject) => void;
 }
 
 const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
@@ -201,7 +189,7 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
   colors,
   isDark,
   styles,
-  onPress,
+  onSelect,
 }: SubjectSummaryRowProps) {
   const getThemeProgressColor = (urgency: string) =>
     urgency === 'danger' ? colors.priorityHigh : urgency === 'warning' ? colors.priorityMed : colors.priorityLow;
@@ -230,8 +218,41 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
     subject.targetPercentage || 75
   );
 
+  const handlePress = useCallback(() => {
+    onSelect(subject);
+  }, [onSelect, subject]);
+
+  // Cleanly resolved bunk message without inline IIFE
+  let bunkElement: React.ReactNode = null;
+  if (bunk.status === 'safe' && bunk.count > 0) {
+    bunkElement = (
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+        <Text style={{ color: colors.priorityLow || '#10B981', fontSize: 12, fontWeight: '600' }}>
+          ✓ Can miss {bunk.count} more
+        </Text>
+      </View>
+    );
+  } else if (bunk.status === 'warning') {
+    bunkElement = (
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+        <Text style={{ color: colors.priorityMed || '#F59E0B', fontSize: 12, fontWeight: '600' }}>
+          ⚠️ 0 misses left — attend all next classes
+        </Text>
+      </View>
+    );
+  } else if (bunk.status === 'critical') {
+    const needed = bunk.count;
+    bunkElement = (
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+        <Text style={{ color: colors.error || '#EF4444', fontSize: 12, fontWeight: '600' }}>
+          ⚠️ Attend {needed} more {needed === 1 ? 'class' : 'classes'} to reach {subject.targetPercentage || 75}%
+        </Text>
+      </View>
+    );
+  }
+
   return (
-    <TouchableOpacity onPress={onPress} style={styles.bySubjectCard} activeOpacity={0.8}>
+    <TouchableOpacity onPress={handlePress} style={styles.bySubjectCard} activeOpacity={0.8}>
       {/* Top row: Subject name and overall percentage */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <Text style={styles.bySubjectName} numberOfLines={1}>{subject.name}</Text>
@@ -283,39 +304,23 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
         )}
 
         {/* Bottom Status / Bunk Message */}
-        {(() => {
-          if (bunk.status === 'safe' && bunk.count > 0) {
-            return (
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                <Text style={{ color: colors.priorityLow || '#10B981', fontSize: 12, fontWeight: '600' }}>
-                  ✓ Can miss {bunk.count} more
-                </Text>
-              </View>
-            );
-          }
-          if (bunk.status === 'warning') {
-            return (
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                <Text style={{ color: colors.priorityMed || '#F59E0B', fontSize: 12, fontWeight: '600' }}>
-                  ⚠️ 0 misses left — attend all next classes
-                </Text>
-              </View>
-            );
-          }
-          if (bunk.status === 'critical') {
-            const needed = bunk.count;
-            return (
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                <Text style={{ color: colors.error || '#EF4444', fontSize: 12, fontWeight: '600' }}>
-                  ⚠️ Attend {needed} more {needed === 1 ? 'class' : 'classes'} to reach {subject.targetPercentage || 75}%
-                </Text>
-              </View>
-            );
-          }
-          return null;
-        })()}
+        {bunkElement}
       </View>
     </TouchableOpacity>
+  );
+}, (prev, next) => {
+  return (
+    prev.subject.id === next.subject.id &&
+    prev.subject.classesAttended === next.subject.classesAttended &&
+    prev.subject.classesTotal === next.subject.classesTotal &&
+    prev.subject.labsAttended === next.subject.labsAttended &&
+    prev.subject.labsTotal === next.subject.labsTotal &&
+    prev.subject.targetPercentage === next.subject.targetPercentage &&
+    prev.subject.name === next.subject.name &&
+    prev.isDark === next.isDark &&
+    prev.colors === next.colors &&
+    prev.styles === next.styles &&
+    prev.onSelect === next.onSelect
   );
 });
 
@@ -547,6 +552,286 @@ const UnloggedSessionRow = React.memo(function UnloggedSessionRow({
   );
 });
 
+// ── Dedicated Memoized Subject History Modal ─────────────────────────────────
+interface SubjectHistoryModalProps {
+  visible: boolean;
+  subject: AttendanceSubject;
+  logs: any[];
+  subjects: AttendanceSubject[];
+  colors: any;
+  isDark: boolean;
+  styles: any;
+  onClose: () => void;
+  onUndo: (logId: string) => void;
+}
+
+const SubjectHistoryModal = React.memo(function SubjectHistoryModal({
+  visible,
+  subject,
+  logs,
+  subjects,
+  colors,
+  isDark,
+  styles,
+  onClose,
+  onUndo,
+}: SubjectHistoryModalProps) {
+  const [historyFilterType, setHistoryFilterType] = useState<'all' | 'class' | 'lab'>('all');
+
+  useEffect(() => {
+    setHistoryFilterType('all');
+  }, [subject?.id]);
+
+  const sortedHistoryLogs = useMemo(() => {
+    if (!subject) return [];
+    const filtered = logs.filter(l =>
+      (subject.id && l.subjectId === subject.id) ||
+      (subject.name && (l.subjectName === subject.name || l.subjectId === subject.name))
+    );
+
+    const sorted = [...filtered].sort((a, b) => {
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) {
+        return dateB.localeCompare(dateA);
+      }
+      const timeA = typeof a.timestamp === 'number' ? a.timestamp : 0;
+      const timeB = typeof b.timestamp === 'number' ? b.timestamp : 0;
+      return timeB - timeA;
+    });
+
+    const seen = new Set<string>();
+    const deduplicated: typeof sorted = [];
+
+    for (let i = 0; i < sorted.length; i++) {
+      const l = sorted[i];
+      if (l.isExtra) {
+        deduplicated.push(l);
+      } else {
+        const slotKey = `${(l.date || '').slice(0, 10)}_${l.type === 'lab' ? 'lab' : 'class'}_${l.idx ?? 0}`;
+        if (!seen.has(slotKey)) {
+          seen.add(slotKey);
+          deduplicated.push(l);
+        }
+      }
+    }
+
+    return deduplicated;
+  }, [subject, logs]);
+
+  const classHistoryLogs = useMemo(
+    () => sortedHistoryLogs.filter(l => l.type !== 'lab'),
+    [sortedHistoryLogs]
+  );
+  const labHistoryLogs = useMemo(
+    () => sortedHistoryLogs.filter(l => l.type === 'lab'),
+    [sortedHistoryLogs]
+  );
+
+  const historySections = useMemo(() => {
+    if (historyFilterType === 'class') {
+      return [{ title: 'Classes', type: 'class' as const, count: classHistoryLogs.length, data: classHistoryLogs }];
+    }
+    if (historyFilterType === 'lab') {
+      return [{ title: 'Labs', type: 'lab' as const, count: labHistoryLogs.length, data: labHistoryLogs }];
+    }
+    const list: { title: string; type: 'class' | 'lab'; count: number; data: typeof sortedHistoryLogs }[] = [];
+    if (classHistoryLogs.length > 0) {
+      list.push({ title: 'Classes', type: 'class', count: classHistoryLogs.length, data: classHistoryLogs });
+    }
+    if (labHistoryLogs.length > 0) {
+      list.push({ title: 'Labs', type: 'lab', count: labHistoryLogs.length, data: labHistoryLogs });
+    }
+    return list;
+  }, [historyFilterType, classHistoryLogs, labHistoryLogs, sortedHistoryLogs]);
+
+  const sub = useMemo(() => {
+    return subjects.find(s => (subject.id && s.id === subject.id) || s.name === subject.name) || subject;
+  }, [subjects, subject]);
+
+  const att = (sub.classesAttended || 0) + (sub.labsAttended || 0);
+  const tot = (sub.classesTotal || 0) + (sub.labsTotal || 0);
+  const pct = tot > 0 ? (att / tot) * 100 : 100;
+  const target = sub.targetPercentage || 75;
+  const isSafe = pct >= target;
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={styles.modalRoot}>
+        {/* Header */}
+        <View style={styles.modalHeader}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <Text style={styles.modalTitle} numberOfLines={1}>
+              {subject.name} History
+            </Text>
+            <Text style={{ fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
+              {sortedHistoryLogs.length} {sortedHistoryLogs.length === 1 ? 'log' : 'logs'} recorded • Newest first
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.modalHeaderBtn} onPress={onClose}>
+            <Ionicons name="close" size={22} color={colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Subject Attendance Stats Overview Strip */}
+        <View style={styles.historyStatsBar}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 13, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
+                Overall: {att}/{tot} attended
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                (Target: {target}%)
+              </Text>
+            </View>
+            <Text style={{ fontSize: 15, fontFamily: FONT_FAMILY.bold, color: isSafe ? (isDark ? '#34D399' : '#059669') : (isDark ? '#F87171' : '#DC2626') }}>
+              {tot > 0 ? `${Math.round(pct)}%` : '--%'}
+            </Text>
+          </View>
+
+          {/* Class vs Lab split if applicable */}
+          {((sub.labsTotal || 0) > 0 || (sub.classesTotal || 0) > 0) && (
+            <View style={{ flexDirection: 'row', gap: 16, marginTop: 6 }}>
+              {(sub.classesTotal || 0) > 0 && (
+                <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                  Class: <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>{sub.classesAttended || 0}/{sub.classesTotal || 0}</Text>
+                </Text>
+              )}
+              {(sub.labsTotal || 0) > 0 && (
+                <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                  Lab: <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>{sub.labsAttended || 0}/{sub.labsTotal || 0}</Text>
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Filter Tabs if both classes and labs exist */}
+        {classHistoryLogs.length > 0 && labHistoryLogs.length > 0 && (
+          <View style={styles.historyFilterTabs}>
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.selectionAsync();
+                setHistoryFilterType('all');
+              }}
+              style={[
+                styles.historyFilterPill,
+                historyFilterType === 'all' && styles.historyFilterPillActive,
+              ]}
+            >
+              <Text style={[
+                styles.historyFilterPillText,
+                historyFilterType === 'all' && styles.historyFilterPillTextActive,
+              ]}>
+                All ({sortedHistoryLogs.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.selectionAsync();
+                setHistoryFilterType('class');
+              }}
+              style={[
+                styles.historyFilterPill,
+                historyFilterType === 'class' && styles.historyFilterPillActiveClass,
+              ]}
+            >
+              <Ionicons 
+                name="book-outline" 
+                size={12} 
+                color={historyFilterType === 'class' ? (isDark ? '#a5b4fc' : '#4f46e5') : colors.textMuted} 
+                style={{ marginRight: 4 }} 
+              />
+              <Text style={[
+                styles.historyFilterPillText,
+                historyFilterType === 'class' && styles.historyFilterPillTextActiveClass,
+              ]}>
+                Classes ({classHistoryLogs.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.selectionAsync();
+                setHistoryFilterType('lab');
+              }}
+              style={[
+                styles.historyFilterPill,
+                historyFilterType === 'lab' && styles.historyFilterPillActiveLab,
+              ]}
+            >
+              <Ionicons 
+                name="flask-outline" 
+                size={12} 
+                color={historyFilterType === 'lab' ? (isDark ? '#fcd34d' : '#d97706') : colors.textMuted} 
+                style={{ marginRight: 4 }} 
+              />
+              <Text style={[
+                styles.historyFilterPillText,
+                historyFilterType === 'lab' && styles.historyFilterPillTextActiveLab,
+              ]}>
+                Labs ({labHistoryLogs.length})
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* List with Dedicated Classes & Labs Sections */}
+        <SectionList
+          sections={historySections}
+          keyExtractor={l => l.id || `${l.date}_${l.timestamp}_${l.action}_${l.type}`}
+          contentContainerStyle={{ padding: SPACE.md, paddingBottom: 60 }}
+          stickySectionHeadersEnabled={false}
+          renderSectionHeader={({ section }) => {
+            if (classHistoryLogs.length === 0 || labHistoryLogs.length === 0) return null;
+            const isLab = section.type === 'lab';
+            return (
+              <View style={[styles.historySectionHeader, isLab && { marginTop: 14 }]}>
+                <Ionicons
+                  name={isLab ? 'flask' : 'book'}
+                  size={13}
+                  color={isLab ? (isDark ? '#fcd34d' : '#d97706') : (isDark ? '#a5b4fc' : '#4f46e5')}
+                />
+                <Text style={[
+                  styles.historySectionTitle,
+                  { color: isLab ? (isDark ? '#fcd34d' : '#d97706') : (isDark ? '#a5b4fc' : '#4f46e5') }
+                ]}>
+                  {section.title} ({section.count})
+                </Text>
+              </View>
+            );
+          }}
+          renderItem={({ item: l }) => (
+            <AttendanceHistoryRow
+              log={l}
+              colors={colors}
+              isDark={isDark}
+              styles={styles}
+              onUndo={onUndo}
+            />
+          )}
+          ListEmptyComponent={
+            <View style={{ paddingVertical: 48, alignItems: 'center' }}>
+              <Ionicons name="calendar-outline" size={40} color={colors.textMuted} style={{ marginBottom: 12, opacity: 0.6 }} />
+              <Text style={{ color: colors.textPrimary, fontSize: 15, fontFamily: FONT_FAMILY.bold, textAlign: 'center' }}>
+                No Logs Found
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
+                {historyFilterType === 'class'
+                  ? 'No class logs recorded for this subject.'
+                  : historyFilterType === 'lab'
+                  ? 'No lab logs recorded for this subject.'
+                  : 'Classes and labs you mark will appear here sorted from newest to oldest.'}
+              </Text>
+            </View>
+          }
+        />
+      </SafeAreaView>
+    </Modal>
+  );
+});
+
 export default function AttendanceScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
@@ -640,83 +925,6 @@ export default function AttendanceScreen() {
     handleApplyOverride, handleResetSemester
   } = firestoreActions;
 
-  // Memoized & strictly sorted history logs (Today -> Oldest, timestamp secondary, deduplicated)
-  const sortedHistoryLogs = useMemo(() => {
-    if (!selectedHistorySubject) return [];
-    const filtered = logs.filter(l =>
-      (selectedHistorySubject.id && l.subjectId === selectedHistorySubject.id) ||
-      (selectedHistorySubject.name && (l.subjectName === selectedHistorySubject.name || l.subjectId === selectedHistorySubject.name))
-    );
-
-    const sorted = [...filtered].sort((a, b) => {
-      // 1. Primary: Sort by ISO date string descending (newest date first)
-      const dateA = a.date || '';
-      const dateB = b.date || '';
-      if (dateA !== dateB) {
-        return dateB.localeCompare(dateA);
-      }
-      // 2. Secondary: Sort by timestamp descending
-      const timeA = typeof a.timestamp === 'number' ? a.timestamp : 0;
-      const timeB = typeof b.timestamp === 'number' ? b.timestamp : 0;
-      return timeB - timeA;
-    });
-
-    // In-memory deduplication guard: for scheduled non-extra logs, keep ONLY the latest log per slot
-    const seen = new Set<string>();
-    const deduplicated: typeof sorted = [];
-
-    for (let i = 0; i < sorted.length; i++) {
-      const l = sorted[i];
-      if (l.isExtra) {
-        deduplicated.push(l);
-      } else {
-        const slotKey = `${(l.date || '').slice(0, 10)}_${l.type === 'lab' ? 'lab' : 'class'}_${l.idx ?? 0}`;
-        if (!seen.has(slotKey)) {
-          seen.add(slotKey);
-          deduplicated.push(l);
-        }
-      }
-    }
-
-    return deduplicated;
-  }, [selectedHistorySubject, logs]);
-
-  const [historyFilterType, setHistoryFilterType] = useState<'all' | 'class' | 'lab'>('all');
-
-  // Reset filter tab whenever a different subject history modal is opened
-  useEffect(() => {
-    if (selectedHistorySubject) {
-      setHistoryFilterType('all');
-    }
-  }, [selectedHistorySubject?.id]);
-
-  const classHistoryLogs = useMemo(
-    () => sortedHistoryLogs.filter(l => l.type !== 'lab'),
-    [sortedHistoryLogs]
-  );
-  const labHistoryLogs = useMemo(
-    () => sortedHistoryLogs.filter(l => l.type === 'lab'),
-    [sortedHistoryLogs]
-  );
-
-  const historySections = useMemo(() => {
-    if (historyFilterType === 'class') {
-      return [{ title: 'Classes', type: 'class' as const, count: classHistoryLogs.length, data: classHistoryLogs }];
-    }
-    if (historyFilterType === 'lab') {
-      return [{ title: 'Labs', type: 'lab' as const, count: labHistoryLogs.length, data: labHistoryLogs }];
-    }
-    // 'all' view — Classes first, then Labs
-    const list: { title: string; type: 'class' | 'lab'; count: number; data: typeof sortedHistoryLogs }[] = [];
-    if (classHistoryLogs.length > 0) {
-      list.push({ title: 'Classes', type: 'class', count: classHistoryLogs.length, data: classHistoryLogs });
-    }
-    if (labHistoryLogs.length > 0) {
-      list.push({ title: 'Labs', type: 'lab', count: labHistoryLogs.length, data: labHistoryLogs });
-    }
-    return list;
-  }, [historyFilterType, classHistoryLogs, labHistoryLogs, sortedHistoryLogs]);
-
   const handleAddSubject = () => {
     setEditSubject(null);
     setShowAddModal(true);
@@ -724,19 +932,15 @@ export default function AttendanceScreen() {
 
   const renderItem = useCallback(({ item: session }: { item: any }) => {
     const { subject, type, idx } = session;
-    const subLogs = (subject.id ? logsBySubjectId[subject.id] : null) || (subject.name ? logsBySubjectId[subject.name] : null) || [];
     const cleanSelDate = (selectedDate || '').slice(0, 10);
+    const slotKey = `${subject.id || subject.name}_${type === 'lab' ? 'lab' : 'class'}_${idx}`;
 
-    // Fast path: direct idx match (new logs always carry idx)
-    let log = subLogs.find(l =>
-      (l.date || '').slice(0, 10) === cleanSelDate &&
-      !l.isExtra &&
-      (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)) &&
-      l.idx === idx
-    ) ?? null;
+    // Fast path: direct O(1) Map lookup
+    let log = data.selectedDateLogsBySlot.get(slotKey) ?? null;
 
     // Legacy fallback: positional match for old logs without idx field
     if (!log) {
+      const subLogs = (subject.id ? logsBySubjectId[subject.id] : null) || (subject.name ? logsBySubjectId[subject.name] : null) || [];
       let matchIdx = 0;
       for (let i = 0; i < subLogs.length; i++) {
         const l = subLogs[i];
@@ -759,7 +963,7 @@ export default function AttendanceScreen() {
         onLog={handleLog}
       />
     );
-  }, [logsBySubjectId, selectedDate, colors, isDark, styles, handleUndo, handleLog]);
+  }, [data.selectedDateLogsBySlot, logsBySubjectId, selectedDate, colors, isDark, styles, handleUndo, handleLog]);
 
   const listHeader = useMemo(() => (
     <>
@@ -816,7 +1020,6 @@ export default function AttendanceScreen() {
         onSelectDate={setSelectedDate}
         holidays={holidays}
         today={today}
-        logs={logs}
       />
 
       {/* ── Daily Schedule ── */}
@@ -827,7 +1030,7 @@ export default function AttendanceScreen() {
         </TouchableOpacity>
       </View>
     </>
-  ), [globalAttended, globalTotal, globalPct, warningSubjects, selectedDate, holidays, today, logs, colors, isDark, styles]);
+  ), [globalAttended, globalTotal, globalPct, warningSubjects, selectedDate, holidays, today, colors, isDark, styles, setDismissedWarnings]);
 
   const listFooter = useMemo(() => {
     if (todayScheduledSubjects.length === 0 || isSelectedHoliday) return null;
@@ -841,12 +1044,12 @@ export default function AttendanceScreen() {
             colors={colors}
             isDark={isDark}
             styles={styles}
-            onPress={() => setSelectedHistorySubject(subject)}
+            onSelect={setSelectedHistorySubject}
           />
         ))}
       </View>
     );
-  }, [todayScheduledSubjects, isSelectedHoliday, colors, isDark, styles]);
+  }, [todayScheduledSubjects, isSelectedHoliday, colors, isDark, styles, setSelectedHistorySubject]);
 
   return (
     <View style={styles.root}>
@@ -1026,191 +1229,17 @@ export default function AttendanceScreen() {
 
       {/* History Modal */}
       {!!selectedHistorySubject && (
-        <Modal visible={!!selectedHistorySubject} animationType="slide" onRequestClose={() => setSelectedHistorySubject(null)}>
-          <SafeAreaView style={styles.modalRoot}>
-            {/* Header */}
-            <View style={styles.modalHeader}>
-              <View style={{ flex: 1, marginRight: 12 }}>
-                <Text style={styles.modalTitle} numberOfLines={1}>
-                  {selectedHistorySubject?.name} History
-                </Text>
-                <Text style={{ fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
-                  {sortedHistoryLogs.length} {sortedHistoryLogs.length === 1 ? 'log' : 'logs'} recorded • Newest first
-                </Text>
-              </View>
-              <TouchableOpacity style={styles.modalHeaderBtn} onPress={() => setSelectedHistorySubject(null)}>
-                <Ionicons name="close" size={22} color={colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Subject Attendance Stats Overview Strip */}
-            {(() => {
-              const sub = subjects.find(s => (selectedHistorySubject.id && s.id === selectedHistorySubject.id) || s.name === selectedHistorySubject.name) || selectedHistorySubject;
-              const att = (sub.classesAttended || 0) + (sub.labsAttended || 0);
-              const tot = (sub.classesTotal || 0) + (sub.labsTotal || 0);
-              const pct = tot > 0 ? (att / tot) * 100 : 100;
-              const target = sub.targetPercentage || 75;
-              const isSafe = pct >= target;
-
-              return (
-                <View style={styles.historyStatsBar}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text style={{ fontSize: 13, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
-                        Overall: {att}/{tot} attended
-                      </Text>
-                      <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                        (Target: {target}%)
-                      </Text>
-                    </View>
-                    <Text style={{ fontSize: 15, fontFamily: FONT_FAMILY.bold, color: isSafe ? (isDark ? '#34D399' : '#059669') : (isDark ? '#F87171' : '#DC2626') }}>
-                      {tot > 0 ? `${Math.round(pct)}%` : '--%'}
-                    </Text>
-                  </View>
-
-                  {/* Class vs Lab split if applicable */}
-                  {((sub.labsTotal || 0) > 0 || (sub.classesTotal || 0) > 0) && (
-                    <View style={{ flexDirection: 'row', gap: 16, marginTop: 6 }}>
-                      {(sub.classesTotal || 0) > 0 && (
-                        <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                          Class: <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>{sub.classesAttended || 0}/{sub.classesTotal || 0}</Text>
-                        </Text>
-                      )}
-                      {(sub.labsTotal || 0) > 0 && (
-                        <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                          Lab: <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>{sub.labsAttended || 0}/{sub.labsTotal || 0}</Text>
-                        </Text>
-                      )}
-                    </View>
-                  )}
-                </View>
-              );
-            })()}
-
-            {/* Filter Tabs if both classes and labs exist */}
-            {classHistoryLogs.length > 0 && labHistoryLogs.length > 0 && (
-              <View style={styles.historyFilterTabs}>
-                <TouchableOpacity
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setHistoryFilterType('all');
-                  }}
-                  style={[
-                    styles.historyFilterPill,
-                    historyFilterType === 'all' && styles.historyFilterPillActive,
-                  ]}
-                >
-                  <Text style={[
-                    styles.historyFilterPillText,
-                    historyFilterType === 'all' && styles.historyFilterPillTextActive,
-                  ]}>
-                    All ({sortedHistoryLogs.length})
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setHistoryFilterType('class');
-                  }}
-                  style={[
-                    styles.historyFilterPill,
-                    historyFilterType === 'class' && styles.historyFilterPillActiveClass,
-                  ]}
-                >
-                  <Ionicons 
-                    name="book-outline" 
-                    size={12} 
-                    color={historyFilterType === 'class' ? (isDark ? '#a5b4fc' : '#4f46e5') : colors.textMuted} 
-                    style={{ marginRight: 4 }} 
-                  />
-                  <Text style={[
-                    styles.historyFilterPillText,
-                    historyFilterType === 'class' && styles.historyFilterPillTextActiveClass,
-                  ]}>
-                    Classes ({classHistoryLogs.length})
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setHistoryFilterType('lab');
-                  }}
-                  style={[
-                    styles.historyFilterPill,
-                    historyFilterType === 'lab' && styles.historyFilterPillActiveLab,
-                  ]}
-                >
-                  <Ionicons 
-                    name="flask-outline" 
-                    size={12} 
-                    color={historyFilterType === 'lab' ? (isDark ? '#fcd34d' : '#d97706') : colors.textMuted} 
-                    style={{ marginRight: 4 }} 
-                  />
-                  <Text style={[
-                    styles.historyFilterPillText,
-                    historyFilterType === 'lab' && styles.historyFilterPillTextActiveLab,
-                  ]}>
-                    Labs ({labHistoryLogs.length})
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* List with Dedicated Classes & Labs Sections */}
-            <SectionList
-              sections={historySections}
-              keyExtractor={l => l.id || `${l.date}_${l.timestamp}_${l.action}_${l.type}`}
-              contentContainerStyle={{ padding: SPACE.md, paddingBottom: 60 }}
-              stickySectionHeadersEnabled={false}
-              renderSectionHeader={({ section }) => {
-                // Only show section header if both classes & labs exist or in 'all' view
-                if (classHistoryLogs.length === 0 || labHistoryLogs.length === 0) return null;
-                const isLab = section.type === 'lab';
-                return (
-                  <View style={[styles.historySectionHeader, isLab && { marginTop: 14 }]}>
-                    <Ionicons
-                      name={isLab ? 'flask' : 'book'}
-                      size={13}
-                      color={isLab ? (isDark ? '#fcd34d' : '#d97706') : (isDark ? '#a5b4fc' : '#4f46e5')}
-                    />
-                    <Text style={[
-                      styles.historySectionTitle,
-                      { color: isLab ? (isDark ? '#fcd34d' : '#d97706') : (isDark ? '#a5b4fc' : '#4f46e5') }
-                    ]}>
-                      {section.title} ({section.count})
-                    </Text>
-                  </View>
-                );
-              }}
-              renderItem={({ item: l }) => (
-                <AttendanceHistoryRow
-                  log={l}
-                  colors={colors}
-                  isDark={isDark}
-                  styles={styles}
-                  onUndo={handleUndo}
-                />
-              )}
-              ListEmptyComponent={
-                <View style={{ paddingVertical: 48, alignItems: 'center' }}>
-                  <Ionicons name="calendar-outline" size={40} color={colors.textMuted} style={{ marginBottom: 12, opacity: 0.6 }} />
-                  <Text style={{ color: colors.textPrimary, fontSize: 15, fontFamily: FONT_FAMILY.bold, textAlign: 'center' }}>
-                    No Logs Found
-                  </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
-                    {historyFilterType === 'class'
-                      ? 'No class logs recorded for this subject.'
-                      : historyFilterType === 'lab'
-                      ? 'No lab logs recorded for this subject.'
-                      : 'Classes and labs you mark will appear here sorted from newest to oldest.'}
-                  </Text>
-                </View>
-              }
-            />
-          </SafeAreaView>
-        </Modal>
+        <SubjectHistoryModal
+          visible={!!selectedHistorySubject}
+          subject={selectedHistorySubject}
+          logs={logs}
+          subjects={subjects}
+          colors={colors}
+          isDark={isDark}
+          styles={styles}
+          onClose={() => setSelectedHistorySubject(null)}
+          onUndo={handleUndo}
+        />
       )}
 
       {/* Unlogged / Pending Classes & Labs Drawer */}

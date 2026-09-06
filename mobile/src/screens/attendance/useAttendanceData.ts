@@ -301,8 +301,29 @@ export function useAttendanceData() {
   const [isUnloggedOpen, setIsUnloggedOpen] = useState(false);
 
   // ── Unlogged Past Classes & Labs (Scans past 30 days for scheduled sessions without logs) ──
+  // Pre-indexes all logged slots into a Set for instant O(1) membership checks (from ~72k ops down to ~300)
   const unloggedSessions = useMemo(() => {
     if (!subjects || subjects.length === 0) return [];
+
+    // Pre-index all existing non-extra logs into a Set: `${subjIdentifier}_${dateStr}_${type}_${idx}`
+    const loggedSlotSet = new Set<string>();
+    if (logs && logs.length > 0) {
+      for (let i = 0; i < logs.length; i++) {
+        const l = logs[i];
+        if (l.isExtra) continue;
+        const d = (l.date || '').slice(0, 10);
+        const t = l.type === 'lab' ? 'lab' : 'class';
+        const idx = l.idx ?? 0;
+        if (l.subjectId) {
+          loggedSlotSet.add(`${l.subjectId}_${d}_${t}_${idx}`);
+        }
+        if (l.subjectName) {
+          loggedSlotSet.add(`${l.subjectName}_${d}_${t}_${idx}`);
+        }
+      }
+    }
+
+    const holidaySet = new Set(holidays);
     const list: Array<{
       id: string;
       subject: AttendanceSubject;
@@ -319,8 +340,8 @@ export function useAttendanceData() {
       const pastDate = new Date(todayDate.getTime() - offset * 86400000);
       const dateStr = getLocalDateString(pastDate);
 
-      // Skip dates explicitly marked as holidays
-      if (holidays.includes(dateStr)) continue;
+      // Skip dates explicitly marked as holidays (O(1))
+      if (holidaySet.has(dateStr)) continue;
 
       const dayOfWeekNum = pastDate.getDay();
       const dayOfWeekStr = dayOfWeekNum.toString();
@@ -342,17 +363,12 @@ export function useAttendanceData() {
         const classCount = sch.classes?.length || sch.classCount || 0;
         const labCount   = sch.labs?.length   || sch.labCount   || 0;
 
-        const subLogs = logsBySubjectId[subject.id] || logsBySubjectId[subject.name] || [];
-
-        // Check Classes
+        // Check Classes with O(1) Set lookup
         for (let i = 0; i < classCount; i++) {
           const session = sch.classes?.[i];
-          const hasLog = subLogs.some(l =>
-            (l.date || '').slice(0, 10) === dateStr &&
-            !l.isExtra &&
-            (l.type === 'class' || !l.type) &&
-            (l.idx === i || (l.idx === undefined && i === 0))
-          );
+          const hasLog =
+            loggedSlotSet.has(`${subject.id}_${dateStr}_class_${i}`) ||
+            (subject.name ? loggedSlotSet.has(`${subject.name}_${dateStr}_class_${i}`) : false);
 
           if (!hasLog) {
             const timeStr = session?.time ? [session.time, session.room].filter(Boolean).join(' • ') : `Class #${i + 1}`;
@@ -368,15 +384,12 @@ export function useAttendanceData() {
           }
         }
 
-        // Check Labs
+        // Check Labs with O(1) Set lookup
         for (let i = 0; i < labCount; i++) {
           const session = sch.labs?.[i];
-          const hasLog = subLogs.some(l =>
-            (l.date || '').slice(0, 10) === dateStr &&
-            !l.isExtra &&
-            l.type === 'lab' &&
-            (l.idx === i || (l.idx === undefined && i === 0))
-          );
+          const hasLog =
+            loggedSlotSet.has(`${subject.id}_${dateStr}_lab_${i}`) ||
+            (subject.name ? loggedSlotSet.has(`${subject.name}_${dateStr}_lab_${i}`) : false);
 
           if (!hasLog) {
             const timeStr = session?.time ? [session.time, session.room].filter(Boolean).join(' • ') : `Lab #${i + 1}`;
@@ -401,7 +414,29 @@ export function useAttendanceData() {
       }
       return a.timeMins - b.timeMins;
     });
-  }, [subjects, holidays, logsBySubjectId]);
+  }, [subjects, holidays, logs]);
+
+  // ── Selected Date Logs Map for instant O(1) slot resolution in renderItem ──
+  const selectedDateLogsBySlot = useMemo(() => {
+    const map = new Map<string, any>();
+    if (!logs || logs.length === 0) return map;
+    const cleanSelDate = (selectedDate || '').slice(0, 10);
+
+    for (let i = 0; i < logs.length; i++) {
+      const l = logs[i];
+      if (l.isExtra) continue;
+      if ((l.date || '').slice(0, 10) !== cleanSelDate) continue;
+      const type = l.type === 'lab' ? 'lab' : 'class';
+      const idx = l.idx ?? 0;
+      if (l.subjectId) {
+        map.set(`${l.subjectId}_${type}_${idx}`, l);
+      }
+      if (l.subjectName) {
+        map.set(`${l.subjectName}_${type}_${idx}`, l);
+      }
+    }
+    return map;
+  }, [logs, selectedDate]);
 
   const { globalAttended, globalTotal, globalPct, globalSafe } = useMemo(() => {
     const attended = subjects.reduce((s, x) => s + (x.classesAttended || 0) + (x.labsAttended || 0), 0);
@@ -413,7 +448,7 @@ export function useAttendanceData() {
 
   return {
     user, subjects,
-    logs, holidays, logsBySubjectId,
+    logs, holidays, logsBySubjectId, selectedDateLogsBySlot,
     selectedDate, setSelectedDate,
     showDatePicker, setShowDatePicker,
     isTimetableOpen, setIsTimetableOpen,

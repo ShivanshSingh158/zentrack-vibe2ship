@@ -26,13 +26,13 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 // Map visual index to actual Date.getDay() (0=Sun, 1=Mon)
 const DAY_MAP = [1, 2, 3, 4, 5, 6, 0];
 
-export function AddSubjectModal({ visible, onClose, existingSubject }: {
+export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, onClose, existingSubject }: {
   visible: boolean;
   onClose: () => void;
   existingSubject?: AttendanceSubject | null;
 }) {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors, isDark);
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const { user } = useCoreData();
   const { attendance, optimisticAddSubject, optimisticUpdateAttendance } = useAcademicData();
   const [name, setName] = useState('');
@@ -496,7 +496,7 @@ export function AddSubjectModal({ visible, onClose, existingSubject }: {
       </KeyboardAvoidingView>
     </Modal>
   );
-}
+});
 
 const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   modalBg: { flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },

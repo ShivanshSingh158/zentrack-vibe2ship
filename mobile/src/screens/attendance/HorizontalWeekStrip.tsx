@@ -16,7 +16,6 @@ interface HorizontalWeekStripProps {
   onSelectDate: (date: string) => void;
   holidays?: string[];
   today: string;
-  logs?: any[];
 }
 
 function parseDateToMidnight(dateStr: string): Date {
@@ -50,6 +49,10 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
   // Animations for week slide transition
   const translateXAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
+
+  // Stably keep current active date in ref to prevent recreating PanResponder on every day selection
+  const currentDateRef = useRef(selectedDate || today);
+  currentDateRef.current = selectedDate || today;
 
   // Derive the active week's Sunday directly from selectedDate (or today)
   const activeSunday = useMemo(() => {
@@ -119,22 +122,22 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
   const goToNextWeek = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     animateTransition('left', () => {
-      const cur = parseDateToMidnight(selectedDate || today);
+      const cur = parseDateToMidnight(currentDateRef.current);
       cur.setDate(cur.getDate() + 7);
       onSelectDate(getLocalDateString(cur));
     });
-  }, [selectedDate, today, onSelectDate, animateTransition]);
+  }, [onSelectDate, animateTransition]);
 
   const goToPrevWeek = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     animateTransition('right', () => {
-      const cur = parseDateToMidnight(selectedDate || today);
+      const cur = parseDateToMidnight(currentDateRef.current);
       cur.setDate(cur.getDate() - 7);
       onSelectDate(getLocalDateString(cur));
     });
-  }, [selectedDate, today, onSelectDate, animateTransition]);
+  }, [onSelectDate, animateTransition]);
 
-  // PanResponder to allow horizontal week swiping without blocking vertical scrolling
+  // PanResponder to allow horizontal week swiping without blocking vertical scrolling (stable instance)
   const panResponder = useMemo(
     () =>
       PanResponder.create({

@@ -22,7 +22,7 @@
  *   @class_notif_lab_end_delay_{id}   minutes after lab end, default 0
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, ScrollView,
   StyleSheet, ActivityIndicator, Switch, Platform,
@@ -87,9 +87,9 @@ interface Props {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function ClassNotifSettingsModal({ visible, onClose }: Props) {
+const ClassNotifSettingsModal = React.memo(function ClassNotifSettingsModal({ visible, onClose }: Props) {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors, isDark);
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const { tasks, habitLogs, allHabits } = useCoreData();
   const { gymLogs, waterLogs, sleepLogs } = useWellnessData();
   const { attendance, assignments } = useAcademicData();
@@ -387,7 +387,9 @@ export default function ClassNotifSettingsModal({ visible, onClose }: Props) {
       </SafeAreaView>
     </Modal>
   );
-}
+});
+
+export default ClassNotifSettingsModal;
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
