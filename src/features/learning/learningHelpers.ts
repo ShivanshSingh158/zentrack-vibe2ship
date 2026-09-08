@@ -57,39 +57,165 @@ export const stripTranscriptArtifacts = (text: string): string => {
     .trim();
 };
 
+const CONTROL_KEYWORDS = new Set([
+  'return', 'if', 'else', 'for', 'while', 'try', 'catch', 'finally',
+  'throw', 'async', 'await', 'yield', 'switch', 'case', 'break', 'continue', 'default'
+]);
+
+const DECLARATION_KEYWORDS = new Set([
+  'const', 'let', 'var', 'function', 'class', 'def', 'import', 'export',
+  'from', 'type', 'interface', 'enum', 'new', 'this', 'super', 'typeof',
+  'instanceof', 'in', 'of', 'void', 'extends', 'implements', 'as', 'lambda',
+  'pass', 'elif', 'with', 'is', 'not', 'and', 'or', 'public', 'private', 'protected',
+  'static', 'int', 'float', 'double', 'char', 'bool', 'auto', 'template', 'typename'
+]);
+
+const BUILTIN_OBJECTS = new Set([
+  'console', 'document', 'window', 'Math', 'JSON', 'Promise', 'Array',
+  'Object', 'String', 'Number', 'Boolean', 'Set', 'Map', 'React', 'process',
+  'print', 'len', 'range', 'enumerate', 'zip', 'map', 'filter', 'list', 'dict',
+  'set', 'tuple', 'int', 'str', 'float', 'bool', 'sum', 'min', 'max', 'abs',
+  'cout', 'cin', 'endl', 'vector', 'string', 'unordered_map', 'unordered_set', 'queue', 'stack'
+]);
+
+const LITERALS = new Set([
+  'null', 'undefined', 'true', 'false', 'None', 'True', 'False', 'NaN', 'Infinity', 'nil', 'nullptr'
+]);
+
+const escapeHtml = (str: string): string => {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+};
+
+export const highlightCodeToHtml = (code: string, _lang?: string): string => {
+  // Clean any HTML tags that might have slipped into code
+  const raw = code
+    .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '# $1\n')
+    .replace(/<hr[^>]*>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?(?:p|div|pre|code|span|strong|em|ul|ol|li)[^>]*>/gi, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/^\n+|\n+$/g, '');
+
+  if (!raw.trim()) return '';
+
+  const lines = raw.split('\n');
+
+  const tokenRegex = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:return|if|else|for|while|try|catch|finally|throw|async|await|yield|switch|case|break|continue|default)\b|\b(?:const|let|var|function|class|def|import|export|from|type|interface|enum|new|this|super|typeof|instanceof|in|of|void|extends|implements|as|lambda|pass|elif|with|is|not|and|or|public|private|protected|static|int|float|double|char|bool|auto|template|typename)\b|\b(?:console|document|window|Math|JSON|Promise|Array|Object|String|Number|Boolean|Set|Map|React|process|print|len|range|enumerate|zip|map|filter|list|dict|set|tuple|int|str|float|bool|sum|min|max|abs|cout|cin|endl|vector|string|unordered_map|unordered_set|queue|stack)\b|\b(?:null|undefined|true|false|None|True|False|NaN|Infinity|nil|nullptr)\b|\b\d+(?:\.\d+)?(?:e[+-]?\d+)?\b|[a-zA-Z_$][a-zA-Z0-9_$]*|[^\s\w]+|\s+)/g;
+
+  return lines.map((line, lineIdx) => {
+    let match;
+    let lineHtml = '';
+
+    while ((match = tokenRegex.exec(line)) !== null) {
+      const tok = match[0];
+      const escaped = escapeHtml(tok);
+
+      if (/^(\/\/|\/\*|#)/.test(tok)) {
+        lineHtml += `<span style="color:#6a9955;font-style:italic;">${escaped}</span>`;
+      } else if (/^["'`]/.test(tok)) {
+        lineHtml += `<span style="color:#ce9178;">${escaped}</span>`;
+      } else if (CONTROL_KEYWORDS.has(tok)) {
+        lineHtml += `<span style="color:#c586c0;font-weight:600;">${escaped}</span>`;
+      } else if (DECLARATION_KEYWORDS.has(tok)) {
+        lineHtml += `<span style="color:#569cd6;font-weight:600;">${escaped}</span>`;
+      } else if (BUILTIN_OBJECTS.has(tok)) {
+        lineHtml += `<span style="color:#4ec9b0;">${escaped}</span>`;
+      } else if (LITERALS.has(tok)) {
+        lineHtml += `<span style="color:#569cd6;font-weight:600;">${escaped}</span>`;
+      } else if (/^\d/.test(tok)) {
+        lineHtml += `<span style="color:#b5cea8;">${escaped}</span>`;
+      } else if (line.substring(match.index + tok.length).trim().startsWith('(')) {
+        lineHtml += `<span style="color:#dcdcaa;">${escaped}</span>`;
+      } else if (/^[A-Z][a-zA-Z0-9_$]*$/.test(tok)) {
+        lineHtml += `<span style="color:#4ec9b0;">${escaped}</span>`;
+      } else if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(tok)) {
+        lineHtml += `<span style="color:#9cdcfe;">${escaped}</span>`;
+      } else {
+        lineHtml += `<span style="color:#d4d4d4;">${escaped}</span>`;
+      }
+    }
+
+    const lineNum = `<span class="lp-notes-line-num" style="display:inline-block;width:26px;text-align:right;margin-right:12px;color:#65656e;font-size:0.72rem;user-select:none;flex-shrink:0;font-family:inherit;">${lineIdx + 1}</span>`;
+    const lineContent = `<span style="flex:1;min-width:0;white-space:pre;font-family:inherit;">${lineHtml || ' '}</span>`;
+
+    return `<div class="lp-notes-code-line" style="display:flex;min-height:1.45em;line-height:1.55;font-family:inherit;">${lineNum}${lineContent}</div>`;
+  }).join('');
+};
+
+export const renderCodeCardHtml = (code: string, language?: string): string => {
+  const lang = (language || 'code').trim().toLowerCase();
+  const highlighted = highlightCodeToHtml(code, lang);
+
+  return `<div class="lp-notes-code-card" data-language="${lang}" contenteditable="false"><div class="lp-notes-code-header"><div class="lp-vscode-window-dots"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span></div><span class="lp-notes-code-lang">${lang.toUpperCase()}</span><button type="button" class="lp-notes-copy-code-btn" onclick="navigator.clipboard.writeText(this.closest('.lp-notes-code-card').querySelector('pre code').innerText); this.innerText='Copied!'; setTimeout(() => this.innerText='Copy', 2000);">Copy</button></div><pre class="lp-notes-code-pre"><code>${highlighted}</code></pre></div>`;
+};
+
 export const convertMarkdownToRichNotesHtml = (raw: string): string => {
   if (!raw) return '';
 
   let text = stripTranscriptArtifacts(raw);
 
-  // 1. Extract and preserve code blocks
   const codeBlocks: string[] = [];
-  text = text.replace(/```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-    const language = (lang || 'code').trim().toLowerCase();
-    const escaped = code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+
+  // Step 0A: Repair and preserve existing <div class="lp-notes-code-card">
+  text = text.replace(/<div class="lp-notes-code-card"[^>]*>[\s\S]*?<\/div>/gi, (match) => {
+    const langMatch = /data-language="([^"]*)"/i.exec(match);
+    const lang = langMatch ? langMatch[1] : 'code';
+    const codeText = match
+      .replace(/<div class="lp-notes-code-header"[\s\S]*?<\/div>/gi, '')
+      .replace(/<span class="lp-notes-line-num"[\s\S]*?<\/span>/gi, '')
+      .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '# $1\n')
+      .replace(/<hr[^>]*>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"');
     const placeholder = `__CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}__`;
-    const blockHtml = `<div class="lp-notes-code-card" data-language="${language}" contenteditable="false"><div class="lp-notes-code-header"><span class="lp-vscode-window-dots"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span></span><span class="lp-notes-code-lang">${language.toUpperCase()}</span></div><pre class="lp-notes-code-pre"><code>${escaped}</code></pre></div>`;
-    codeBlocks.push(blockHtml);
+    codeBlocks.push(renderCodeCardHtml(codeText, lang));
     return `\n\n${placeholder}\n\n`;
   });
 
-  // 2. Extract and preserve inline code
+  // Step 0B: Repair and preserve existing <pre> blocks (neutralize corrupted h1/headings/hr inside them)
+  text = text.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, (_, inner) => {
+    const codeText = inner
+      .replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, '# $1\n')
+      .replace(/<hr[^>]*>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"');
+    const placeholder = `__CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}__`;
+    codeBlocks.push(renderCodeCardHtml(codeText, 'python'));
+    return `\n\n${placeholder}\n\n`;
+  });
+
+  // Step 1: Extract and preserve markdown code blocks ```lang ... ```
+  text = text.replace(/```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const placeholder = `__CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}__`;
+    codeBlocks.push(renderCodeCardHtml(code, lang || 'code'));
+    return `\n\n${placeholder}\n\n`;
+  });
+
+  // Step 2: Extract and preserve inline code `code`
   const inlineCodes: string[] = [];
   text = text.replace(/`([^`\n]+?)`/g, (_, code) => {
-    const escaped = code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    const escaped = escapeHtml(code);
     const placeholder = `__INLINE_CODE_PLACEHOLDER_${inlineCodes.length}__`;
     inlineCodes.push(`<code class="lp-notes-inline-code">${escaped}</code>`);
     return placeholder;
   });
 
-  // 3. Timestamps: [MM:SS] or [HH:MM:SS] or **[MM:SS]**
+  // Step 3: Timestamps: [MM:SS] or [HH:MM:SS] or **[MM:SS]**
   text = text.replace(/(?:\*\*)?\[(\d{1,2}:\d{2}(?::\d{2})?)\](?:\*\*)?/g, (_, time) => {
     const parts = time.split(':').map((p: string) => parseInt(p, 10));
     let s = 0;
@@ -101,31 +227,29 @@ export const convertMarkdownToRichNotesHtml = (raw: string): string => {
     return `<span class="lp-inline-ts-pill" contenteditable="false" data-seconds="${s}">${clockSvg}${time}</span>&nbsp;`;
   });
 
-  // 4. Ensure headings have clean line boundaries even if input collapsed newlines
-  text = text.replace(/([^\n])\s*(#{1,4}\s+[^\n]+)/g, '$1\n\n$2\n');
+  // Step 4: Headings (STRICTLY at the start of a line to avoid breaking Python # comments)
+  text = text.replace(/^[ \t]*####[ \t]+(.+)$/gm, '<h4>$1</h4>');
+  text = text.replace(/^[ \t]*###[ \t]+(.+)$/gm, '<h3>$1</h3>');
+  text = text.replace(/^[ \t]*##[ \t]+(.+)$/gm, '<h2>$1</h2>');
+  // For single #, only convert if followed by an emoji or title word, NEVER if it looks like code
+  text = text.replace(/^[ \t]*#[ \t]+([A-Z\p{Emoji}].+)$/gmu, '<h1>$1</h1>');
 
-  // Headings
-  text = text.replace(/^(?:[ \t]*)####[ \t]+(.+)$/gm, '<h4>$1</h4>');
-  text = text.replace(/^(?:[ \t]*)###[ \t]+(.+)$/gm, '<h3>$1</h3>');
-  text = text.replace(/^(?:[ \t]*)##[ \t]+(.+)$/gm, '<h2>$1</h2>');
-  text = text.replace(/^(?:[ \t]*)#[ \t]+(.+)$/gm, '<h1>$1</h1>');
-
-  // 5. Bold & Italic
+  // Step 5: Bold & Italic
   text = text.replace(/\*\*\*([^\n]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
   text = text.replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
   text = text.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>');
   text = text.replace(/(?<!_)_([^_\n]+?)_(?!_)/g, '<em>$1</em>');
 
-  // 6. Horizontal rules
+  // Step 6: Horizontal rules
   text = text.replace(/^[ \t]*---+[ \t]*$/gm, '<hr/>');
 
-  // 7. Bullet lists: lines starting with - or *
+  // Step 7: Bullet lists: lines starting with - or *
   text = text.replace(/^[ \t]*[-*][ \t]+(.+)$/gm, '<li>$1</li>');
   text = text.replace(/(?:<li>[\s\S]*?<\/li>[\s\n]*)+/g, (match) => {
     return `<ul>${match.trim()}</ul>`;
   });
 
-  // 8. Restore inline codes & code blocks
+  // Step 8: Restore inline codes & code blocks
   inlineCodes.forEach((html, i) => {
     text = text.replace(new RegExp(`__INLINE_CODE_PLACEHOLDER_${i}__`, 'g'), html);
   });
@@ -134,7 +258,7 @@ export const convertMarkdownToRichNotesHtml = (raw: string): string => {
     text = text.replace(new RegExp(`__CODE_BLOCK_PLACEHOLDER_${i}__`, 'g'), html);
   });
 
-  // 9. Format paragraphs & linebreaks
+  // Step 9: Format paragraphs & linebreaks
   text = text
     .split('\n\n')
     .map(chunk => {

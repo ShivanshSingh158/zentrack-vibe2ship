@@ -3213,12 +3213,12 @@
 
 /* ── CODE BLOCKS IN NOTES EDITOR (VS Code Dark style) ── */
 .lp-notes-code-card {
-  margin: 0.85rem 0;
+  margin: 1rem 0;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid #22222e;
   background: #08080c;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.55);
 }
 
 .lp-notes-code-header {
@@ -3239,6 +3239,27 @@
   color: #82aaff;
 }
 
+.lp-notes-copy-code-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #a1a1aa;
+  font-size: 0.65rem;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lp-notes-copy-code-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
 .lp-notes-code-pre {
   margin: 0 !important;
   padding: 0.85rem 1rem !important;
@@ -3248,8 +3269,8 @@
   overflow-x: auto;
   font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace !important;
   font-size: 0.82rem !important;
-  line-height: 1.6 !important;
-  color: #9cdcfe !important;
+  line-height: 1.55 !important;
+  color: #d4d4d4 !important;
 }
 
 .lp-notes-code-pre::before {
@@ -3264,6 +3285,11 @@
   font-family: inherit !important;
   font-size: inherit !important;
   white-space: pre !important;
+  display: block;
+}
+
+.lp-notes-code-line:hover {
+  background: rgba(255, 255, 255, 0.02);
 }
 
 /* Fallback for bare pre tags in notes */
@@ -3271,40 +3297,48 @@
   background: #08080c;
   border: 1px solid #22222e;
   border-radius: 10px;
-  padding: 0;
+  padding: 0.85rem 1rem;
   margin: 0.85rem 0;
-  overflow: hidden;
+  overflow-x: auto;
   font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
   font-size: 0.82rem;
-  line-height: 1.65;
-  position: relative;
+  line-height: 1.6;
+  color: #9cdcfe;
+  white-space: pre;
 }
 
 .lp-notes-rich-editor pre:not(.lp-notes-code-pre)::before {
-  content: '●  ●  ●  CODE';
-  display: block;
-  background: #101016;
-  color: #82aaff;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  padding: 0.38rem 0.85rem;
-  border-bottom: 1px solid #1a1a24;
-  font-family: 'JetBrains Mono', Consolas, monospace;
+  display: none !important;
 }
 
 .lp-notes-rich-editor pre:not(.lp-notes-code-pre) code {
-  display: block;
-  padding: 0.85rem 1rem;
-  color: #9cdcfe;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
   font-family: inherit;
   font-size: inherit;
-  line-height: inherit;
   white-space: pre;
-  overflow-x: auto;
-  background: #050508;
-  border: none;
-  border-radius: 0;
+}
+
+/* Safety: strictly neutralize any heading or hr tags that were accidentally inside pre */
+.lp-notes-rich-editor pre h1,
+.lp-notes-rich-editor pre h2,
+.lp-notes-rich-editor pre h3,
+.lp-notes-rich-editor pre h4,
+.lp-notes-rich-editor pre p,
+.lp-notes-rich-editor pre hr {
+  all: unset !important;
+  display: block !important;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace !important;
+  font-size: 0.82rem !important;
+  font-weight: 400 !important;
+  color: #6a9955 !important;
+  font-style: italic !important;
+  border: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.55 !important;
 }
 
 
