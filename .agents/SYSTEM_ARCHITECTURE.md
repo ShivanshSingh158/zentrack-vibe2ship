@@ -154,6 +154,10 @@ zentrack-vibe2ship/
 │   │   ├── learning/
 │   │   │   ├── LearningChecklistModule.tsx Checklist + AI curriculum builder (~76KB, LARGEST)
 │   │   │   ├── CurriculumBuilderModal.tsx  AI curriculum generation modal
+│   │   │   ├── LectureTheaterModal.tsx     Split theater player with YouTube, ZEN-GPT & Lecture Notes
+│   │   │   ├── ZenGptTutorPane.tsx         Interactive ChatGPT-style tutor with C++ translation toggle & quiz
+│   │   │   ├── LectureNotesPane.tsx        Rich lecture notes editor with VS Code code cards & LaTeX math
+│   │   │   ├── learningHelpers.ts          Transcript artifact stripper & markdown-to-rich-notes parser
 │   │   │   ├── LectureChatPanel.tsx        Per-lecture AI chat
 │   │   │   └── TopicCard.tsx               Learning topic card
 │   │   ├── jobs/

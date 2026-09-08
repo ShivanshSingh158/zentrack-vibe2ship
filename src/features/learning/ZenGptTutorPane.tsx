@@ -13,6 +13,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { formatSeconds } from '../../services/youtubeTranscriptService';
+import { stripTranscriptArtifacts } from './learningHelpers';
 import { toast } from 'sonner';
 import { awardXP } from '../../services/xpSystem';
 import { AVAILABLE_GEMINI_MODELS } from '../../config/constants';
@@ -35,14 +36,14 @@ const buildZenGptBasePrompt = (videoTitle: string, topicName: string, transcript
   return `You are ZEN-GPT — a world-class expert educator and AI tutor embedded inside ZenTrack.
 The student is studying: 📺 "${videoTitle}" — 📚 Topic: "${topicName}"
 
-== THE 8 LAWS OF ZEN TUTORING (NEVER BREAK) ==
+== THE 9 LAWS OF ZEN TUTORING (NEVER BREAK) ==
 1. FULL TRANSCRIPT MASTERY: You have full access to the complete lecture transcript from 00:00 to the end. Maintain a deep mental model of the entire video.
 2. RICHARD FEYNMAN TECHNIQUE: Explain concepts simply, as if teaching a beginner. Strip away all jargon. Use clear, vivid everyday analogies.
 3. CODE = WORKING + EXPLAINED: For any code question provide:
    a) Minimal working code example (< 30 lines)
    b) Line-by-line explanation of key parts
    c) Common beginner mistake
-   Always use fenced code blocks with language tags (\`\`\`javascript, \`\`\`cpp, \`\`\`python, etc.).
+   Always use fenced code blocks strictly tagged with language fences (\`\`\`python, \`\`\`javascript, \`\`\`cpp, etc.).
 4. ANALOGIES ARE MANDATORY: Provide a real-world analogy BEFORE technical explanation.
 5. CONFUSION DETECTION: If student expresses confusion, break down into smaller steps and provide a new analogy.
 6. FOLLOW-UP QUESTIONS: End standard explanations with 2 specific follow-up questions:
@@ -66,6 +67,7 @@ The student is studying: 📺 "${videoTitle}" — 📚 Topic: "${topicName}"
      • ## ⚠️ Gotchas, Edge Cases & Common Pitfalls
      • ## 📝 Quick Review Checklist & Summary
    - Ensure the notes are rich, detailed, and comprehensive so the student can master the full 1-hour+ lecture at a glance!
+9. STRICT PROHIBITION ON ECHOING TRANSCRIPTS: Under NO circumstances should you echo, dump, or copy the raw transcript or any transcript markers (like '=== TRANSCRIPT ===') at the end of your response. The transcript is strictly private reference data for you to answer accurately.
 
 ${transcript ? `=== COMPLETE FULL-LENGTH VIDEO TRANSCRIPT (from 00:00 to end) ===\n${transcript}\n=== END TRANSCRIPT ===` : '(No transcript available)'}`;
 };
@@ -465,14 +467,73 @@ const highlightSyntax = (code: string, lang?: string): React.ReactNode[] => {
 const CodeBlock: React.FC<{ language?: string; value: string }> = ({ language, value }) => {
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [activeLang, setActiveLang] = useState<'original' | 'cpp'>('original');
+  const [cppCode, setCppCode] = useState<string | null>(null);
+  const [translating, setTranslating] = useState(false);
+
+  const lang = (language || 'code').toLowerCase();
+  const isCpp = ['c++', 'cpp', 'c', 'cxx', 'cc'].includes(lang);
+
+  const displayValue = activeLang === 'cpp' && cppCode ? cppCode : value;
 
   if (!value || !value.trim()) return null;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(value);
+    navigator.clipboard.writeText(displayValue);
     setCopied(true);
     toast.success('Code copied to clipboard!');
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSwitchToCpp = async () => {
+    if (cppCode) {
+      setActiveLang('cpp');
+      return;
+    }
+    setTranslating(true);
+    try {
+      const prompt = `Translate this ${lang} code into modern, clean, runnable C++ (C++17/20).
+Return ONLY the raw C++ code. Do NOT include any markdown code fences (\`\`\`), no explanations, no conversational intro or outro:
+
+${value}`;
+
+      let translated = '';
+      try {
+        translated = await callWithFallback(async (genAI: any, modelName: string) => {
+          const m = genAI.getGenerativeModel({ model: modelName || 'gemini-2.5-flash' });
+          const res = await m.generateContent(prompt);
+          return res.response.text();
+        });
+      } catch {
+        const result = await callGeminiProxy({
+          model: 'gemini-2.5-flash',
+          contents: [{
+            role: 'user',
+            parts: [{ text: prompt }],
+          }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
+        });
+        translated = extractGeminiText(result) || '';
+      }
+
+      const cleaned = (translated || '')
+        .replace(/^```(?:cpp|c\+\+|c)?\n?/im, '')
+        .replace(/\n?```\s*$/m, '')
+        .trim();
+
+      if (cleaned) {
+        setCppCode(cleaned);
+        setActiveLang('cpp');
+        toast.success('Code converted to C++!');
+      } else {
+        throw new Error('Empty C++ translation received.');
+      }
+    } catch (err: any) {
+      console.error('[CodeBlock] Translation to C++ failed:', err);
+      toast.error('Failed to translate to C++: ' + (err?.message || 'Error'));
+    } finally {
+      setTranslating(false);
+    }
   };
 
   // Close on Escape key
@@ -494,10 +555,41 @@ const CodeBlock: React.FC<{ language?: string; value: string }> = ({ language, v
             <span className="dot yellow" />
             <span className="dot green" onClick={() => setIsExpanded(true)} style={{ cursor: 'pointer' }} title="Expand" />
           </div>
-          <span className="lp-chatgpt-code-lang">
-            <Code2 size={12} style={{ marginRight: '4px', verticalAlign: 'middle' }} />
-            {language || 'javascript'}
-          </span>
+
+          {/* Prominent Language Segmented Tabs */}
+          <div className="lp-code-lang-selector">
+            <button
+              type="button"
+              className={`lp-code-tab-btn ${activeLang === 'original' ? 'active' : ''}`}
+              onClick={() => setActiveLang('original')}
+            >
+              <Code2 size={12} />
+              <span>{lang}</span>
+            </button>
+            {!isCpp && (
+              <button
+                type="button"
+                className={`lp-code-tab-btn lp-code-cpp-btn ${activeLang === 'cpp' ? 'active' : ''}`}
+                onClick={handleSwitchToCpp}
+                disabled={translating}
+                title="Switch code to C++"
+              >
+                {translating ? (
+                  <>
+                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', border: '1.5px solid #f87171', borderTopColor: 'transparent', animation: 'lp-spin 0.7s linear infinite' }} />
+                    <span>C++</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="lp-cpp-badge">⚡</span>
+                    <span>C++</span>
+                    {cppCode && <span className="lp-cpp-ready-dot" />}
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+
           <div className="lp-chatgpt-code-header-actions">
             <button
               type="button"
@@ -520,7 +612,7 @@ const CodeBlock: React.FC<{ language?: string; value: string }> = ({ language, v
           </div>
         </div>
         <div className="lp-chatgpt-code-pre">
-          {highlightSyntax(value, language)}
+          {highlightSyntax(displayValue, activeLang === 'cpp' ? 'cpp' : language)}
         </div>
       </div>
 
@@ -536,7 +628,28 @@ const CodeBlock: React.FC<{ language?: string; value: string }> = ({ language, v
               </div>
               <div className="lp-code-modal-title">
                 <Code2 size={15} color="#a599ff" />
-                <span>{language ? `${language.toUpperCase()} • Code Viewer` : 'Code Viewer'}</span>
+                <span>{activeLang === 'cpp' ? 'C++' : (language ? language.toUpperCase() : 'Code')} • Code Viewer</span>
+                {!isCpp && (
+                  <div className="lp-code-lang-selector" style={{ marginLeft: '1rem' }}>
+                    <button
+                      type="button"
+                      className={`lp-code-tab-btn ${activeLang === 'original' ? 'active' : ''}`}
+                      onClick={() => setActiveLang('original')}
+                    >
+                      <span>{lang}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`lp-code-tab-btn lp-code-cpp-btn ${activeLang === 'cpp' ? 'active' : ''}`}
+                      onClick={handleSwitchToCpp}
+                      disabled={translating}
+                    >
+                      <span className="lp-cpp-badge">⚡</span>
+                      <span>C++</span>
+                      {cppCode && <span className="lp-cpp-ready-dot" />}
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="lp-code-modal-actions">
                 <button
@@ -559,11 +672,12 @@ const CodeBlock: React.FC<{ language?: string; value: string }> = ({ language, v
               </div>
             </div>
             <div className="lp-code-modal-body">
-              {highlightSyntax(value, language)}
+              {highlightSyntax(displayValue, activeLang === 'cpp' ? 'cpp' : language)}
             </div>
           </div>
         </div>
       )}
+      <style>{`@keyframes lp-spin { to { transform: rotate(360deg); } }`}</style>
     </>
   );
 };
@@ -826,7 +940,8 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
         throw new Error('Empty response received from AI tutor.');
       }
 
-      setMessages([...newMsgs, { role: 'model', text: responseText }]);
+      const cleanResponse = stripTranscriptArtifacts(responseText);
+      setMessages([...newMsgs, { role: 'model', text: cleanResponse }]);
     } catch (err: any) {
       console.error('[ZenGptTutorPane] Error:', err);
       toast.error('AI Tutor error: ' + (err?.message || 'Failed to generate response'));
@@ -1170,13 +1285,13 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
                         {copiedIndex === i ? <Check size={13} color="#5eda9e" /> : <Copy size={13} />}
                         <span>{copiedIndex === i ? 'Copied' : 'Copy'}</span>
                       </button>
-
                       {onInsertNote && (
                         <button
                           type="button"
                           className="lp-chatgpt-action-btn"
                           onClick={() => {
-                            onInsertNote(m.text);
+                            const clean = stripTranscriptArtifacts(m.text);
+                            onInsertNote(clean);
                             toast.success('Added explanation to your Lecture Notes!');
                           }}
                           title="Save to Notes"

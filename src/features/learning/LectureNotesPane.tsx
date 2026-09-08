@@ -8,6 +8,7 @@ import 'katex/dist/katex.min.css';
 import { formatSeconds } from '../../services/youtubeTranscriptService';
 import { callWithFallback } from '../../services/gemini/core';
 import { toast } from 'sonner';
+import { convertMarkdownToRichNotesHtml, clockSvg } from './learningHelpers';
 
 interface LectureNotesPaneProps {
   initialNotes: string;
@@ -32,35 +33,10 @@ export const LectureNotesPane: React.FC<LectureNotesPaneProps> = ({
   const editorRef = useRef<HTMLDivElement>(null);
   const isInternalChangeRef = useRef(false);
 
-  // SVG for timestamp icon inside pill
-  const clockSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:3px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>`;
-
-  // Helper to convert legacy text/markdown into rich HTML on initial load
-  const convertToInitialHtml = (rawText: string) => {
-    if (!rawText) return '';
-    if (/<[a-z][\s\S]*>/i.test(rawText)) {
-      return rawText;
-    }
-    return rawText
-      .replace(/\*\*\[(\d{1,2}:\d{2})\]\*\*/g, (_, time) => {
-        const parts = time.split(':');
-        const s = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-        return `<span class="lp-inline-ts-pill" contenteditable="false" data-seconds="${s}">${clockSvg}${time}</span>&nbsp;`;
-      })
-      .replace(/\[(\d{1,2}:\d{2})\]/g, (_, time) => {
-        const parts = time.split(':');
-        const s = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-        return `<span class="lp-inline-ts-pill" contenteditable="false" data-seconds="${s}">${clockSvg}${time}</span>&nbsp;`;
-      })
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/\n/g, '<br/>');
-  };
-
   // Initialize editor content
   useEffect(() => {
     if (editorRef.current && !isInternalChangeRef.current) {
-      editorRef.current.innerHTML = convertToInitialHtml(initialNotes || '');
+      editorRef.current.innerHTML = convertMarkdownToRichNotesHtml(initialNotes || '');
     }
     isInternalChangeRef.current = false;
   }, [initialNotes]);
@@ -155,34 +131,6 @@ export const LectureNotesPane: React.FC<LectureNotesPaneProps> = ({
     }
   };
 
-  // Convert any residual markdown in AI responses to proper HTML
-  const markdownToHtml = (text: string): string => {
-    return text
-      // Already-HTML: don't double-convert tags, only fix bare markdown
-      // Bold: **text** → <strong>text</strong>
-      .replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>')
-      // Italic: *text* or _text_ → <em>text</em>
-      .replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>')
-      .replace(/(?<!_)_([^_\n]+?)_(?!_)/g, '<em>$1</em>')
-      // Inline code: `code` → <code>code</code>
-      .replace(/`([^`\n]+?)`/g, '<code style="background:#2a2a2a;color:#e06c75;padding:2px 6px;border-radius:4px;font-size:0.9em;font-family:monospace;">$1</code>')
-      // Markdown headings → HTML (only if not already inside an HTML tag)
-      .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
-      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-      // Bullet lists: lines starting with - or * (not inside code blocks)
-      .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
-      // Numbered lists: 1. item
-      .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-      // Wrap consecutive <li> in <ul>
-      .replace(/(<li>.*<\/li>(\n|<br\/>)*)+/g, (match) => `<ul>${match}</ul>`)
-      // Horizontal rules
-      .replace(/^---+$/gm, '<hr/>')
-      // Bare newlines to <br> only if no block-level HTML already present on that line
-      .replace(/\n(?!<[h1-6ulolpre])/g, '<br/>');
-  };
-
   const handleGenerateAiNotes = async () => {
     if (!transcriptText || transcriptText.length < 20) {
       toast.error('No lecture transcript available to generate notes.');
@@ -197,30 +145,30 @@ Lecture Title: "${lectureTitle}"
 Create a THOROUGH, END-TO-END MASTER STUDY NOTE synthesized across the entire lecture from start to finish.
 Do NOT summarize only a single snippet. Cover every concept, algorithm, formula, code example, and nuance taught in the video.
 
-Format with clean, rich HTML elements:
-<h2>📌 Lecture Overview</h2>
-<p>Big picture roadmap and core objectives of the lecture.</p>
+Structure your master study guide with clear sections:
+## 📌 Lecture Overview
+Big picture roadmap and core objectives of the lecture.
 
-<h2>🧠 Core Concepts &amp; Chronological Deep-Dive</h2>
-<p>Breakdown of key sections taught in order with approximate [MM:SS] timestamp references.</p>
+## 🧠 Core Concepts & Chronological Deep-Dive
+Breakdown of key sections taught in order with approximate [MM:SS] timestamp references.
 
-<h2>💻 Code Implementations &amp; Algorithms</h2>
-<pre><code>// Complete code snippet with explanation</code></pre>
+## 💻 Code Implementations & Algorithms
+Provide complete, working, runnable code blocks with language tags (\`\`\`python, \`\`\`cpp, etc.) and line-by-line explanation.
 
-<h2>💡 Real-World Mental Models &amp; Analogies</h2>
-<p>Intuitive breakdown explaining the concepts simply.</p>
+## 💡 Real-World Mental Models & Analogies
+Intuitive breakdown explaining the concepts simply.
 
-<h2>⚠️ Gotchas &amp; Common Pitfalls</h2>
-<ul><li>Key edge cases to watch out for</li></ul>
+## ⚠️ Gotchas & Common Pitfalls
+Key edge cases to watch out for.
 
-<h2>📝 Master Review Checklist</h2>
-<ul><li>Core takeaways and summary points</li></ul>
+## 📝 Master Review Checklist
+Core takeaways and summary points.
 
 === FULL-LENGTH VIDEO TRANSCRIPT ===
 ${transcriptText}
 === END TRANSCRIPT ===
 
-IMPORTANT: Return ONLY raw HTML. Do NOT use markdown syntax like **bold** or *italic* — use <strong> and <em> HTML tags instead. Do NOT wrap in \`\`\`html code fences.`;
+CRITICAL: Under NO circumstances should you echo, dump, or repeat the transcript at the end of your response. Return purely structured study notes.`;
 
     try {
       const htmlResponse = await callWithFallback(async (genAI: any, modelName: string) => {
@@ -229,14 +177,7 @@ IMPORTANT: Return ONLY raw HTML. Do NOT use markdown syntax like **bold** or *it
         return res.response.text();
       });
 
-      let cleanHtml = (htmlResponse || '')
-        .replace(/^```html\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/\s*```$/i, '')
-        .trim();
-
-      // Convert any residual markdown the AI may have still used
-      cleanHtml = markdownToHtml(cleanHtml);
+      const cleanHtml = convertMarkdownToRichNotesHtml(htmlResponse || '');
 
       if (editorRef.current && cleanHtml) {
         editorRef.current.innerHTML = cleanHtml;

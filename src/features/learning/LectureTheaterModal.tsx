@@ -9,7 +9,7 @@ import { ZenGptTutorPane } from './ZenGptTutorPane';
 import { TranscriptPane } from './TranscriptPane';
 import { LectureNotesPane } from './LectureNotesPane';
 import { fetchVideoTranscript, transcriptToPlainText, type TranscriptCue } from '../../services/youtubeTranscriptService';
-import { SPEEDS, SPEED_KEY, TS_KEY } from './learningHelpers';
+import { SPEEDS, SPEED_KEY, TS_KEY, convertMarkdownToRichNotesHtml } from './learningHelpers';
 import { toast } from 'sonner';
 
 interface LectureTheaterModalProps {
@@ -185,7 +185,11 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
   };
 
   const handleInsertNote = (text: string) => {
-    const newNote = (playing.notes ? playing.notes + '\n\n' : '') + text;
+    const formattedHtml = convertMarkdownToRichNotesHtml(text);
+    const existing = playing.notes ? convertMarkdownToRichNotesHtml(playing.notes) : '';
+    const newNote = existing
+      ? `${existing}<br/><hr/><br/>${formattedHtml}`
+      : formattedHtml;
     onSaveVideoNote(playing.topicId, playing.subtaskId, newNote);
     setActiveTab('notes');
   };

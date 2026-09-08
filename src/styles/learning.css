@@ -2261,6 +2261,76 @@
   font-weight: 600;
 }
 
+/* ── CODE LANGUAGE SEGMENTED SELECTOR & C++ TOGGLE ── */
+.lp-code-lang-selector {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+  margin-left: 0.6rem;
+}
+
+.lp-code-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #94a3b8;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: all 0.15s ease;
+}
+
+.lp-code-tab-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.lp-code-tab-btn.active {
+  background: #1c1c28;
+  color: #82aaff;
+  border-color: rgba(130, 170, 255, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.lp-code-tab-btn.lp-code-cpp-btn {
+  color: #fca5a5;
+}
+
+.lp-code-tab-btn.lp-code-cpp-btn:hover {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.lp-code-tab-btn.lp-code-cpp-btn.active {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.lp-cpp-badge {
+  font-size: 0.72rem;
+}
+
+.lp-cpp-ready-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+}
+
+
 .lp-chatgpt-code-header-actions {
   display: flex;
   align-items: center;
@@ -3139,6 +3209,150 @@
 
 .lp-notes-rich-editor li {
   margin: 0.25rem 0;
+}
+
+/* ── CODE BLOCKS IN NOTES EDITOR (VS Code Dark style) ── */
+.lp-notes-code-card {
+  margin: 0.85rem 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #22222e;
+  background: #08080c;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.lp-notes-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #101016;
+  padding: 0.42rem 0.85rem;
+  border-bottom: 1px solid #1a1a24;
+}
+
+.lp-notes-code-lang {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #82aaff;
+}
+
+.lp-notes-code-pre {
+  margin: 0 !important;
+  padding: 0.85rem 1rem !important;
+  background: #050508 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace !important;
+  font-size: 0.82rem !important;
+  line-height: 1.6 !important;
+  color: #9cdcfe !important;
+}
+
+.lp-notes-code-pre::before {
+  display: none !important;
+}
+
+.lp-notes-code-pre code {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  color: inherit !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  white-space: pre !important;
+}
+
+/* Fallback for bare pre tags in notes */
+.lp-notes-rich-editor pre:not(.lp-notes-code-pre) {
+  background: #08080c;
+  border: 1px solid #22222e;
+  border-radius: 10px;
+  padding: 0;
+  margin: 0.85rem 0;
+  overflow: hidden;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  position: relative;
+}
+
+.lp-notes-rich-editor pre:not(.lp-notes-code-pre)::before {
+  content: '●  ●  ●  CODE';
+  display: block;
+  background: #101016;
+  color: #82aaff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  padding: 0.38rem 0.85rem;
+  border-bottom: 1px solid #1a1a24;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+}
+
+.lp-notes-rich-editor pre:not(.lp-notes-code-pre) code {
+  display: block;
+  padding: 0.85rem 1rem;
+  color: #9cdcfe;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre;
+  overflow-x: auto;
+  background: #050508;
+  border: none;
+  border-radius: 0;
+}
+
+
+/* Inline code (backtick style) */
+.lp-notes-rich-editor code:not(pre code) {
+  background: #1e1e2e;
+  color: #e06c75;
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.87em;
+  border: 1px solid #333;
+}
+
+/* h1, h3, h4 in notes */
+.lp-notes-rich-editor h1 {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 1.4rem 0 0.6rem 0;
+  border-bottom: 2px solid rgba(165, 153, 255, 0.3);
+  padding-bottom: 0.3rem;
+}
+
+.lp-notes-rich-editor h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #c7bfff;
+  margin: 0.9rem 0 0.35rem 0;
+}
+
+.lp-notes-rich-editor h4 {
+  font-size: 0.93rem;
+  font-weight: 600;
+  color: #a8a8c8;
+  margin: 0.7rem 0 0.25rem 0;
+}
+
+.lp-notes-rich-editor p {
+  margin: 0.4rem 0;
+  line-height: 1.7;
+  color: #d4d4d4;
+}
+
+.lp-notes-rich-editor hr {
+  border: none;
+  border-top: 1px solid #2a2a3a;
+  margin: 1rem 0;
 }
 
 /* ── INTERACTIVE TIMESTAMP PILL IN LIVE EDITOR ── */
