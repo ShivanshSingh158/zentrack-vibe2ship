@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Plus, Search, Sparkles, BookOpen, Link as LinkIcon, Eye, EyeOff,
   GraduationCap, RefreshCw, X, CheckCircle2, LayoutGrid, List
@@ -24,6 +24,7 @@ export function LearningChecklistModule() {
   const [searchQuery, setSearchQuery] = useState('');
   const [hideCompleted, setHideCompleted] = useState(false);
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
+  const hasAutoExpandedRef = useRef(false); // Only auto-expand first topic on first load
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
     return (localStorage.getItem('zentrack_learning_view_mode') as 'grid' | 'list') || 'grid';
   });
@@ -96,8 +97,9 @@ export function LearningChecklistModule() {
         setTopics(loaded);
         setLoading(false);
 
-        // Auto-expand first topic if none expanded
-        if (loaded.length > 0 && expandedTopics.size === 0) {
+        // Auto-expand first topic ONLY on first load, never on subsequent snapshots
+        if (!hasAutoExpandedRef.current && loaded.length > 0) {
+          hasAutoExpandedRef.current = true;
           setExpandedTopics(new Set([loaded[0].id!]));
         }
       },

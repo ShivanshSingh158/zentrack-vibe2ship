@@ -155,6 +155,34 @@ export const LectureNotesPane: React.FC<LectureNotesPaneProps> = ({
     }
   };
 
+  // Convert any residual markdown in AI responses to proper HTML
+  const markdownToHtml = (text: string): string => {
+    return text
+      // Already-HTML: don't double-convert tags, only fix bare markdown
+      // Bold: **text** → <strong>text</strong>
+      .replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>')
+      // Italic: *text* or _text_ → <em>text</em>
+      .replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>')
+      .replace(/(?<!_)_([^_\n]+?)_(?!_)/g, '<em>$1</em>')
+      // Inline code: `code` → <code>code</code>
+      .replace(/`([^`\n]+?)`/g, '<code style="background:#2a2a2a;color:#e06c75;padding:2px 6px;border-radius:4px;font-size:0.9em;font-family:monospace;">$1</code>')
+      // Markdown headings → HTML (only if not already inside an HTML tag)
+      .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+      // Bullet lists: lines starting with - or * (not inside code blocks)
+      .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
+      // Numbered lists: 1. item
+      .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+      // Wrap consecutive <li> in <ul>
+      .replace(/(<li>.*<\/li>(\n|<br\/>)*)+/g, (match) => `<ul>${match}</ul>`)
+      // Horizontal rules
+      .replace(/^---+$/gm, '<hr/>')
+      // Bare newlines to <br> only if no block-level HTML already present on that line
+      .replace(/\n(?!<[h1-6ulolpre])/g, '<br/>');
+  };
+
   const handleGenerateAiNotes = async () => {
     if (!transcriptText || transcriptText.length < 20) {
       toast.error('No lecture transcript available to generate notes.');
@@ -173,16 +201,16 @@ Format with clean, rich HTML elements:
 <h2>📌 Lecture Overview</h2>
 <p>Big picture roadmap and core objectives of the lecture.</p>
 
-<h2>🧠 Core Concepts & Chronological Deep-Dive</h2>
+<h2>🧠 Core Concepts &amp; Chronological Deep-Dive</h2>
 <p>Breakdown of key sections taught in order with approximate [MM:SS] timestamp references.</p>
 
-<h2>💻 Code Implementations & Algorithms</h2>
+<h2>💻 Code Implementations &amp; Algorithms</h2>
 <pre><code>// Complete code snippet with explanation</code></pre>
 
-<h2>💡 Real-World Mental Models & Analogies</h2>
+<h2>💡 Real-World Mental Models &amp; Analogies</h2>
 <p>Intuitive breakdown explaining the concepts simply.</p>
 
-<h2>⚠️ Gotchas & Common Pitfalls</h2>
+<h2>⚠️ Gotchas &amp; Common Pitfalls</h2>
 <ul><li>Key edge cases to watch out for</li></ul>
 
 <h2>📝 Master Review Checklist</h2>
@@ -192,7 +220,7 @@ Format with clean, rich HTML elements:
 ${transcriptText}
 === END TRANSCRIPT ===
 
-Return ONLY the raw HTML body without wrapping in markdown code fences (\`\`\`html).`;
+IMPORTANT: Return ONLY raw HTML. Do NOT use markdown syntax like **bold** or *italic* — use <strong> and <em> HTML tags instead. Do NOT wrap in \`\`\`html code fences.`;
 
     try {
       const htmlResponse = await callWithFallback(async (genAI: any, modelName: string) => {
@@ -201,11 +229,14 @@ Return ONLY the raw HTML body without wrapping in markdown code fences (\`\`\`ht
         return res.response.text();
       });
 
-      const cleanHtml = (htmlResponse || '')
+      let cleanHtml = (htmlResponse || '')
         .replace(/^```html\s*/i, '')
         .replace(/^```\s*/i, '')
         .replace(/\s*```$/i, '')
         .trim();
+
+      // Convert any residual markdown the AI may have still used
+      cleanHtml = markdownToHtml(cleanHtml);
 
       if (editorRef.current && cleanHtml) {
         editorRef.current.innerHTML = cleanHtml;
@@ -219,6 +250,7 @@ Return ONLY the raw HTML body without wrapping in markdown code fences (\`\`\`ht
       setGeneratingNotes(false);
     }
   };
+
 
   const handleCopy = () => {
     if (!editorRef.current) return;

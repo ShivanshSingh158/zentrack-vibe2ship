@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import YouTube from 'react-youtube';
 import {
   X, Maximize2, Minimize2, Eye, Gauge, SkipBack, SkipForward,
-  CheckCircle2, Sparkles, FileText, Volume2, Clock, ChevronRight
+  CheckCircle2, Sparkles, FileText, Clock, ChevronRight
 } from 'lucide-react';
 import { ZenGptTutorPane } from './ZenGptTutorPane';
 import { TranscriptPane } from './TranscriptPane';
@@ -33,7 +33,7 @@ interface LectureTheaterModalProps {
   onSaveVideoNote: (topicId: string, subtaskId: string, note: string) => void;
 }
 
-type ActiveTab = 'zengpt' | 'transcript' | 'notes';
+type ActiveTab = 'zengpt' | 'notes';
 
 export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
   playing,
@@ -60,6 +60,8 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
   });
   const [focusMode, setFocusMode] = useState(false);
   const playerRef = useRef<any>(null);
+  const isUserPausedRef = useRef(false); // Tracks if the user manually paused
+  const hasInitializedRef = useRef(false); // Prevents double-init on StrictMode
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
   const DEFAULT_SPLIT_RATIO = 64; // Optimal 64% Video / 36% AI Companion split
@@ -307,18 +309,33 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
                 onReady={(e: any) => {
                   playerRef.current = e.target;
                   e.target.setPlaybackRate(speed);
+                  // Only autoplay on first mount, not on re-renders
+                  if (!hasInitializedRef.current) {
+                    hasInitializedRef.current = true;
+                    e.target.playVideo();
+                  }
                 }}
                 opts={{
                   width: '100%',
                   height: '100%',
                   playerVars: {
-                    autoplay: 1,
+                    autoplay: 0,
                     modestbranding: 1,
                     rel: 0,
                     start: Number(localStorage.getItem(TS_KEY(playing.videoId))) || undefined,
                   },
                 }}
                 onStateChange={(e: any) => {
+                  // YouTube player states: -1=unstarted, 0=ended, 1=playing, 2=paused, 3=buffering, 5=cued
+                  const state = e?.data;
+                  if (state === 2) {
+                    // User manually paused
+                    isUserPausedRef.current = true;
+                  } else if (state === 1) {
+                    // Playing — user resumed or initial start
+                    isUserPausedRef.current = false;
+                  }
+                  // Save timestamp for resume-from
                   if (e?.target?.getCurrentTime) {
                     const time = Math.floor(e.target.getCurrentTime());
                     if (time > 0) {
@@ -402,14 +419,6 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  className={`lp-companion-tab ${activeTab === 'transcript' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('transcript')}
-                >
-                  <Volume2 size={14} color={activeTab === 'transcript' ? '#a599ff' : '#8e8e93'} />
-                  <span>Transcript {transcriptCues.length > 0 && `(${transcriptCues.length})`}</span>
-                </button>
-                <button
-                  type="button"
                   className={`lp-companion-tab ${activeTab === 'notes' ? 'active' : ''}`}
                   onClick={() => setActiveTab('notes')}
                 >
@@ -430,15 +439,7 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
                     onSeek={handleSeek}
                   />
                 )}
-                {activeTab === 'transcript' && (
-                  <TranscriptPane
-                    cues={transcriptCues}
-                    loading={transcriptLoading}
-                    activeCueIndex={activeCueIndex}
-                    onSeek={handleSeek}
-                    onRetry={loadTranscript}
-                  />
-                )}
+                {activeTab === 'transcript' && null}
                 {activeTab === 'notes' && (
                   <LectureNotesPane
                     initialNotes={playing.notes || ''}

@@ -385,7 +385,7 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
       border: '1px solid #303030',
       borderRadius: '16px', overflow: 'hidden',
       boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-      boxSizing: 'border-box', fontFamily: "'Inter','Segoe UI',system-ui,sans-serif",
+      boxSizing: 'border-box', fontFamily: "'Inter','Söhne','ui-sans-serif','system-ui',sans-serif",
     }}>
 
       {/* ── Header ── */}
@@ -511,7 +511,7 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
           <div style={{ padding: '0.5rem 0.85rem 0', display: 'flex', gap: '0.3rem', flexShrink: 0, overflowX: 'auto', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
             {QUICK_ACTIONS.map(({ label, prompt }) => (
               <button key={label} onClick={() => sendMessage(prompt)} disabled={isLoading}
-                style={{ padding: '0.3rem 0.7rem', borderRadius: '12px', fontSize: '0.65rem', fontWeight: 500, background: 'transparent', border: '1px solid #424242', color: '#ececec', cursor: isLoading ? 'not-allowed' : 'pointer', opacity: isLoading ? 0.4 : 1, transition: 'all 0.15s', letterSpacing: '-0.01em', whiteSpace: 'nowrap', flexShrink: 0 }}
+                style={{ padding: '0.4rem 0.8rem', borderRadius: '16px', fontSize: '0.82rem', fontWeight: 500, background: 'transparent', border: '1px solid #424242', color: '#ececec', cursor: isLoading ? 'not-allowed' : 'pointer', opacity: isLoading ? 0.4 : 1, transition: 'all 0.15s', textAlign: 'left', lineHeight: 1.5, letterSpacing: '-0.01em', whiteSpace: 'nowrap', flexShrink: 0 }}
                 onMouseEnter={e => { if (!isLoading) { e.currentTarget.style.background = '#2f2f2f'; } }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
                 {label}
@@ -538,7 +538,7 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
                 placeholder="Message ZEN-GPT..."
                 disabled={isLoading}
                 rows={1}
-                style={{ width: '100%', background: 'transparent', border: 'none', padding: '0.45rem 0.7rem', color: '#ececec', fontSize: '0.85rem', resize: 'none', outline: 'none', lineHeight: 1.5, maxHeight: '110px', overflowY: 'auto', fontFamily: 'inherit', boxSizing: 'border-box', scrollbarWidth: 'none' }}
+                style={{ width: '100%', background: 'transparent', border: 'none', padding: '0.45rem 0.7rem', color: '#ececec', fontSize: '0.95rem', resize: 'none', outline: 'none', lineHeight: 1.6, maxHeight: '110px', overflowY: 'auto', fontFamily: 'inherit', boxSizing: 'border-box', scrollbarWidth: 'none' }}
                 onInput={e => { const el = e.currentTarget; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 110) + 'px'; }}
               />
               <button onClick={() => sendMessage()} disabled={!input.trim() || isLoading}

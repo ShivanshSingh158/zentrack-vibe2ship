@@ -4,6 +4,7 @@ import { Bot, User, AlertCircle, Copy, Check, Maximize2, Minimize2, FileText } f
 import { toast } from 'sonner';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../services/firebase';
+import { callGeminiProxy, extractGeminiText } from '../../services/gemini/geminiClient';
 
 export interface ChatMessage {
   id: string;
@@ -42,14 +43,47 @@ const highlightCode = (code: string): React.ReactNode => {
 const CodeBlock = ({ codeLang, codeLines }: { codeLang: string; codeLines: string[] }) => {
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [activeLang, setActiveLang] = useState<'original' | 'cpp'>('original');
+  const [cppCode, setCppCode] = useState<string | null>(null);
+  const [translating, setTranslating] = useState(false);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(codeLines.join('\n'));
+  const lang = codeLang.trim() || 'code';
+  const isCpp = ['c++', 'cpp', 'c'].includes(lang.toLowerCase());
+
+  const displayLines = activeLang === 'cpp' && cppCode
+    ? cppCode.split('\n')
+    : codeLines;
+  const displayLang = activeLang === 'cpp' ? 'c++' : lang;
+
+  const handleCopyActive = () => {
+    navigator.clipboard.writeText(displayLines.join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const lang = codeLang.trim() || 'code';
+  const handleSwitchToCpp = async () => {
+    if (cppCode) { setActiveLang('cpp'); return; }
+    setTranslating(true);
+    try {
+      const result = await callGeminiProxy({
+        model: 'gemini-2.5-flash',
+        contents: [{
+          role: 'user',
+          parts: [{ text: `Translate this ${lang} code to C++. Return ONLY the raw C++ code inside a single \`\`\`cpp code block, no explanation:\n\`\`\`${lang}\n${codeLines.join('\n')}\n\`\`\`` }],
+        }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
+      });
+      const raw = extractGeminiText(result) || '';
+      // Strip markdown fences
+      const cleaned = raw.replace(/^```[\w]*\n?/m, '').replace(/\n?```\s*$/m, '').trim();
+      setCppCode(cleaned);
+      setActiveLang('cpp');
+    } catch {
+      toast.error('Failed to translate to C++');
+    } finally {
+      setTranslating(false);
+    }
+  };
 
   const renderContent = (expanded: boolean) => (
     <div style={{
@@ -67,17 +101,57 @@ const CodeBlock = ({ codeLang, codeLines }: { codeLang: string; codeLines: strin
       pointerEvents: 'auto',
       transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
     }}>
-      <div style={{ background: '#2f2f2f', padding: '0.4rem 0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #000000', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          <div style={{ display: 'flex', gap: '0.35rem' }}>
+      {/* Header */}
+      <div style={{ background: '#2f2f2f', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1a1a1a', flexShrink: 0 }}>
+        {/* Left: macOS dots + Language tabs */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '0.8rem' }}>
+          <div style={{ display: 'flex', gap: '0.35rem', flexShrink: 0 }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f57', display: 'inline-block' }} />
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#febc2e', display: 'inline-block' }} />
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#28c840', display: 'inline-block' }} />
           </div>
-          <span style={{ fontSize: '0.65rem', color: '#b4b4b4', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{lang}</span>
+          {/* Language tabs */}
+          <div style={{ display: 'flex', gap: '0.15rem' }}>
+            <button
+              onClick={() => setActiveLang('original')}
+              style={{
+                background: activeLang === 'original' ? 'rgba(130,170,255,0.12)' : 'transparent',
+                border: 'none',
+                borderBottom: activeLang === 'original' ? '2px solid #82aaff' : '2px solid transparent',
+                color: activeLang === 'original' ? '#82aaff' : '#7a7a7a',
+                cursor: 'pointer',
+                fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em',
+                padding: '0.45rem 0.6rem', transition: 'all 0.15s',
+              }}
+            >
+              {'</>'} {lang}
+            </button>
+            {!isCpp && (
+              <button
+                onClick={handleSwitchToCpp}
+                disabled={translating}
+                style={{
+                  background: activeLang === 'cpp' ? 'rgba(255,157,100,0.12)' : 'transparent',
+                  border: 'none',
+                  borderBottom: activeLang === 'cpp' ? '2px solid #f07178' : '2px solid transparent',
+                  color: activeLang === 'cpp' ? '#f07178' : '#7a7a7a',
+                  cursor: translating ? 'wait' : 'pointer',
+                  fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em',
+                  padding: '0.45rem 0.6rem', transition: 'all 0.15s',
+                  display: 'flex', alignItems: 'center', gap: '0.3rem',
+                }}
+              >
+                {translating
+                  ? <><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', border: '1.5px solid #f07178', borderTopColor: 'transparent', animation: 'spin 0.7s linear infinite' }} /> C++</>
+                  : <>{cppCode ? '' : '⚡ '}C++</>
+                }
+              </button>
+            )}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.4rem' }}>
-          <button onClick={handleCopy} style={{ background: 'transparent', border: 'none', color: copied ? '#10a37f' : '#b4b4b4', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '5px', transition: 'all 0.2s', fontWeight: 600 }}>
+        {/* Right: Copy + Expand */}
+        <div style={{ display: 'flex', gap: '0.4rem', paddingRight: '0.6rem' }}>
+          <button onClick={handleCopyActive} style={{ background: 'transparent', border: 'none', color: copied ? '#10a37f' : '#b4b4b4', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '5px', transition: 'all 0.2s', fontWeight: 600 }}>
             {copied ? <Check size={11} /> : <Copy size={11} />}
             {copied ? 'Copied!' : 'Copy'}
           </button>
@@ -90,7 +164,7 @@ const CodeBlock = ({ codeLang, codeLines }: { codeLang: string; codeLines: strin
       </div>
       <pre style={{ margin: 0, padding: '1rem 1.2rem', background: '#000000', overflow: 'auto', flex: 1, fontSize: expanded ? '0.85rem' : '0.8rem', lineHeight: 1.65, color: '#ececec', fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code','Consolas',monospace", scrollbarWidth: 'thin', scrollbarColor: '#424242 transparent' }}>
         <code>
-          {codeLines.map((line, i) => (
+          {displayLines.map((line, i) => (
             <span key={i} style={{ display: 'block' }}>{highlightCode(line)}</span>
           ))}
         </code>
@@ -124,6 +198,7 @@ const CodeBlock = ({ codeLang, codeLines }: { codeLang: string; codeLines: strin
     </>
   );
 };
+
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
@@ -159,19 +234,19 @@ const renderMarkdown = (text: string): React.ReactNode => {
       return;
     }
     if (inCode) { codeLines.push(line); return; }
-    if (!trimmed) { result.push(<div key={li} style={{ height: '0.4rem' }} />); return; }
+    if (!trimmed) { result.push(<div key={li} style={{ height: '0.6rem' }} />); return; }
 
-    if (trimmed.startsWith('### ')) { result.push(<div key={li} style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff', margin: '1rem 0 0.5rem', letterSpacing: '-0.01em' }}>{renderInline(trimmed.slice(4), 'h')}</div>); return; }
-    if (trimmed.startsWith('## '))  { result.push(<div key={li} style={{ fontSize: '1.25rem', fontWeight: 600, color: '#ffffff', margin: '1.2rem 0 0.6rem', letterSpacing: '-0.01em' }}>{renderInline(trimmed.slice(3), 'h')}</div>); return; }
-    if (trimmed.startsWith('# '))   { result.push(<div key={li} style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ffffff', margin: '1.5rem 0 0.8rem', letterSpacing: '-0.02em' }}>{renderInline(trimmed.slice(2), 'h')}</div>); return; }
+    if (trimmed.startsWith('### ')) { result.push(<div key={li} style={{ fontSize: '1.05rem', fontWeight: 600, color: '#ffffff', margin: '1.2rem 0 0.5rem', letterSpacing: '-0.01em', lineHeight: 1.5 }}>{renderInline(trimmed.slice(4), 'h')}</div>); return; }
+    if (trimmed.startsWith('## '))  { result.push(<div key={li} style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ffffff', margin: '1.4rem 0 0.6rem', letterSpacing: '-0.02em', lineHeight: 1.4 }}>{renderInline(trimmed.slice(3), 'h')}</div>); return; }
+    if (trimmed.startsWith('# '))   { result.push(<div key={li} style={{ fontSize: '1.45rem', fontWeight: 700, color: '#ffffff', margin: '1.6rem 0 0.75rem', letterSpacing: '-0.02em', lineHeight: 1.3 }}>{renderInline(trimmed.slice(2), 'h')}</div>); return; }
     if (trimmed === '---') { result.push(<hr key={li} style={{ border: 'none', borderTop: '1px solid #424242', margin: '1rem 0' }} />); return; }
 
     const bulletMatch = trimmed.match(/^[-*•]\s+(.*)/);
     if (bulletMatch) {
       result.push(
-        <div key={li} style={{ display: 'flex', gap: '0.45rem', alignItems: 'flex-start', paddingLeft: '0.1rem', marginBottom: '0.1rem' }}>
-          <span style={{ color: '#a3a3a3', flexShrink: 0, marginTop: '0.25rem', fontSize: '0.55rem' }}>●</span>
-          <span style={{ lineHeight: 1.6 }}>{renderInline(bulletMatch[1], li)}</span>
+        <div key={li} style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', paddingLeft: '0.2rem', marginBottom: '0.3rem' }}>
+          <span style={{ color: '#8e8e8e', flexShrink: 0, marginTop: '0.5rem', fontSize: '0.45rem' }}>●</span>
+          <span style={{ lineHeight: 1.75 }}>{renderInline(bulletMatch[1], li)}</span>
         </div>
       );
       return;
@@ -180,9 +255,9 @@ const renderMarkdown = (text: string): React.ReactNode => {
     const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
     if (numMatch) {
       result.push(
-        <div key={li} style={{ display: 'flex', gap: '0.45rem', alignItems: 'flex-start', marginBottom: '0.1rem' }}>
-          <span style={{ color: '#ececec', flexShrink: 0, fontWeight: 700, fontSize: '0.8rem', minWidth: '1.1rem', paddingTop: '0.1rem' }}>{numMatch[1]}.</span>
-          <span style={{ lineHeight: 1.6 }}>{renderInline(numMatch[2], li)}</span>
+        <div key={li} style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', marginBottom: '0.3rem' }}>
+          <span style={{ color: '#a3a3a3', flexShrink: 0, fontWeight: 600, fontSize: '1rem', minWidth: '1.3rem', paddingTop: '0rem' }}>{numMatch[1]}.</span>
+          <span style={{ lineHeight: 1.75 }}>{renderInline(numMatch[2], li)}</span>
         </div>
       );
       return;
@@ -193,7 +268,7 @@ const renderMarkdown = (text: string): React.ReactNode => {
       return;
     }
 
-    result.push(<div key={li} style={{ lineHeight: 1.65 }}>{renderInline(line, li)}</div>);
+    result.push(<div key={li} style={{ lineHeight: 1.75, marginBottom: '0.15rem' }}>{renderInline(line, li)}</div>);
   });
 
   return result;
@@ -341,13 +416,14 @@ export const ChatMessageBubble = ({
 
         {/* Bubble */}
         <div style={{
-          maxWidth: msg.role === 'user' ? '86%' : '100%', padding: msg.role === 'user' ? '0.6rem 0.9rem' : '0 0.2rem',
+          maxWidth: msg.role === 'user' ? '86%' : '100%', padding: msg.role === 'user' ? '0.65rem 1rem' : '0 0.1rem',
           borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '0',
           background: msg.role === 'user' ? '#2f2f2f' : 'transparent',
           border: 'none',
-          fontSize: '0.88rem',
+          fontSize: '1rem',
+          fontFamily: "'Inter','Söhne','ui-sans-serif','system-ui',sans-serif",
           color: msg.error ? '#f87171' : '#ececec',
-          lineHeight: 1.6, wordBreak: 'break-word',
+          lineHeight: 1.75, wordBreak: 'break-word',
           flex: 1
         }}>
           {msg.role === 'model' && !msg.error
