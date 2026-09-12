@@ -248,7 +248,7 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
             <div className="lp-theater-header-actions">
               {/* Playback Speed */}
               <div className="lp-speed-selector">
-                <Gauge size={12} color="#8e8e93" />
+                <Gauge size={12} className="lp-speed-gauge-icon" />
                 {SPEEDS.map(s => (
                   <button
                     key={s}
@@ -418,7 +418,7 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
                   className={`lp-companion-tab ${activeTab === 'zengpt' ? 'active' : ''}`}
                   onClick={() => setActiveTab('zengpt')}
                 >
-                  <img src="/logo_white.png" alt="ZEN-GPT" style={{ width: 15, height: 15, objectFit: 'contain', opacity: activeTab === 'zengpt' ? 1 : 0.65 }} />
+                  <img src="/logo_white.png" alt="ZEN-GPT" className="lp-tab-logo-icon" style={{ width: 15, height: 15, objectFit: 'contain' }} />
                   <span>ZEN-GPT Tutor</span>
                 </button>
                 <button
@@ -426,7 +426,7 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
                   className={`lp-companion-tab ${activeTab === 'notes' ? 'active' : ''}`}
                   onClick={() => setActiveTab('notes')}
                 >
-                  <FileText size={14} color={activeTab === 'notes' ? '#a599ff' : '#8e8e93'} />
+                  <FileText size={14} className="lp-tab-file-icon" />
                   <span>Lecture Notes</span>
                 </button>
               </div>

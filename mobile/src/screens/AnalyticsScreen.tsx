@@ -688,61 +688,67 @@ export default function AnalyticsScreen() {
                 </View>
               </View>
 
-              {/* 4-Pillar Life Balance 2x2 Grid (Spacious & Clean) */}
-              <View style={dynamicStyles.pillarsGrid}>
-                {/* Pillar 1: Tasks */}
-                <View style={dynamicStyles.pillarCell}>
-                  <View style={dynamicStyles.pillarHeader}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <Ionicons name="checkbox-outline" size={13} color={colors.accentPrimary} />
-                      <Text style={dynamicStyles.pillarLabel}>Tasks</Text>
+              {/* 4-Pillar Life Balance 2x2 Grid (Symmetrical & Clean) */}
+              <View style={dynamicStyles.pillarsContainer}>
+                {/* Row 1: Tasks & Habits */}
+                <View style={dynamicStyles.pillarsRow}>
+                  {/* Pillar 1: Tasks */}
+                  <View style={dynamicStyles.pillarCell}>
+                    <View style={dynamicStyles.pillarHeader}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Ionicons name="checkbox-outline" size={13} color={colors.accentPrimary} />
+                        <Text style={dynamicStyles.pillarLabel}>Tasks</Text>
+                      </View>
+                      <Text style={dynamicStyles.pillarPct}>{stats.taskPillar}%</Text>
                     </View>
-                    <Text style={dynamicStyles.pillarPct}>{stats.taskPillar}%</Text>
+                    <View style={dynamicStyles.pillarTrack}>
+                      <View style={[dynamicStyles.pillarFill, { width: `${stats.taskPillar}%`, backgroundColor: colors.accentPrimary }]} />
+                    </View>
                   </View>
-                  <View style={dynamicStyles.pillarTrack}>
-                    <View style={[dynamicStyles.pillarFill, { width: `${stats.taskPillar}%`, backgroundColor: colors.accentPrimary }]} />
+
+                  {/* Pillar 2: Habits */}
+                  <View style={dynamicStyles.pillarCell}>
+                    <View style={dynamicStyles.pillarHeader}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Ionicons name="flame-outline" size={13} color={isDark ? '#5EDA9E' : '#059669'} />
+                        <Text style={dynamicStyles.pillarLabel}>Habits</Text>
+                      </View>
+                      <Text style={dynamicStyles.pillarPct}>{stats.habitPillar}%</Text>
+                    </View>
+                    <View style={dynamicStyles.pillarTrack}>
+                      <View style={[dynamicStyles.pillarFill, { width: `${stats.habitPillar}%`, backgroundColor: isDark ? '#5EDA9E' : '#059669' }]} />
+                    </View>
                   </View>
                 </View>
 
-                {/* Pillar 2: Habits */}
-                <View style={dynamicStyles.pillarCell}>
-                  <View style={dynamicStyles.pillarHeader}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <Ionicons name="flame-outline" size={13} color={isDark ? '#5EDA9E' : '#059669'} />
-                      <Text style={dynamicStyles.pillarLabel}>Habits</Text>
+                {/* Row 2: Gym & Focus */}
+                <View style={[dynamicStyles.pillarsRow, { marginTop: 12 }]}>
+                  {/* Pillar 3: Gym */}
+                  <View style={dynamicStyles.pillarCell}>
+                    <View style={dynamicStyles.pillarHeader}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Ionicons name="barbell-outline" size={13} color={isDark ? '#FF9F4D' : '#D97706'} />
+                        <Text style={dynamicStyles.pillarLabel}>Gym</Text>
+                      </View>
+                      <Text style={dynamicStyles.pillarPct}>{stats.gymPillar}%</Text>
                     </View>
-                    <Text style={dynamicStyles.pillarPct}>{stats.habitPillar}%</Text>
+                    <View style={dynamicStyles.pillarTrack}>
+                      <View style={[dynamicStyles.pillarFill, { width: `${stats.gymPillar}%`, backgroundColor: isDark ? '#FF9F4D' : '#D97706' }]} />
+                    </View>
                   </View>
-                  <View style={dynamicStyles.pillarTrack}>
-                    <View style={[dynamicStyles.pillarFill, { width: `${stats.habitPillar}%`, backgroundColor: isDark ? '#5EDA9E' : '#059669' }]} />
-                  </View>
-                </View>
 
-                {/* Pillar 3: Gym */}
-                <View style={dynamicStyles.pillarCell}>
-                  <View style={dynamicStyles.pillarHeader}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <Ionicons name="barbell-outline" size={13} color={isDark ? '#FF9F4D' : '#D97706'} />
-                      <Text style={dynamicStyles.pillarLabel}>Gym</Text>
+                  {/* Pillar 4: Focus */}
+                  <View style={dynamicStyles.pillarCell}>
+                    <View style={dynamicStyles.pillarHeader}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                        <Ionicons name="timer-outline" size={13} color={isDark ? '#89DCEB' : '#0284C7'} />
+                        <Text style={dynamicStyles.pillarLabel}>Focus</Text>
+                      </View>
+                      <Text style={dynamicStyles.pillarPct}>{stats.focusPillar}%</Text>
                     </View>
-                    <Text style={dynamicStyles.pillarPct}>{stats.gymPillar}%</Text>
-                  </View>
-                  <View style={dynamicStyles.pillarTrack}>
-                    <View style={[dynamicStyles.pillarFill, { width: `${stats.gymPillar}%`, backgroundColor: isDark ? '#FF9F4D' : '#D97706' }]} />
-                  </View>
-                </View>
-
-                {/* Pillar 4: Focus */}
-                <View style={dynamicStyles.pillarCell}>
-                  <View style={dynamicStyles.pillarHeader}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                      <Ionicons name="timer-outline" size={13} color={isDark ? '#89DCEB' : '#0284C7'} />
-                      <Text style={dynamicStyles.pillarLabel}>Focus</Text>
+                    <View style={dynamicStyles.pillarTrack}>
+                      <View style={[dynamicStyles.pillarFill, { width: `${stats.focusPillar}%`, backgroundColor: isDark ? '#89DCEB' : '#0284C7' }]} />
                     </View>
-                    <Text style={dynamicStyles.pillarPct}>{stats.focusPillar}%</Text>
-                  </View>
-                  <View style={dynamicStyles.pillarTrack}>
-                    <View style={[dynamicStyles.pillarFill, { width: `${stats.focusPillar}%`, backgroundColor: isDark ? '#89DCEB' : '#0284C7' }]} />
                   </View>
                 </View>
               </View>
@@ -803,7 +809,13 @@ export default function AnalyticsScreen() {
                   <View style={[dynamicStyles.statIconBox, { backgroundColor: 'rgba(137,220,235,0.14)' }]}>
                     <Ionicons name="timer" size={17} color={isDark ? '#89DCEB' : '#0284C7'} />
                   </View>
-                  <DeltaBadge cur={stats.curFocusMins} prev={stats.prevFocusMins} />
+                  {stats.curFocusMins > 0 || stats.prevFocusMins > 0 ? (
+                    <DeltaBadge cur={stats.curFocusMins} prev={stats.prevFocusMins} />
+                  ) : (
+                    <View style={dynamicStyles.subtleTag}>
+                      <Text style={dynamicStyles.subtleTagText}>Target 2h</Text>
+                    </View>
+                  )}
                 </View>
                 <Text style={dynamicStyles.statTileVal}>
                   {stats.curFocusMins >= 60
@@ -851,7 +863,8 @@ export default function AnalyticsScreen() {
                 <View style={dynamicStyles.barsRow}>
                   {taskChartData.map((d, i) => {
                     const isSelected = selectedTaskIdx === i;
-                    const barHeightPct = Math.max(8, (d.count / maxTaskVal) * 100);
+                    const hasData = d.count > 0;
+                    const barHeightPct = Math.min(100, (d.count / maxTaskVal) * 100);
                     return (
                       <Pressable
                         key={i}
@@ -862,26 +875,64 @@ export default function AnalyticsScreen() {
                         }}
                       >
                         <View style={dynamicStyles.barTrack}>
-                          <View
-                            style={[
-                              dynamicStyles.capsuleBar,
-                              {
-                                height: `${barHeightPct}%`,
-                                backgroundColor: isSelected
-                                  ? (isDark ? '#FFFFFF' : '#000000')
-                                  : colors.accentPrimary,
-                                opacity: selectedTaskIdx !== null && !isSelected ? 0.35 : 1,
-                              },
-                            ]}
-                          />
+                          {hasData ? (
+                            <View
+                              style={[
+                                dynamicStyles.capsuleBar,
+                                {
+                                  height: `${Math.max(14, barHeightPct)}%`,
+                                  backgroundColor: isSelected
+                                    ? (isDark ? '#FFFFFF' : '#000000')
+                                    : colors.accentPrimary,
+                                  opacity: selectedTaskIdx !== null && !isSelected ? 0.35 : 1,
+                                },
+                              ]}
+                            />
+                          ) : (
+                            <View
+                              style={[
+                                dynamicStyles.zeroDot,
+                                {
+                                  backgroundColor: isSelected
+                                    ? colors.textPrimary
+                                    : isDark
+                                    ? 'rgba(255,255,255,0.18)'
+                                    : 'rgba(0,0,0,0.14)',
+                                },
+                              ]}
+                            />
+                          )}
                         </View>
-                        <Text style={[dynamicStyles.barAxisLabel, isSelected && { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold }]}>
-                          {d.label}
-                        </Text>
                       </Pressable>
                     );
                   })}
                 </View>
+              </View>
+
+              {/* Dedicated Day Labels Row (No Overlap with Bars) */}
+              <View style={dynamicStyles.chartLabelsRow}>
+                {taskChartData.map((d, i) => {
+                  const isSelected = selectedTaskIdx === i;
+                  return (
+                    <Pressable
+                      key={i}
+                      style={dynamicStyles.labelColTouch}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setSelectedTaskIdx(isSelected ? null : i);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          dynamicStyles.barAxisLabel,
+                          isSelected && { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold },
+                        ]}
+                      >
+                        {d.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
 
@@ -1101,26 +1152,47 @@ export default function AnalyticsScreen() {
               <View style={dynamicStyles.barChartBox}>
                 <View style={dynamicStyles.barsRow}>
                   {gymChartData.map((d, i) => {
-                    const barHeightPct = Math.max(6, (d.volume / maxGymVolume) * 100);
+                    const hasData = d.volume > 0;
+                    const barHeightPct = Math.min(100, (d.volume / maxGymVolume) * 100);
                     return (
                       <View key={i} style={dynamicStyles.barColumnTouch}>
                         <View style={dynamicStyles.barTrack}>
-                          <View
-                            style={[
-                              dynamicStyles.capsuleBar,
-                              {
-                                height: `${barHeightPct}%`,
-                                backgroundColor: isDark ? '#89DCEB' : '#0284C7',
-                                opacity: d.volume > 0 ? 1 : 0.25,
-                              },
-                            ]}
-                          />
+                          {hasData ? (
+                            <View
+                              style={[
+                                dynamicStyles.capsuleBar,
+                                {
+                                  height: `${Math.max(14, barHeightPct)}%`,
+                                  backgroundColor: isDark ? '#89DCEB' : '#0284C7',
+                                },
+                              ]}
+                            />
+                          ) : (
+                            <View
+                              style={[
+                                dynamicStyles.zeroDot,
+                                {
+                                  backgroundColor: isDark
+                                    ? 'rgba(255,255,255,0.18)'
+                                    : 'rgba(0,0,0,0.14)',
+                                },
+                              ]}
+                            />
+                          )}
                         </View>
-                        <Text style={dynamicStyles.barAxisLabel}>{d.label}</Text>
                       </View>
                     );
                   })}
                 </View>
+              </View>
+
+              {/* Dedicated Day Labels Row */}
+              <View style={dynamicStyles.chartLabelsRow}>
+                {gymChartData.map((d, i) => (
+                  <View key={i} style={dynamicStyles.labelColTouch}>
+                    <Text style={dynamicStyles.barAxisLabel}>{d.label}</Text>
+                  </View>
+                ))}
               </View>
             </View>
 
@@ -1362,18 +1434,19 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     marginTop: 4,
   },
 
-  // 4-Pillar Life Balance 2x2 Grid
-  pillarsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+  // 4-Pillar Life Balance 2x2 Grid (Symmetrical 2-Row Layout)
+  pillarsContainer: {
     marginTop: 14,
     paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
   },
+  pillarsRow: {
+    flexDirection: 'row',
+    gap: 14,
+  },
   pillarCell: {
-    width: (SCREEN_WIDTH - CARD_MARGIN * 2 - CARD_PAD * 2 - 12) / 2,
+    flex: 1,
   },
   pillarHeader: {
     flexDirection: 'row',
@@ -1491,12 +1564,12 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
 
   // Bar Chart Layout
   barChartBox: {
-    height: CHART_HEIGHT,
+    height: 94,
     position: 'relative',
-    marginTop: 6,
+    marginTop: 8,
     borderBottomWidth: 1,
-    borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
-    paddingBottom: 4,
+    borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+    paddingBottom: 2,
   },
   barsRow: {
     flexDirection: 'row',
@@ -1520,11 +1593,16 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     width: 14,
     borderRadius: 7,
   },
+  zeroDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginBottom: 2,
+  },
   barAxisLabel: {
     fontFamily: FONT_FAMILY.medium,
-    fontSize: 10,
+    fontSize: 10.5,
     color: colors.textMuted,
-    marginTop: 6,
   },
   avgGuideline: {
     position: 'absolute',

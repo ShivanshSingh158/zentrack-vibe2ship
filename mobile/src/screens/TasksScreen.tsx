@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pressable, Platform, StatusBar, Linking } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,17 +7,12 @@ import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/nativ
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
 import { requestNotificationPermissions } from '../services/notifications';
-import Svg, { Circle } from 'react-native-svg';
 
 import { useCoreData } from '../contexts/domains/CoreDataContext';
-import { useAcademicData } from '../contexts/domains/AcademicContext';
-import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { formatDateWithDay, formatLocalDateStr } from '../utils/dateUtils';
+import { formatDateWithDay, formatLocalDateStr, formatDateShort } from '../utils/dateUtils';
 import { formatTimeStr } from '../utils/timeUtils';
-import { triggerLayoutAnimation } from '../theme/animations';
 import { setTabBarVisible } from '../utils/tabBarScroll';
-import { today } from './tasks/taskConstants';
 
 // Extracted Hooks & Styles
 import { makeTasksStyles } from './tasks/tasksStyles';
@@ -28,25 +23,31 @@ import { parseTimeFloat } from './tasks/taskConstants';
 
 // Components
 import AnimatedPressable from '../components/AnimatedPressable';
-import UniversalCalendarModal from '../components/UniversalCalendarModal';
 import BottomSheet from '../components/ui/BottomSheet';
-const AnimatedCircle = Circle;
+
+
+// ── Lazy-loaded Alternate Task Views: Skips parsing ~800 LOC until user switches view ──
+const TimelineView = React.lazy(() => import('../components/Tasks/TimelineView'));
+const KanbanView = React.lazy(() => import('../components/Tasks/KanbanView'));
+
+// ── Lazy-loaded Heavy Modals & Sheets: Defers parsing ~5,066 LOC on cold boot ──
+const UniversalCalendarModal = React.lazy(() => import('../components/UniversalCalendarModal'));
+const BulkRescheduleSheet = React.lazy(() => import('../components/Tasks/BulkRescheduleSheet'));
+const TaskTemplatesSheet = React.lazy(() => import('../components/Tasks/TaskTemplatesSheet'));
+const TaskTimeLogSheet = React.lazy(() => import('../components/Tasks/TaskTimeLogSheet'));
+const EditTaskModal = React.lazy(() => import('./tasks/EditTaskModal'));
+const NewTaskModal = React.lazy(() => import('./tasks/NewTaskModal'));
+const VoiceDictationOverlay = React.lazy(() => import('../components/Tasks/VoiceDictationOverlay'));
 
 // Extracted Task Components
 import { TaskDateStrip } from '../components/Tasks/TaskDateStrip';
-import TimelineView from '../components/Tasks/TimelineView';
-import KanbanView from '../components/Tasks/KanbanView';
 import TaskRow from '../components/Tasks/TaskRow';
 import EmptyState from '../components/ui/EmptyState';
-import BulkRescheduleSheet from '../components/Tasks/BulkRescheduleSheet';
-import TaskTimeLogSheet from '../components/Tasks/TaskTimeLogSheet';
-import TaskTemplatesSheet from '../components/Tasks/TaskTemplatesSheet';
 import { usePomodoro } from '../contexts/PomodoroContext';
-import EditTaskModal from './tasks/EditTaskModal';
-import NewTaskModal from './tasks/NewTaskModal';
-import VoiceDictationOverlay from '../components/Tasks/VoiceDictationOverlay';
 import TasksSkeleton from '../components/Tasks/TasksSkeleton';
 import type { Task } from '../contexts/MobileDataContext';
+
+const taskKeyExtractor = (item: any) => item.id;
 
 /**
  * TaskRowMemo — Thin memoized adapter that bridges TasksScreen's stable
@@ -119,10 +120,6 @@ const TaskRowMemo = React.memo(function TaskRowMemo({
 );
 
 
-const PROGRESS_SIZE = 44;
-const PROGRESS_STROKE = 3;
-const PROGRESS_RADIUS = (PROGRESS_SIZE - PROGRESS_STROKE) / 2;
-const PROGRESS_CIRCUM = PROGRESS_RADIUS * 2 * Math.PI;
 
 export default function TasksScreen() {
   const { colors, isDark } = useTheme();
@@ -133,11 +130,6 @@ export default function TasksScreen() {
   
   const { tasks, user, habits, habitLogs, tasksReady, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
   const isInitialLoading = !tasksReady && (!tasks || tasks.length === 0);
-  // Lift academic & wellness data to screen level so TimelineView doesn't
-  // subscribe to these contexts directly (prevents re-renders from unrelated
-  // data changes like water logs, assignments, or weight entries).
-  const { attendance, attendanceLogs } = useAcademicData();
-  const { gymLogs, userGymPlan } = useWellnessData();
   const { openPomodoro } = usePomodoro();
   const todayDateStr = useMemo(() => formatLocalDateStr(new Date()), []);
 
@@ -210,54 +202,77 @@ export default function TasksScreen() {
     lastScrollY.current = offsetY;
   }, []);
 
-  const handleDateSelect = (date: string) => {
-    triggerLayoutAnimation();
+  const handleDateSelect = useCallback((date: string) => {
     setSelectedDate(date);
-  };
+  }, [setSelectedDate]);
 
-  const sections = useMemo(() => {
-    if (selectedDateTasks.length === 0) return [];
-    return [{
-      title: selectedDate === today ? 'TODAY' : formatDateWithDay(selectedDate).toUpperCase(),
-      data: selectedDateTasks,
-      isSelectedDate: true,
-    }];
-  }, [selectedDateTasks, selectedDate]);
+  // ── Interactive Tag Filters & Task Counts ──
+  const tagFilters = useMemo(() => {
+    const counts: Record<string, number> = { all: selectedDateTasks.length };
+    const discoveredTags = new Set<string>();
 
-  const { doneCount, progressPercent, progressDashoffset, nextPendingTimeStr } = useMemo(() => {
-    let done = 0;
-    const total = selectedDateTasks.length;
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    const currentTimeFloat = now.getHours() + now.getMinutes() / 60;
-    let nextStr = '';
-
-    for (let i = 0; i < total; i++) {
+    for (let i = 0; i < selectedDateTasks.length; i++) {
       const t = selectedDateTasks[i];
-      if (t.status === 'completed') {
-        done++;
-      } else if (!nextStr && t.status === 'pending' && t.timeSlot) {
-        const start = t.timeSlot.split(/[-–—•]| to /i)[0]?.trim();
-        if (selectedDate !== todayStr || parseTimeFloat(start) >= currentTimeFloat) {
-          nextStr = formatTimeStr(start);
-        }
+      const tags = (t.tags || []).map(tg => tg.toLowerCase().replace(/^#/, '').trim());
+      const titleMatches = t.title?.match(/#([a-zA-Z0-9_\-]+)/g);
+      if (titleMatches) {
+        titleMatches.forEach(m => tags.push(m.toLowerCase().replace(/^#/, '').trim()));
       }
+      const unique = new Set(tags);
+      unique.forEach(tag => {
+        if (!tag) return;
+        discoveredTags.add(tag);
+        counts[tag] = (counts[tag] || 0) + 1;
+      });
     }
 
-    const progressSize = 44;
-    const progressStroke = 3;
-    const progressRadius = (progressSize - progressStroke) / 2;
-    const progressCircum = progressRadius * 2 * Math.PI;
-    const pct = total > 0 ? done / total : 0;
-    const offset = progressCircum - pct * progressCircum;
+    // Only show tags that are actually present on tasks for this date!
+    const activeTags = Array.from(discoveredTags).filter(tag => (counts[tag] || 0) > 0);
 
-    return {
-      doneCount: done,
-      progressPercent: pct,
-      progressDashoffset: offset,
-      nextPendingTimeStr: nextStr,
-    };
-  }, [selectedDateTasks, selectedDate]);
+    if (activeTags.length === 0) {
+      return [];
+    }
+
+    const orderedTagKeys = ['all', ...activeTags];
+
+    return orderedTagKeys.map(key => {
+      let label = key === 'all' ? '#all' : `#${key}`;
+      return {
+        key,
+        label,
+        count: counts[key] || 0,
+      };
+    });
+  }, [selectedDateTasks]);
+
+  // Reset filterTag if it no longer exists on the current date
+  useEffect(() => {
+    if (filterTag && tagFilters.length > 0 && !tagFilters.some(t => t.key === filterTag.toLowerCase().replace(/^#/, ''))) {
+      setFilterTag(null);
+    }
+  }, [tagFilters, filterTag, setFilterTag]);
+
+  // ── Filtered Tasks by Selected Tag ──
+  const displayedTasks = useMemo(() => {
+    if (!filterTag || filterTag.toLowerCase() === 'all') return selectedDateTasks;
+    const target = filterTag.toLowerCase().replace(/^#/, '').trim();
+    return selectedDateTasks.filter(t => {
+      const tags = (t.tags || []).map(tg => tg.toLowerCase().replace(/^#/, '').trim());
+      if (tags.includes(target)) return true;
+      if (t.title?.toLowerCase().includes(`#${target}`)) return true;
+      return false;
+    });
+  }, [selectedDateTasks, filterTag]);
+
+  const sections = useMemo(() => {
+    if (displayedTasks.length === 0) return [];
+    return [{
+      title: selectedDate === todayDateStr ? 'TODAY' : formatDateWithDay(selectedDate).toUpperCase(),
+      data: displayedTasks,
+      isSelectedDate: true,
+    }];
+  }, [displayedTasks, selectedDate, todayDateStr]);
+
 
   // ── Stable handler refs — created once, never recreated on re-render ──────────
   // Passed into TaskRowMemo so React.memo actually prevents TaskRow re-renders.
@@ -297,7 +312,7 @@ export default function TasksScreen() {
   const renderItem = useCallback(({ item }: { item: any }) => (
     <TaskRowMemo
       task={item}
-      isOverdue={item.date ? item.date < today && item.status !== 'completed' : false}
+      isOverdue={item.date ? item.date < todayDateStr && item.status !== 'completed' : false}
       isBulkEdit={isBulkEdit}
       isSelected={selectedTaskIds.has(item.id!)}
       onComplete={onCompleteRef}
@@ -306,7 +321,13 @@ export default function TasksScreen() {
       onToggleSelect={onToggleSelectRef}
       onUpdateTask={onUpdateTaskRef}
     />
-  ), [isBulkEdit, selectedTaskIds, onCompleteRef, onRescheduleRef, onPressRef, onToggleSelectRef, onUpdateTaskRef]);
+  ), [isBulkEdit, selectedTaskIds, todayDateStr, onCompleteRef, onRescheduleRef, onPressRef, onToggleSelectRef, onUpdateTaskRef]);
+
+  const renderSectionHeader = useCallback(({ section: { title } }: any) => (
+    <View style={styles.listSectionHeader}>
+      <Text style={[styles.listSectionTitle, { color: colors.textTertiary, fontSize: 11, letterSpacing: 1 }]}>{title}</Text>
+    </View>
+  ), [styles.listSectionHeader, styles.listSectionTitle, colors.textTertiary]);
 
   const taskConflicts = useMemo(() => {
     return conflicts.filter(c => c.modules.includes('tasks') && !c.modules.includes('academic'));
@@ -423,6 +444,50 @@ export default function TasksScreen() {
         <TaskDateStrip selectedDate={selectedDate} onSelectDate={handleDateSelect} taskDates={taskDates} />
       </View>
 
+      {/* Interactive Horizontal Tag Filter Strip — only rendered when tags are present on this day */}
+      {tagFilters.length > 1 && (
+        <View style={styles.tagFilterStripContainer}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tagFilterContent}
+          >
+            {tagFilters.map((item) => {
+              const isActive = item.key === 'all' 
+                ? (!filterTag || filterTag === 'all')
+                : filterTag?.toLowerCase() === item.key;
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[
+                    styles.filterTagChip,
+                    isActive && styles.filterTagChipActive,
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    if (item.key === 'all' || filterTag?.toLowerCase() === item.key) {
+                      setFilterTag(null);
+                    } else {
+                      setFilterTag(item.key);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.filterTagChipText, isActive && styles.filterTagChipTextActive]}>
+                    {item.label}
+                  </Text>
+                  <View style={[styles.tagCountBadge, isActive && styles.tagCountBadgeActive]}>
+                    <Text style={[styles.tagCountText, isActive && styles.tagCountTextActive]}>
+                      {item.count}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       {/* NOTIFICATION PERMISSION WARNING BANNER */}
       {hasNotifPermission === false && (
         <AnimatedPressable
@@ -454,81 +519,53 @@ export default function TasksScreen() {
         </AnimatedPressable>
       )}
 
-      {/* PROGRESS RING */}
-      <View style={{ paddingHorizontal: 6, marginBottom: 0 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
-          <View style={{ width: PROGRESS_SIZE, height: PROGRESS_SIZE, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
-            <Svg width={PROGRESS_SIZE} height={PROGRESS_SIZE} style={{ position: 'absolute' }}>
-              <Circle
-                stroke={isDark ? '#2C2C2E' : '#E2E1EA'}
-                fill="none"
-                cx={PROGRESS_SIZE / 2}
-                cy={PROGRESS_SIZE / 2}
-                r={PROGRESS_RADIUS}
-                strokeWidth={PROGRESS_STROKE}
-              />
-              <AnimatedCircle
-                stroke={colors.accentAmber}
-                fill="none"
-                cx={PROGRESS_SIZE / 2}
-                cy={PROGRESS_SIZE / 2}
-                r={PROGRESS_RADIUS}
-                strokeWidth={PROGRESS_STROKE}
-                strokeDasharray={`${PROGRESS_CIRCUM} ${PROGRESS_CIRCUM}`}
-                strokeDashoffset={progressDashoffset}
-                strokeLinecap="round"
-                transform={`rotate(-90 ${PROGRESS_SIZE / 2} ${PROGRESS_SIZE / 2})`}
-              />
-            </Svg>
-            <Text style={{ color: colors.textPrimary, fontSize: 12, fontFamily: 'Inter_600SemiBold' }}>{doneCount}/{selectedDateTasks.length}</Text>
-          </View>
-          <View>
-            <Text style={{ color: colors.textPrimary, fontSize: 16, fontFamily: 'Inter_600SemiBold', marginBottom: 2 }}>
-              <Text style={{ color: colors.accentAmber }}>{doneCount}</Text> of {selectedDateTasks.length} done today
-            </Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 13, fontFamily: 'Inter_400Regular' }}>
-              {selectedDateTasks.length - doneCount} remaining{nextPendingTimeStr ? ` · next at ${nextPendingTimeStr}` : ''}
-            </Text>
-          </View>
-        </View>
-      </View>
 
       {/* Standard Calendar Modal */}
       {isCalendarOpen && (
-        <UniversalCalendarModal
-          visible={isCalendarOpen}
-          onClose={() => setIsCalendarOpen(false)}
-          selectedDate={selectedDate}
-          onDateSelect={handleDateSelect}
-          title="Jump to date"
-        />
+        <Suspense fallback={null}>
+          <UniversalCalendarModal
+            visible={isCalendarOpen}
+            onClose={() => setIsCalendarOpen(false)}
+            selectedDate={selectedDate}
+            onDateSelect={handleDateSelect}
+            title="Jump to date"
+          />
+        </Suspense>
       )}
 
       {/* Advanced Reschedule Sheet */}
       {bulkRescheduleModal && (
-        <BulkRescheduleSheet
-          visible={bulkRescheduleModal}
-          onClose={() => setBulkRescheduleModal(false)}
-          selectedTaskIds={selectedTaskIds}
-          allTasks={tasks}
-          onConfirm={(newDate, newSlot) => handleBulkReschedule(selectedTaskIds, newDate, newSlot)}
-        />
+        <Suspense fallback={null}>
+          <BulkRescheduleSheet
+            visible={bulkRescheduleModal}
+            onClose={() => setBulkRescheduleModal(false)}
+            selectedTaskIds={selectedTaskIds}
+            allTasks={tasks}
+            onConfirm={(newDate, newSlot) => handleBulkReschedule(selectedTaskIds, newDate, newSlot)}
+          />
+        </Suspense>
       )}
 
       {/* Edit & New Task Modals — strictly conditional (0 lines executed on mount) */}
       {!!editingTask && (
-        <EditTaskModal visible={!!editingTask} onClose={() => setEditingTask(null)} task={editingTask} />
+        <Suspense fallback={null}>
+          <EditTaskModal visible={!!editingTask} onClose={() => setEditingTask(null)} task={editingTask} />
+        </Suspense>
       )}
       {isNewTaskOpen && !!user && (
-        <NewTaskModal visible={isNewTaskOpen} onClose={() => setIsNewTaskOpen(false)} userId={user.uid} selectedDate={selectedDate} listCount={selectedDateTasks.length} />
+        <Suspense fallback={null}>
+          <NewTaskModal visible={isNewTaskOpen} onClose={() => setIsNewTaskOpen(false)} userId={user.uid} selectedDate={selectedDate} listCount={selectedDateTasks.length} />
+        </Suspense>
       )}
       {isVoiceDictationOpen && (
-        <VoiceDictationOverlay
-          visible={isVoiceDictationOpen}
-          onClose={() => setIsVoiceDictationOpen(false)}
-          selectedDate={selectedDate}
-          userId={user?.uid}
-        />
+        <Suspense fallback={null}>
+          <VoiceDictationOverlay
+            visible={isVoiceDictationOpen}
+            onClose={() => setIsVoiceDictationOpen(false)}
+            selectedDate={selectedDate}
+            userId={user?.uid}
+          />
+        </Suspense>
       )}
 
       {/* VIEWS */}
@@ -538,37 +575,37 @@ export default function TasksScreen() {
         </ScrollView>
       ) : viewMode === 'timeline' ? (
         <View style={{ flex: 1 }}>
-          <TimelineView 
-            tasks={selectedDateTasks} 
-            onTaskPress={(t) => setEditingTask(t)} 
-            colors={colors}
-            isDark={isDark}
-            selectedDate={selectedDate}
-            attendance={attendance}
-            attendanceLogs={attendanceLogs}
-            gymLogs={gymLogs}
-            userGymPlan={userGymPlan}
-          />
+          <Suspense fallback={<TasksSkeleton />}>
+            <TimelineView 
+              tasks={displayedTasks} 
+              onTaskPress={(t) => setEditingTask(t)} 
+              colors={colors}
+              isDark={isDark}
+              selectedDate={selectedDate}
+            />
+          </Suspense>
         </View>
       ) : viewMode === 'kanban' ? (
         <View style={{ flex: 1 }}>
-          <KanbanView
-            tasks={tasks.filter(t => !filterTag || (t.tags ?? []).includes(filterTag))}
-            onTaskPress={(t) => setEditingTask(t)}
-            colors={colors}
-          />
+          <Suspense fallback={<TasksSkeleton />}>
+            <KanbanView
+              tasks={tasks.filter(t => !filterTag || (t.tags ?? []).includes(filterTag))}
+              onTaskPress={(t) => setEditingTask(t)}
+              colors={colors}
+            />
+          </Suspense>
         </View>
       ) : (
         <SectionList
           style={{ flex: 1 }}
           contentContainerStyle={[
             styles.listContent,
-            selectedDateTasks.length === 0 
+            displayedTasks.length === 0 
               ? { flexGrow: 1, justifyContent: 'center', paddingBottom: 80 } 
               : { paddingBottom: 140 }
           ]}
-          scrollEnabled={selectedDateTasks.length > 0}
-          bounces={selectedDateTasks.length > 0}
+          scrollEnabled={displayedTasks.length > 0}
+          bounces={displayedTasks.length > 0}
           showsVerticalScrollIndicator={false}
           removeClippedSubviews={Platform.OS === 'android'}
           maxToRenderPerBatch={10}
@@ -583,21 +620,35 @@ export default function TasksScreen() {
             if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
           }}
           sections={sections as any}
-          keyExtractor={(item: any) => item.id}
+          keyExtractor={taskKeyExtractor}
           ListEmptyComponent={
-            <EmptyState
-              mascot="running"
-              title="All clear!"
-              subtitle="No tasks for today. Add one to stay on track."
-              mascotSize={110}
-              style={{ marginTop: 0, paddingVertical: 10 }}
-            />
+            filterTag ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
+                <Ionicons name="pricetag-outline" size={38} color={colors.textTertiary} style={{ marginBottom: 12, opacity: 0.6 }} />
+                <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 16, color: colors.textPrimary, marginBottom: 4 }}>
+                  No #{filterTag} tasks
+                </Text>
+                <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginBottom: 16 }}>
+                  No tasks tagged #{filterTag} found for this day.
+                </Text>
+                <TouchableOpacity
+                  style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : colors.surface2, borderWidth: 1, borderColor: colors.border }}
+                  onPress={() => setFilterTag(null)}
+                >
+                  <Text style={{ color: colors.accentPrimary, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>Show All Tasks</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <EmptyState
+                mascot="running"
+                title="All clear!"
+                subtitle="No tasks for today. Add one to stay on track."
+                mascotSize={110}
+                style={{ marginTop: 0, paddingVertical: 10 }}
+              />
+            )
           }
-          renderSectionHeader={({ section: { title } }: any) => (
-            <View style={styles.listSectionHeader}>
-              <Text style={[styles.listSectionTitle, { color: colors.textTertiary, fontSize: 11, letterSpacing: 1 }]}>{title}</Text>
-            </View>
-          )}
+          renderSectionHeader={renderSectionHeader}
           renderItem={renderItem}
         />
       )}
@@ -745,8 +796,16 @@ export default function TasksScreen() {
       )}
 
       {/* SHEETS */}
-      {isTemplatesSheetOpen && <TaskTemplatesSheet visible={isTemplatesSheetOpen} onClose={() => setIsTemplatesSheetOpen(false)} userId={user?.uid!} onApplyTemplate={(template) => addTaskFromTemplate(user?.uid!, template, selectedDate, tasks.length)} />}
-      {!!timeLogTask && <TaskTimeLogSheet task={timeLogTask} visible={!!timeLogTask} onSkip={() => skipTimeLog(timeLogTask?.id!, optimisticUpdateTask)} onSave={(taskId, actualMinutes, actualStartTime) => saveTimeLog(taskId, actualMinutes, actualStartTime, optimisticUpdateTask)} />}
+      {isTemplatesSheetOpen && (
+        <Suspense fallback={null}>
+          <TaskTemplatesSheet visible={isTemplatesSheetOpen} onClose={() => setIsTemplatesSheetOpen(false)} userId={user?.uid!} onApplyTemplate={(template) => addTaskFromTemplate(user?.uid!, template, selectedDate, tasks.length)} />
+        </Suspense>
+      )}
+      {!!timeLogTask && (
+        <Suspense fallback={null}>
+          <TaskTimeLogSheet task={timeLogTask} visible={!!timeLogTask} onSkip={() => skipTimeLog(timeLogTask?.id!, optimisticUpdateTask)} onSave={(taskId, actualMinutes, actualStartTime) => saveTimeLog(taskId, actualMinutes, actualStartTime, optimisticUpdateTask)} />
+        </Suspense>
+      )}
 
     </View>
   );

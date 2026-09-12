@@ -74,7 +74,21 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({
     }
   }, [todo, isOpen]);
 
-  if (!isOpen || !todo) return null;
+  // Escape to dismiss smoothly
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Guard if no todo provided
+  if (!todo) return null;
 
   const addSubtask = () => {
     if (!newSubtaskText.trim()) return;
@@ -95,13 +109,12 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({
   };
 
   const toggleTag = (tag: string) => {
-    const clean = tag.trim().toLowerCase();
     setSelectedTags(prev =>
-      prev.includes(clean) ? prev.filter(t => t !== clean) : [...prev, clean]
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
     );
   };
 
-  const createCustomTag = () => {
+  const addCustomTag = () => {
     const clean = newTagInput.trim().toLowerCase().replace(/\s+/g, '-');
     if (!clean) return;
     if (!selectedTags.includes(clean)) {
@@ -126,10 +139,10 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({
         ...todo,
         title: title.trim(),
         text: title.trim(),
-        date: date || todo.date,
-        priority: priority || 'medium',
+        date: date || null,
+        priority,
         timeSlot: timeSlotString,
-        estimatedMinutes: estimatedMinutes || undefined,
+        estimatedMinutes: estimatedMinutes ? Number(estimatedMinutes) : undefined,
         subtasks,
         tags: selectedTags,
         isRecurring,
@@ -141,15 +154,35 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="task-modal-overlay" onClick={onClose}>
+      {isOpen && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 16 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 16 }}
-          transition={{ type: 'spring', damping: 28, stiffness: 350 }}
-          className="task-modal-studio-container"
-          onClick={e => e.stopPropagation()}
+          key="edit-modal-overlay"
+          className="task-modal-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          onClick={onClose}
         >
+          <motion.div
+            key="edit-modal-dialog"
+            initial={{ opacity: 0, scale: 0.92, y: -26 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{
+              opacity: 0,
+              scale: 0.94,
+              y: 16,
+              transition: { duration: 0.15, ease: [0.4, 0, 0.2, 1] },
+            }}
+            transition={{
+              type: 'spring',
+              damping: 26,
+              stiffness: 340,
+              mass: 0.8,
+            }}
+            className="task-modal-studio-container"
+            onClick={e => e.stopPropagation()}
+          >
           {/* ── HEADER ── */}
           <div className="task-modal-studio-header">
             <div className="modal-title-group">
@@ -181,20 +214,14 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({
               <div className="priority-pills-cluster">
                 {(['low', 'medium', 'high'] as const).map(p => {
                   const isActive = priority === p;
-                  const pColor = p === 'high' ? '#ff6961' : p === 'medium' ? '#f59e0b' : '#5eda9e';
                   return (
                     <button
                       key={p}
                       type="button"
                       onClick={() => setPriority(p)}
-                      className={`priority-pill-btn ${isActive ? 'active' : ''}`}
-                      style={{
-                        borderColor: isActive ? pColor : 'var(--color-border)',
-                        backgroundColor: isActive ? `${pColor}18` : 'transparent',
-                        color: isActive ? pColor : 'var(--color-text-3)',
-                      }}
+                      className={`priority-pill-btn priority-${p} ${isActive ? 'active' : ''}`}
                     >
-                      <span className="priority-pill-dot" style={{ backgroundColor: pColor }} />
+                      <span className="priority-pill-dot" />
                       <span className="priority-pill-label">{p.charAt(0).toUpperCase() + p.slice(1)}</span>
                     </button>
                   );
@@ -369,7 +396,8 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({
             </div>
           </form>
         </motion.div>
-      </div>
-    </AnimatePresence>
-  );
+      </motion.div>
+    )}
+  </AnimatePresence>
+);
 };

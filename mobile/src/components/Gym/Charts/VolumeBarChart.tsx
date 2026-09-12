@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { COLORS, FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '../../../theme/tokens';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -8,9 +8,9 @@ interface VolumeBarChartProps {
   height?: number;
 }
 
-export default function VolumeBarChart({ data, height = 150 }: VolumeBarChartProps) {
+export const VolumeBarChart: React.FC<VolumeBarChartProps> = React.memo(function VolumeBarChart({ data, height = 150 }: VolumeBarChartProps) {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors);
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   
   const anim = useRef(new Animated.Value(0)).current;
 
@@ -77,7 +77,9 @@ export default function VolumeBarChart({ data, height = 150 }: VolumeBarChartPro
       </View>
     </View>
   );
-}
+});
+
+export default VolumeBarChart;
 
 const makeStyles = (colors: any) => StyleSheet.create({
   container: {

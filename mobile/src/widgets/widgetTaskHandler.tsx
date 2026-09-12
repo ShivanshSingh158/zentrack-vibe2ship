@@ -88,7 +88,7 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
 
     case 'WIDGET_CLICK': {
       if (props.clickActionData) {
-        await handleWidgetClickAction(props.clickActionData as any);
+        await handleWidgetClickAction(props.clickActionData as any, props);
       }
       break;
     }

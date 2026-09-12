@@ -176,7 +176,7 @@ export default function LearningScreen() {
   const [aiHistory, setAiHistory] = useState<{ role: string; text: string }[]>([]);
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.6-flash');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
 
   useEffect(() => {
     AsyncStorage.getItem('zen_preferred_learning_model').then(m => {
@@ -185,8 +185,8 @@ export default function LearningScreen() {
   }, []);
 
   const toggleModel = () => {
-    Haptics.selectionAsync().catch(() => {});
-    const nextModel = selectedModel === 'gemini-3.6-flash' ? 'gemini-2.5-flash' : 'gemini-3.6-flash';
+    // Only one model now — no-op toggle kept for UI compatibility
+    const nextModel = 'gemini-2.5-flash';
     setSelectedModel(nextModel);
     AsyncStorage.setItem('zen_preferred_learning_model', nextModel).catch(console.error);
   };
@@ -517,7 +517,7 @@ export default function LearningScreen() {
 
     try {
       const data = await callProxy({
-        model: selectedModel || 'gemini-3.7-flash',
+        model: selectedModel || 'gemini-2.5-flash',
         // PERF FIX: Build conversation array in-place. userTurn is pushed onto
         // the ref array directly — no O(n) spread copy. The ref array IS the
         // contents array, so Gemini always sees the full history.
@@ -526,6 +526,7 @@ export default function LearningScreen() {
           return tutorConversationRef.current;
         })(),
         systemInstruction: tutorSystemPromptRef.current,
+        timeoutMs: 60000, // 60s — large requests (e.g. "make notes") need time
         generationConfig: {
           temperature: 0.7,
           maxOutputTokens: 32768,

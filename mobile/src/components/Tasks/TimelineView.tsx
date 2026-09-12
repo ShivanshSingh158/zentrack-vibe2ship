@@ -14,6 +14,8 @@ import { db } from '../../services/firebase';
 import { feedback } from '../../utils/haptics';
 import { formatLocalDateStr } from '../../utils/dateUtils';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAcademicData } from '../../contexts/domains/AcademicContext';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
 
 // Extracted math, subcomponents & styles
 import {
@@ -32,13 +34,10 @@ interface TimelineViewProps {
   onTaskPress: (task: Task) => void;
   colors?: any;
   isDark?: boolean;
-  // Data props passed from the screen coordinator — prevents TimelineView from
-  // subscribing directly to AcademicContext and WellnessContext (which would
-  // cause full re-renders on every water log, assignment, or weight update).
-  attendance: AttendanceSubject[];
-  attendanceLogs: AttendanceLog[];
-  gymLogs: GymLog[];
-  userGymPlan: UserGymPlanDoc | null | undefined;
+  attendance?: AttendanceSubject[];
+  attendanceLogs?: AttendanceLog[];
+  gymLogs?: GymLog[];
+  userGymPlan?: UserGymPlanDoc | null | undefined;
   selectedDate?: string;
 }
 
@@ -49,16 +48,24 @@ const TimelineView = React.memo(function TimelineView({
   onTaskPress,
   colors: propColors,
   isDark: propIsDark,
-  attendance,
-  attendanceLogs,
-  gymLogs,
-  userGymPlan,
+  attendance: propAttendance,
+  attendanceLogs: propAttendanceLogs,
+  gymLogs: propGymLogs,
+  userGymPlan: propUserGymPlan,
   selectedDate,
 }: TimelineViewProps) {
   const theme = useTheme();
   const colors = propColors || theme.colors;
   const isDark = propIsDark !== undefined ? propIsDark : theme.isDark;
   const navigation = useNavigation<any>();
+
+  // Domain context fallbacks: allows TasksScreen to avoid subscribing to Academic and Wellness contexts
+  const academic = useAcademicData();
+  const wellness = useWellnessData();
+  const attendance = propAttendance ?? academic.attendance;
+  const attendanceLogs = propAttendanceLogs ?? academic.attendanceLogs;
+  const gymLogs = propGymLogs ?? wellness.gymLogs;
+  const userGymPlan = propUserGymPlan !== undefined ? propUserGymPlan : wellness.userGymPlan;
 
   // Live time tracking for "Current Time" indicator
   const [currentTime, setCurrentTime] = useState(new Date());

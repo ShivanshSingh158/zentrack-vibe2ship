@@ -643,7 +643,7 @@ export function FlashcardReviewModal({ isOpen, onClose }: FlashcardReviewModalPr
                     style={{
                       width: `${progressPercent}%`,
                       height: '100%',
-                      background: 'linear-gradient(90deg, #a599ff, #6c5ce7)',
+                      background: 'linear-gradient(90deg, #a599ff, #b8afff)',
                       borderRadius: '999px',
                       transition: 'width 0.3s ease'
                     }}

@@ -27,9 +27,9 @@ interface MuscleDistributionChartProps {
   data: { muscle: string; sets: number }[];
 }
 
-export default function MuscleDistributionChart({ data }: MuscleDistributionChartProps) {
+export const MuscleDistributionChart: React.FC<MuscleDistributionChartProps> = React.memo(function MuscleDistributionChart({ data }: MuscleDistributionChartProps) {
   const { colors } = useTheme();
-  const styles = makeStyles(colors);
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const { chartData, totalSets } = useMemo(() => {
     if (!data || data.length === 0) return { chartData: [], totalSets: 0 };
@@ -125,7 +125,9 @@ export default function MuscleDistributionChart({ data }: MuscleDistributionChar
       </View>
     </View>
   );
-}
+});
+
+export default MuscleDistributionChart;
 
 const makeStyles = (colors: any) => StyleSheet.create({
   container: {

@@ -187,6 +187,12 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     ? `${params.userGymPlan.id || ''}_${params.userGymPlan.templateId || ''}_${params.userGymPlan.updatedAt || ''}_${params.userGymPlan.schedulePattern || ''}`
     : '';
 
+  // Hash gym log content (not just count) so post-workout schedule correctly refreshes
+  // after exercises are logged. Hashes: date + exercise count + set count per log.
+  const gymLogContentHash = (params.gymLogs || [])
+    .map(g => `${g.date}_${(g.exercises || []).length}_${(g.exercises || []).reduce((sum, e) => sum + ((e as any).sets?.length || 0), 0)}_${g.completed ? '1' : '0'}`)
+    .join(';');
+
   // Track today's total water logged to invalidate fingerprint immediately when goal is hit
   const todayDateStr = formatLocalDateStr(new Date());
   const waterTodayMl = (params.waterLogs || [])
@@ -210,6 +216,11 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     kv['zentrack_notif_mod_attendance'] || 'true',
     kv['zentrack_notif_weekend_mode'] || 'false',
     kv['zentrack_default_notif_time'] || '09:00',
+    kv['zentrack_notif_calendar_offset'] || '60',
+    kv['zentrack_notif_task_5min_alert'] || 'true',
+    kv['zentrack_notif_overdue_nudge'] || 'true',
+    kv['zentrack_notif_habit_streak_risk'] || 'true',
+    kv['zentrack_notif_weekly_review'] || 'true',
   ].join(',') : '';
 
   return [
@@ -217,7 +228,7 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     eventFingerprint,
     gymPlanFingerprint,
     (params.habitLogs || []).length,
-    (params.gymLogs || []).length,
+    gymLogContentHash,
     (params.assignments || []).length,
     (params.waterLogs || []).length,
     waterTodayMl,
@@ -289,6 +300,24 @@ export function scheduleAllNotifications(params: ScheduleParams): Promise<void> 
 }
 
 async function _executeScheduleLoop(currentParams: ScheduleParams) {
+  // ── Active Workout Guard ────────────────────────────────────────────────────
+  // If the user is actively logging a workout, bail out immediately.
+  // This is a second line of defence behind BackgroundNotificationWatcher's guard.
+  // The watcher guard prevents most calls; this catches any that slip through
+  // (e.g. from MobileDataContext's own 3.5s scheduler or direct callers).
+  try {
+    const activeStateRaw = await AsyncStorage.getItem('@zentrack_active_workout_state');
+    if (activeStateRaw) {
+      const activeState = JSON.parse(activeStateRaw);
+      if (activeState && !activeState.completed) {
+        console.log('[Notifications] Active workout in progress (inner guard) — skipping reschedule.');
+        return;
+      }
+    }
+  } catch {
+    // AsyncStorage error: fall through and schedule normally
+  }
+
   const {
     tasks = [],
     customEvents = [],
@@ -328,11 +357,13 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         'zentrack_notif_weekly_review', 'zentrack_notif_attendance_warning', 'zentrack_notif_morning_brief',
         'zentrack_notif_inactivity_nudge', 'zentrack_notif_quiet_hours', 'zentrack_notif_weekend_mode',
         'zentrack_notif_sara_escalation', 'zentrack_notif_actionable_notifs',
+        'zentrack_notif_task_5min_alert',
       ];
       const STR_KEYS = [
         'zentrack_notif_morning_brief_time', 'zentrack_notif_overdue_nudge_time', 'zentrack_notif_quiet_start',
         'zentrack_notif_quiet_end', 'zentrack_notif_task_buffer', 'zentrack_notif_inactivity_days',
         'zentrack_notif_habit_streak_time', 'zentrack_default_notif_time',
+        'zentrack_notif_calendar_offset',
         '@gym_notification_time', '@gym_notification_enabled',
         '@zentrack_water_reminder_freq', '@zentrack_sleep_reminders_enabled',
         '@zentrack_sleep_reminder_night', '@zentrack_sleep_reminder_morning',
@@ -377,7 +408,47 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         return;
       }
 
+      // BUG-15 FIX: Before wiping all scheduled notifications, snapshot any active
+      // gym rest-timer notifications (scheduled by useGymLog with a future DATE trigger)
+      // and reschedule them afterward so an in-progress workout isn't disrupted.
+      // BUG-12 FIX: If all user data arrays are empty (likely offline cold-start), skip
+      // the cancel+reschedule entirely — a wipe with no data would leave the user with
+      // zero notifications until the app is foregrounded.
+      const dataIsEmpty =
+        tasks.length === 0 &&
+        allHabits.length === 0 &&
+        attendance.length === 0 &&
+        assignments.length === 0;
+      if (dataIsEmpty) {
+        console.warn('[Notifications] All data arrays empty (likely offline) — skipping reschedule to preserve existing notifications.');
+        return;
+      }
+
+      // Snapshot scheduled notifications so we can restore gym rest timers afterward
+      const preExisting = await Notifications.getAllScheduledNotificationsAsync();
+      const restTimers = preExisting.filter(
+        n =>
+          n.content?.data?.type === 'rest_over' ||
+          (n.content?.title as string | undefined)?.includes('Rest is over') ||
+          n.identifier?.startsWith('rest_timer')
+      );
+
       await Notifications.cancelAllScheduledNotificationsAsync();
+
+      // Restore active gym rest-timer notifications that were wiped
+      if (restTimers.length > 0) {
+        for (const rt of restTimers) {
+          const trigger = rt.trigger as any;
+          const fireDate = trigger?.value ?? trigger?.date;
+          if (fireDate && new Date(fireDate).getTime() > Date.now()) {
+            await Notifications.scheduleNotificationAsync({
+              identifier: rt.identifier,
+              content: rt.content as any,
+              trigger: { type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date', date: new Date(fireDate) } as any,
+            }).catch(() => {});
+          }
+        }
+      }
 
       const boolVal = (suffix: string, def = true) => {
         const v = kv[`zentrack_notif_${suffix}`];
@@ -405,6 +476,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       const weekendMode         = boolVal('weekend_mode', false);
       const saraEscalation      = boolVal('sara_escalation', true);
       const actionableNotifs    = boolVal('actionable_notifs', true);
+      const task5MinAlert       = boolVal('task_5min_alert', true);
 
       const morningBriefTimeStr = strVal('morning_brief_time', '07:30');
       const overdueNudgeTimeStr = strVal('overdue_nudge_time', '08:00');
@@ -413,6 +485,8 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       const taskBufferMin       = parseInt(strVal('task_buffer', '60'), 10);
       const inactivityDays      = parseInt(strVal('inactivity_days', '3'), 10);
       const habitStreakTimeStr   = strVal('habit_streak_time', '20:00');
+      // Calendar event offset in minutes (user-configurable, default 60 min)
+      const calendarOffsetMin   = parseInt(kv['zentrack_notif_calendar_offset'] ?? '60', 10) || 60;
 
       const defaultTimeStr = kv['zentrack_default_notif_time'] ?? '09:00';
       const defaultTime = parseHM(defaultTimeStr);
@@ -640,23 +714,25 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
                 getRandomMessage(TASK_BUFFER_POOLS(task.title, taskBufferMin)),
                 tBuffer,
                 { taskId: task.id, taskTitle: task.title },
-                'reminders',
+                'task_alarm',
                 actionableNotifs ? 'task_reminder' : undefined
               );
             }
 
             // ── 5 Minutes Before Alert ──────────────────────────────────────
-            const t5 = new Date(base.getTime() - 5 * 60 * 1000);
-            if (t5 > now) {
-              enqueue(
-                PRIORITY.HIGH,
-                `Starting in 5m: ${task.title}`,
-                'Your scheduled task begins shortly.',
-                t5,
-                { taskId: task.id, taskTitle: task.title },
-                'reminders',
-                actionableNotifs ? 'task_reminder' : undefined
-              );
+            if (task5MinAlert) {
+              const t5 = new Date(base.getTime() - 5 * 60 * 1000);
+              if (t5 > now) {
+                enqueue(
+                  PRIORITY.HIGH,
+                  `5 minutes: ${task.title}`,
+                  'Your task starts in 5 minutes. Finish up and get ready.',
+                  t5,
+                  { taskId: task.id, taskTitle: task.title },
+                  'task_alarm',
+                  actionableNotifs ? 'task_reminder' : undefined
+                );
+              }
             }
 
             // ── Exact Time Alert (Full Screen & Heads-Up) ───────────────────
@@ -664,10 +740,10 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
               enqueue(
                 PRIORITY.CRITICAL,
                 task.title,
-                'Scheduled for now. Tap to complete or reschedule.',
+                'Time to start. Tap to open or mark as done.',
                 base,
                 { taskId: task.id, taskTitle: task.title },
-                'reminders',
+                'task_alarm',
                 actionableNotifs ? 'task_reminder' : undefined
               );
             }
@@ -783,14 +859,20 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         const t = parseTimeString(event.startTime);
         if (t) {
           base.setHours(t.hours, t.minutes, 0, 0);
-          const evTrigger = new Date(base.getTime() - 60 * 60 * 1000);
+          // Use user-configurable offset (default 60 min before event)
+          const evTrigger = new Date(base.getTime() - calendarOffsetMin * 60 * 1000);
           if (evTrigger > now) {
+            // Build human-readable offset label for the notification body
+            const offsetLabel = calendarOffsetMin >= 60
+              ? calendarOffsetMin === 60 ? '1 hour' : `${calendarOffsetMin / 60} hours`
+              : `${calendarOffsetMin} min`;
             enqueue(
               PRIORITY.MEDIUM,
               `Upcoming Event: ${event.title}`,
-              getRandomMessage(CALENDAR_EVENT_POOLS(event.title, event.startTime)),
+              getRandomMessage(CALENDAR_EVENT_POOLS(event.title, event.startTime, offsetLabel)),
               evTrigger,
-              { eventId: event.id }
+              { eventId: event.id },
+              'reminders'  // BUG-11 FIX: use 'reminders' channel (louder) — calendar events are time-critical
             );
           }
         }
@@ -878,7 +960,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
 
             enqueue(
               PRIORITY.MEDIUM,
-              `${habit.emoji || '⭐'} ${habit.name}`,
+              habit.name,  // BUG-09 FIX: No emoji in title — emoji stays in-app only
               habitBody,
               fireDate,
               { type: 'habit_reminder', habitId: habit.id },
@@ -902,7 +984,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
             if (t48 > now && (t48.getTime() - now.getTime()) <= 48 * 60 * 60 * 1000) {
               enqueue(
                 PRIORITY.HIGH,
-                'Assignment Alert ⏳',
+                `Deadline in 48h: ${asn.title}`,  // BUG-10 FIX: removed emoji '⏳'
                 getRandomMessage(ASSIGNMENT_48H_POOLS(asn.title)),
                 t48,
                 { type: 'assignment_48h', asnId: asn.id }
@@ -934,12 +1016,15 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
 
       // ── 8. Attendance Low-Percentage Warnings (<75%) — CRITICAL ───────────
       if (attendanceWarning && modAttendance) {
-        const THRESHOLD = 75;
         for (let dayOffset = 0; dayOffset <= 1; dayOffset++) {
           const targetDay = new Date(now);
           targetDay.setDate(targetDay.getDate() + dayOffset);
 
           for (const subj of attendance) {
+            // Fix #9: Use per-subject target instead of hardcoded 75%.
+            // Students with 80%/85% targets were never warned; students with
+            // 65% targets got false alarms.
+            const THRESHOLD = subj.targetPercentage || 75;
             const totalAtt = (subj.classesAttended || 0) + (subj.labsAttended || 0);
             const totalTotal = (subj.classesTotal || 0) + (subj.labsTotal || 0);
             if (!totalTotal) continue;
@@ -1287,7 +1372,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       const waterReminderFreq = parseInt(kv['@zentrack_water_reminder_freq'] || '0', 10);
       if (waterReminderFreq > 0) {
         const savedWaterGoal = kv['zentrack_water_goal_ml'];
-        const DAILY_WATER_GOAL_ML = savedWaterGoal ? parseInt(savedWaterGoal, 10) : 2000;
+        const DAILY_WATER_GOAL_ML = savedWaterGoal ? parseInt(savedWaterGoal, 10) : 3800;
         const waterLoggedTodayMl = waterLogs
           .filter(w => (w.date || '').slice(0, 10) === todayStr)
           .reduce((sum, w) => sum + (w.amountMl || 0), 0);
@@ -1431,7 +1516,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         preparedList.push({
           title: notif.title,
           body: notif.body,
-          data: Platform.OS === 'ios' ? notif.data : undefined,
+          data: notif.data,  // Must be sent on BOTH platforms — Android action handlers (mark_done, mark_present, log_habit, etc.) need taskId/subjectId/habitId to write to Firestore
           categoryId: notif.categoryId,
           channel: notif.channel,
           notifPriority,
@@ -1741,22 +1826,22 @@ export async function scheduleSingleTaskReminder(task: Task) {
           type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval',
           seconds: delaySeconds,
           repeats: false,
-          channelId: 'reminders',
+          channelId: 'task_alarm',
         }
       : {
           type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
           date: triggerTime,
-          channelId: 'reminders',
         };
 
     await Notifications.scheduleNotificationAsync({
       content: {
         title: task.title,
-        body: 'Scheduled for now. Tap to complete or reschedule.',
-        data: Platform.OS === 'ios' ? { taskId: task.id, taskTitle: task.title } : undefined,
-        channelId: 'reminders',
-        ...(Platform.OS === 'ios' ? { sound: 'default' } : {}),
+        body: 'Time to start. Tap to open or mark as done.',
+        data: { taskId: task.id, taskTitle: task.title },  // BUG-02 FIX: always send data on both platforms
+        channelId: 'task_alarm',
+        sound: 'default',
         priority: Notifications.AndroidNotificationPriority?.MAX ?? ('max' as any),
+        vibrate: [0, 400, 200, 400, 100, 400, 100, 800],
         categoryIdentifier: 'task_reminder',
       } as any,
       trigger: triggerConfig,

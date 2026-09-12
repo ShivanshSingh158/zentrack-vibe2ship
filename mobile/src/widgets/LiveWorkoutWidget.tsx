@@ -562,12 +562,14 @@ export function LiveWorkoutWidget({ data, width = 330, height = 280 }: LiveWorko
               <FlexWidget
                 style={{
                   backgroundColor: C.cardSurface,
-                  borderRadius: 9,
+                  borderRadius: 10,
                   borderWidth: 1,
                   borderColor: C.cardBorder,
-                  paddingHorizontal: 9,
-                  paddingVertical: isCompact ? 5 : 6,
-                  marginRight: 5,
+                  paddingHorizontal: 10,
+                  paddingVertical: isCompact ? 5 : 7,
+                  marginRight: 6,
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
                 clickAction="adjust_workout_weight"
                 clickActionData={{
@@ -584,12 +586,14 @@ export function LiveWorkoutWidget({ data, width = 330, height = 280 }: LiveWorko
               <FlexWidget
                 style={{
                   backgroundColor: C.cardSurface,
-                  borderRadius: 9,
+                  borderRadius: 10,
                   borderWidth: 1,
                   borderColor: C.cardBorder,
-                  paddingHorizontal: 9,
-                  paddingVertical: isCompact ? 5 : 6,
-                  marginRight: 7,
+                  paddingHorizontal: 10,
+                  paddingVertical: isCompact ? 5 : 7,
+                  marginRight: 8,
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
                 clickAction="adjust_workout_weight"
                 clickActionData={{
@@ -607,8 +611,8 @@ export function LiveWorkoutWidget({ data, width = 330, height = 280 }: LiveWorko
                 style={{
                   flex: 1,
                   backgroundColor: C.green,
-                  borderRadius: 10,
-                  paddingVertical: isCompact ? 6 : 7,
+                  borderRadius: 11,
+                  paddingVertical: isCompact ? 6 : 8,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
@@ -636,12 +640,14 @@ export function LiveWorkoutWidget({ data, width = 330, height = 280 }: LiveWorko
                 <FlexWidget
                   style={{
                     backgroundColor: C.cardSurface,
-                    borderRadius: 9,
+                    borderRadius: 10,
                     borderWidth: 1,
                     borderColor: C.cardBorder,
-                    paddingHorizontal: 9,
-                    paddingVertical: 6,
+                    paddingHorizontal: 10,
+                    paddingVertical: 7,
                     marginLeft: 6,
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
                   clickAction="next_workout_exercise"
                   clickActionData={{ action: 'next_workout_exercise', exerciseId: currentEx.id }}

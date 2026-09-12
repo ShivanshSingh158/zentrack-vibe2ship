@@ -1,11 +1,12 @@
 import React, { useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated as RNAnimated } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
   withSequence,
   withTiming,
+  withRepeat,
   Easing,
   FadeInDown,
   FadeOut,
@@ -81,20 +82,28 @@ function formatTime12(timeStr?: string) {
 }
 
 const getTagColor = (tag: string, colors: any) => {
+  const cleanTag = tag.toLowerCase().replace(/^#/, '').trim();
   const map: Record<string, string> = {
     'high': colors.error,
     'work': colors.accentBlue,
     'personal': colors.accentGreen,
     'errand': colors.accentAmber,
     'gym': colors.accentPrimary,
+    'college': '#a599ff',
+    'finance': '#5eda9e',
+    'placement': '#ff9f4d',
   };
-  return map[tag.toLowerCase()] || colors.textTertiary;
+  return map[cleanTag] || colors.textTertiary;
 };
 
-const getFormatSubtext = (task: Task, isOverdue: boolean, colors: any) => {
+const getFormatSubtext = (task: Task, isOverdue: boolean, priorityColor: string | null, colors: any) => {
   if (isOverdue) return { text: 'Overdue', color: colors.error, icon: 'alert-circle' as const };
   if (task.timeSlot) {
-    return { text: formatTime12(task.timeSlot), color: colors.textTertiary, icon: 'time-outline' as const };
+    return { 
+      text: formatTime12(task.timeSlot), 
+      color: priorityColor || colors.textTertiary, 
+      icon: 'time-outline' as const 
+    };
   }
   if (task.date && task.date > today) {
     return { text: formatDateShort(task.date), color: colors.textTertiary, icon: 'calendar-outline' as const };
@@ -114,37 +123,131 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
   const isDone = task.status === 'completed' || isCompleting;
   const [isExpanded, setIsExpanded] = React.useState(false);
 
+  // Animated strikethrough, dissolve & card recession
+  const strikeProgress = useSharedValue(isDone ? 1 : 0);
+  const titleOpacity = useSharedValue(isDone ? 0.4 : 1);
+  const rowScale = useSharedValue(isDone ? 0.985 : 1);
+
+  React.useEffect(() => {
+    strikeProgress.value = withTiming(isDone ? 1 : 0, { duration: 180, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
+    titleOpacity.value = withTiming(isDone ? 0.4 : 1, { duration: 180 });
+    rowScale.value = withTiming(isDone ? 0.985 : 1, { duration: 180 });
+  }, [isDone]);
+
   const totalSubtasks = task.subtasks?.length || 0;
   const completedSubtasks = task.subtasks?.filter(st => st.completed).length || 0;
   const hasSubtasks = totalSubtasks > 0;
 
-  const subtextData = React.useMemo(() => getFormatSubtext(task, isOverdue, colors), [task.timeSlot, task.date, task.status, isOverdue, colors]);
+  // ── Priority Color: High -> #FF453A, Medium -> #FF9F0A, Low -> #30D158 ──
+  const priorityColor = React.useMemo(() => {
+    if (task.priority === 'high' || task.priority === 'P1') return '#FF453A';
+    if (task.priority === 'medium' || task.priority === 'P2') return '#FF9F0A';
+    if (task.priority === 'low' || task.priority === 'P3') return '#30D158';
+    return null;
+  }, [task.priority]);
+
+  const subtextData = React.useMemo(
+    () => getFormatSubtext(task, isOverdue, priorityColor, colors),
+    [task.timeSlot, task.date, task.status, isOverdue, priorityColor, colors]
+  );
   const taskTags = task.tags && task.tags.length > 0 ? task.tags : null;
+
+  // ── Dynamic "Live Now" Indicator & Countdown ──
+  const liveNowInfo = React.useMemo(() => {
+    if (!task.timeSlot || task.status === 'completed' || task.date !== today) return null;
+    const now = new Date();
+    const currentMin = now.getHours() * 60 + now.getMinutes();
+    const parts = task.timeSlot.split(/[-–—•]| to /i);
+    const parseSlot = (str: string) => {
+      const cleaned = str.trim().toUpperCase();
+      const isPM = cleaned.includes('PM');
+      const isAM = cleaned.includes('AM');
+      const [h, m] = cleaned.replace(/[^\d:]/g, '').split(':');
+      if (!h) return null;
+      let hh = parseInt(h, 10);
+      const mm = m ? parseInt(m, 10) : 0;
+      if (isPM && hh < 12) hh += 12;
+      if (isAM && hh === 12) hh = 0;
+      return hh * 60 + mm;
+    };
+    const startMin = parseSlot(parts[0]);
+    if (startMin == null) return null;
+    const duration = task.estimatedMinutes || 45;
+    const endMin = parts.length > 1 ? (parseSlot(parts[1]) ?? startMin + duration) : (startMin + duration);
+    if (currentMin >= startMin && currentMin <= endMin) {
+      const remainingMins = Math.max(1, endMin - currentMin);
+      return { remainingMins };
+    }
+    return null;
+  }, [task.timeSlot, task.status, task.date, task.estimatedMinutes]);
+
+  const isLiveNow = !!liveNowInfo;
+
+  // ── Relative Overdue Time Calculation ──
+  const overdueText = React.useMemo(() => {
+    if (!isOverdue || !task.date) return 'Overdue';
+    const now = new Date();
+    const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const [y, m, d] = task.date.split('-').map(Number);
+    const taskDateZero = new Date(y, m - 1, d).getTime();
+    const diffDays = Math.round((todayZero - taskDateZero) / (1000 * 60 * 60 * 24));
+    if (diffDays === 1) return 'Overdue by 1 day';
+    if (diffDays > 1) return `Overdue by ${diffDays} days`;
+    return 'Overdue';
+  }, [isOverdue, task.date]);
+
+  // Ambient Soft Radar Pulse Animation
+  const pulseAnim = useSharedValue(1);
+  React.useEffect(() => {
+    if (isLiveNow || isOverdue) {
+      pulseAnim.value = withRepeat(
+        withSequence(
+          withTiming(0.4, { duration: 900, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        true
+      );
+    }
+  }, [isLiveNow, isOverdue]);
+
+  const animatedPulseStyle = useAnimatedStyle(() => ({
+    opacity: pulseAnim.value,
+    transform: [{ scale: 0.85 + pulseAnim.value * 0.25 }],
+  }));
 
   const animatedCheckStyle = useAnimatedStyle(() => ({
     transform: [{ scale: checkScale.value }],
   }));
 
   const animatedRowStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: rowTranslateX.value }],
+    transform: [
+      { translateX: rowTranslateX.value },
+      { scale: rowScale.value },
+    ],
     opacity: rowOpacity.value,
+  }));
+
+  const animatedTitleStyle = useAnimatedStyle(() => ({
+    opacity: titleOpacity.value,
+  }));
+
+  const animatedStrikeStyle = useAnimatedStyle(() => ({
+    width: `${strikeProgress.value * 100}%`,
+    opacity: strikeProgress.value > 0.05 ? 1 : 0,
   }));
 
   const handleComplete = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     if (!isDone) {
-      // Completing a pending task — optimistic animation
       if (onCompleteStart) onCompleteStart();
       setIsCompleting(true);
-      // Use runOnJS to fire onComplete exactly when the last animation step
-      // finishes — frame-accurate, no setTimeout race on a loaded JS thread.
       checkScale.value = withSequence(
         withTiming(0.8, { duration: 100 }),
         withTiming(1.2, { duration: 150 }),
         withTiming(1.0, { duration: 100 }, () => { runOnJS(onComplete)(); })
       );
     } else {
-      // Un-completing — reset the local optimistic flag so isDone clears immediately
       setIsCompleting(false);
       onComplete();
     }
@@ -155,13 +258,21 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
     onLongPress();
   }, [onLongPress]);
 
-  const renderLeftActions = useCallback(() => (
-    <View style={styles.actionLeftContainer}>
-      <View style={[styles.actionLeft, { backgroundColor: colors.accentGreen }]}>
-        <Ionicons name="checkmark" size={22} color="#fff" />
+  // Haptic Swipe-to-Complete with Threshold Pop: checkmark scales 0.7 -> 1.2
+  const renderLeftActions = useCallback((progress: any, dragX: any) => {
+    const scale = progress.interpolate({
+      inputRange: [0, 0.6, 1],
+      outputRange: [0.7, 0.9, 1.2],
+      extrapolate: 'clamp',
+    });
+    return (
+      <View style={styles.actionLeftContainer}>
+        <RNAnimated.View style={[styles.actionLeft, { backgroundColor: colors.accentGreen, transform: [{ scale }] }]}>
+          <Ionicons name="checkmark" size={22} color="#fff" />
+        </RNAnimated.View>
       </View>
-    </View>
-  ), [colors]);
+    );
+  }, [colors, styles]);
 
   const renderRightActions = useCallback(() => (
     <View style={styles.actionRightContainer}>
@@ -174,7 +285,7 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
         </TouchableOpacity>
       )}
     </View>
-  ), [onReschedule, onAddSubtask, colors, isDark]);
+  ), [onReschedule, onAddSubtask, colors, isDark, styles]);
 
   const handleSwipeOpen = useCallback((direction: string) => {
     if (direction === 'left') {
@@ -188,6 +299,11 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
       ref={swipeableRef}
       renderLeftActions={renderLeftActions}
       renderRightActions={renderRightActions}
+      onSwipeableWillOpen={(direction) => {
+        if (direction === 'left') {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
+      }}
       onSwipeableOpen={handleSwipeOpen}
       containerStyle={{ backgroundColor: 'transparent' }}
     >
@@ -222,15 +338,22 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
             </View>
 
             <View style={styles.content}>
-              <Text style={[styles.title, isDone && styles.titleDone]} numberOfLines={1}>
-                {task.title}
-              </Text>
+              {/* Title with Animated Strikethrough Line */}
+              <View style={styles.titleWrapper}>
+                <Animated.Text style={[styles.title, isDone && styles.titleDone, animatedTitleStyle]} numberOfLines={1}>
+                  {task.title}
+                </Animated.Text>
+                <Animated.View style={[styles.strikeLine, animatedStrikeStyle]} />
+              </View>
 
               {/* Subtask Progress Bar */}
               {hasSubtasks && !isDone && (
                 <TouchableOpacity 
                   style={styles.subtaskProgressContainer}
-                  onPress={() => setIsExpanded(!isExpanded)}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setIsExpanded(!isExpanded);
+                  }}
                   activeOpacity={0.7}
                 >
                   <View style={styles.progressBarBg}>
@@ -243,14 +366,17 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
                 </TouchableOpacity>
               )}
 
-              {/* Tag Pills */}
+              {/* Tag Pills & Badges */}
               {taskTags && !isDone && (
                 <View style={styles.tagRow}>
-                  {taskTags.slice(0, 3).map(tag => (
-                    <View key={tag} style={[styles.tagPill, { backgroundColor: getTagColor(tag, colors) + '18' }]}>
-                      <Text style={[styles.tagPillText, { color: getTagColor(tag, colors) }]}>{tag}</Text>
-                    </View>
-                  ))}
+                  {taskTags.slice(0, 3).map(tag => {
+                    const displayTag = tag.startsWith('#') ? tag : `#${tag}`;
+                    return (
+                      <View key={tag} style={[styles.tagPill, { backgroundColor: getTagColor(tag, colors) + '18' }]}>
+                        <Text style={[styles.tagPillText, { color: getTagColor(tag, colors) }]}>{displayTag}</Text>
+                      </View>
+                    );
+                  })}
                 </View>
               )}
             </View>
@@ -262,23 +388,44 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
             onLongPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleLongPress}
             activeOpacity={0.75}
           >
-            {subtextData && !isDone && (
+            {/* Live Now Pulsing Status Chip */}
+            {isLiveNow && !isDone && (
+              <View style={styles.liveNowPill}>
+                <Animated.View style={[styles.liveDot, animatedPulseStyle]} />
+                <Text style={styles.liveNowText}>In Progress • {liveNowInfo?.remainingMins}m left</Text>
+              </View>
+            )}
+
+            {/* Overdue Radar Badge */}
+            {isOverdue && !isDone && !isLiveNow && (
+              <View style={styles.overdueRadarPill}>
+                <Animated.View style={[styles.overdueDot, animatedPulseStyle]} />
+                <Text style={styles.overdueRadarText}>{overdueText}</Text>
+              </View>
+            )}
+
+            {subtextData && !isDone && !isOverdue && !isLiveNow && (
               <View style={styles.subtextRowRight}>
                 <Ionicons name={subtextData.icon} size={12} color={subtextData.color} style={{ marginRight: 4 }} />
-                <Text style={[styles.subtext, { color: subtextData.color }]}>
+                <Text style={[styles.subtext, { color: subtextData.color, fontFamily: priorityColor ? 'Inter_600SemiBold' : 'Inter_500Medium' }]}>
                   {subtextData.text}
                 </Text>
-                {subtextData.icon === 'time-outline' && !isOverdue && (
-                   <Ionicons name="repeat" size={10} color={colors.textTertiary} style={{ marginLeft: 6 }} />
+                {subtextData.icon === 'time-outline' && (
+                   <Ionicons name="repeat" size={10} color={subtextData.color} style={{ marginLeft: 6, opacity: 0.7 }} />
                 )}
               </View>
             )}
           </TouchableOpacity>
         </View>
 
-        {/* Expanded Subtasks List */}
+        {/* ── Subtask Smooth Accordion Fold ── */}
         {isExpanded && hasSubtasks && !isDone && (
-          <View style={styles.subtaskList}>
+          <Animated.View
+            entering={FadeInDown.duration(200).springify().damping(18)}
+            exiting={FadeOut.duration(140)}
+            layout={LinearTransition.springify().damping(18).stiffness(180)}
+            style={styles.subtaskList}
+          >
             {task.subtasks!.map((st, idx) => (
               <TouchableOpacity 
                 key={st.id || idx} 
@@ -291,7 +438,6 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
                   newSubtasks[idx] = { ...st, completed: !st.completed };
                   const newCompletedCount = newSubtasks.filter(s => s.completed).length;
                   
-                  // If this is the last subtask being completed, auto-complete the parent
                   if (newCompletedCount === totalSubtasks && !st.completed) {
                     onUpdateTask(task.id, { subtasks: newSubtasks });
                     setTimeout(() => {
@@ -310,7 +456,7 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
                 </Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </Animated.View>
         )}
       </Animated.View>
     </Swipeable>
@@ -324,6 +470,7 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
     prev.task.priority === next.task.priority &&
     prev.task.timeSlot === next.task.timeSlot &&
     prev.task.subtasks === next.task.subtasks &&
+    prev.task.tags === next.task.tags &&
     prev.isOverdue === next.isOverdue &&
     prev.isBulkEdit === next.isBulkEdit &&
     prev.isSelected === next.isSelected
@@ -343,14 +490,14 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   leftHalf: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: 10,
     paddingLeft: 4,
     paddingRight: 8,
   },
   rightHalf: {
     alignItems: 'flex-end',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingVertical: 10,
     paddingRight: 4,
     paddingLeft: 8,
@@ -358,6 +505,7 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
   checkArea: {
     paddingRight: 14,
+    height: 20,
     justifyContent: 'center',
   },
   checkbox: {
@@ -380,11 +528,12 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
   content: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   title: {
     fontFamily: 'Inter_500Medium',
     fontSize: 14,
+    lineHeight: 20,
     color: colors.textPrimary,
   },
   titleDone: {
@@ -395,7 +544,7 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   subtextRowRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
+    height: 20,
   },
   subtextRow: {
     flexDirection: 'row',
@@ -509,5 +658,81 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   tagPillText: {
     fontFamily: 'Inter_500Medium',
     fontSize: 10,
+  },
+  priorityStripe: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3.5,
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
+    zIndex: 2,
+    shadowOffset: { width: 1, height: 0 },
+    shadowOpacity: isDark ? 0.6 : 0.25,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  titleWrapper: {
+    position: 'relative',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    minHeight: 20,
+    maxWidth: '100%',
+  },
+  strikeLine: {
+    position: 'absolute',
+    left: 0,
+    top: '52%',
+    height: 1.5,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)',
+    borderRadius: 1,
+    zIndex: 1,
+  },
+  liveNowPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? 'rgba(165, 153, 255, 0.12)' : 'rgba(108, 92, 231, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(165, 153, 255, 0.35)' : 'rgba(108, 92, 231, 0.28)',
+    height: 20,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accentPrimary,
+    marginRight: 5,
+  },
+  liveNowText: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    color: colors.accentPrimary,
+  },
+  overdueRadarPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? 'rgba(255,105,97,0.12)' : 'rgba(255,59,48,0.08)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,105,97,0.35)' : 'rgba(255,59,48,0.25)',
+    height: 20,
+  },
+  overdueDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#ff6961',
+    marginRight: 5,
+  },
+  overdueRadarText: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#ff6961',
   },
 });

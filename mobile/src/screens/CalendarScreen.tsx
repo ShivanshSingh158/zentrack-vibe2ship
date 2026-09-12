@@ -1,10 +1,8 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Dimensions, LayoutAnimation, UIManager, Platform, Modal } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useState, useMemo, useRef, useCallback, Suspense } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, Dimensions, Platform, Modal } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Calendar } from 'react-native-calendars';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
-import { AddEventModal } from '../components/Calendar/AddEventModal';
 import { CalendarWeekStripPager } from '../components/Calendar/CalendarWeekStripPager';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { callGeminiProxy } from '../services/geminiProxy';
@@ -14,27 +12,31 @@ import AnimatedPressable from '../components/AnimatedPressable';
 import * as Haptics from 'expo-haptics';
 import { useCalendarData } from './calendar/useCalendarData';
 import { CalendarDayView } from './calendar/CalendarDayView';
-import { CalendarWeekView } from './calendar/CalendarWeekView';
-import CalendarAgendaView from './calendar/CalendarAgendaView';
-import { CalendarGymModal } from './calendar/CalendarGymModal';
-import { EventDetailSheet } from './calendar/EventDetailSheet';
+
+// ── Lazy-loaded Alternate Calendar Views: Skips parsing ~580 LOC until view is selected ──
+const CalendarWeekView = React.lazy(() => import('./calendar/CalendarWeekView').then(m => ({ default: m.CalendarWeekView })));
+const CalendarAgendaView = React.lazy(() => import('./calendar/CalendarAgendaView'));
+
+// ── Lazy-loaded Modals & Month Dropdown: Defers ~1,064 LOC and react-native-calendars ──
+const AddEventModal = React.lazy(() => import('../components/Calendar/AddEventModal').then(m => ({ default: m.AddEventModal })));
+const EventDetailSheet = React.lazy(() => import('./calendar/EventDetailSheet').then(m => ({ default: m.EventDetailSheet })));
+const CalendarGymModal = React.lazy(() => import('./calendar/CalendarGymModal').then(m => ({ default: m.CalendarGymModal })));
+const MonthDropdownCalendar = React.lazy(() => import('./calendar/MonthDropdownCalendar'));
 import { makeStyles } from './calendar/calendarStyles';
 import { getEventColors, format12Hour, parseTimeTo24h, HOUR_HEIGHT } from './calendar/calendarUtils';
 import { formatLocalDateStr } from '../utils/dateUtils';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 const ALL_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function CalendarScreen() {
+  const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
   const [findingSlots, setFindingSlots] = useState(false);
   const [aiSlotResult, setAiSlotResult] = useState<string | null>(null);
+  const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
 
   const data = useCalendarData();
   const {
@@ -77,7 +79,6 @@ export default function CalendarScreen() {
   const monthName = useMemo(() => selectedLocalDate.toLocaleString('default', { month: 'long' }), [selectedLocalDate]);
 
   const toggleMonthDropdown = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setIsMonthDropdownOpen((prev) => !prev);
   }, [setIsMonthDropdownOpen]);
 
@@ -184,8 +185,9 @@ export default function CalendarScreen() {
     return marks;
   }, [baseMarkedDots, selectedDate, colors.accentPrimary, isDark]);
 
-  // Month Density Heat Map: count events per date
+  // Month Density Heat Map: count events per date (only needed in Month view)
   const eventCountByDate = useMemo(() => {
+    if (currentView !== 'Month') return undefined;
     const counts: Record<string, number> = {};
     const bump = (date: string) => {
       counts[date] = (counts[date] || 0) + 1;
@@ -208,7 +210,7 @@ export default function CalendarScreen() {
       bump(monthClassDates[i]);
     }
     return counts;
-  }, [customEvents, tasks, gymLogs, monthClassDates]);
+  }, [currentView, customEvents, tasks, gymLogs, monthClassDates]);
 
   // In-memory cache for AI Free Slot results keyed by date + events fingerprint
   const slotCacheRef = useRef<Record<string, string>>({});
@@ -310,7 +312,7 @@ export default function CalendarScreen() {
         </Modal>
       )}
 
-      {/* 1.5. SUB HEADER (Month + View Selector) */}
+      {/* 1.5. SUB HEADER (Month + View Selector & Today) */}
       <View style={styles.subHeader}>
         {currentView === 'Month' ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
@@ -343,101 +345,128 @@ export default function CalendarScreen() {
           </TouchableOpacity>
         )}
 
-        {/* "Today" jump button — only visible when user navigated away from today */}
-        {!isToday && (
+        {/* Right side: Today jump button + Collapsed View Dropdown */}
+        <View style={styles.subHeaderRight}>
+          {!isToday && (
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setSelectedDate(todayStr);
+                setTimeout(() => {
+                  scrollToCurrentTime(true);
+                }, 120);
+              }}
+              style={styles.todayBtn}
+              activeOpacity={0.75}
+            >
+              <Ionicons
+                name="today-outline"
+                size={13}
+                color={isDark ? '#a599ff' : colors.accentPrimary}
+                style={{ marginRight: 4 }}
+              />
+              <Text style={styles.todayBtnText}>Today</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Collapsed View Selector: Shows active view with dropdown indicator */}
           <TouchableOpacity
+            style={styles.viewDropdownBtn}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setSelectedDate(todayStr);
-              setTimeout(() => {
-                scrollToCurrentTime(true);
-              }, 120);
+              setIsViewMenuOpen(prev => !prev);
             }}
-            style={{
-              paddingVertical: 5,
-              paddingHorizontal: 12,
-              borderRadius: 16,
-              borderWidth: 1,
-              borderColor: colors.accentPrimary || '#a599ff',
-              marginRight: 8,
-            }}
-            activeOpacity={0.7}
+            activeOpacity={0.75}
           >
-            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 12, color: colors.accentPrimary || '#a599ff' }}>
-              Today
-            </Text>
+            <Ionicons
+              name={currentView === 'Day' ? 'calendar-outline' : currentView === 'Week' ? 'grid-outline' : 'calendar-number-outline'}
+              size={13}
+              color={isDark ? '#a599ff' : colors.accentPrimary}
+              style={{ marginRight: 5 }}
+            />
+            <Text style={styles.viewDropdownText}>{currentView}</Text>
+            <Ionicons
+              name={isViewMenuOpen ? 'chevron-up' : 'chevron-down'}
+              size={12}
+              color={colors.textMuted}
+              style={{ marginLeft: 4 }}
+            />
           </TouchableOpacity>
-        )}
-
-        <View style={styles.viewSelector}>
-          {(['Day', 'Week', 'Month'] as const).map(view => (
-            <TouchableOpacity 
-              key={view}
-              style={[styles.viewSelectorBtn, currentView === view && styles.viewSelectorBtnActive]}
-              onPress={() => setCurrentView(view)}
-            >
-              <Text style={[styles.viewSelectorText, currentView === view && styles.viewSelectorTextActive]}>{view}</Text>
-            </TouchableOpacity>
-          ))}
         </View>
       </View>
 
+      {/* ── View Selector Dropdown Popover ── */}
+      {isViewMenuOpen && (
+        <Modal
+          visible={isViewMenuOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setIsViewMenuOpen(false)}
+        >
+          <TouchableOpacity
+            style={[styles.dropdownBackdrop, { paddingTop: insets.top + 48 }]}
+            activeOpacity={1}
+            onPress={() => setIsViewMenuOpen(false)}
+          >
+            <TouchableOpacity activeOpacity={1} style={styles.viewMenuCard} onPress={e => e.stopPropagation?.()}>
+              <Text style={styles.viewMenuHeader}>CALENDAR VIEW</Text>
+              {(['Day', 'Week', 'Month'] as const).map(view => {
+                const isActive = currentView === view;
+                const iconName = view === 'Day' ? 'calendar-outline' : view === 'Week' ? 'grid-outline' : 'calendar-number-outline';
+                const subtitle = view === 'Day' ? 'Hourly timeline' : view === 'Week' ? '7-day overview' : 'Monthly agenda';
+                return (
+                  <TouchableOpacity
+                    key={view}
+                    style={[styles.viewMenuItem, isActive && styles.viewMenuItemActive]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setCurrentView(view);
+                      setIsViewMenuOpen(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.viewMenuIconBox, isActive && styles.viewMenuIconBoxActive]}>
+                      <Ionicons
+                        name={iconName}
+                        size={15}
+                        color={isActive ? (isDark ? '#a599ff' : colors.accentPrimary) : colors.textMuted}
+                      />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={[styles.viewMenuItemText, isActive && styles.viewMenuItemTextActive]}>
+                        {view}
+                      </Text>
+                      <Text style={styles.viewMenuItemSub}>
+                        {subtitle}
+                      </Text>
+                    </View>
+                    {isActive && (
+                      <Ionicons name="checkmark" size={16} color={isDark ? '#a599ff' : colors.accentPrimary} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      )}
+
       {/* MONTH DROPDOWN */}
       {isMonthDropdownOpen && (
-        <View style={styles.monthDropdownContainer}>
-          <Calendar
-            current={selectedDate}
-            onDayPress={(day: any) => {
-               setSelectedDate(day.dateString);
-               setIsMonthDropdownOpen(false);
-               setTimeout(() => {
-                 agendaScrollRef.current?.scrollTo({ y: 0, animated: true });
-               }, 100);
-            }}
-            markingType={'multi-dot'}
+        <Suspense fallback={null}>
+          <MonthDropdownCalendar
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
+            setIsMonthDropdownOpen={setIsMonthDropdownOpen}
+            agendaScrollRef={agendaScrollRef}
             markedDates={markedDates}
-            hideExtraDays={true}
-            renderHeader={() => null}
-            theme={{
-              backgroundColor: 'transparent',
-              calendarBackground: 'transparent',
-              textSectionTitleColor: colors.textMuted,
-              selectedDayBackgroundColor: colors.accentPrimary,
-              selectedDayTextColor: isDark ? '#000000' : '#FFFFFF',
-              todayTextColor: colors.accentPrimary,
-              dayTextColor: colors.textPrimary,
-              textDisabledColor: colors.border,
-              dotColor: colors.accentPrimary,
-              selectedDotColor: isDark ? '#000000' : '#FFFFFF',
-              arrowColor: 'transparent',
-              monthTextColor: 'transparent',
-              textDayFontFamily: FONT_FAMILY.body,
-              textDayHeaderFontFamily: FONT_FAMILY.body,
-              textDayFontSize: 16,
-              textDayHeaderFontSize: 13,
-              'stylesheet.calendar.header': {
-                header: { height: 0, opacity: 0 },
-                week: { marginTop: 0, flexDirection: 'row', justifyContent: 'space-around' }
-              }
-            } as any}
+            colors={colors}
+            isDark={isDark}
+            styles={styles}
+            ALL_MONTHS={ALL_MONTHS}
+            currentMonthIdx={currentMonthIdx}
           />
-          {/* Month Chips row */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.monthChipsContainer}>
-            {ALL_MONTHS.map((m, idx) => (
-               <TouchableOpacity 
-                 key={m} 
-                 style={[styles.monthChip, currentMonthIdx === idx && styles.monthChipActive]}
-                 onPress={() => {
-                   const [y, m, day] = selectedDate.split('-').map(Number);
-                   const d = new Date(y, idx, Math.min(day, new Date(y, idx + 1, 0).getDate()));
-                   setSelectedDate(formatLocalDateStr(d));
-                 }}
-               >
-                 <Text style={[styles.monthChipText, currentMonthIdx === idx && styles.monthChipTextActive]}>{m}</Text>
-               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+        </Suspense>
       )}
 
       {/* 2. DATE SELECTOR (Horizontal Paging Week Strip — only in Day view) */}
@@ -469,73 +498,83 @@ export default function CalendarScreen() {
       {/* 4. WEEK VIEW GRID — conditional mount */}
       {currentView === 'Week' && (
         <View style={{ flex: 1 }}>
-          <CalendarWeekView
-            styles={styles} colors={colors} isDark={isDark} weekEvents={weekEvents}
-            DYNAMIC_HOURS={DYNAMIC_HOURS} minHour={minHour} maxHour={maxHour}
-            indicatorTop={indicatorTop} selectedDate={selectedDate} nowDateStr={todayStr}
-            setSelectedDate={setSelectedDate} setCurrentView={setCurrentView}
-            markedDates={baseMarkedDots}
-          />
+          <Suspense fallback={null}>
+            <CalendarWeekView
+              styles={styles} colors={colors} isDark={isDark} weekEvents={weekEvents}
+              DYNAMIC_HOURS={DYNAMIC_HOURS} minHour={minHour} maxHour={maxHour}
+              indicatorTop={indicatorTop} selectedDate={selectedDate} nowDateStr={todayStr}
+              setSelectedDate={setSelectedDate} setCurrentView={setCurrentView}
+              markedDates={baseMarkedDots}
+            />
+          </Suspense>
         </View>
       )}
 
       {/* 5. MONTH VIEW */}
       {currentView === 'Month' && (
         <View style={styles.monthViewContainer}>
-          <CalendarAgendaView
-            styles={styles} colors={colors} isDark={isDark} selectedDate={selectedDate}
-            currentView={currentView}
-            setSelectedDate={setSelectedDate} markedDates={markedDates}
-            dayEvents={dayEvents} setSelectedGymLog={setSelectedGymLog}
-            setGymStartTimeInput={setGymStartTimeInput} setGymEndTimeInput={setGymEndTimeInput}
-            setShowGymModal={setShowGymModal} setSelectedEvent={setSelectedEvent}
-            setShowEventModal={setShowEventModal} gymLogs={gymLogs}
-            eventCountByDate={eventCountByDate}
-          />
+          <Suspense fallback={null}>
+            <CalendarAgendaView
+              styles={styles} colors={colors} isDark={isDark} selectedDate={selectedDate}
+              currentView={currentView}
+              setSelectedDate={setSelectedDate} markedDates={markedDates}
+              dayEvents={dayEvents} setSelectedGymLog={setSelectedGymLog}
+              setGymStartTimeInput={setGymStartTimeInput} setGymEndTimeInput={setGymEndTimeInput}
+              setShowGymModal={setShowGymModal} setSelectedEvent={setSelectedEvent}
+              setShowEventModal={setShowEventModal} gymLogs={gymLogs}
+              eventCountByDate={eventCountByDate}
+            />
+          </Suspense>
         </View>
       )}
 
       {/* Event Details Sheet */}
       {showEventModal && (
-        <EventDetailSheet 
-          visible={showEventModal}
-          selectedEvent={selectedEvent} 
-          selectedDate={selectedDate}
-          styles={styles}
-          colors={colors}
-          isDark={isDark}
-          onClose={() => setShowEventModal(false)}
-          onEdit={() => {
-            setShowEventModal(false);
-            if (selectedEvent) {
-              navigation.navigate('AddEvent', { event: selectedEvent });
-            }
-          }}
-        />
+        <Suspense fallback={null}>
+          <EventDetailSheet 
+            visible={showEventModal}
+            selectedEvent={selectedEvent} 
+            selectedDate={selectedDate}
+            styles={styles}
+            colors={colors}
+            isDark={isDark}
+            onClose={() => setShowEventModal(false)}
+            onEdit={() => {
+              setShowEventModal(false);
+              if (selectedEvent) {
+                navigation.navigate('AddEvent', { event: selectedEvent });
+              }
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Add Event Modal */}
       {showAddModal && (
-        <AddEventModal
-          visible={showAddModal}
-          onClose={() => setShowAddModal(false)}
-          selectedDate={selectedDate}
-          initialStartTime={initialTime}
-        />
+        <Suspense fallback={null}>
+          <AddEventModal
+            visible={showAddModal}
+            onClose={() => setShowAddModal(false)}
+            selectedDate={selectedDate}
+            initialStartTime={initialTime}
+          />
+        </Suspense>
       )}
 
       {/* Gym Modal */}
       {showGymModal && (
-        <CalendarGymModal 
-          visible={showGymModal}
-          styles={styles}
-          gymStartTimeInput={gymStartTimeInput} 
-          setGymStartTimeInput={setGymStartTimeInput} 
-          gymEndTimeInput={gymEndTimeInput} 
-          setGymEndTimeInput={setGymEndTimeInput} 
-          onClose={() => setShowGymModal(false)}
-          onSave={handleSaveGymTime} 
-        />
+        <Suspense fallback={null}>
+          <CalendarGymModal 
+            visible={showGymModal}
+            styles={styles}
+            gymStartTimeInput={gymStartTimeInput} 
+            setGymStartTimeInput={setGymStartTimeInput} 
+            gymEndTimeInput={gymEndTimeInput} 
+            setGymEndTimeInput={setGymEndTimeInput} 
+            onClose={() => setShowGymModal(false)}
+            onSave={handleSaveGymTime} 
+          />
+        </Suspense>
       )}
 
       {/* Floating Add Event Button */}

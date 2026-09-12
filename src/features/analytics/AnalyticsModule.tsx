@@ -192,20 +192,19 @@ const DeltaBadge = ({ cur, prev, unit = '', color = '' }: { cur: number; prev: n
     </span>
   );
 };
-
-// ── Custom Dark Obsidian Recharts Tooltip ──
+// ── Custom Dual-Theme Recharts Tooltip ──
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload || !payload.length) return null;
   return (
     <div className="analytics-custom-tooltip">
-      <div className="analytics-tooltip-date">{label}</div>
+      <div className="analytics-tt-date">{label}</div>
       {payload.map((p: any, i: number) => (
-        <div key={i} className="analytics-tooltip-row">
+        <div key={i} className="analytics-tt-row">
           <div style={{ display: 'flex', alignItems: 'center' }}>
-            <span className="analytics-tooltip-dot" style={{ background: p.color || '#a599ff' }} />
-            <span style={{ color: 'var(--text-secondary)' }}>{p.name}:</span>
+            <span className="analytics-tt-dot" style={{ background: p.color || '#a599ff' }} />
+            <span className="analytics-tt-label">{p.name}:</span>
           </div>
-          <span style={{ fontWeight: 700, color: '#ffffff' }}>
+          <span className="analytics-tt-val">
             {typeof p.value === 'number' ? p.value.toLocaleString() : p.value}
           </span>
         </div>
@@ -665,7 +664,7 @@ const AnalyticsModuleInner = () => {
                     cx={RING_SIZE / 2}
                     cy={RING_SIZE / 2}
                     r={RING_R}
-                    stroke="rgba(255, 255, 255, 0.07)"
+                    stroke="var(--att-ring-track, rgba(255, 255, 255, 0.07))"
                     strokeWidth="12"
                     fill="none"
                   />
@@ -978,10 +977,10 @@ const AnalyticsModuleInner = () => {
 
               <div style={{ width: '100%', height: 230 }}>
                 <ResponsiveContainer>
-                  <BarChart data={taskChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                    <XAxis dataKey="label" stroke="#8e8e93" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#8e8e93" fontSize={11} tickLine={false} allowDecimals={false} />
+                  <BarChart data={taskChartData} margin={{ top: 10, right: 10, left: -20, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.05))" vertical={false} />
+                    <XAxis dataKey="label" stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} dy={4} />
+                    <YAxis stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} allowDecimals={false} />
                     <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="current" name="Current" fill="#a599ff" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="previous" name="Previous" fill="rgba(165, 153, 255, 0.35)" radius={[4, 4, 0, 0]} />
@@ -1010,16 +1009,16 @@ const AnalyticsModuleInner = () => {
 
               <div style={{ width: '100%', height: 230 }}>
                 <ResponsiveContainer>
-                  <AreaChart data={habitChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <AreaChart data={habitChartData} margin={{ top: 10, right: 10, left: -20, bottom: 8 }}>
                     <defs>
                       <linearGradient id="habitAreaGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.4} />
                         <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                    <XAxis dataKey="label" stroke="#8e8e93" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#8e8e93" fontSize={11} tickLine={false} domain={[0, 100]} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.05))" vertical={false} />
+                    <XAxis dataKey="label" stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} dy={4} />
+                    <YAxis stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} domain={[0, 100]} />
                     <Tooltip content={<CustomTooltip />} />
                     <Area
                       type="monotone"
@@ -1058,10 +1057,10 @@ const AnalyticsModuleInner = () => {
 
               <div style={{ width: '100%', height: 230 }}>
                 <ResponsiveContainer>
-                  <BarChart data={attendanceChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                    <XAxis dataKey="label" stroke="#8e8e93" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#8e8e93" fontSize={11} tickLine={false} allowDecimals={false} />
+                  <BarChart data={attendanceChartData} margin={{ top: 10, right: 10, left: -20, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.05))" vertical={false} />
+                    <XAxis dataKey="label" stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} dy={4} />
+                    <YAxis stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} allowDecimals={false} />
                     <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="attended" name="Attended" stackId="a" fill="#5eda9e" radius={[0, 0, 0, 0]} />
                     <Bar dataKey="missed" name="Missed" stackId="a" fill="#ff6961" radius={[4, 4, 0, 0]} />
@@ -1090,10 +1089,10 @@ const AnalyticsModuleInner = () => {
 
               <div style={{ width: '100%', height: 230 }}>
                 <ResponsiveContainer>
-                  <BarChart data={gymChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                    <XAxis dataKey="label" stroke="#8e8e93" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#8e8e93" fontSize={11} tickLine={false} />
+                  <BarChart data={gymChartData} margin={{ top: 10, right: 10, left: -10, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.05))" vertical={false} />
+                    <XAxis dataKey="label" stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} dy={4} />
+                    <YAxis stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} />
                     <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="volume" name="Volume" fill="#fbbf24" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -1170,10 +1169,10 @@ const AnalyticsModuleInner = () => {
 
               <div style={{ width: '100%', height: 230 }}>
                 <ResponsiveContainer>
-                  <BarChart data={focusChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                    <XAxis dataKey="label" stroke="#8e8e93" fontSize={11} tickLine={false} />
-                    <YAxis stroke="#8e8e93" fontSize={11} tickLine={false} />
+                  <BarChart data={focusChartData} margin={{ top: 10, right: 10, left: -20, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.05))" vertical={false} />
+                    <XAxis dataKey="label" stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} dy={4} />
+                    <YAxis stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} />
                     <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="focusHours" name="Focus Time (Hours)" fill="#38bdf8" radius={[4, 4, 0, 0]} />
                   </BarChart>

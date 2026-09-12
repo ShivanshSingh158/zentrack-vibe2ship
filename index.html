@@ -3,10 +3,40 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/logo_white.png" />
-    <!-- Prevent white flash on load — tell browser this is a dark-themed app -->
-    <meta name="color-scheme" content="dark" />
+    <!-- Dynamic Theme Init: Runs synchronously BEFORE render to eliminate any black or white theme flash on refresh -->
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('zen_theme');
+          var isLight = t === 'light' || t === 'plain' || t === null;
+          var doc = document.documentElement;
+          if (isLight) {
+            doc.classList.add('theme-light', 'theme-plain');
+            doc.classList.remove('theme-dark');
+            doc.style.backgroundColor = '#f6f8fa';
+            doc.style.colorScheme = 'light';
+          } else {
+            doc.classList.add('theme-dark');
+            doc.classList.remove('theme-light', 'theme-plain');
+            doc.style.backgroundColor = '#09080c';
+            doc.style.colorScheme = 'dark';
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <meta name="color-scheme" content="light dark" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#000000">
+    <meta name="theme-color" content="#f6f8fa" id="zen-theme-color">
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('zen_theme');
+          var isDark = t === 'dark';
+          var tc = document.getElementById('zen-theme-color');
+          if (tc) tc.setAttribute('content', isDark ? '#09080c' : '#f6f8fa');
+        } catch (e) {}
+      })();
+    </script>
     <link rel="apple-touch-icon" href="/icon-192.png">
 
     <!--
@@ -58,6 +88,21 @@
     </script>
   </head>
   <body>
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('zen_theme');
+          var isLight = t === 'light' || t === 'plain' || t === null;
+          if (isLight) {
+            document.body.className = 'theme-plain theme-light';
+            document.body.style.backgroundColor = '#f6f8fa';
+          } else {
+            document.body.className = 'theme-dark';
+            document.body.style.backgroundColor = '#09080c';
+          }
+        } catch (e) {}
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

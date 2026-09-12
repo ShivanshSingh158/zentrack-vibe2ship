@@ -9,9 +9,9 @@ interface PRFeedProps {
   data: { date: Date; dateStr: string; rawWeight: number; rawReps: number; volume: number }[];
 }
 
-export default function PRFeed({ data }: PRFeedProps) {
+export const PRFeed: React.FC<PRFeedProps> = React.memo(function PRFeed({ data }: PRFeedProps) {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors);
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const prs = useMemo(() => {
     if (!data || data.length === 0) return null;
@@ -79,7 +79,9 @@ export default function PRFeed({ data }: PRFeedProps) {
       </View>
     </View>
   );
-}
+});
+
+export default PRFeed;
 
 const makeStyles = (colors: any) => StyleSheet.create({
   container: {

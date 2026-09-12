@@ -6,7 +6,7 @@
  * and isolated modal render branches for seamless 60/120fps performance.
  */
 
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useState, useMemo, Suspense } from 'react';
 import {
   View,
   Text,
@@ -39,14 +39,16 @@ import { handleSyncError } from '../utils/errorUtils';
 import { feedback } from '../utils/haptics';
 
 import EmptyState from '../components/ui/EmptyState';
-import VaultDocumentViewer from '../components/Vault/VaultDocumentViewer';
 import StorageNodeRow from '../components/Notes/StorageNodeRow';
-import NoteEditorModal from '../components/Notes/NoteEditorModal';
 import StorageItemActionSheet from '../components/Notes/StorageItemActionSheet';
 import NewFolderModal from '../components/Notes/NewFolderModal';
 import RenameNodeModal from '../components/Notes/RenameNodeModal';
 import MoveNodeModal from '../components/Notes/MoveNodeModal';
 import BatchActionBar from '../components/Notes/BatchActionBar';
+
+// ── Lazy-loaded Heavy Modals: Skips parsing ~1,100 LOC until opened ──
+const NoteEditorModal = React.lazy(() => import('../components/Notes/NoteEditorModal'));
+const VaultDocumentViewer = React.lazy(() => import('../components/Vault/VaultDocumentViewer'));
 
 const FILTER_CATEGORIES = ['All', 'Documents', 'Images', 'Notes'] as const;
 type FilterCategory = typeof FILTER_CATEGORIES[number];
@@ -715,17 +717,21 @@ export default function NotesScreen() {
 
       {/* Note Editor Modal */}
       {editorNote && user && (
-        <NoteEditorModal
-          note={editorNote === 'new' ? null : editorNote}
-          userId={user.uid}
-          parentId={currentFolderId}
-          onClose={() => setEditorNote(null)}
-        />
+        <Suspense fallback={null}>
+          <NoteEditorModal
+            note={editorNote === 'new' ? null : editorNote}
+            userId={user.uid}
+            parentId={currentFolderId}
+            onClose={() => setEditorNote(null)}
+          />
+        </Suspense>
       )}
 
       {/* Vault Document Viewer */}
       {viewerNode && (
-        <VaultDocumentViewer node={viewerNode} onClose={() => setViewerNode(null)} />
+        <Suspense fallback={null}>
+          <VaultDocumentViewer node={viewerNode} onClose={() => setViewerNode(null)} />
+        </Suspense>
       )}
     </SafeAreaView>
   );

@@ -162,6 +162,15 @@
   justify-content: center;
 }
 
+.att-safe-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #5eda9e;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .att-overview-top {
   display: flex;
   align-items: center;
@@ -198,6 +207,18 @@
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.02em;
+}
+
+.att-overview-big-pct.safe {
+  color: #5eda9e;
+}
+
+.att-overview-big-pct.warning {
+  color: #ff9f4d;
+}
+
+.att-overview-big-pct.danger {
+  color: #ff6961;
 }
 
 .att-progress-track {
@@ -308,6 +329,12 @@
   background: #1c1c1f;
   border-color: #28282e;
   color: #ffffff;
+}
+
+.att-week-nav-btn.is-current-week {
+  background: rgba(165, 153, 255, 0.14);
+  border-color: rgba(165, 153, 255, 0.4);
+  color: #a599ff;
 }
 
 .att-week-strip {
@@ -431,6 +458,40 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin: 0;
+}
+
+/* Empty State Card (Holiday & All Clear) */
+.att-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2.2rem 1.25rem !important;
+  gap: 0.45rem;
+  min-height: 140px !important;
+}
+
+.att-empty-day-title {
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--att-text-primary);
+  margin: 0;
+}
+
+.att-empty-day-desc {
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.82rem;
+  color: var(--att-text-tertiary);
+  margin: 0;
+  max-width: 340px;
+  line-height: 1.4;
+}
+
+.att-all-clear-icon {
+  color: #5eda9e;
+  margin-bottom: 0.25rem;
 }
 
 .att-sessions-list {
@@ -686,6 +747,31 @@
   line-height: 1;
   letter-spacing: -0.02em;
   flex-shrink: 0;
+}
+
+.att-subject-total-pct.safe {
+  color: #5eda9e;
+}
+
+.att-subject-total-pct.warning {
+  color: #ff9f4d;
+}
+
+.att-subject-total-pct.danger {
+  color: #ff6961;
+}
+
+.att-extra-type-label {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.att-extra-type-label.class {
+  color: #a599ff;
+}
+
+.att-extra-type-label.lab {
+  color: #38bdf8;
 }
 
 /* Dual Class & Lab Progress Bars */

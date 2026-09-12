@@ -36,7 +36,7 @@ function degsToFraction(deg: number) {
   return deg / 360;
 }
 
-export default function MuscleDonutChart({ data }: MuscleDonutChartProps) {
+export const MuscleDonutChart: React.FC<MuscleDonutChartProps> = React.memo(function MuscleDonutChart({ data }: MuscleDonutChartProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
@@ -159,7 +159,9 @@ export default function MuscleDonutChart({ data }: MuscleDonutChartProps) {
       </View>
     </View>
   );
-}
+});
+
+export default MuscleDonutChart;
 
 const makeStyles = (colors: any, isDark: boolean = true) =>
   StyleSheet.create({

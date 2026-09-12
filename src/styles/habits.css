@@ -1,9 +1,9 @@
 /* ==========================================================================
-   ZenTrack Habits & Streaks Stylesheet — Obsidian Cosmos (Mobile-Twin)
+   ZenTrack Habits & Streaks Stylesheet — Obsidian Cosmos & Todoist Dual-Theme
    ========================================================================== */
 
 :root {
-  --hb-bg-base: #000000;
+  --hb-bg-base: #09080c;
   --hb-bg-surface: #141416;
   --hb-bg-surface-elevated: #18181c;
   --hb-bg-surface-subtle: #141416;
@@ -18,8 +18,44 @@
   --hb-accent-rose: #ff6961;
   --hb-accent-ice: #89dceb;
   --hb-text-primary: #ffffff;
-  --hb-text-secondary: #f2f2f7;
+  --hb-text-secondary: #d1d1d6;
   --hb-text-tertiary: #8e8e93;
+  --hb-shadow-card: 0 4px 16px rgba(0, 0, 0, 0.25);
+  --hb-shadow-hover: 0 6px 20px rgba(0, 0, 0, 0.35);
+  --hb-btn-action-bg: rgba(255, 255, 255, 0.03);
+  --hb-btn-action-border: rgba(255, 255, 255, 0.08);
+  --hb-btn-action-hover-bg: #1f1f26;
+  --hb-btn-action-hover-border: #2e2e38;
+}
+
+:root.theme-light,
+html.theme-light,
+html.theme-plain,
+body.theme-light,
+body.theme-plain {
+  --hb-bg-base: #f6f8fa;
+  --hb-bg-surface: #ffffff;
+  --hb-bg-surface-elevated: #f8fafc;
+  --hb-bg-surface-subtle: #f8fafc;
+  --hb-border-subtle: #e2e8f0;
+  --hb-border-hover: #cbd5e1;
+  --hb-accent-purple: #7c3aed;
+  --hb-accent-purple-light: #8b5cf6;
+  --hb-accent-cyan: #0284c7;
+  --hb-accent-emerald: #059669;
+  --hb-accent-amber: #ea580c;
+  --hb-accent-gold: #d97706;
+  --hb-accent-rose: #dc2626;
+  --hb-accent-ice: #0284c7;
+  --hb-text-primary: #0f172a;
+  --hb-text-secondary: #334155;
+  --hb-text-tertiary: #64748b;
+  --hb-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --hb-shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.06);
+  --hb-btn-action-bg: #ffffff;
+  --hb-btn-action-border: #e2e8f0;
+  --hb-btn-action-hover-bg: #f1f5f9;
+  --hb-btn-action-hover-border: #cbd5e1;
 }
 
 /* ── ROOT CONTAINER ── */
@@ -136,9 +172,9 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  background: #141416;
-  border: 1px solid #1c1c20;
-  color: #d1d1d6;
+  background: var(--hb-bg-surface);
+  border: 1px solid var(--hb-border-subtle);
+  color: var(--hb-text-secondary);
   padding: 0.42rem 0.75rem;
   border-radius: 12px;
   font-family: var(--font-sans, 'Inter', sans-serif);
@@ -151,9 +187,9 @@
 }
 
 .hb-filter-pill-btn:hover {
-  background: #1c1c1f;
-  border-color: #28282e;
-  color: #ffffff;
+  background: var(--hb-bg-surface-elevated);
+  border-color: var(--hb-border-hover);
+  color: var(--hb-text-primary);
   transform: translateY(-1px);
 }
 
@@ -179,18 +215,20 @@
 }
 
 .hb-momentum-card {
-  background: #141416;
-  border: 1px solid #1c1c20;
+  background: var(--hb-bg-surface);
+  border: 1px solid var(--hb-border-subtle);
   border-radius: 16px;
   padding: 1rem 1.15rem;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  transition: border-color 0.15s ease;
+  box-shadow: var(--hb-shadow-card);
+  transition: all 0.15s ease;
 }
 
 .hb-momentum-card:hover {
-  border-color: #28282e;
+  border-color: var(--hb-border-hover);
+  box-shadow: var(--hb-shadow-hover);
 }
 
 .hb-momentum-card-top {
@@ -203,7 +241,7 @@
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.72rem;
   font-weight: 700;
-  color: #8e8e93;
+  color: var(--hb-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -221,19 +259,44 @@
   font-weight: 700;
   line-height: 1.1;
   letter-spacing: -0.02em;
+  color: var(--hb-text-primary);
+}
+
+.hb-momentum-card.card-progress .hb-momentum-value {
+  color: var(--hb-accent-emerald);
+}
+
+.hb-momentum-card.card-streak .hb-momentum-value {
+  color: var(--hb-accent-amber);
+}
+
+.hb-momentum-card.card-savings .hb-momentum-value {
+  color: var(--hb-accent-cyan);
+}
+
+.hb-momentum-icon.icon-emerald {
+  color: var(--hb-accent-emerald);
+}
+
+.hb-momentum-icon.icon-flame {
+  color: var(--hb-accent-amber);
+}
+
+.hb-momentum-icon.icon-ocean {
+  color: var(--hb-accent-cyan);
 }
 
 .hb-momentum-count {
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.82rem;
   font-weight: 600;
-  color: #d1d1d6;
+  color: var(--hb-text-secondary);
 }
 
 .hb-momentum-subtext {
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.74rem;
-  color: #8e8e93;
+  color: var(--hb-text-tertiary);
   font-weight: 500;
   margin-top: 0.15rem;
 }
@@ -250,25 +313,30 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #141416;
-  border: 1px solid #1c1c20;
-  border-radius: 16px;
+  background: var(--hb-bg-surface);
+  border: 1px solid var(--hb-border-subtle);
+  border-radius: 14px;
   padding: 0.9rem 1.15rem;
   gap: 1rem;
-  transition: border-color 0.15s ease;
+  box-shadow: var(--hb-shadow-card);
+  transition: all 0.15s ease;
 }
 
 .hb-habit-card:hover {
-  border-color: #28282e;
+  background: var(--hb-bg-surface-elevated, var(--hb-bg-surface));
+  border-color: var(--hb-border-hover);
+  box-shadow: var(--hb-shadow-hover);
+  transform: translateY(-1px);
 }
 
 .hb-habit-card.completed {
-  border-color: #1c1c20;
+  border-color: var(--hb-border-subtle);
+  opacity: 0.78;
 }
 
 .hb-habit-card.negative-relapsed {
   border-color: rgba(255, 105, 97, 0.35);
-  background: rgba(255, 105, 97, 0.03);
+  background: rgba(255, 105, 97, 0.05);
 }
 
 /* Left Group */
@@ -347,7 +415,7 @@
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.95rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--hb-text-primary, #ffffff);
   margin: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -355,7 +423,7 @@
 }
 
 .hb-habit-name.completed {
-  color: #8e8e93;
+  color: var(--hb-text-tertiary, #8e8e93);
 }
 
 .hb-timeslot-badge {
@@ -469,27 +537,31 @@
 .hb-card-action-icon-btn {
   width: 28px;
   height: 28px;
-  border-radius: 8px;
-  background: transparent;
-  border: 1px solid transparent;
-  color: #8e8e93;
+  min-width: 28px;
+  border-radius: 6px;
+  background: var(--hb-btn-action-bg);
+  border: 1px solid var(--hb-btn-action-border);
+  color: var(--hb-text-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .hb-card-action-icon-btn:hover {
-  background: #18181c;
-  border-color: #28282e;
-  color: #ffffff;
+  background: var(--hb-btn-action-hover-bg);
+  border-color: var(--hb-btn-action-hover-border);
+  color: var(--hb-text-primary);
+  transform: translateY(-1px);
 }
 
 .hb-card-action-icon-btn.delete:hover {
   color: #ff6961;
   background: rgba(255, 105, 97, 0.15);
   border-color: rgba(255, 105, 97, 0.3);
+  transform: translateY(-1px);
 }
 
 .hb-relapse-btn {

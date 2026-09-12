@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Image, Pressable, StyleSheet, TouchableOpacity, BackHandler, InteractionManager, Modal } from 'react-native';
+import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Image, Pressable, StyleSheet, TouchableOpacity, BackHandler, InteractionManager } from 'react-native';
 import Animated, {
   FadeInDown,
   useSharedValue,
@@ -65,6 +65,14 @@ export default function DashboardScreen() {
 
   // ── Voice Task Dictation State (FAB replaces previous Sara button) ──
   const [isVoiceDictationOpen, setIsVoiceDictationOpen] = useState(false);
+  // ── Avatar photo load error: falls back to letter if Google URL fails ──
+  const [avatarPhotoError, setAvatarPhotoError] = useState(false);
+  // Reset error state when photoURL changes (e.g. re-auth)
+  const prevPhotoURL = useRef(data.user?.photoURL);
+  if (prevPhotoURL.current !== data.user?.photoURL) {
+    prevPhotoURL.current = data.user?.photoURL;
+    if (avatarPhotoError) setAvatarPhotoError(false);
+  }
   // ── One-time entrance animation guard — prevents FadeInDown re-firing on
   //    every Firestore update that causes a parent re-render.
   const hasAnimatedRef = useRef(false);
@@ -191,15 +199,12 @@ export default function DashboardScreen() {
 
   // ── Floating Action Menu State & Motion (Smooth Linear / Non-Bouncy) ────────
   const [menuOpen, setMenuOpen] = useState(false);
-  const avatarRef = useRef<View>(null);
   const rotateVal = useSharedValue(0);
   const animVal = useSharedValue(0);
 
   const closeMenu = useCallback(() => {
     if (menuOpen) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      // Use runOnJS callback so setMenuOpen fires exactly when animation
-      // ends — not 190ms later on the JS thread via setTimeout.
       rotateVal.value = withTiming(0, { duration: 200, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
       animVal.value = withTiming(0, { duration: 180, easing: Easing.bezier(0.25, 0.1, 0.25, 1) }, (finished) => {
         if (finished) runOnJS(setMenuOpen)(false);
@@ -258,17 +263,17 @@ export default function DashboardScreen() {
         actionLabel={data.surfaceActionLabel || undefined}
       />
       
-      {/* Backdrop OUTSIDE ScrollView so it captures taps without ScrollView intercepting them */}
-      {menuOpen && (
-        <Pressable
-          style={[StyleSheet.absoluteFillObject, { zIndex: 1 }]}
-          onPress={closeMenu}
-        />
-      )}
-      
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView scrollEnabled={!menuOpen} contentContainerStyle={[s.scroll, { paddingBottom }]} showsVerticalScrollIndicator={false}>
-          
+          {/* Tap-outside transparent backdrop to dismiss dropdown */}
+          {menuOpen && (
+            <Pressable
+              style={[StyleSheet.absoluteFillObject, { zIndex: 1 }]}
+              onPress={closeMenu}
+              accessibilityLabel="Close menu"
+            />
+          )}
+
           <Animated.View entering={FadeInDown.duration(200)} style={[s.greetingContainer, { zIndex: 99999, elevation: 9999 }]}>
             <View style={{ flex: 1, paddingRight: 8 }}>
               <Text style={s.greetingGood}>Good</Text>
@@ -324,8 +329,10 @@ export default function DashboardScreen() {
                 />
               </AnimatedPressable>
 
-              {/* Anchored Vertical Speed Dial Container directly on Avatar */}
-              <View collapsable={false} style={{ position: 'relative', width: 30, height: 34, alignItems: 'center', justifyContent: 'center', zIndex: 99999, elevation: 9999 }}>
+              {/* Trigger Avatar in-place */}
+              <View
+                style={{ width: 30, height: 34, alignItems: 'center', justifyContent: 'center' }}
+              >
                 {/* Rotating Trigger Avatar / Close Button in-place */}
                 <Animated.View style={avatarAnimatedStyle}>
                   <AnimatedPressable
@@ -341,90 +348,104 @@ export default function DashboardScreen() {
                   >
                     {menuOpen ? (
                       <Ionicons name="close" size={16} color={colors.textPrimary} />
-                    ) : data.user?.photoURL ? (
-                      <Image source={{ uri: data.user.photoURL }} style={{ width: 28, height: 28, borderRadius: 14 }} />
+                    ) : data.user?.photoURL && !avatarPhotoError ? (
+                      <Image
+                        source={{ uri: data.user.photoURL }}
+                        style={{ width: 28, height: 28, borderRadius: 14 }}
+                        onError={() => setAvatarPhotoError(true)}
+                      />
                     ) : (
                       <Text style={s.headerPillAvatarText}>{data.avatarLetter}</Text>
                     )}
                   </AnimatedPressable>
                 </Animated.View>
-
-                {/* Speed Dial Menu Buttons anchored directly below avatar */}
-                {menuOpen && (
-                  <View
-                    pointerEvents="box-none"
-                    style={{
-                      position: 'absolute',
-                      top: 44,
-                      right: -1,
-                      width: 36,
-                      alignItems: 'center',
-                      gap: 8,
-                      zIndex: 99999,
-                      elevation: 9999,
-                    }}
-                  >
-                    {/* Icon 1: Customize Layout */}
-                    <Animated.View style={layoutBtnStyle}>
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 18,
-                          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderWidth: 1,
-                          borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E1EA',
-                          shadowColor: '#000000',
-                          shadowOffset: { width: 0, height: 4 },
-                          shadowOpacity: isDark ? 0.35 : 0.15,
-                          shadowRadius: 8,
-                          elevation: 12,
-                        }}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          closeMenu();
-                          data.setLayoutSheetVisible(true);
-                        }}
-                      >
-                        <Ionicons name="color-palette-outline" size={18} color={isDark ? '#f2f2f7' : colors.textPrimary} />
-                      </TouchableOpacity>
-                    </Animated.View>
-
-                    {/* Icon 2: App Settings */}
-                    <Animated.View style={settingsBtnStyle}>
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 18,
-                          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderWidth: 1,
-                          borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E1EA',
-                          shadowColor: '#000000',
-                          shadowOffset: { width: 0, height: 4 },
-                          shadowOpacity: isDark ? 0.35 : 0.15,
-                          shadowRadius: 8,
-                          elevation: 12,
-                        }}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          closeMenu();
-                          navigation.navigate('MoreStack', { screen: 'Settings' });
-                        }}
-                      >
-                        <Ionicons name="settings-outline" size={18} color={isDark ? '#38bdf8' : '#0284C7'} />
-                      </TouchableOpacity>
-                    </Animated.View>
-                  </View>
-                )}
               </View>
             </View>
+
+            {/* Speed Dial Menu Buttons anchored directly below avatar */}
+            {menuOpen && (
+              <View
+                pointerEvents="box-none"
+                style={{
+                  position: 'absolute',
+                  top: 52,
+                  right: 3,
+                  width: 36,
+                  alignItems: 'center',
+                  gap: 8,
+                  zIndex: 999999,
+                  elevation: 99999,
+                }}
+              >
+                {/* Icon 1: Customize Layout */}
+                <Animated.View style={layoutBtnStyle}>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E1EA',
+                      shadowColor: '#000000',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: isDark ? 0.35 : 0.15,
+                      shadowRadius: 8,
+                      elevation: 12,
+                    }}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      closeMenu();
+                      setTimeout(() => {
+                        data.setLayoutSheetVisible(true);
+                      }, 120);
+                    }}
+                    accessibilityLabel="Customize Dashboard Layout"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="color-palette-outline" size={18} color={isDark ? '#f2f2f7' : colors.textPrimary} />
+                  </TouchableOpacity>
+                </Animated.View>
+
+                {/* Icon 2: App Settings */}
+                <Animated.View style={settingsBtnStyle}>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E1EA',
+                      shadowColor: '#000000',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: isDark ? 0.35 : 0.15,
+                      shadowRadius: 8,
+                      elevation: 12,
+                    }}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      closeMenu();
+                      setTimeout(() => {
+                        navigation.navigate('MoreStack', { screen: 'Settings' });
+                      }, 120);
+                    }}
+                    accessibilityLabel="App Settings"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="settings-outline" size={18} color={isDark ? '#38bdf8' : '#0284C7'} />
+                  </TouchableOpacity>
+                </Animated.View>
+              </View>
+            )}
           </Animated.View>
 
           {!data.user && !data.tasksReady ? (
@@ -528,6 +549,8 @@ export default function DashboardScreen() {
         )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+
 
       {/* PERF: All 3 overlay sheets are conditionally mounted only when opened.
            Saves evaluating 3 heavy component trees on every Frame 1 cold boot. */}

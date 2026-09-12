@@ -785,6 +785,48 @@ export function useGymLog(dateStr: string) {
     });
   }, [saveLog]);
 
+  const revertWorkout = useCallback(() => {
+    setLog(prev => {
+      if (!prev) return prev;
+      const updated: GymDayLog = {
+        ...prev,
+        completed: false,
+        workoutStartTime: undefined,
+        workoutDurationMinutes: undefined,
+        startTime: undefined,
+        endTime: undefined,
+        restTimerStartTime: undefined,
+        restTimerDurationSecs: undefined,
+        restTimerExerciseName: undefined,
+        updatedAt: Date.now(),
+      };
+      saveLog(updated);
+
+      try {
+        const today = todayStr();
+        const widgetData = buildLiveWorkoutWidgetData({
+          todayStr: today,
+          gymLogs: [updated, ...(gymLogs || []).filter(l => l.date !== today)],
+          userGymPlan,
+        });
+        saveCachedLiveWorkoutData(widgetData).catch(() => {});
+        updateLiveWorkoutWidget(widgetData).catch(() => {});
+      } catch {}
+
+      return updated;
+    });
+
+    if (currentRestTimerNotifId) {
+      Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId).catch(() => {});
+      currentRestTimerNotifId = null;
+    }
+
+    const today = todayStr();
+    AsyncStorage.removeItem('@zentrack_active_workout_state').catch(() => {});
+    AsyncStorage.removeItem(`@gym_active_session_${today}`).catch(() => {});
+    dismissActiveWorkoutNotification().catch(() => {});
+  }, [saveLog, gymLogs, userGymPlan]);
+
   const startRestTimer = useCallback(async (durationSecs: number, exerciseName?: string) => {
     setLog(prev => {
       if (!prev) return prev;
@@ -1010,6 +1052,7 @@ export function useGymLog(dateStr: string) {
     startWorkout,
     endWorkout,
     resumeWorkout,
+    revertWorkout,
     startRestTimer,
     clearRestTimer,
     setRestTimerDuration,

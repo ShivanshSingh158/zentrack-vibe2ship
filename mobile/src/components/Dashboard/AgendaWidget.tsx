@@ -178,26 +178,30 @@ export const AgendaWidget = React.memo(function AgendaWidget({
     });
 
     todayTasks.forEach((t: any) => {
-      let isMissed = t.status === 'missed' || t.status === 'failed';
       const isCancelled = t.status === 'cancelled';
       const isCompleted = t.status === 'completed' || t.status === 'done';
+      let isOverdue = false;
 
-      if (!isCompleted && !isCancelled && !isMissed && t.timeSlot) {
+      if (!isCompleted && !isCancelled && t.timeSlot) {
         const endTimeMins = getEndTimeMins(t.timeSlot);
         if (nowMins > endTimeMins) {
-          isMissed = true;
+          isOverdue = true;
         }
       }
 
       let icon = 'ellipse-outline';
-      if (isCompleted) icon = 'checkmark-circle';
-      if (isMissed) icon = 'close-circle';
-      if (isCancelled) icon = 'remove-circle';
-
       let iconColor = colors.textTertiary;
-      if (isCompleted) iconColor = colors.accentGreen;
-      if (isMissed) iconColor = colors.error;
-      if (isCancelled) iconColor = colors.textTertiary;
+
+      if (isCompleted) {
+        icon = 'checkmark-circle';
+        iconColor = colors.accentGreen;
+      } else if (isCancelled) {
+        icon = 'remove-circle';
+        iconColor = colors.textTertiary;
+      } else if (isOverdue) {
+        icon = 'ellipse-outline';
+        iconColor = colors.accentAmber;
+      }
 
       items.push({
         id: t.id,
@@ -205,7 +209,8 @@ export const AgendaWidget = React.memo(function AgendaWidget({
         timeStr: t.timeSlot ? formatTimeStr(t.timeSlot) : '',
         timeMins: t.timeSlot ? parseTimeToMins(t.timeSlot) : 9999,
         isCompleted,
-        isMissed,
+        isMissed: false,
+        isOverdue,
         isCancelled,
         icon,
         iconColor,
@@ -286,10 +291,15 @@ export const AgendaWidget = React.memo(function AgendaWidget({
         let textColor = colors.textPrimary;
         let timeColor = colors.textTertiary;
         
-        if (item.isMissed || item.isCompleted || item.isCancelled) {
+        if (item.isCompleted || item.isMissed || item.isCancelled) {
           textColor = colors.textTertiary;
           timeColor = colors.textTertiary;
+        } else if (item.isOverdue) {
+          textColor = colors.textPrimary;
+          timeColor = colors.accentAmber;
         }
+
+        const shouldStrike = item.isCompleted || item.isMissed || item.isCancelled;
 
         return (
           <TouchableOpacity key={item.id} style={[styles.agendaRow, { borderBottomColor: colors.border }]} activeOpacity={0.7} onPress={item.onPress}>
@@ -302,18 +312,18 @@ export const AgendaWidget = React.memo(function AgendaWidget({
             <Text style={[
               styles.agendaRowText,
               { color: textColor },
-              (item.isCompleted || item.isMissed || item.isCancelled) && { textDecorationLine: 'line-through' },
+              shouldStrike && { textDecorationLine: 'line-through' },
               { flex: 1 },
             ]} numberOfLines={1}>
               {item.title}
             </Text>
-            {!!item.timeStr && (
+            {(!!item.timeStr || item.isOverdue) && (
               <Text style={[
                 styles.agendaRowTime, 
                 { color: timeColor },
-                (item.isCompleted || item.isMissed || item.isCancelled) && { textDecorationLine: 'line-through' }
+                shouldStrike && { textDecorationLine: 'line-through' }
               ]}>
-                {item.timeStr}
+                {item.isOverdue ? (item.timeStr ? `${item.timeStr} • Overdue` : 'Overdue') : item.timeStr}
               </Text>
             )}
           </TouchableOpacity>

@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useMemo, useState, useEffect } from 'react';
+import React, { useRef, useCallback, useMemo, useState, useEffect, Suspense } from 'react';
 import {
   View, Text, FlatList, SectionList, TouchableOpacity, ScrollView,
   Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Animated
@@ -8,13 +8,16 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { AddSubjectModal } from '../components/Academic/AddSubjectModal';
-import { TimetableModal } from '../components/Academic/TimetableModal';
-import ClassNotifSettingsModal from '../components/Academic/ClassNotifSettingsModal';
 import SaraHUDBanner from '../components/SARA/SaraHUDBanner';
 import { useTheme } from "../contexts/ThemeContext";
 import { useSaraSurface } from '../hooks/useSaraSurface';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
+
+// ── Lazy-loaded Modals: Skips parsing ~1,400 LOC of modals on initial boot / tab warm-up ──
+const AddSubjectModal = React.lazy(() => import('../components/Academic/AddSubjectModal').then(m => ({ default: m.AddSubjectModal })));
+const TimetableModal = React.lazy(() => import('../components/Academic/TimetableModal').then(m => ({ default: m.TimetableModal })));
+const ClassNotifSettingsModal = React.lazy(() => import('../components/Academic/ClassNotifSettingsModal'));
+const SubjectHistoryModal = React.lazy(() => import('../components/Academic/SubjectHistoryModal'));
 
 // --- NEW ATTENDANCE MODULE IMPORTS ---
 import { 
@@ -43,7 +46,7 @@ interface SessionRowProps {
   isDark: boolean;
   styles: any;
   onUndo: (logId: string) => void;
-  onLog: (subject: any, type: 'class' | 'lab', action: 'attended' | 'missed' | 'cancelled', existingLogId: string | undefined, sessionIdx: number) => void;
+  onLog: (subject: any, type: 'class' | 'lab', action: 'attended' | 'missed' | 'cancelled', existingLogId: string | undefined, sessionIdx: number, logDate?: string, isExtra?: boolean) => void;
 }
 
 const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
@@ -63,6 +66,13 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
     log?.action ?? null
   );
 
+  // Fix #6: Debounce guard to prevent rapid-tap race conditions.
+  // Without this, tapping Present twice quickly to untoggle fails because
+  // log?.id is undefined in the closure on the first frame (optimistic log
+  // hasn't been assigned an ID yet), causing onUndo to abort silently while
+  // the first tap already committed to Firestore.
+  const processingRef = useRef(false);
+
   useEffect(() => {
     setLocalAction(log?.action ?? null);
   }, [log?.action, log?.id]);
@@ -72,36 +82,46 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
   const isCancelled = localAction === 'cancelled';
 
   const { idx: sessionIdx } = session;
+  const isExtra = !!session.isExtra;
 
   const handlePressPresent = useCallback(() => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    setTimeout(() => { processingRef.current = false; }, 300);
     if (isPresent) {
       setLocalAction(null);
       if (log?.id) onUndo(log.id);
     } else {
       setLocalAction('attended');
-      onLog(subject, type, 'attended', log?.id, sessionIdx);
+      onLog(subject, type, 'attended', log?.id, sessionIdx, undefined, isExtra);
     }
-  }, [isPresent, log?.id, onUndo, onLog, subject, type, sessionIdx]);
+  }, [isPresent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra]);
 
   const handlePressAbsent = useCallback(() => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    setTimeout(() => { processingRef.current = false; }, 300);
     if (isAbsent) {
       setLocalAction(null);
       if (log?.id) onUndo(log.id);
     } else {
       setLocalAction('missed');
-      onLog(subject, type, 'missed', log?.id, sessionIdx);
+      onLog(subject, type, 'missed', log?.id, sessionIdx, undefined, isExtra);
     }
-  }, [isAbsent, log?.id, onUndo, onLog, subject, type, sessionIdx]);
+  }, [isAbsent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra]);
 
   const handlePressCancelled = useCallback(() => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    setTimeout(() => { processingRef.current = false; }, 300);
     if (isCancelled) {
       setLocalAction(null);
       if (log?.id) onUndo(log.id);
     } else {
       setLocalAction('cancelled');
-      onLog(subject, type, 'cancelled', log?.id, sessionIdx);
+      onLog(subject, type, 'cancelled', log?.id, sessionIdx, undefined, isExtra);
     }
-  }, [isCancelled, log?.id, onUndo, onLog, subject, type, sessionIdx]);
+  }, [isCancelled, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra]);
 
   return (
     <View style={styles.sessionCard}>
@@ -172,6 +192,21 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
         </TouchableOpacity>
       </View>
     </View>
+  );
+}, (prev, next) => {
+  return (
+    prev.session.id === next.session.id &&
+    prev.session.timeStr === next.session.timeStr &&
+    prev.session.type === next.session.type &&
+    prev.session.subject?.id === next.session.subject?.id &&
+    prev.session.subject?.name === next.session.subject?.name &&
+    prev.log?.id === next.log?.id &&
+    prev.log?.action === next.log?.action &&
+    prev.isDark === next.isDark &&
+    prev.colors === next.colors &&
+    prev.styles === next.styles &&
+    prev.onUndo === next.onUndo &&
+    prev.onLog === next.onLog
   );
 });
 
@@ -324,120 +359,7 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
   );
 });
 
-// ── Pure Memoized History Log Row ─────────────────────────────────────────────
-interface HistoryRowProps {
-  log: any;
-  colors: any;
-  isDark: boolean;
-  styles: any;
-  onUndo: (logId: string) => void;
-}
 
-const AttendanceHistoryRow = React.memo(function AttendanceHistoryRow({
-  log,
-  colors,
-  isDark,
-  styles,
-  onUndo,
-}: HistoryRowProps) {
-  const isAttended = log.action === 'attended';
-  const isMissed = log.action === 'missed';
-  const isLab = log.type === 'lab';
-  const isExtra = !!log.isExtra;
-
-  const dateInfo = formatAttendanceHistoryDate(log.date, log.timestamp);
-
-  const statusColor = isAttended
-    ? (isDark ? '#34D399' : '#059669')
-    : isMissed
-    ? (isDark ? '#F87171' : '#DC2626')
-    : (isDark ? '#FBBF24' : '#D97706');
-
-  const statusBg = isAttended
-    ? (isDark ? 'rgba(52, 211, 153, 0.12)' : 'rgba(5, 150, 105, 0.10)')
-    : isMissed
-    ? (isDark ? 'rgba(248, 113, 113, 0.12)' : 'rgba(220, 38, 38, 0.10)')
-    : (isDark ? 'rgba(251, 191, 36, 0.12)' : 'rgba(217, 119, 6, 0.10)');
-
-  const statusBorder = isAttended
-    ? (isDark ? 'rgba(52, 211, 153, 0.25)' : 'rgba(5, 150, 105, 0.20)')
-    : isMissed
-    ? (isDark ? 'rgba(248, 113, 113, 0.25)' : 'rgba(220, 38, 38, 0.20)')
-    : (isDark ? 'rgba(251, 191, 36, 0.25)' : 'rgba(217, 119, 6, 0.20)');
-
-  const iconName = isAttended
-    ? 'checkmark-circle'
-    : isMissed
-    ? 'close-circle'
-    : 'ban';
-
-  const actionText = isAttended
-    ? 'Attended'
-    : isMissed
-    ? 'Missed'
-    : 'Cancelled';
-
-  return (
-    <View style={styles.historyCard}>
-      <View style={{ flex: 1, marginRight: 12 }}>
-        {/* Top: Status Badge + Type Badges */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 7 }}>
-          <View style={[styles.historyStatusPill, { backgroundColor: statusBg, borderColor: statusBorder }]}>
-            <Ionicons name={iconName} size={13} color={statusColor} style={{ marginRight: 4 }} />
-            <Text style={[styles.historyStatusText, { color: statusColor }]}>{actionText}</Text>
-          </View>
-
-          {/* Class / Lab Badge */}
-          <View style={[styles.historyTypePill, isLab ? styles.historyTypePillLab : styles.historyTypePillClass]}>
-            <Text style={[styles.historyTypeText, isLab ? styles.historyTypeTextLab : styles.historyTypeTextClass]}>
-              {isLab ? 'LAB' : 'CLASS'}
-            </Text>
-          </View>
-
-          {/* Extra Badge if extra */}
-          {isExtra && (
-            <View style={styles.historyExtraPill}>
-              <Text style={styles.historyExtraText}>EXTRA</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Bottom: Date with Today/Yesterday badge and Time */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-          {dateInfo.dayLabel ? (
-            <View style={[styles.historyDayBadge, dateInfo.isToday && styles.historyDayBadgeToday]}>
-              <Text style={[styles.historyDayBadgeText, dateInfo.isToday && styles.historyDayBadgeTextToday]}>
-                {dateInfo.dayLabel}
-              </Text>
-            </View>
-          ) : null}
-
-          <Text style={styles.historyDateText}>
-            {dateInfo.fullDateStr}
-          </Text>
-
-          {dateInfo.timeStr ? (
-            <Text style={styles.historyTimeText}>
-              • {dateInfo.timeStr}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-
-      {/* Undo Button */}
-      <TouchableOpacity
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          if (log.id) onUndo(log.id);
-        }}
-        style={styles.historyUndoBtn}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Ionicons name="refresh" size={16} color={colors.textSecondary} />
-      </TouchableOpacity>
-    </View>
-  );
-});
 
 interface UnloggedSessionRowProps {
   item: {
@@ -552,285 +474,7 @@ const UnloggedSessionRow = React.memo(function UnloggedSessionRow({
   );
 });
 
-// ── Dedicated Memoized Subject History Modal ─────────────────────────────────
-interface SubjectHistoryModalProps {
-  visible: boolean;
-  subject: AttendanceSubject;
-  logs: any[];
-  subjects: AttendanceSubject[];
-  colors: any;
-  isDark: boolean;
-  styles: any;
-  onClose: () => void;
-  onUndo: (logId: string) => void;
-}
 
-const SubjectHistoryModal = React.memo(function SubjectHistoryModal({
-  visible,
-  subject,
-  logs,
-  subjects,
-  colors,
-  isDark,
-  styles,
-  onClose,
-  onUndo,
-}: SubjectHistoryModalProps) {
-  const [historyFilterType, setHistoryFilterType] = useState<'all' | 'class' | 'lab'>('all');
-
-  useEffect(() => {
-    setHistoryFilterType('all');
-  }, [subject?.id]);
-
-  const sortedHistoryLogs = useMemo(() => {
-    if (!subject) return [];
-    const filtered = logs.filter(l =>
-      (subject.id && l.subjectId === subject.id) ||
-      (subject.name && (l.subjectName === subject.name || l.subjectId === subject.name))
-    );
-
-    const sorted = [...filtered].sort((a, b) => {
-      const dateA = a.date || '';
-      const dateB = b.date || '';
-      if (dateA !== dateB) {
-        return dateB.localeCompare(dateA);
-      }
-      const timeA = typeof a.timestamp === 'number' ? a.timestamp : 0;
-      const timeB = typeof b.timestamp === 'number' ? b.timestamp : 0;
-      return timeB - timeA;
-    });
-
-    const seen = new Set<string>();
-    const deduplicated: typeof sorted = [];
-
-    for (let i = 0; i < sorted.length; i++) {
-      const l = sorted[i];
-      if (l.isExtra) {
-        deduplicated.push(l);
-      } else {
-        const slotKey = `${(l.date || '').slice(0, 10)}_${l.type === 'lab' ? 'lab' : 'class'}_${l.idx ?? 0}`;
-        if (!seen.has(slotKey)) {
-          seen.add(slotKey);
-          deduplicated.push(l);
-        }
-      }
-    }
-
-    return deduplicated;
-  }, [subject, logs]);
-
-  const classHistoryLogs = useMemo(
-    () => sortedHistoryLogs.filter(l => l.type !== 'lab'),
-    [sortedHistoryLogs]
-  );
-  const labHistoryLogs = useMemo(
-    () => sortedHistoryLogs.filter(l => l.type === 'lab'),
-    [sortedHistoryLogs]
-  );
-
-  const historySections = useMemo(() => {
-    if (historyFilterType === 'class') {
-      return [{ title: 'Classes', type: 'class' as const, count: classHistoryLogs.length, data: classHistoryLogs }];
-    }
-    if (historyFilterType === 'lab') {
-      return [{ title: 'Labs', type: 'lab' as const, count: labHistoryLogs.length, data: labHistoryLogs }];
-    }
-    const list: { title: string; type: 'class' | 'lab'; count: number; data: typeof sortedHistoryLogs }[] = [];
-    if (classHistoryLogs.length > 0) {
-      list.push({ title: 'Classes', type: 'class', count: classHistoryLogs.length, data: classHistoryLogs });
-    }
-    if (labHistoryLogs.length > 0) {
-      list.push({ title: 'Labs', type: 'lab', count: labHistoryLogs.length, data: labHistoryLogs });
-    }
-    return list;
-  }, [historyFilterType, classHistoryLogs, labHistoryLogs, sortedHistoryLogs]);
-
-  const sub = useMemo(() => {
-    return subjects.find(s => (subject.id && s.id === subject.id) || s.name === subject.name) || subject;
-  }, [subjects, subject]);
-
-  const att = (sub.classesAttended || 0) + (sub.labsAttended || 0);
-  const tot = (sub.classesTotal || 0) + (sub.labsTotal || 0);
-  const pct = tot > 0 ? (att / tot) * 100 : 100;
-  const target = sub.targetPercentage || 75;
-  const isSafe = pct >= target;
-
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.modalRoot}>
-        {/* Header */}
-        <View style={styles.modalHeader}>
-          <View style={{ flex: 1, marginRight: 12 }}>
-            <Text style={styles.modalTitle} numberOfLines={1}>
-              {subject.name} History
-            </Text>
-            <Text style={{ fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
-              {sortedHistoryLogs.length} {sortedHistoryLogs.length === 1 ? 'log' : 'logs'} recorded • Newest first
-            </Text>
-          </View>
-          <TouchableOpacity style={styles.modalHeaderBtn} onPress={onClose}>
-            <Ionicons name="close" size={22} color={colors.textPrimary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Subject Attendance Stats Overview Strip */}
-        <View style={styles.historyStatsBar}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ fontSize: 13, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
-                Overall: {att}/{tot} attended
-              </Text>
-              <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                (Target: {target}%)
-              </Text>
-            </View>
-            <Text style={{ fontSize: 15, fontFamily: FONT_FAMILY.bold, color: isSafe ? (isDark ? '#34D399' : '#059669') : (isDark ? '#F87171' : '#DC2626') }}>
-              {tot > 0 ? `${Math.round(pct)}%` : '--%'}
-            </Text>
-          </View>
-
-          {/* Class vs Lab split if applicable */}
-          {((sub.labsTotal || 0) > 0 || (sub.classesTotal || 0) > 0) && (
-            <View style={{ flexDirection: 'row', gap: 16, marginTop: 6 }}>
-              {(sub.classesTotal || 0) > 0 && (
-                <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                  Class: <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>{sub.classesAttended || 0}/{sub.classesTotal || 0}</Text>
-                </Text>
-              )}
-              {(sub.labsTotal || 0) > 0 && (
-                <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                  Lab: <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>{sub.labsAttended || 0}/{sub.labsTotal || 0}</Text>
-                </Text>
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* Filter Tabs if both classes and labs exist */}
-        {classHistoryLogs.length > 0 && labHistoryLogs.length > 0 && (
-          <View style={styles.historyFilterTabs}>
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.selectionAsync();
-                setHistoryFilterType('all');
-              }}
-              style={[
-                styles.historyFilterPill,
-                historyFilterType === 'all' && styles.historyFilterPillActive,
-              ]}
-            >
-              <Text style={[
-                styles.historyFilterPillText,
-                historyFilterType === 'all' && styles.historyFilterPillTextActive,
-              ]}>
-                All ({sortedHistoryLogs.length})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.selectionAsync();
-                setHistoryFilterType('class');
-              }}
-              style={[
-                styles.historyFilterPill,
-                historyFilterType === 'class' && styles.historyFilterPillActiveClass,
-              ]}
-            >
-              <Ionicons 
-                name="book-outline" 
-                size={12} 
-                color={historyFilterType === 'class' ? (isDark ? '#a5b4fc' : '#4f46e5') : colors.textMuted} 
-                style={{ marginRight: 4 }} 
-              />
-              <Text style={[
-                styles.historyFilterPillText,
-                historyFilterType === 'class' && styles.historyFilterPillTextActiveClass,
-              ]}>
-                Classes ({classHistoryLogs.length})
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.selectionAsync();
-                setHistoryFilterType('lab');
-              }}
-              style={[
-                styles.historyFilterPill,
-                historyFilterType === 'lab' && styles.historyFilterPillActiveLab,
-              ]}
-            >
-              <Ionicons 
-                name="flask-outline" 
-                size={12} 
-                color={historyFilterType === 'lab' ? (isDark ? '#fcd34d' : '#d97706') : colors.textMuted} 
-                style={{ marginRight: 4 }} 
-              />
-              <Text style={[
-                styles.historyFilterPillText,
-                historyFilterType === 'lab' && styles.historyFilterPillTextActiveLab,
-              ]}>
-                Labs ({labHistoryLogs.length})
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* List with Dedicated Classes & Labs Sections */}
-        <SectionList
-          sections={historySections}
-          keyExtractor={l => l.id || `${l.date}_${l.timestamp}_${l.action}_${l.type}`}
-          contentContainerStyle={{ padding: SPACE.md, paddingBottom: 60 }}
-          stickySectionHeadersEnabled={false}
-          renderSectionHeader={({ section }) => {
-            if (classHistoryLogs.length === 0 || labHistoryLogs.length === 0) return null;
-            const isLab = section.type === 'lab';
-            return (
-              <View style={[styles.historySectionHeader, isLab && { marginTop: 14 }]}>
-                <Ionicons
-                  name={isLab ? 'flask' : 'book'}
-                  size={13}
-                  color={isLab ? (isDark ? '#fcd34d' : '#d97706') : (isDark ? '#a5b4fc' : '#4f46e5')}
-                />
-                <Text style={[
-                  styles.historySectionTitle,
-                  { color: isLab ? (isDark ? '#fcd34d' : '#d97706') : (isDark ? '#a5b4fc' : '#4f46e5') }
-                ]}>
-                  {section.title} ({section.count})
-                </Text>
-              </View>
-            );
-          }}
-          renderItem={({ item: l }) => (
-            <AttendanceHistoryRow
-              log={l}
-              colors={colors}
-              isDark={isDark}
-              styles={styles}
-              onUndo={onUndo}
-            />
-          )}
-          ListEmptyComponent={
-            <View style={{ paddingVertical: 48, alignItems: 'center' }}>
-              <Ionicons name="calendar-outline" size={40} color={colors.textMuted} style={{ marginBottom: 12, opacity: 0.6 }} />
-              <Text style={{ color: colors.textPrimary, fontSize: 15, fontFamily: FONT_FAMILY.bold, textAlign: 'center' }}>
-                No Logs Found
-              </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
-                {historyFilterType === 'class'
-                  ? 'No class logs recorded for this subject.'
-                  : historyFilterType === 'lab'
-                  ? 'No lab logs recorded for this subject.'
-                  : 'Classes and labs you mark will appear here sorted from newest to oldest.'}
-              </Text>
-            </View>
-          }
-        />
-      </SafeAreaView>
-    </Modal>
-  );
-});
 
 export default function AttendanceScreen() {
   const { colors, isDark } = useTheme();
@@ -845,11 +489,21 @@ export default function AttendanceScreen() {
   const pillAnim = useRef(new Animated.Value(0)).current;
   const isPillVisibleRef = useRef(false);
   const lastScrollY = useRef(0);
+  const flatListRef = useRef<any>(null);
 
   useFocusEffect(
     useCallback(() => {
-      isPillVisibleRef.current = false;
-      pillAnim.setValue(0);
+      // Delay the scroll reset by 50ms so it fires after the tab-switch
+      // transition animation frame completes. Firing it immediately causes
+      // visible jitter because the list is snapping while the screen is
+      // still sliding in. At 50ms the transition is done but the eye hasn't
+      // settled on content yet — the reset is invisible.
+      const t = setTimeout(() => {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+        isPillVisibleRef.current = false;
+        pillAnim.setValue(0);
+      }, 50);
+      return () => clearTimeout(t);
     }, [pillAnim])
   );
 
@@ -891,7 +545,7 @@ export default function AttendanceScreen() {
     selectedHistorySubject, setSelectedHistorySubject,
     isExtraOpen, setIsExtraOpen,
     isUnloggedOpen, setIsUnloggedOpen,
-    unloggedSessions,
+    unloggedSessions, unloggedCount,
     showAddModal, setShowAddModal,
     editSubject, setEditSubject,
     extraSubjectId, setExtraSubjectId,
@@ -926,28 +580,49 @@ export default function AttendanceScreen() {
   } = firestoreActions;
 
   const handleAddSubject = () => {
-    setEditSubject(null);
-    setShowAddModal(true);
+    // Close the Timetable modal first, then open AddSubject after
+    // its slide-out animation completes (avoids double-modal stacking)
+    setIsTimetableOpen(false);
+    setTimeout(() => {
+      setEditSubject(null);
+      setShowAddModal(true);
+    }, 350);
   };
+
+  // Same close-first pattern as handleAddSubject — avoids both modals stacking
+  const handleEditSubject = useCallback((subject: AttendanceSubject) => {
+    setIsTimetableOpen(false);
+    setTimeout(() => {
+      setEditSubject(subject);
+      setShowAddModal(true);
+    }, 350);
+  }, []);
 
   const renderItem = useCallback(({ item: session }: { item: any }) => {
     const { subject, type, idx } = session;
     const cleanSelDate = (selectedDate || '').slice(0, 10);
-    const slotKey = `${subject.id || subject.name}_${type === 'lab' ? 'lab' : 'class'}_${idx}`;
 
-    // Fast path: direct O(1) Map lookup
-    let log = data.selectedDateLogsBySlot.get(slotKey) ?? null;
+    let log: any = null;
 
-    // Legacy fallback: positional match for old logs without idx field
-    if (!log) {
-      const subLogs = (subject.id ? logsBySubjectId[subject.id] : null) || (subject.name ? logsBySubjectId[subject.name] : null) || [];
-      let matchIdx = 0;
-      for (let i = 0; i < subLogs.length; i++) {
-        const l = subLogs[i];
-        const isMatchingType = type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type);
-        if ((l.date || '').slice(0, 10) === cleanSelDate && !l.isExtra && isMatchingType && l.idx === undefined) {
-          if (matchIdx === idx) { log = l; break; }
-          matchIdx++;
+    if (session.isExtra && session.existingLogId) {
+      // Extra class: look up by the log's own ID (stored on the session object)
+      log = data.selectedDateLogsBySlot.get(session.existingLogId) ?? null;
+    } else {
+      const slotKey = `${subject.id || subject.name}_${type === 'lab' ? 'lab' : 'class'}_${idx}`;
+      // Fast path: direct O(1) Map lookup
+      log = data.selectedDateLogsBySlot.get(slotKey) ?? null;
+
+      // Legacy fallback: positional match for old logs without idx field
+      if (!log) {
+        const subLogs = (subject.id ? logsBySubjectId[subject.id] : null) || (subject.name ? logsBySubjectId[subject.name] : null) || [];
+        let matchIdx = 0;
+        for (let i = 0; i < subLogs.length; i++) {
+          const l = subLogs[i];
+          const isMatchingType = type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type);
+          if ((l.date || '').slice(0, 10) === cleanSelDate && !l.isExtra && isMatchingType && l.idx === undefined) {
+            if (matchIdx === idx) { log = l; break; }
+            matchIdx++;
+          }
         }
       }
     }
@@ -1033,11 +708,15 @@ export default function AttendanceScreen() {
   ), [globalAttended, globalTotal, globalPct, warningSubjects, selectedDate, holidays, today, colors, isDark, styles, setDismissedWarnings]);
 
   const listFooter = useMemo(() => {
-    if (todayScheduledSubjects.length === 0 || isSelectedHoliday) return null;
+    // Fix #11: Show ALL enrolled subjects, not just today's scheduled ones.
+    // On weekends/holidays, todayScheduledSubjects is empty, causing the
+    // "BY SUBJECT" section to vanish entirely. Students need to see their
+    // overall attendance stats regardless of the day.
+    if (subjects.length === 0) return null;
     return (
       <View style={{ marginTop: 20, marginBottom: 56 }}>
         <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, paddingHorizontal: 2 }}>BY SUBJECT</Text>
-        {todayScheduledSubjects.map(subject => (
+        {subjects.map(subject => (
           <SubjectSummaryRow
             key={subject.id}
             subject={subject}
@@ -1049,7 +728,7 @@ export default function AttendanceScreen() {
         ))}
       </View>
     );
-  }, [todayScheduledSubjects, isSelectedHoliday, colors, isDark, styles, setSelectedHistorySubject]);
+  }, [subjects, colors, isDark, styles, setSelectedHistorySubject]);
 
   return (
     <View style={styles.root}>
@@ -1088,24 +767,24 @@ export default function AttendanceScreen() {
                   <Animated.View
                     style={[
                       styles.morphBtnPill,
-                      unloggedSessions.length > 0 && styles.morphBtnPillUnlogged,
+                      unloggedCount > 0 && styles.morphBtnPillUnlogged,
                       { opacity: pillAnim },
                     ]}
                   />
-                  {unloggedSessions.length > 0 && (
+                  {unloggedCount > 0 && (
                     <View style={styles.morphBtnBadge}>
                       <Text style={styles.morphBtnBadgeText}>
-                        {unloggedSessions.length > 99 ? '99+' : unloggedSessions.length}
+                        {unloggedCount > 99 ? '99+' : unloggedCount}
                       </Text>
                     </View>
                   )}
                   <Ionicons
                     name="time-outline"
                     size={16}
-                    color={unloggedSessions.length > 0 ? (isDark ? '#F87171' : '#DC2626') : colors.textMuted}
+                    color={unloggedCount > 0 ? (isDark ? '#F87171' : '#DC2626') : colors.textMuted}
                   />
                 </View>
-                <Text style={[styles.headerBtnText, unloggedSessions.length > 0 && { color: isDark ? '#F87171' : '#DC2626' }]}>
+                <Text style={[styles.headerBtnText, unloggedCount > 0 && { color: isDark ? '#F87171' : '#DC2626' }]}>
                   Due
                 </Text>
               </TouchableOpacity>
@@ -1160,6 +839,7 @@ export default function AttendanceScreen() {
           </ScrollView>
         ) : (
           <FlatList
+            ref={flatListRef}
             data={isSelectedHoliday ? [] : todayFlatSessions}
             keyExtractor={item => item.id}
             showsVerticalScrollIndicator={false}
@@ -1192,7 +872,7 @@ export default function AttendanceScreen() {
                 Animated.timing(pillAnim, { toValue: 0, duration: 80, useNativeDriver: true }).start();
               }
             }}
-            scrollEventThrottle={16}
+            scrollEventThrottle={32}
           ListHeaderComponent={listHeader}
           ListEmptyComponent={
             <EmptyState
@@ -1211,36 +891,53 @@ export default function AttendanceScreen() {
         />
       )}
 
-      {/* ── Modals ── */}
+      {/* ── Lazy Loaded Modals ── */}
+      <Suspense fallback={null}>
+        {/* Timetable Modal */}
+        {isTimetableOpen && (
+          <TimetableModal
+            visible={isTimetableOpen}
+            onClose={() => setIsTimetableOpen(false)}
+            subjects={subjects}
+            handleAddSubject={handleAddSubject}
+            onEditSubject={handleEditSubject}
+            handleDeleteSubject={handleDeleteSubject}
+            handleResetSemester={handleResetSemester}
+          />
+        )}
 
-      {/* Timetable Modal */}
-      {isTimetableOpen && (
-        <TimetableModal
-          visible={isTimetableOpen}
-          onClose={() => setIsTimetableOpen(false)}
-          subjects={subjects}
-          handleAddSubject={handleAddSubject}
-          setEditSubject={setEditSubject}
-          setShowAddModal={setShowAddModal}
-          handleDeleteSubject={handleDeleteSubject}
-          handleResetSemester={handleResetSemester}
-        />
-      )}
+        {/* History Modal */}
+        {!!selectedHistorySubject && (
+          <SubjectHistoryModal
+            visible={!!selectedHistorySubject}
+            subject={selectedHistorySubject}
+            logs={logs}
+            subjects={subjects}
+            colors={colors}
+            isDark={isDark}
+            styles={styles}
+            onClose={() => setSelectedHistorySubject(null)}
+            onUndo={handleUndo}
+          />
+        )}
 
-      {/* History Modal */}
-      {!!selectedHistorySubject && (
-        <SubjectHistoryModal
-          visible={!!selectedHistorySubject}
-          subject={selectedHistorySubject}
-          logs={logs}
-          subjects={subjects}
-          colors={colors}
-          isDark={isDark}
-          styles={styles}
-          onClose={() => setSelectedHistorySubject(null)}
-          onUndo={handleUndo}
-        />
-      )}
+        {/* Add Subject Modal */}
+        {showAddModal && (
+          <AddSubjectModal 
+            visible={showAddModal} 
+            onClose={() => setShowAddModal(false)} 
+            existingSubject={editSubject} 
+          />
+        )}
+
+        {/* Class Notification Preferences Modal */}
+        {showClassNotifModal && (
+          <ClassNotifSettingsModal
+            visible={showClassNotifModal}
+            onClose={() => setShowClassNotifModal(false)}
+          />
+        )}
+      </Suspense>
 
       {/* Unlogged / Pending Classes & Labs Drawer */}
       {isUnloggedOpen && (
@@ -1366,22 +1063,7 @@ export default function AttendanceScreen() {
         </Modal>
       )}
       
-      {/* Add Subject Modal */}
-      {showAddModal && (
-        <AddSubjectModal 
-          visible={showAddModal} 
-          onClose={() => setShowAddModal(false)} 
-          existingSubject={editSubject} 
-        />
-      )}
 
-      {/* Class Notification Preferences Modal */}
-      {showClassNotifModal && (
-        <ClassNotifSettingsModal
-          visible={showClassNotifModal}
-          onClose={() => setShowClassNotifModal(false)}
-        />
-      )}
 
       </View>
     </View>

@@ -74,6 +74,37 @@ export const CalendarModule: React.FC = () => {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSlotResult, setAiSlotResult] = useState<string | null>(null);
 
+  // Dynamic Theme Detection (Syncs with Light / Dark mode in real time)
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    return !(
+      document.documentElement.classList.contains('theme-light') ||
+      document.body.classList.contains('theme-light') ||
+      localStorage.getItem('zen_theme') === 'light'
+    );
+  });
+
+  useEffect(() => {
+    const updateTheme = () => {
+      const light = (
+        document.documentElement.classList.contains('theme-light') ||
+        document.body.classList.contains('theme-light') ||
+        localStorage.getItem('zen_theme') === 'light'
+      );
+      setIsDark(!light);
+    };
+
+    updateTheme();
+    window.addEventListener('theme-change', updateTheme);
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+    return () => {
+      window.removeEventListener('theme-change', updateTheme);
+      observer.disconnect();
+    };
+  }, []);
+
   // ── 1. Real-time Firestore Custom Events Subscription ──
   useEffect(() => {
     const user = auth.currentUser;
@@ -283,41 +314,9 @@ export const CalendarModule: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // ── 5. AI Free Slot Finder ──
-  const handleFindFreeSlot = async () => {
+  // ── 5. Smart Free Slot Finder (Algorithmic Schedule Interval Engine) ──
+  const handleFindFreeSlot = () => {
     setIsAiSlotModalOpen(true);
-    setAiLoading(true);
-    setAiSlotResult(null);
-
-    try {
-      const scheduleSummary = timedDayEvents.map(e => ({
-        title: e.title,
-        start: e.startTime,
-        end: e.endTime,
-        type: e.type,
-      }));
-
-      const prompt = `Here is the user's schedule for ${selectedDate}:
-${JSON.stringify(scheduleSummary, null, 2)}
-
-Find the single best continuous 1-2 hour focused free slot during working hours (9:00 AM - 6:00 PM).
-Explain clearly:
-1. Exact recommended time window (e.g. "2:00 PM - 3:30 PM").
-2. Why this is the optimal window (least context switching, energy alignment).
-Provide a concise, energetic 2-paragraph response.`;
-
-      const response = await callWithFallback(async (model) => {
-        const res = await model.generateContent(prompt);
-        return res.response.text();
-      });
-
-      setAiSlotResult(response || 'No continuous free slot found between 9 AM and 6 PM.');
-    } catch (err: any) {
-      console.warn('AI Free slot fallback:', err);
-      setAiSlotResult(`✨ Recommended Focus Window: 2:00 PM - 4:00 PM\n\nYour afternoon block between 2:00 PM and 4:00 PM is completely clear of academic labs and meetings. This gives you a continuous 2-hour deep work window to tackle your top priority tasks with maximum momentum.`);
-    } finally {
-      setAiLoading(false);
-    }
   };
 
   // Quick Slot creation
@@ -425,7 +424,7 @@ Provide a concise, energetic 2-paragraph response.`;
             </button>
           </div>
 
-          {/* AI Free Slot Button */}
+          {/* Free Slot Button */}
           <button
             type="button"
             className="calendar-action-pill-btn ai-btn"
@@ -433,7 +432,7 @@ Provide a concise, energetic 2-paragraph response.`;
             title="Find continuous deep work window"
           >
             <Sparkles size={14} color="#38bdf8" />
-            <span>AI Free Slot</span>
+            <span>Free Slots</span>
           </button>
 
           {/* Google Calendar Connect Button */}
@@ -487,6 +486,7 @@ Provide a concise, energetic 2-paragraph response.`;
               selectedDate={selectedDate}
               timedEvents={timedDayEvents}
               unscheduledEvents={unscheduledDayEvents}
+              isDark={isDark}
               onSelectEvent={handleSelectEvent}
               onQuickAddAtTime={handleQuickAddAtTime}
             />
@@ -496,6 +496,7 @@ Provide a concise, energetic 2-paragraph response.`;
             <CalendarWeekView
               selectedDate={selectedDate}
               allEvents={filteredEvents}
+              isDark={isDark}
               onSelectDate={setSelectedDate}
               onSelectEvent={handleSelectEvent}
               onQuickAddAtDateTime={handleQuickAddAtDateTime}
@@ -506,8 +507,13 @@ Provide a concise, energetic 2-paragraph response.`;
             <CalendarMonthView
               selectedDate={selectedDate}
               allEvents={filteredEvents}
+              isDark={isDark}
               onSelectDate={setSelectedDate}
               onSelectEvent={handleSelectEvent}
+              onAddEventClick={() => {
+                setQuickAddStartTime('09:00');
+                setIsAddModalOpen(true);
+              }}
             />
           )}
 
@@ -515,6 +521,7 @@ Provide a concise, energetic 2-paragraph response.`;
             <CalendarAgendaView
               events={filteredEvents}
               selectedDate={selectedDate}
+              isDark={isDark}
               onSelectEvent={handleSelectEvent}
               onSelectDate={setSelectedDate}
             />
@@ -578,8 +585,7 @@ Provide a concise, energetic 2-paragraph response.`;
         isOpen={isAiSlotModalOpen}
         onClose={() => setIsAiSlotModalOpen(false)}
         selectedDate={selectedDate}
-        aiResult={aiSlotResult}
-        isLoading={aiLoading}
+        dayEvents={allMergedEvents.filter(e => e.date === selectedDate)}
         onBookSlot={(slotStr) => {
           setIsAiSlotModalOpen(false);
           setQuickAddStartTime(slotStr);

@@ -319,11 +319,17 @@ export function buildSelectiveContext(
   }
 
   if (domains.has('attendance')) {
-    const subjects = (ctx.attendance || []).slice(0, 15).map(s => ({
-      id: s.id, name: s.name,
-      pct: s.classesTotal > 0 ? Math.round((s.classesAttended / s.classesTotal) * 100) : 0,
-      attended: s.classesAttended, total: s.classesTotal,
-    }));
+    const subjects = (ctx.attendance || []).slice(0, 15).map(s => {
+      // Fix #10: Include labs in attendance context. Pure lab courses showed 0%.
+      const totalAtt = (s.classesAttended || 0) + (s.labsAttended || 0);
+      const totalCls = (s.classesTotal || 0) + (s.labsTotal || 0);
+      return {
+        id: s.id, name: s.name,
+        classesAttended: s.classesAttended, classesTotal: s.classesTotal,
+        labsAttended: s.labsAttended || 0, labsTotal: s.labsTotal || 0,
+        pct: totalCls > 0 ? Math.round((totalAtt / totalCls) * 100) : 0,
+      };
+    });
     lines.push(`\n📚 ATTENDANCE:\n${JSON.stringify(subjects)}`);
   }
 

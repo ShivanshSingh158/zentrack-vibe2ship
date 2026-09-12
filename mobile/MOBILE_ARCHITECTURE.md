@@ -202,7 +202,7 @@ mobile/
     │   ├── LandingScreen.tsx             # Welcome Landing Screen
     │   ├── TermsScreen.tsx               # Privacy Policy & Terms of Service
     │   ├── attendance/                   # Attendance Helper Hooks, Styles & Week Strip
-    │   ├── calendar/                     # Calendar Views, Event Sheets & State Hooks
+    │   ├── calendar/                     # Calendar Views, MonthDropdownCalendar, Event Sheets & State Hooks
     │   ├── dashboard/                    # Dashboard Data Aggregate Hook & Widget Layouts
     │   ├── gym/                          # Gym Screens: ActiveLogging, History, Progress, Swap
     │   └── tasks/                        # Task Modals, Recurring Engine, Task Style Tokens
@@ -423,12 +423,12 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/screens/GuestDashboard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GuestDashboard.tsx) | `GuestDashboard` | `GuestDashboard` | Offline Sample Preview: sample dashboard data for unauthenticated evaluation. |
 | [`src/screens/LandingScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/LandingScreen.tsx) | `LandingScreen` | `Landing` | Welcome Hero: feature carousel and Get Started CTA. |
 | [`src/screens/TermsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/TermsScreen.tsx) | `TermsScreen` | `Terms` | Legal: Privacy policy, data safety, and terms of service. |
-| [`src/screens/gym/GymHomeScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/GymHomeScreen.tsx) | `GymHomeScreen` | `GymHome` | Modular Gym Hub: `useGymAiPlanManager`, memoized `GymExerciseDraggableRow` with stable primitive log props, hoisted cardio interpolation, `GymWorkoutBanner` timer/CTA, day switcher, and readiness deload trigger. |
-| [`src/screens/gym/ActiveLoggingScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/ActiveLoggingScreen.tsx) | `ActiveLoggingScreen` | `ActiveLogging` | Modular Workout Execution: memoized `SetList` container with stable `handleSetAction` dispatcher, memoized `SwipeableSetRow` gesture tracking, debounced Android widget bridge, `ActiveExerciseHeader`, `ActiveQuickChips`, `ActiveExerciseVideo`, and sticky rest timer. |
-| [`src/screens/gym/WorkoutSummaryScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/WorkoutSummaryScreen.tsx) | `WorkoutSummaryScreen` | `WorkoutSummary` | Modular Workout Summary: volume stats, O(N) pre-indexed Map PR recognition with XP rewards, confetti cannon, memoized targetLog session data, and `WorkoutSummaryProgressionChart`. |
-| [`src/screens/gym/GymProgressScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/GymProgressScreen.tsx) | `GymProgressScreen` | `GymProgress` | Modular Strength Analytics: unified cubic bezier smoothing paths, `GymProgressDonut` volume distribution, and `GymProgressCardio` metrics grid. |
-| [`src/screens/gym/GymHistoryScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/GymHistoryScreen.tsx) | `GymHistoryScreen` | `GymHistory` | Modular Workout History: bouncy day streak counter and memoized `GymHeatmapCard` 90-day activity matrix. |
-| [`src/screens/gym/ExerciseDetailScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/ExerciseDetailScreen.tsx) | `ExerciseDetailScreen` | `ExerciseDetail` | Modular Exercise Reference: YouTube technique demos, memoized `ExercisePastSessions` history, muscle auto-complete, and master split sync. |
+| [`src/screens/gym/GymHomeScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/GymHomeScreen.tsx) | `GymHomeScreen` | `GymHome` | Modular Gym Hub: `useGymAiPlanManager`, memoized `GymExerciseDraggableRow` with stable primitive log props, hoisted cardio interpolation, `GymWorkoutBanner` timer/CTA, day switcher with instant gesture transitions (eliminated global `LayoutAnimation.configureNext` UI lock), and readiness deload trigger. |
+| [`src/screens/gym/ActiveLoggingScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/ActiveLoggingScreen.tsx) | `ActiveLoggingScreen` | `ActiveLogging` | Modular Workout Execution: memoized `SetList` container with stable `handleSetAction` dispatcher, memoized `SwipeableSetRow` gesture tracking, debounced Android widget bridge, narrowed `[log?.exercises]` and `[exercise?.name]` dependencies eliminating keystroke/set-toggle history rescans, `ActiveExerciseHeader`, `ActiveQuickChips`, `ActiveExerciseVideo`, and sticky rest timer. |
+| [`src/screens/gym/WorkoutSummaryScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/WorkoutSummaryScreen.tsx) | `WorkoutSummaryScreen` | `WorkoutSummary` | Modular Workout Summary: volume stats, O(N) pre-indexed Map PR recognition with XP rewards, confetti cannon, memoized targetLog session data, `computeOrGetHotCache` 90-day progression curve, and `WorkoutSummaryProgressionChart`. |
+| [`src/screens/gym/GymProgressScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/GymProgressScreen.tsx) | `GymProgressScreen` | `GymProgress` | Modular Strength Analytics: unified cubic bezier smoothing paths, `GymProgressDonut` volume distribution, hot-cached analytics via `computeOrGetHotCache`, and `GymProgressCardio` metrics grid. |
+| [`src/screens/gym/GymHistoryScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/GymHistoryScreen.tsx) | `GymHistoryScreen` | `GymHistory` | Modular Workout History: bouncy day streak counter, `computeOrGetHotCache` 91-day activity matrix, and memoized `GymHeatmapCard`. |
+| [`src/screens/gym/ExerciseDetailScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/ExerciseDetailScreen.tsx) | `ExerciseDetailScreen` | `ExerciseDetail` | Modular Exercise Reference: YouTube technique demos, memoized `ExercisePastSessions` history (decoupled from live `name` keystrokes), muscle auto-complete, and master split sync. |
 | [`src/screens/gym/ExerciseSwapScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/ExerciseSwapScreen.tsx) | `ExerciseSwapScreen` | `ExerciseSwap` | High-Performance Exercise Swap: O(1) sub-muscle dictionary matcher, memoized `TemplateSwapCard` & `AiSwapCard`, and master split permanent overrides. |
 | [`src/screens/gym/CardioLogScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/CardioLogScreen.tsx) | `CardioLogScreen` | `CardioLog` | Modular Cardio Logger: unified `parseNum` numeric sanitization, gradient hero badge, and `cardioLogStyles`. |
 
@@ -440,8 +440,8 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/screens/tasks/useRecurringSpawn.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/useRecurringSpawn.ts) | `useRecurringSpawn(tasks, optimisticAddTask)` | Client-side daily task recurrence spawner preventing duplicate clones for `today`. |
 | [`src/screens/tasks/NewTaskModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/NewTaskModal.tsx) | `NewTaskModal` | Slide-up modal for task creation with NLP natural language parsing chips. |
 | [`src/screens/tasks/EditTaskModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/EditTaskModal.tsx) | `EditTaskModal` | Modal for updating tasks with full NLP natural language parsing, live token chips, and save-time re-parsing (mic hidden). |
-| [`src/screens/tasks/taskConstants.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/taskConstants.ts) | `TASK_PRIORITY_COLORS`, `TASK_FILTERS` | Constants for task priorities and filtering modes. |
-| [`src/screens/tasks/tasksStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/tasksStyles.ts) | `makeTasksStyles(colors, isDark)` | Dynamic style factory for tasks screens across Obsidian Cosmos & Frost Quartz themes. |
+| [`src/screens/tasks/tasksStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/tasksStyles.ts) | `makeTasksStyles(colors, isDark)` | Dynamic style factory for tasks screens across Obsidian Cosmos & Frost Quartz themes. Includes styles for horizontal tag filter strip and "Inbox Zero" constellation celebration card. |
+| [`src/screens/TasksScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/TasksScreen.tsx) | `TasksScreen` | Main task coordinator: horizontal date strip, interactive horizontal tag filter strip with live counts for active tags, "Inbox Zero" constellation celebration banner with +50 XP reward trigger, and multi-view modes (List, Timeline, Kanban). |
 | [`src/screens/dashboard/useDashboardData.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/dashboard/useDashboardData.ts) | `useDashboardData()` | Aggregates discipline metrics, life score, upcoming events, and hydration progress for Home. |
 | [`src/screens/dashboard/useXPLevel.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/dashboard/useXPLevel.ts) | `useXPLevel()` | Hook returning current rank level title, badge icon, and next tier threshold. |
 | [`src/screens/dashboard/dashboardStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/dashboard/dashboardStyles.ts) | `makeDashboardStyles(colors, isDark)` | Dynamic theme style generator for Dashboard. |
@@ -493,7 +493,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/components/Calendar/CalendarWeekStripPager.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Calendar/CalendarWeekStripPager.tsx) | `CalendarWeekStripPager` | Horizontal swipeable week pager with day selection indicators. |
 | **Dashboard Components** (`src/components/Dashboard/`) | | |
 | [`src/components/Dashboard/UnifiedLifeWidget.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/UnifiedLifeWidget.tsx) | `UnifiedLifeWidget` | SVG donut score ring displaying overall life discipline score (0–100). |
-| [`src/components/Dashboard/AgendaWidget.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/AgendaWidget.tsx) | `AgendaWidget` | Today's timeline schedule card on Home dashboard. Features chronological agenda items (classes, gym, tasks) with automatic holiday suppression (omits scheduled and cancelled classes on designated holidays, displaying only gym/tasks or "Rest & Recharge" state) and an interactive empty state with dual "+ Add Task" and "🎤 Voice" dictation buttons linking to `VoiceDictationOverlay`. |
+| [`src/components/Dashboard/AgendaWidget.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/AgendaWidget.tsx) | `AgendaWidget` | Today's timeline schedule card on Home dashboard. Features chronological agenda items (classes, gym, tasks) with automatic holiday suppression, interactive empty state with voice dictation, and refined overdue task UX: pending tasks whose scheduled slot has elapsed display with active title (no strikethrough), a matching amber circular box icon (`ellipse-outline`, size 18) uniform with all other pending tasks, and clean unboxed time text (`1:00pm - 2:00pm • Overdue`) in amber, maintaining a clean, aligned, and consistent daily schedule. |
 | [`src/components/Dashboard/QuickCaptureSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/QuickCaptureSheet.tsx) | `QuickCaptureSheet` | 1-tap capture bottom sheet for Tasks, Notes, and Habits with NLP parser. |
 | [`src/components/Dashboard/WaterLogSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/WaterLogSheet.tsx) | `WaterLogSheet` | Hydration logging bottom sheet (+250ml, +500ml quick chips). |
 | [`src/components/Dashboard/SleepLogSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/SleepLogSheet.tsx) | `SleepLogSheet` | Sleep duration & quality (1–5 stars) logging sheet. |
@@ -501,7 +501,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/components/Dashboard/DashboardLayoutSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/DashboardLayoutSheet.tsx) | `DashboardLayoutSheet` | Drag-and-drop widget reordering sheet for customizing Dashboard layout. |
 | [`src/components/Dashboard/DashboardRings.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/DashboardRings.tsx) | `DashboardRings` | Multi-ring Apple Watch style activity rings for tasks, habits, and gym. |
 | **Tasks Components** (`src/components/Tasks/`) | | |
-| [`src/components/Tasks/TaskRow.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskRow.tsx) | `TaskRow` | Reusable swipeable task row with checkbox, priority badge, and subtasks accordion. |
+| [`src/components/Tasks/TaskRow.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskRow.tsx) | `TaskRow` | Reusable swipeable task row: animated SVG strikethrough pen draw (left-to-right) with card recession, title-aligned scheduled time and clock icon with priority tinting (#FF453A High, #FF9F0A Med, #30D158 Low), guaranteed '#' prefix on tag pills (`#placement`), single-line Obsidian Cosmos signature purple "Live Now" pill (`● In Progress • Xm left` in #a599ff, title-aligned), pulsing overdue radar with relative duration, haptic swipe-to-complete with threshold checkmark pop (scale 0.7 to 1.2), and subtask smooth accordion fold (`LinearTransition.springify()`). |
 | [`src/components/Tasks/TimelineView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TimelineView.tsx) | `TimelineView` | 24-hour visual block timeline mapping tasks, academic classes, and gym workouts with `DraggableTaskBlock`, `timelineMath`, and `timelineViewStyles`. |
 | [`src/components/Tasks/MatrixView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/MatrixView.tsx) | `MatrixView` | Eisenhower Matrix (Do First, Schedule, Delegate, Don't Do) 4-quadrant layout. |
 | [`src/components/Tasks/KanbanView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/KanbanView.tsx) | `KanbanView` | Drag-and-drop Kanban board with Pending, In Progress, and Done columns. |
@@ -519,14 +519,16 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/components/Gym/ZenGymAiFab.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ZenGymAiFab.tsx) | `ZenGymAiFab` | Luxury floating action button with metallic plates & AI sparkles. |
 | [`src/components/Gym/GymAiIcon.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/GymAiIcon.tsx) | `GymAiIcon` | High-precision vector SVG emblem with metallic weight plates & sparkles. |
 | [`src/components/Gym/AddExerciseModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/AddExerciseModal.tsx) | `AddExerciseModal` | Modular search-as-you-type modal: lazy-built catalogue singleton (`InteractionManager`), 150ms debounced search, `ExerciseSearchDropdown`, `ExerciseCustomFields`, and `addExerciseStyles`. |
-| [`src/components/Gym/AnimatedRestTimer.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/AnimatedRestTimer.tsx) | `AnimatedRestTimer` | Countdown rest timer with audio beep and background push alerts. |
-| [`src/components/Gym/WeeklyGymReport.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/WeeklyGymReport.tsx) | `WeeklyGymReport` | Full-week workout analytics dashboard on rest days: S.A.R.A / GYM-GPT intelligence, muscle completion DonutRings, strength charts, and `weeklyGymReportStyles`. |
+| [`src/components/Gym/AnimatedRestTimer.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/AnimatedRestTimer.tsx) | `AnimatedRestTimer` | Memoized countdown rest timer with audio beep and background push alerts. |
+| [`src/components/Gym/WeeklyGymReport.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/WeeklyGymReport.tsx) | `WeeklyGymReport` | Full-week workout analytics dashboard on rest days: wrapped in `React.memo` preventing re-render cascades on GymHome scroll ticks, S.A.R.A / GYM-GPT intelligence, muscle completion DonutRings, strength charts, and `weeklyGymReportStyles`. |
 | [`src/components/Gym/BodyMetricsSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/BodyMetricsSheet.tsx) | `BodyMetricsSheet` | Modular bodyweight & BMI tracker: `BodyMetricsHistoryChart` and `bodyMetricsStyles`. |
 | [`src/components/Gym/BeforeAfterSlider.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/BeforeAfterSlider.tsx) | `BeforeAfterSlider` | Interactive touch comparison slider for transformation photos. |
 | [`src/components/Gym/GymExerciseDraggableRow.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/GymExerciseDraggableRow.tsx) | `GymExerciseDraggableRow` | Memoized drag-and-drop exercise reordering card with stable primitive props and custom comparator to prevent Firestore sync re-renders. |
 | [`src/components/Gym/GymWorkoutBanner.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/GymWorkoutBanner.tsx) | `GymWorkoutBanner` | Today's workout split summary hero banner & live timer on GymHome. |
 | [`src/components/Gym/SwipeableSetRow.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/SwipeableSetRow.tsx) | `SwipeableSetRow` | Memoized PanResponder gesture set row with stable `onAction` dispatch, steppers, and custom React.memo comparator. |
 | [`src/components/Gym/ExerciseHistoryDrawer.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ExerciseHistoryDrawer.tsx) | `ExerciseHistoryDrawer` | Slide-out drawer displaying past historical sets for an individual exercise. |
+| [`src/components/Gym/ExerciseDeepDiveModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ExerciseDeepDiveModal.tsx) | `ExerciseDeepDiveModal` | Single-exercise deep-dive inspector modal: wrapped in `React.memo`, visibility-guarded, and hot-cached history extraction via `computeOrGetHotCache`. |
+| [`src/components/Gym/AnatomicalBodyMapCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/AnatomicalBodyMapCard.tsx) | `AnatomicalBodyMapCard` | Dual-view front/back vector muscle map: variant-conditioned model calculation ('weekly' vs 'analytics') eliminating redundant load passes. |
 | [`src/components/Gym/GymProfileModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/GymProfileModal.tsx) | `GymProfileModal` | Full athlete profile modal linked directly to GYM-GPT: biometrics, multi-goals, focus muscles, and `gymProfileStyles`. |
 | [`src/components/Gym/GymScheduleSettingsModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/GymScheduleSettingsModal.tsx) | `GymScheduleSettingsModal` | Modular schedule pattern & reminder editor: `GymScheduleDayCard`, `GymScheduleReminderTab`, and `gymScheduleStyles`. |
 | [`src/components/Gym/GymTemplateModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/GymTemplateModal.tsx) | `GymTemplateModal` | Modular workout split template importer: `SchedulePatternCard` and `gymTemplateStyles`. |
@@ -534,16 +536,16 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/components/Gym/LogCardioModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/LogCardioModal.tsx) | `LogCardioModal` | Dynamic metric logger (distance, duration, calories, incline) with `cardioModalStyles`. |
 | [`src/components/Gym/PRHallOfFameSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/PRHallOfFameSheet.tsx) | `PRHallOfFameSheet` | Modular Personal Records Hall of Fame: `PRExerciseRow` and `prHallOfFameStyles`. |
 | [`src/components/Gym/SwapRoutineModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/SwapRoutineModal.tsx) | `SwapRoutineModal` | Modular routine switcher: `RoutineSplitCard` and `swapRoutineStyles`. |
-| [`src/components/Gym/AnimatedRestTimer.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/AnimatedRestTimer.tsx) | `AnimatedRestTimer` | Draggable countdown rest timer with `animatedRestTimerStyles`. |
 | [`src/components/Gym/WorkoutTimer.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/WorkoutTimer.tsx) | `WorkoutTimer` | Elapsed workout duration stopwatch component. |
 | [`src/components/Gym/Charts/chartMath.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/chartMath.ts) | `chartMath` | Shared mathematical algorithms, SVG coordinate builders (`buildSvgLinePath`, `generateSmoothSvgPath`), and heatmap interpolators. |
-| [`src/components/Gym/Charts/ConsistencyHeatmap.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/ConsistencyHeatmap.tsx) | `ConsistencyHeatmap` | 52-week GitHub-style workout consistency heatmap grid. |
-| [`src/components/Gym/Charts/StrengthProgressionChart.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/StrengthProgressionChart.tsx) | `StrengthProgressionChart` | Estimated 1RM strength curve chart over 30/60/90 days. |
-| [`src/components/Gym/Charts/MuscleDonutChart.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/MuscleDonutChart.tsx) | `MuscleDonutChart` | SVG donut chart showing set volume breakdown by muscle group. |
-| [`src/components/Gym/Charts/MuscleDistributionChart.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/MuscleDistributionChart.tsx) | `MuscleDistributionChart` | Horizontal bar chart of sets performed per muscle group. |
-| [`src/components/Gym/Charts/VolumeBarChart.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/VolumeBarChart.tsx) | `VolumeBarChart` | 7-day daily volume comparison bar chart. |
-| [`src/components/Gym/Charts/VolumeTrendLine.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/VolumeTrendLine.tsx) | `VolumeTrendLine` | Line chart displaying total lifting tonnage progression. |
-| [`src/components/Gym/Charts/PRFeed.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/PRFeed.tsx) | `PRFeed` | Feed of recent Personal Record achievements. |
+| [`src/components/Gym/Charts/ConsistencyHeatmap.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/ConsistencyHeatmap.tsx) | `ConsistencyHeatmap` | 52-week GitHub-style workout consistency heatmap grid: wrapped in `React.memo`. |
+| [`src/components/Gym/Charts/StrengthProgressionChart.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/StrengthProgressionChart.tsx) | `StrengthProgressionChart` | Estimated 1RM strength curve chart over 30/60/90 days: wrapped in `React.memo` (including `SparkCard`). |
+| [`src/components/Gym/Charts/MuscleDonutChart.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/MuscleDonutChart.tsx) | `MuscleDonutChart` | SVG donut chart showing set volume breakdown by muscle group: wrapped in `React.memo`. |
+| [`src/components/Gym/Charts/MuscleDistributionChart.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/MuscleDistributionChart.tsx) | `MuscleDistributionChart` | Horizontal bar chart of sets performed per muscle group: wrapped in `React.memo` with memoized `makeStyles`. |
+| [`src/components/Gym/Charts/VolumeBarChart.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/VolumeBarChart.tsx) | `VolumeBarChart` | 7-day daily volume comparison bar chart: wrapped in `React.memo` with memoized `makeStyles`. |
+| [`src/components/Gym/Charts/VolumeTrendLine.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/VolumeTrendLine.tsx) | `VolumeTrendLine` | Line chart displaying total lifting tonnage progression: wrapped in `React.memo`. |
+| [`src/components/Gym/Charts/PRFeed.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/PRFeed.tsx) | `PRFeed` | Feed of recent Personal Record achievements: wrapped in `React.memo` with memoized `makeStyles`. |
+| [`src/components/Gym/Charts/EffortDistributionCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/EffortDistributionCard.tsx) | `EffortDistributionCard` | Proximity-to-failure effort and RIR distribution histogram card: wrapped in `React.memo`. |
 | **Habits Components** (`src/components/Habits/`) | | |
 | [`src/components/Habits/HabitReminderModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Habits/HabitReminderModal.tsx) | `HabitReminderModal` | Modal for configuring daily habit notification reminder times. |
 | [`src/components/Habits/HabitHeatmapGrid.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Habits/HabitHeatmapGrid.tsx) | `HabitHeatmapGrid` | 35/56-day 2D matrix (weeks × Sun–Sat) GitHub contribution heatmap with squircle tiles, 4-tier graduated luminance, and `onTilePress` callback. |
@@ -612,11 +614,13 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/hooks/useSafeTimeout.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useSafeTimeout.ts) | `useSafeTimeout` | `() => { setSafeTimeout: (fn: () => void, ms: number) => void }` | Memory-safe timeout wrapper automatically clearing pending handles on component unmount. |
 | [`src/hooks/useWidgetSync.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useWidgetSync.tsx) | `useWidgetSync` | `(params: { user, tasks, subjects, attendanceLogs }) => void` | Keeps the Android Home Screen Widget in continuous synchronization with in-app task and attendance changes via debounced background writes. |
 
-### 4.10.1. Android Home Screen Widgets (`src/widgets/`)
+### 4.10.1. Android Home Screen Widgets (`src/widgets/` & `src/services/widgetSyncService.ts`)
 | File Path | Component / Handler | Description & Responsibilities |
 |---|---|---|
-| [`src/widgets/TodayAgendaWidget.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/widgets/TodayAgendaWidget.tsx) | `TodayAgendaWidget` | Obsidian Cosmos styled Android home screen widget rendering today's timetable classes and tasks. Features intelligent balanced item selection (guarantees tasks are never starved out by classes), dedicated Holiday mode (omits classes and Next Class spotlight, maximizes task capacity up to 8 rows), and interactive 1-tap Present/Absent and Task Done/Undone buttons. |
+| [`src/widgets/TodayAgendaWidget.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/widgets/TodayAgendaWidget.tsx) | `TodayAgendaWidget` | Obsidian Cosmos styled Android home screen widget rendering today's timetable classes and tasks. Features intelligent balanced item selection (guarantees tasks are never starved out by classes), dedicated Holiday mode (omits classes and Next Class spotlight, maximizes task capacity up to 8 rows), and interactive 1-tap Present/Absent and Task Done/Undone buttons with local date forwarding. |
 | [`src/widgets/widgetTaskHandler.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/widgets/widgetTaskHandler.tsx) | `widgetTaskHandler` | Headless JS background task handler registered in `index.ts` via `registerWidgetTaskHandler`. Features automatic day-roll healing: detects stale date caches on device wake/resize and reconstructs today's agenda using offline-first L1 domain caches (`readCoreCacheMulti` & `readAcademicCache`). |
+| [`src/services/widgetSyncService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/widgetSyncService.ts) | `widgetSyncService` | Central Android widget aggregation, caching, and headless action executor. Resolves authenticated user asynchronously in background tasks, aligns 0-indexed lab slots, writes atomic batch logs with local dates, updates L1 boot caches, and broadcasts real-time attendance events to active React contexts. |
+
 
 ### 4.11. Utilities & Algorithmic Engines (`src/utils/`)
 | File Path | Exported Function | Signature / Type | Description & Purpose |
@@ -1393,6 +1397,149 @@ All storage keys must be imported from `src/config/constants.ts → STORAGE_KEYS
     - Bound `clearScheduleCache()` and `Notifications.cancelAllScheduledNotificationsAsync()` to `performSignOut()` to prevent alarm and cache bleed across user sessions.
     - Set `interactionHandleRef.current = null` immediately on interaction execution in `BackgroundNotificationWatcher`.
 
+### 2026-09-06 — NLP Multi-Day Recurrence & One-Time Day-List Upgrade
+
+- **UPGRADED** `mobile/src/utils/dateUtils.ts`:
+  - Added `oneTimeDates?: string[]` field to `ParsedTask` interface — resolved YYYY-MM-DD dates for one-time multi-day input.
+  - Exported new helper `extractDayListFromText(raw: string): number[]` — tokenises a comma/`and`-separated day-name string into day index array.
+  - Exported new helper `thisWeekDate(dayIndex: number): Date` — resolves a day index to its date in the **current** week without ever jumping to next week.
+  - **Pattern A** (recurring): `every friday, saturday and monday` → `isRecurring=true`, `recurrenceRule.daysOfWeek=[1,5,6]`. Requires `≥2` days after `every`.
+  - **Pattern B** (one-time this week): `only this monday, tuesday and friday` or `this monday, wednesday` → `isRecurring=false`, `oneTimeDates=['2026-09-08','2026-09-09','2026-09-12']`.
+  - **Pattern C** (bare 3+ day list, no prefix): `monday, wednesday and friday` → same as Pattern B, fires only for `≥3` days to avoid colliding with the existing 2-day `andPat`.
+  - All three patterns check **before** the existing `rangePat`/`andPat` and gate them with `!isRecurring && !oneTimeDates` to prevent double-matches.
+  - Token display: recurring → `Fri, Sat, Mon (Every Week)`; one-time → `Mon 8, Tue 9, Fri 12 (This Week)`.
+
+- **UPGRADED** `mobile/src/screens/tasks/NewTaskModal.tsx`:
+  - Added `oneTimeDates` state (`useState<string[] | undefined>`).
+  - `handleTitleChange` debounce now captures `parsed.oneTimeDates` and clears state when not present.
+  - `handleDismissToken('date')` now also clears `oneTimeDates`.
+  - `resetForm` clears `oneTimeDates`.
+  - New batch-create branch in `handleSave`: when `oneTimeDates.length > 1` and no recurrence rule, uses `writeBatch` to atomically create one task per date with instant `optimisticAddTask` per entry.
+  - Amber hint banner above the Add Task button: `"Will create 3 tasks: Mon Sep 8, Tue Sep 9, Fri Sep 12"`.
+  - Add Task button text changes to `"Add N tasks"` when multi-day is active.
+
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
+
+### 2026-09-06 — WeeklyGymReport Tab-Switch Lag Fix
+
+**File**: `mobile/src/components/Gym/WeeklyGymReport.tsx`
+
+Four targeted performance fixes to eliminate lag when switching away from the weekly gym report screen:
+
+1. **`DonutRing` → `React.memo`**: Each muscle ring is an SVG rendered by a separate component. Without memoisation, all 10+ rings were being re-created on every parent state change. Wrapped with `React.memo` to prevent unnecessary SVG re-renders.
+
+2. **`strengthProgressionData` O(1) date lookup**: The previous implementation ran `ranges.findIndex(r => r.dates.includes(log.date))` inside the inner exercise loop — effectively O(logs × exercises × weeks × 7). Replaced with a pre-built `Map<string, number>` (`dateToWeekIdx`) for O(1) lookup. Also pre-sliced `gymLogs` to only the last 28 days (4 weeks) so the outer loop no longer scans 90-day history.
+
+3. **`strengthProgressionData` → `computeOrGetHotCache`**: Wrapped the entire computation with the existing `computeOrGetHotCache` guard (fingerprinted by `generateDatasetFingerprint(gymLogs)`). Subsequent Firestore snapshots with identical data now take 0ms instead of re-running the full computation.
+
+4. **`LayoutAnimation` → `Animated.timing`**: Replaced both `LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)` calls in the GYM-GPT AI card toggle with `Animated.timing` on a per-component `Animated.Value`. `LayoutAnimation` is a global, frame-blocking API that locks the entire layout pass and was preventing smooth tab-switch gesture recognition while the animation was in-flight. The new `Animated.timing` approach runs independently per component without interfering with the tab navigator.
+
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
+
+### 2026-09-07 — Gym Notification Flood Fix + Geofence Robustness
+
+**Root Cause Analysis:**
+- `BackgroundNotificationWatcher` fired `scheduleAllNotifications` (cancels + rebuilds ALL OS alarms) on every set log during a workout, because each set updates the gym log document → `WellnessContext` re-renders → 600ms debounce fires.
+- `updateActiveWorkoutNotification` had no debounce, causing the lockscreen HUD to visually "bump" on every set tap.
+- OS geofencing is delayed 5–30 min in Android DOZE mode. No foreground polling existed.
+- OS could silently de-register geofences on reboot/low-memory with no recovery.
+- GPS accuracy was `Balanced` — insufficient for geofence-level proximity.
+- No hysteresis caused rapid enter→exit oscillation at gym boundary (GPS jitter).
+
+**Files Modified:**
+
+- **UPGRADED** `mobile/src/components/BackgroundNotificationWatcher.tsx`:
+  - Added `AsyncStorage.getItem('@zentrack_active_workout_state')` guard at the top of the effect callback.
+  - If `activeState && !activeState.completed`, returns early with `console.log` — skips entire notification reschedule during active workout.
+  - Effect callback changed from sync to `async` to support the guard.
+  - Import added: `@react-native-async-storage/async-storage`.
+
+- **UPGRADED** `mobile/src/services/activeWorkoutNotificationService.ts`:
+  - Added `_hudUpdateDebounceTimer` and `_pendingHudPayload` module-level refs.
+  - `updateActiveWorkoutNotification` now debounces set-log updates by 2 seconds. Rest timer updates fire immediately (countdown accuracy is time-sensitive).
+  - Extracted `_flushHudUpdate(payload)` as the actual Expo Notifications call.
+  - `dismissActiveWorkoutNotification` now cancels any pending debounced update and clears `_pendingHudPayload`.
+
+- **UPGRADED** `mobile/src/services/notifications.ts`:
+  - `_executeScheduleLoop`: Added second active-workout guard (defence-in-depth for direct callers outside the watcher) using the same `@zentrack_active_workout_state` AsyncStorage key.
+  - Fingerprint computation: replaced `(params.gymLogs || []).length` with `gymLogContentHash` — hashes each log's `date + exercise count + set count + completed` flag. Post-workout schedule now correctly refreshes when exercises are actually logged (not just when log count changes).
+
+- **UPGRADED** `mobile/src/services/geofenceService.ts`:
+  - **GPS accuracy**: `checkImmediateGymProximity` now uses `Location.Accuracy.High` with 8s timeout (was `Balanced`, 6s). Higher accuracy is required for geofence-level precision (~10–15m vs ~50m).
+  - **Hysteresis**: Departure now only fires at `distance > radius * 1.2` (20% buffer). Prevents enter→exit oscillation when standing at the boundary. Arrival still fires at `distance <= radius`.
+  - **Logging**: Added `console.log` in `syncAllActiveGeofences` that verifies `hasStartedGeofencingAsync` after `startGeofencingAsync` and warns if the OS rejected the registration.
+  - **New export**: `startForegroundGymProximityPolling(intervalMs = 30000)` — starts a `setInterval` that calls `checkImmediateGymProximity` every 30 seconds. Runs an immediate check on start. Returns cleanup function. Bypasses OS DOZE delays.
+  - **New export**: `rearmGeofencesIfNeeded()` — checks `hasStartedGeofencingAsync`. If `false`, calls `syncAllActiveGeofences()` and immediately checks proximity. Only acts if background location permission is still granted and a gym or task geofence is configured.
+
+- **UPGRADED** `mobile/App.tsx`:
+  - Import updated to include `rearmGeofencesIfNeeded` and `startForegroundGymProximityPolling`.
+  - `AppState.change → 'active'` handler now also calls `rearmGeofencesIfNeeded()` after `checkImmediateGymProximity()`.
+  - New `useEffect` starts foreground polling after a 5-second boot delay and returns the cleanup function on unmount.
+
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
+
+---
+
+### 2026-09-11 — ActiveLoggingScreen: 5-Fix Mount Performance Overhaul
+
+- **OPTIMIZED** `mobile/src/screens/gym/ActiveLoggingScreen.tsx` — 5 targeted fixes to eliminate JS-thread lag during the navigation push animation. See walkthrough report artifact for full before/after breakdown.
+  - **Fix 1**: Lazy `useState` initializer via `computeInitialSetInputs()` — eliminates Frame 1 double-render on mount.
+  - **Fix 2**: `InteractionManager.runAfterInteractions()` defers `overloadSuggestion` + `lastTimeData` history scans until push animation completes.
+  - **Fix 3**: Removed `navigation.setParams({ initialIndex: undefined })` on mount — was triggering a router re-render cascade during the slide animation.
+  - **Fix 4**: Lazy-mount `SupersetPickerModal` and `ActiveSwapModal` — only inserted into the React tree on first open (`swapModalEverShown` / `supersetPickerEverShown` guard flags).
+  - **Fix 5**: Eliminated redundant `getPreviousExerciseSession()` call in the setsLog sync `useEffect`.
+
+---
+
+### 2026-09-11 — Removal of Swipe-To-Log System & Set Row Modernization
+
+- **REMOVED** `PanResponder` and horizontal swipe-to-complete drag tracking from `mobile/src/components/Gym/SwipeableSetRow.tsx`.
+  - Eliminated per-set `PanResponder.create()`, `Animated.Value` for `translateX`, `isTriggeringRef`, and native driver animated transforms.
+  - Replaced the horizontal drag gesture and hidden swipe track with a dedicated, responsive checkmark button on the right side of each set row.
+  - Left set number remains visible and tappable for quick toggling, with long-press to delete preserved.
+- **CLEANED** `mobile/src/screens/gym/ActiveLoggingScreen.tsx`:
+  - Removed `handleSwipeCompleteSet` callback and its dependencies.
+  - Interactive lock screen notification action `DONE_SET` now routes cleanly through `handleLogSet()`.
+  - `handleSetAction` dispatcher updated with `'swipe'` fallback to toggle.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
+
+---
+
+### 2026-09-11 — Rest Timer Precision Docking & Snap Anchor
+
+- **OPTIMIZED** `mobile/src/screens/gym/ActiveLoggingScreen.tsx`:
+  - Switched `SafeAreaView` import to `react-native-safe-area-context` with `edges={['top', 'left', 'right']}` to prevent double-counting bottom safe-area insets on iOS.
+  - Recalculated `timerBottomOffset` to `navBarHeight + 8` (`navBarHeight = 54 + (insets.bottom > 0 ? insets.bottom : 8)`), reducing the gap by ~40px on iOS and ~18px on Android so the timer sits docked exactly 8px above the Telegram tab bar.
+- **IMPROVED** `mobile/src/components/Gym/AnimatedRestTimer.tsx`:
+  - Configured PanResponder with `onStartShouldSetPanResponder: () => false` so child buttons (+30s, -30s, Skip, expand) respond instantly without drag delays.
+  - On release or gesture cancel, `pan` animated spring resets to `{ x: 0, y: 0 }` so the rest timer always sticks firmly in place directly above the nav bar and never remains stuck high up.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
+
+---
+
+### 2026-09-11 — Revert Completed Workout Option (0 Logged Sets Guard)
+
+- **NEW FUNCTION** `revertWorkout()` in `mobile/src/hooks/useGymLog.ts`:
+  - Reverts `completed: false`, clears `workoutDurationMinutes`, `workoutStartTime`, `startTime`, and `endTime`.
+  - Cleans up `@gym_active_session_${date}` and notification / widget sync data.
+- **UPDATED** `mobile/src/components/Gym/GymWorkoutBanner.tsx`:
+  - Added conditional `hasLoggedAnyWork` check checking if any set across any exercise (or cardio) has `completed: true`.
+  - When `isCompleted` is true and `hasLoggedAnyWork` is `false` (0 sets logged): displays a dedicated **Revert** pill directly in place of **Resume** with confirmation alert (`Alert.alert`).
+  - Tapping **Revert** resets duration to 0 and immediately restores the clean **START WORKOUT** button.
+  - When `hasLoggedAnyWork` is `true` (even 1 set logged): standard **Resume** button is rendered in its normal spot.
+  - In `IN PROGRESS` state: restored clean two-item layout (`Finish` + `Resume`) with zero cutoffs or inline squeezing.
+- **CONNECTED** `mobile/src/screens/gym/GymHomeScreen.tsx`:
+  - Passed `onRevertWorkout={revertWorkout}` to `GymWorkoutBanner`.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
+
+---
+
+### 2026-09-11 — ActiveLoggingScreen: Header Top Spacing Restoration
+
+- **FIXED** `mobile/src/screens/gym/ActiveLoggingScreen.tsx`:
+  - Restored `SafeAreaView` from `react-native` (removed `react-native-safe-area-context`'s `SafeAreaView`).
+  - `activeLoggingStyles.ts` already calculates `paddingTop: (RNStatusBar.currentHeight || 40) + 8` on Android. By removing the second top safe-area inset from `react-native-safe-area-context`, the extra 40px+ empty black gap above the header (`Exercise X of Y`) on Android is completely eliminated, restoring the clean, tight native spacing.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
 
 
 

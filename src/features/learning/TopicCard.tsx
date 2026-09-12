@@ -316,7 +316,7 @@ export const TopicCard: React.FC<TopicCardProps> = ({
               }
             }}
           >
-            <Play size={13} fill="#000000" color="#000000" />
+            <Play size={13} fill="currentColor" color="currentColor" />
             <span>{progressPct === 0 ? 'Start Learning' : progressPct === 100 ? 'Review' : 'Resume'}</span>
           </button>
 

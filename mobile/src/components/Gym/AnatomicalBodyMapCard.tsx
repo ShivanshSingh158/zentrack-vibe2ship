@@ -87,36 +87,36 @@ export const AnatomicalBodyMapCard: React.FC<Props> = React.memo(({
     }
   }, [timeWindowDays]);
 
-  // ── Macro Analytics Models ──────────────────────────────────────────────────
+  // ── Macro Analytics Models (Only computed when variant === 'analytics') ──
   const volumeModel = useMemo(
-    () => calculateMacroVolumeLoad(gymLogs, windowDays as any, weekAnchorDate),
-    [gymLogs, windowDays, weekAnchorDate]
+    () => (variant === 'analytics' || mode === 'volume') ? calculateMacroVolumeLoad(gymLogs, windowDays as any, weekAnchorDate) : ({} as Record<string, any>),
+    [gymLogs, windowDays, weekAnchorDate, variant, mode]
   );
 
   const growthModel = useMemo(
-    () => calculateMuscleGrowthProgression(gymLogs, windowDays as any, weekAnchorDate),
-    [gymLogs, windowDays, weekAnchorDate]
+    () => (variant === 'analytics' && mode === 'growth') ? calculateMuscleGrowthProgression(gymLogs, windowDays as any, weekAnchorDate) : ({} as Record<string, any>),
+    [gymLogs, windowDays, weekAnchorDate, variant, mode]
   );
 
   const balanceModel = useMemo(
-    () => calculateSymmetryAndBalance(gymLogs, windowDays as any, weekAnchorDate),
-    [gymLogs, windowDays, weekAnchorDate]
+    () => (mode === 'balance') ? calculateSymmetryAndBalance(gymLogs, windowDays as any, weekAnchorDate) : ({} as Record<string, any>),
+    [gymLogs, windowDays, weekAnchorDate, mode]
   );
 
-  // ── Weekly Report Models ────────────────────────────────────────────────────
+  // ── Weekly Report Models (Only computed when variant === 'weekly') ───────────
   const weeklyMuscleLoad = useMemo(
-    () => calculateMuscleLoad(gymLogs, 7, weekAnchorDate, onlyHardSets),
-    [gymLogs, weekAnchorDate, onlyHardSets]
+    () => (variant === 'weekly') ? calculateMuscleLoad(gymLogs, 7, weekAnchorDate, onlyHardSets) : ({} as Record<string, any>),
+    [gymLogs, weekAnchorDate, onlyHardSets, variant]
   );
 
   const weeklyMuscleLevels = useMemo(
-    () => calculateMuscleLevels(weeklyMuscleLoad),
-    [weeklyMuscleLoad]
+    () => (variant === 'weekly') ? calculateMuscleLevels(weeklyMuscleLoad as any) : ({} as Record<string, any>),
+    [weeklyMuscleLoad, variant]
   );
 
   const weeklyFatigue = useMemo(
-    () => calculateMuscleFatigue(gymLogs, weekAnchorDate),
-    [gymLogs, weekAnchorDate]
+    () => (variant === 'weekly') ? calculateMuscleFatigue(gymLogs, weekAnchorDate) : ({} as Record<string, any>),
+    [gymLogs, weekAnchorDate, variant]
   );
 
   const genderGeometry = BODY_PATHS[bodyGender] || BODY_PATHS.male;

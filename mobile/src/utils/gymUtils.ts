@@ -1,6 +1,7 @@
 import { EXERCISE_DATABASE } from '../data/exerciseDatabase';
 import { getCanonicalExerciseKey } from '../data/exerciseAliasMap';
 import { GymExerciseLog, GymDayLog } from '../types/gym.types';
+import { computeOrGetHotCache, generateDatasetFingerprint } from './hotCacheStore';
 
 export const MUSCLE_COLORS: Record<string, string> = {
   'Chest': '#FF6B6B', 'Back': '#4DABF7', 'Shoulders': '#9775FA',
@@ -213,41 +214,46 @@ import { WEEKDAY_TO_PLAN, GYM_PLAN, EXERCISE_ALTERNATIVES } from '../data/gymPla
 export const calculateGymStreak = (logs: any[] | null | undefined, userGymPlan?: any | null): number => {
   if (!logs || logs.length === 0) return 0;
   
-  const loggedDates = new Set(
-    logs.filter(isValidWorkoutSession).map(l => l.date)
-  );
+  const d = new Date();
+  const todayStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const cacheKey = `gym_streak_${todayStr}_${generateDatasetFingerprint(logs)}_${userGymPlan ? 'custom' : 'def'}`;
 
-  let streak = 0;
-  let d = new Date();
-  
-  const toDateStr = (date: Date) => {
-    return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
-  };
+  return computeOrGetHotCache(cacheKey, () => {
+    const loggedDates = new Set(
+      logs.filter(isValidWorkoutSession).map(l => l.date)
+    );
 
-  const isRestDayForDate = (date: Date): boolean => {
-    const dayOfWeek = date.getDay(); // 0=Sun, 1=Mon...
-    const planIdx = WEEKDAY_TO_PLAN[dayOfWeek] ?? 7;
-    const plan = userGymPlan?.customDays?.[planIdx] || GYM_PLAN.find(p => p.dayIndex === planIdx);
-    return plan?.isRest === true;
-  };
+    let streak = 0;
+    const curDate = new Date();
+    
+    const toDateStr = (date: Date) => {
+      return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+    };
 
-  const todayStr = toDateStr(d);
-  if (loggedDates.has(todayStr)) {
-    streak++;
-  }
+    const isRestDayForDate = (date: Date): boolean => {
+      const dayOfWeek = date.getDay(); // 0=Sun, 1=Mon...
+      const planIdx = WEEKDAY_TO_PLAN[dayOfWeek] ?? 7;
+      const plan = userGymPlan?.customDays?.[planIdx] || GYM_PLAN.find(p => p.dayIndex === planIdx);
+      return plan?.isRest === true;
+    };
 
-  d.setDate(d.getDate() - 1);
-  while (true) {
-    const dStr = toDateStr(d);
-    if (loggedDates.has(dStr)) {
+    if (loggedDates.has(todayStr)) {
       streak++;
-    } else if (!isRestDayForDate(d)) { // If it's a workout day and not logged, streak breaks
-      break;
     }
-    d.setDate(d.getDate() - 1);
-  }
-  
-  return streak;
+
+    curDate.setDate(curDate.getDate() - 1);
+    while (true) {
+      const dStr = toDateStr(curDate);
+      if (loggedDates.has(dStr)) {
+        streak++;
+      } else if (!isRestDayForDate(curDate)) { // If it's a workout day and not logged, streak breaks
+        break;
+      }
+      curDate.setDate(curDate.getDate() - 1);
+    }
+    
+    return streak;
+  });
 };
 
 export const calculateExerciseMaxWeight = (exercise: GymExerciseLog | undefined | null): number => {
@@ -343,59 +349,63 @@ export function buildExerciseHistoryIndex(
   gymLogs: any[] | null | undefined,
   beforeDate?: string
 ): Map<string, PreviousExerciseSession> {
-  const index = new Map<string, PreviousExerciseSession>();
-  if (!gymLogs || gymLogs.length === 0) return index;
+  const emptyIndex = new Map<string, PreviousExerciseSession>();
+  if (!gymLogs || gymLogs.length === 0) return emptyIndex;
 
-  const sorted = gymLogs
-    .filter(l => (!beforeDate || l.date < beforeDate) && Array.isArray(l.exercises) && l.exercises.length > 0)
-    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const cacheKey = `ex_hist_idx_${beforeDate || 'all'}_${generateDatasetFingerprint(gymLogs)}`;
+  return computeOrGetHotCache(cacheKey, () => {
+    const index = new Map<string, PreviousExerciseSession>();
+    const sorted = gymLogs
+      .filter(l => (!beforeDate || l.date < beforeDate) && Array.isArray(l.exercises) && l.exercises.length > 0)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-  for (const log of sorted) {
-    for (const ex of log.exercises) {
-      if (!ex || !ex.name) continue;
-      const key = normalizeExerciseKey(ex.name);
-      if (!key || index.has(key)) continue; // Already mapped the latest session for this exercise
+    for (const log of sorted) {
+      for (const ex of log.exercises) {
+        if (!ex || !ex.name) continue;
+        const key = normalizeExerciseKey(ex.name);
+        if (!key || index.has(key)) continue; // Already mapped the latest session for this exercise
 
-      if (Array.isArray(ex.setsLog) && ex.setsLog.length > 0) {
-        const completedSets = ex.setsLog.filter((s: any) => {
-          const w = s?.weight !== undefined && s?.weight !== null ? Number(s.weight) : (s?.weightKg !== undefined ? Number(s.weightKg) : null);
-          const r = s?.reps !== undefined && s?.reps !== null ? Number(s.reps) : null;
-          const hasValidNum = (w !== null && !isNaN(w) && w > 0) || (r !== null && !isNaN(r) && r > 0);
-          return s.completed === true && hasValidNum;
-        });
-
-        if (completedSets.length > 0) {
-          const mappedSets = completedSets.map((s: any, idx: number) => {
+        if (Array.isArray(ex.setsLog) && ex.setsLog.length > 0) {
+          const completedSets = ex.setsLog.filter((s: any) => {
             const w = s?.weight !== undefined && s?.weight !== null ? Number(s.weight) : (s?.weightKg !== undefined ? Number(s.weightKg) : null);
             const r = s?.reps !== undefined && s?.reps !== null ? Number(s.reps) : null;
-            return {
-              setNumber: idx + 1,
-              weight: w !== null && !isNaN(w) && w > 0 ? w : null,
-              reps: r !== null && !isNaN(r) && r > 0 ? r : null,
-              completed: true,
-            };
+            const hasValidNum = (w !== null && !isNaN(w) && w > 0) || (r !== null && !isNaN(r) && r > 0);
+            return s.completed === true && hasValidNum;
           });
 
-          const weights = mappedSets.map((s: { weight: number | null }) => s.weight).filter((w: number | null): w is number => w !== null && w > 0);
-          const reps = mappedSets.map((s: { reps: number | null }) => s.reps).filter((r: number | null): r is number => r !== null && r > 0);
+          if (completedSets.length > 0) {
+            const mappedSets = completedSets.map((s: any, idx: number) => {
+              const w = s?.weight !== undefined && s?.weight !== null ? Number(s.weight) : (s?.weightKg !== undefined ? Number(s.weightKg) : null);
+              const r = s?.reps !== undefined && s?.reps !== null ? Number(s.reps) : null;
+              return {
+                setNumber: idx + 1,
+                weight: w !== null && !isNaN(w) && w > 0 ? w : null,
+                reps: r !== null && !isNaN(r) && r > 0 ? r : null,
+                completed: true,
+              };
+            });
 
-          const lastWeight = weights.length > 0 ? weights[weights.length - 1] : null;
-          const maxWeight = weights.length > 0 ? Math.max(...weights) : null;
-          const avgReps = reps.length > 0 ? Math.round(reps.reduce((a: number, b: number) => a + b, 0) / reps.length) : null;
+            const weights = mappedSets.map((s: { weight: number | null }) => s.weight).filter((w: number | null): w is number => w !== null && w > 0);
+            const reps = mappedSets.map((s: { reps: number | null }) => s.reps).filter((r: number | null): r is number => r !== null && r > 0);
 
-          index.set(key, {
-            sets: mappedSets,
-            lastWeight,
-            avgReps,
-            maxWeight,
-            sessionDate: log.date,
-          });
+            const lastWeight = weights.length > 0 ? weights[weights.length - 1] : null;
+            const maxWeight = weights.length > 0 ? Math.max(...weights) : null;
+            const avgReps = reps.length > 0 ? Math.round(reps.reduce((a: number, b: number) => a + b, 0) / reps.length) : null;
+
+            index.set(key, {
+              sets: mappedSets,
+              lastWeight,
+              avgReps,
+              maxWeight,
+              sessionDate: log.date,
+            });
+          }
         }
       }
     }
-  }
 
-  return index;
+    return index;
+  });
 }
 
 /**
@@ -414,52 +424,8 @@ export function getPreviousExerciseSession(
   const key = normalizeExerciseKey(exerciseName);
   if (!key) return null;
 
-  const sorted = gymLogs
-    .filter(l => (!beforeDate || l.date < beforeDate) && Array.isArray(l.exercises) && l.exercises.length > 0)
-    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-
-  for (const log of sorted) {
-    const match = log.exercises.find((e: any) => e?.name && normalizeExerciseKey(e.name) === key);
-
-    if (match && Array.isArray(match.setsLog) && match.setsLog.length > 0) {
-      const completedSets = match.setsLog.filter((s: any) => {
-        const w = s?.weight !== undefined && s?.weight !== null ? Number(s.weight) : (s?.weightKg !== undefined ? Number(s.weightKg) : null);
-        const r = s?.reps !== undefined && s?.reps !== null ? Number(s.reps) : null;
-        const hasValidNum = (w !== null && !isNaN(w) && w > 0) || (r !== null && !isNaN(r) && r > 0);
-        return s.completed === true && hasValidNum;
-      });
-
-      if (completedSets.length > 0) {
-        const mappedSets = completedSets.map((s: any, idx: number) => {
-          const w = s?.weight !== undefined && s?.weight !== null ? Number(s.weight) : (s?.weightKg !== undefined ? Number(s.weightKg) : null);
-          const r = s?.reps !== undefined && s?.reps !== null ? Number(s.reps) : null;
-          return {
-            setNumber: idx + 1,
-            weight: w !== null && !isNaN(w) && w > 0 ? w : null,
-            reps: r !== null && !isNaN(r) && r > 0 ? r : null,
-            completed: true,
-          };
-        });
-
-        const weights = mappedSets.map((s: { weight: number | null }) => s.weight).filter((w: number | null): w is number => w !== null && w > 0);
-        const reps = mappedSets.map((s: { reps: number | null }) => s.reps).filter((r: number | null): r is number => r !== null && r > 0);
-
-        const lastWeight = weights.length > 0 ? weights[weights.length - 1] : null;
-        const maxWeight = weights.length > 0 ? Math.max(...weights) : null;
-        const avgReps = reps.length > 0 ? Math.round(reps.reduce((a: number, b: number) => a + b, 0) / reps.length) : null;
-
-        return {
-          sets: mappedSets,
-          lastWeight,
-          avgReps,
-          maxWeight,
-          sessionDate: log.date,
-        };
-      }
-    }
-  }
-
-  return null;
+  const index = buildExerciseHistoryIndex(gymLogs, beforeDate);
+  return index.get(key) || null;
 }
 
 export interface MuscleTargetResolution {

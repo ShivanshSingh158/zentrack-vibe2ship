@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, Animated } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, TouchableOpacity, Animated, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import WorkoutTimer from './WorkoutTimer';
 import { COLORS } from '../../theme/tokens';
@@ -16,6 +16,7 @@ export interface GymWorkoutBannerProps {
   onResumeWorkout: () => void;
   onEndWorkout: (completed: boolean) => void;
   resumeWorkout: () => void;
+  onRevertWorkout?: () => void;
 }
 
 export const GymWorkoutBanner: React.FC<GymWorkoutBannerProps> = React.memo(({
@@ -29,11 +30,20 @@ export const GymWorkoutBanner: React.FC<GymWorkoutBannerProps> = React.memo(({
   onResumeWorkout,
   onEndWorkout,
   resumeWorkout,
+  onRevertWorkout,
 }) => {
   const isCompleted = Boolean(
     (log as any)?.completed ||
     (log?.workoutDurationMinutes !== undefined && !log?.workoutStartTime)
   );
+
+  const hasLoggedAnyWork = useMemo(() => {
+    const hasExerciseSet = (log?.exercises || []).some((ex: any) =>
+      (ex?.setsLog || []).some((s: any) => Boolean(s?.completed))
+    );
+    const hasCardio = (log?.cardio || []).some((c: any) => Boolean(c?.completed));
+    return hasExerciseSet || hasCardio;
+  }, [log?.exercises, log?.cardio]);
 
   if (isCompleted) {
     return (
@@ -45,23 +55,62 @@ export const GymWorkoutBanner: React.FC<GymWorkoutBannerProps> = React.memo(({
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <TouchableOpacity
-            onPress={() => {
-              hapticMedium();
-              resumeWorkout();
-              navigation.navigate('ActiveLogging', { date: selectedDate });
-            }}
-            style={{
-              backgroundColor: 'rgba(94,218,158,0.15)',
-              borderColor: 'rgba(94,218,158,0.3)',
-              borderWidth: 1,
-              paddingHorizontal: 10,
-              paddingVertical: 5,
-              borderRadius: 14,
-            }}
-          >
-            <Text style={{ color: '#5eda9e', fontSize: 12, fontWeight: '700' }}>Resume</Text>
-          </TouchableOpacity>
+          {/* Placed properly in place of Resume:
+              - If 0 sets/exercises logged: Revert button replaces Resume
+              - If at least 1 set logged: Resume button stays as normal */}
+          {!hasLoggedAnyWork && onRevertWorkout ? (
+            <TouchableOpacity
+              onPress={() => {
+                hapticMedium();
+                Alert.alert(
+                  'Revert Workout?',
+                  'No sets or exercises were logged. Revert session time to 0 and show Start Workout?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Revert',
+                      style: 'destructive',
+                      onPress: () => {
+                        hapticMedium();
+                        onRevertWorkout();
+                      },
+                    },
+                  ]
+                );
+              }}
+              style={{
+                backgroundColor: 'rgba(255, 159, 77, 0.15)',
+                borderColor: 'rgba(255, 159, 77, 0.35)',
+                borderWidth: 1,
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 14,
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={{ color: '#ff9f4d', fontSize: 12, fontWeight: '700' }}>Revert</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              onPress={() => {
+                hapticMedium();
+                resumeWorkout();
+                navigation.navigate('ActiveLogging', { date: selectedDate });
+              }}
+              style={{
+                backgroundColor: 'rgba(94,218,158,0.15)',
+                borderColor: 'rgba(94,218,158,0.3)',
+                borderWidth: 1,
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 14,
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={{ color: '#5eda9e', fontSize: 12, fontWeight: '700' }}>Resume</Text>
+            </TouchableOpacity>
+          )}
+
           {currentStreak > 0 && (
             <View style={s.streakBadgeInline}>
               <Ionicons name="flame" size={14} color={COLORS.accentAmber} />

@@ -540,12 +540,12 @@ export async function checkImmediateGymProximity(options?: {
     let currentCoords: { latitude: number; longitude: number } | null = options?.currentCoords ?? null;
 
     if (!currentCoords) {
-      // Attempt balanced GPS position with 6-second timeout
+      // Attempt HIGH-accuracy GPS with 8-second timeout for reliable geofence-level precision
       try {
         const positionPromise = Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
+          accuracy: Location.Accuracy.High,
         });
-        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000));
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
         const pos = await Promise.race([positionPromise, timeoutPromise]);
         if (pos && 'coords' in pos) {
           currentCoords = (pos as Location.LocationObject).coords;
@@ -576,13 +576,21 @@ export async function checkImmediateGymProximity(options?: {
 
     const radius = gymConfig.radius || 150;
     const isInside = distance <= radius;
+    // ── Hysteresis buffer (20%) on departure ──────────────────────────────────
+    // Prevents oscillation when standing near the gym boundary (e.g. entrance).
+    // Arrival fires at distance <= radius.
+    // Departure only fires at distance > radius * 1.2 (20% margin outside the zone).
+    // This stops rapid enter→exit→enter flapping caused by GPS jitter at the edge.
+    const departureRadius = radius * 1.2;
+
+    console.log(`[Geofence] Foreground proximity: distance=${distance}m, radius=${radius}m (departure=${departureRadius.toFixed(0)}m), inside=${isInside}`);
 
     if (isInside && gymConfig.promptOnEnter) {
       const triggered = await triggerGymArrival(gymConfig, options);
       return { insideGym: true, distanceMeters: distance, triggered };
     }
 
-    if (!isInside && gymConfig.promptOnExit) {
+    if (!isInside && distance > departureRadius && gymConfig.promptOnExit) {
       const triggered = await triggerGymDeparture(gymConfig, options);
       return { insideGym: false, distanceMeters: distance, triggered };
     }
@@ -731,7 +739,13 @@ export async function syncAllActiveGeofences(): Promise<void> {
 
     if (regions.length > 0) {
       await Location.startGeofencingAsync(GEOFENCE_TASK_NAME, regions);
-      console.log(`[Geofence] Successfully registered ${regions.length} active geofence(s) with OS`);
+      // Verify that the OS actually accepted the registration
+      const isRegistered = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME);
+      if (isRegistered) {
+        console.log(`[Geofence] Successfully registered ${regions.length} active geofence(s) with OS ✅`);
+      } else {
+        console.warn(`[Geofence] ⚠️ startGeofencingAsync returned but hasStartedGeofencingAsync=false — OS may have rejected the registration.`);
+      }
     } else {
       const isRegistered = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME);
       if (isRegistered) {
@@ -774,3 +788,68 @@ export async function initGeofencingOnBoot(): Promise<void> {
   }
 }
 
+// ─── 6. Foreground Proximity Polling ─────────────────────────────────────────
+/**
+ * Starts a periodic foreground proximity check that runs every `intervalMs` milliseconds
+ * (default: 30 seconds) while the app is actively in the foreground.
+ *
+ * Why this is needed: Android's OS-level geofencing is delayed by DOZE mode and
+ * Standby Buckets — events can arrive 5–30 minutes late in background. When the user
+ * is actively using the app (i.e. they opened the gym screen), foreground polling gives
+ * immediate 30-second precision arrival/departure detection without waiting for the OS.
+ *
+ * Returns a cleanup function that stops polling when called.
+ */
+export function startForegroundGymProximityPolling(
+  intervalMs: number = 30000
+): () => void {
+  // Run an immediate check first (don't wait for the first interval)
+  checkImmediateGymProximity().catch(() => {});
+
+  const timer = setInterval(() => {
+    checkImmediateGymProximity().catch((err) => {
+      console.warn('[Geofence] Foreground polling error:', err?.message);
+    });
+  }, intervalMs);
+
+  return () => clearInterval(timer);
+}
+
+// ─── 7. Geofence Health Re-arm ────────────────────────────────────────────────
+/**
+ * Re-registers all active geofences if the OS has silently de-registered them.
+ * This can happen after a device reboot, low-memory kill, or permission re-grant.
+ *
+ * Call this from AppState.change → 'active' to ensure geofencing is always running
+ * after the app is foregrounded.
+ */
+export async function rearmGeofencesIfNeeded(): Promise<void> {
+  try {
+    const gymConfig = await getGymGeofenceConfig();
+    const taskReminders = await getActiveTaskLocationReminders();
+
+    const hasAnyTarget =
+      (gymConfig && gymConfig.enabled && gymConfig.latitude) ||
+      (taskReminders && taskReminders.length > 0);
+
+    if (!hasAnyTarget) return;
+
+    // Only re-arm if background location permission is still granted
+    const { status: bg } = await Location.getBackgroundPermissionsAsync();
+    if (bg !== 'granted') return;
+
+    const isRegistered = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME);
+    if (!isRegistered) {
+      console.log('[Geofence] Re-arming: geofences not registered, re-syncing with OS...');
+      await syncAllActiveGeofences();
+
+      // Also run an immediate proximity check in case user is already at location
+      const servicesOn = await Location.hasServicesEnabledAsync();
+      if (servicesOn) {
+        checkImmediateGymProximity().catch(() => {});
+      }
+    }
+  } catch (err: any) {
+    console.warn('[Geofence] rearmGeofencesIfNeeded error:', err?.message);
+  }
+}

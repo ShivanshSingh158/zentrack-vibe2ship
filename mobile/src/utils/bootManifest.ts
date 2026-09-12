@@ -88,7 +88,7 @@ export interface BootManifest {
 }
 
 const DEFAULT_PINNED = ['Tasks', 'Gym', 'Calendar', 'Attendance'];
-const DEFAULT_WATER_GOAL = 2500;
+const DEFAULT_WATER_GOAL = 3800;
 
 // ─── In-Memory L1 Cache Layer ────────────────────────────────────────────────
 let _memoryBootCache: BootManifest | null = null;

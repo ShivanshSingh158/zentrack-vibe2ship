@@ -766,7 +766,7 @@ When user asks to modify workout data, embed ONE action block at the END of your
 
   try {
     const data = await callProxy({
-      model: preferredModel || 'gemini-3.6-flash',
+      model: preferredModel || 'gemini-2.5-flash',
       contents,
       systemInstruction: systemPrompt,
       generationConfig: { temperature: 0.4, maxOutputTokens: 8192 },

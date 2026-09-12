@@ -22,6 +22,7 @@ import { feedback } from '../../utils/haptics';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { awardXP } from '../../services/xpSystem';
+import { computeOrGetHotCache, generateDatasetFingerprint } from '../../utils/hotCacheStore';
 
 // Extracted Sub-Components & Styles
 import { makeWorkoutSummaryStyles } from './workoutSummaryStyles';
@@ -194,42 +195,46 @@ export default function WorkoutSummaryScreen() {
 
   const chartData = useMemo(() => {
     if (!gymLogs || gymLogs.length === 0) return null;
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-    const ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split('T')[0];
-    const logsInRange = gymLogs.filter(l => l.date >= ninetyDaysAgoStr).sort((a, b) => a.date.localeCompare(b.date));
-    const labels: string[] = [];
-    const dataPoints: number[] = [];
+    const cacheKey = `summary_chart_${selectedLift}_${selectedMetric}_${isDark ? 'd' : 'l'}_${generateDatasetFingerprint(gymLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      const ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split('T')[0];
+      const logsInRange = gymLogs.filter(l => l.date >= ninetyDaysAgoStr).sort((a, b) => a.date.localeCompare(b.date));
 
-    logsInRange.forEach(log => {
-      if (!log.exercises) return;
-      const liftEx = log.exercises.find(e => e.name.toLowerCase() === selectedLift.toLowerCase() || e.name.toLowerCase().includes(selectedLift.toLowerCase()));
-      if (liftEx && liftEx.setsLog) {
-        let max1RM = 0;
-        let totalVolume = 0;
-        liftEx.setsLog.forEach((set: any) => {
-          if ((set.completed || (log as any).completed || (set.weight && set.reps)) && set.weight && set.reps) {
-            const est1RM = set.weight * (1 + set.reps / 30);
-            if (est1RM > max1RM) max1RM = est1RM;
-            totalVolume += set.weight * set.reps;
+      const labels: string[] = [];
+      const dataPoints: number[] = [];
+
+      logsInRange.forEach(log => {
+        if (!log.exercises) return;
+        const liftEx = log.exercises.find(e => e.name.toLowerCase() === selectedLift.toLowerCase() || e.name.toLowerCase().includes(selectedLift.toLowerCase()));
+        if (liftEx && liftEx.setsLog) {
+          let max1RM = 0;
+          let totalVolume = 0;
+          liftEx.setsLog.forEach((set: any) => {
+            if ((set.completed || (log as any).completed || (set.weight && set.reps)) && set.weight && set.reps) {
+              const est1RM = set.weight * (1 + set.reps / 30);
+              if (est1RM > max1RM) max1RM = est1RM;
+              totalVolume += set.weight * set.reps;
+            }
+          });
+          const value = selectedMetric === '1RM' ? max1RM : totalVolume;
+          if (value > 0) {
+            const dateObj = new Date(log.date);
+            const formattedDate = `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
+            labels.push(formattedDate);
+            dataPoints.push(Math.round(value));
           }
-        });
-        const value = selectedMetric === '1RM' ? max1RM : totalVolume;
-        if (value > 0) {
-          const dateObj = new Date(log.date);
-          const formattedDate = `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
-          labels.push(formattedDate);
-          dataPoints.push(Math.round(value));
         }
-      }
-    });
+      });
 
-    if (dataPoints.length === 0) return null;
-    const step = Math.max(1, Math.floor(labels.length / 5));
-    return {
-      labels: labels.map((l, i) => i % step === 0 ? l : ''),
-      datasets: [{ data: dataPoints, color: (opacity = 1) => isDark ? `rgba(255, 255, 255, ${opacity * 0.95})` : `rgba(108, 92, 231, ${opacity * 0.95})`, strokeWidth: 2 }],
-    };
+      if (dataPoints.length === 0) return null;
+      const step = Math.max(1, Math.floor(labels.length / 5));
+      return {
+        labels: labels.map((l, i) => i % step === 0 ? l : ''),
+        datasets: [{ data: dataPoints, color: (opacity = 1) => isDark ? `rgba(255, 255, 255, ${opacity * 0.95})` : `rgba(108, 92, 231, ${opacity * 0.95})`, strokeWidth: 2 }],
+      };
+    });
   }, [gymLogs, selectedLift, selectedMetric, isDark]);
 
   return (

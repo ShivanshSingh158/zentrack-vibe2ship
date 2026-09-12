@@ -1,5 +1,5 @@
-import React, { useRef, useMemo, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, TextInput, Animated, PanResponder, Keyboard } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, Text, TouchableOpacity, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GymSet } from '../../types/gym.types';
 import { hapticLight } from '../../utils/haptics';
@@ -18,6 +18,7 @@ export interface SwipeableSetRowProps {
   onBlur?: () => void;
   onToggleComplete?: () => void;
   onLongPress?: () => void;
+  /** @deprecated Swipe to log has been removed. Use onToggleComplete or bottom log button instead. */
   onSwipeComplete?: () => void;
   // Stable unified set action dispatcher - allows passing a single stable function
   // from parent without inline arrow closures, enabling React.memo bailouts.
@@ -38,19 +39,8 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
   onBlur,
   onToggleComplete,
   onLongPress,
-  onSwipeComplete,
   onAction,
 }) => {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const isTriggeringRef = useRef(false);
-
-  useEffect(() => {
-    if (isCompleted) {
-      translateX.setValue(0);
-      isTriggeringRef.current = false;
-    }
-  }, [isCompleted]);
-
   // Unified callback delegator
   const handleTextChangeInternal = useCallback((field: 'weight' | 'reps', text: string) => {
     if (onAction) {
@@ -84,14 +74,6 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
     }
   }, [idx, onAction, onLongPress]);
 
-  const handleSwipeCompleteInternal = useCallback(() => {
-    if (onAction) {
-      onAction(idx, 'swipe');
-    } else if (onSwipeComplete) {
-      onSwipeComplete();
-    }
-  }, [idx, onAction, onSwipeComplete]);
-
   // Stepper Handlers (+/- 2.5kg for Weight up to 1000kg, +/- 1 for Reps up to 50)
   const handleWeightAdjust = useCallback((delta: number) => {
     if (isCompleted) return;
@@ -109,126 +91,34 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
     handleTextChangeInternal('reps', newVal === 0 ? '' : String(newVal));
   }, [isCompleted, displayReps, handleTextChangeInternal]);
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) => {
-          // Accurate horizontal gesture detection that never interferes with vertical scrolling
-          return (
-            !isCompleted &&
-            !isTriggeringRef.current &&
-            gestureState.dx > 8 &&
-            Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.3
-          );
-        },
-        onPanResponderGrant: () => {
-          Keyboard.dismiss();
-        },
-        onPanResponderMove: (_, gestureState) => {
-          if (gestureState.dx > 0 && !isTriggeringRef.current) {
-            // Smooth resistance curve
-            const dx = gestureState.dx > 70 ? 70 + (gestureState.dx - 70) * 0.35 : gestureState.dx;
-            translateX.setValue(Math.min(dx, 120));
-          }
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          if (isTriggeringRef.current) return;
-
-          // Threshold: 45px rightward drag or fast swipe velocity
-          if (gestureState.dx > 45 || gestureState.vx > 0.35) {
-            isTriggeringRef.current = true;
-            Animated.timing(translateX, {
-              toValue: 130,
-              duration: 110,
-              useNativeDriver: true,
-            }).start(() => {
-              translateX.setValue(0);
-              handleSwipeCompleteInternal();
-              setTimeout(() => {
-                isTriggeringRef.current = false;
-              }, 250);
-            });
-          } else {
-            Animated.spring(translateX, {
-              toValue: 0,
-              tension: 140,
-              friction: 12,
-              useNativeDriver: true,
-            }).start();
-          }
-        },
-        onPanResponderTerminate: () => {
-          if (!isTriggeringRef.current) {
-            Animated.spring(translateX, {
-              toValue: 0,
-              tension: 140,
-              friction: 12,
-              useNativeDriver: true,
-            }).start();
-          }
-        },
-      }),
-    [isCompleted, handleSwipeCompleteInternal]
-  );
-
-  const trackOpacity = translateX.interpolate({
-    inputRange: [0, 40, 90],
-    outputRange: [0.4, 0.85, 1],
-    extrapolate: 'clamp',
-  });
-
-  const iconScale = translateX.interpolate({
-    inputRange: [0, 45, 90],
-    outputRange: [0.85, 1.15, 1.25],
-    extrapolate: 'clamp',
-  });
-
   return (
     <View style={[styles.setRowWrapper, isActive && styles.setRowWrapperActive]}>
-      {/* Background Animated Swipe Track */}
-      {!isCompleted && (
-        <Animated.View style={[styles.swipeTrack, { opacity: trackOpacity }]}>
-          <Animated.View style={[styles.swipeTrackContent, { transform: [{ scale: iconScale }] }]}>
-            <Ionicons name="checkmark-circle" size={20} color="#34C759" />
-            <Text style={styles.swipeTrackText}>Release to log</Text>
-          </Animated.View>
-        </Animated.View>
-      )}
-
       {isActive && <View style={styles.activeIndicator} />}
 
-      <Animated.View
-        {...panResponder.panHandlers}
+      <View
         style={[
           styles.setRow,
           isCompleted && styles.setRowCompleted,
           isActive && styles.setRowActive,
-          { transform: [{ translateX }] },
         ]}
       >
-        {/* Tap checkmark circle to toggle completed, long-press to delete */}
+        {/* Left: Set number / warmup tag (tap to toggle complete, long-press to delete) */}
         <TouchableOpacity
           onPress={handleToggleCompleteInternal}
           onLongPress={handleLongPressInternal}
           style={styles.setIndexArea}
+          hitSlop={4}
         >
-          {isCompleted ? (
-            <Ionicons
-              name="checkmark-circle"
-              size={20}
-              color={set.isWarmup ? '#ff9f4d' : colors.accentPrimary}
-            />
-          ) : (
-            <Text
-              style={[
-                styles.setIndexText,
-                set.isWarmup && { color: '#ff9f4d', fontWeight: '700', fontSize: 13 },
-                isActive && { color: set.isWarmup ? '#ff9f4d' : colors.accentPrimary },
-              ]}
-            >
-              {set.warmupLabel || (set.isWarmup ? `W${set.setNumber}` : set.setNumber)}
-            </Text>
-          )}
+          <Text
+            style={[
+              styles.setIndexText,
+              set.isWarmup && { color: '#ff9f4d', fontWeight: '700', fontSize: 13 },
+              isActive && { color: set.isWarmup ? '#ff9f4d' : colors.accentPrimary },
+              isCompleted && { color: colors.textMuted },
+            ]}
+          >
+            {set.warmupLabel || (set.isWarmup ? `W${set.setNumber}` : set.setNumber)}
+          </Text>
         </TouchableOpacity>
 
         {/* Weight Stepper: [- 25 +] (+/- 2.5 kg) */}
@@ -307,15 +197,28 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
           </TouchableOpacity>
         </View>
 
-        {/* Right Action / Subtle Swipe Hint */}
-        <View style={{ width: 22, alignItems: 'center', justifyContent: 'center' }}>
-          {!isCompleted ? (
-            <Ionicons name="chevron-forward" size={14} color={isActive ? colors.accentPrimary : colors.textMuted} style={{ opacity: 0.4 }} />
+        {/* Right Action: Clean checkmark button to log / toggle complete */}
+        <TouchableOpacity
+          onPress={handleToggleCompleteInternal}
+          style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
+          hitSlop={6}
+          activeOpacity={0.7}
+        >
+          {isCompleted ? (
+            <Ionicons
+              name="checkmark-circle"
+              size={22}
+              color={set.isWarmup ? '#ff9f4d' : (colors.accentPrimary || '#34C759')}
+            />
           ) : (
-            <Ionicons name="lock-closed-outline" size={12} color={colors.textMuted} style={{ opacity: 0.35 }} />
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={22}
+              color={isActive ? colors.accentPrimary : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)')}
+            />
           )}
-        </View>
-      </Animated.View>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }, (prev, next) =>
@@ -332,8 +235,7 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
   prev.onTextChange === next.onTextChange &&
   prev.onBlur === next.onBlur &&
   prev.onToggleComplete === next.onToggleComplete &&
-  prev.onLongPress === next.onLongPress &&
-  prev.onSwipeComplete === next.onSwipeComplete
+  prev.onLongPress === next.onLongPress
 );
 
 export default SwipeableSetRow;

@@ -71,7 +71,7 @@ export const ResumeLearningHero: React.FC<ResumeLearningHeroProps> = ({
           }}
           title="Resume Lecture"
         >
-          <Play size={18} fill="#000000" color="#000000" />
+          <Play size={18} fill="currentColor" color="currentColor" />
         </div>
 
         <div className="resume-hero-info">
@@ -134,7 +134,7 @@ export const ResumeLearningHero: React.FC<ResumeLearningHeroProps> = ({
             }
           }}
         >
-          <Play size={14} fill="#000000" color="#000000" />
+          <Play size={14} fill="currentColor" color="currentColor" />
           <span>Resume Lecture</span>
         </button>
       </div>

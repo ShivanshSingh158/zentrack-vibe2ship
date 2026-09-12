@@ -26,6 +26,7 @@ import { hapticLight } from '../../utils/haptics';
 import { normalizeExerciseKey } from '../../utils/gymUtils';
 import { estimate1RM, calculateRepMaxTable } from '../../services/oneRepMaxEngine';
 import { GymDayLog } from '../../types/gym.types';
+import { computeOrGetHotCache, generateDatasetFingerprint } from '../../utils/hotCacheStore';
 
 interface Props {
   visible: boolean;
@@ -36,7 +37,7 @@ interface Props {
 
 type CurveMode = 'top' | '1rm' | 'effort';
 
-export default function ExerciseDeepDiveModal({ visible, exerciseName, gymLogs, onClose }: Props) {
+function ExerciseDeepDiveModal({ visible, exerciseName, gymLogs, onClose }: Props) {
   const { colors, isDark } = useTheme();
   const [curveMode, setCurveMode] = useState<CurveMode>('1rm');
 
@@ -44,49 +45,52 @@ export default function ExerciseDeepDiveModal({ visible, exerciseName, gymLogs, 
 
   // Extract all historical sessions for this exercise (chronological order)
   const historySessions = useMemo(() => {
-    if (!targetKey) return [];
-    const sessions: any[] = [];
-    const sorted = (gymLogs || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    if (!targetKey || !visible) return [];
+    const cacheKey = `ex_deepdive_${targetKey}_${generateDatasetFingerprint(gymLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      const sessions: any[] = [];
+      const sorted = (gymLogs || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
-    for (const log of sorted) {
-      for (const ex of log.exercises || []) {
-        if (ex.skipped) continue;
-        if (normalizeExerciseKey(ex.name) === targetKey) {
-          const completedSets = (ex.setsLog || []).filter(s => s.completed && !s.isWarmup);
-          if (completedSets.length > 0) {
-            const topWeight = Math.max(0, ...completedSets.map(s => Number(s.weight) || 0));
-            const topSet = completedSets.find(s => Number(s.weight) === topWeight) || completedSets[0];
-            const maxReps = Number(topSet?.reps) || 0;
-            const oneRM = estimate1RM(topWeight, maxReps, 'epley');
+      for (const log of sorted) {
+        for (const ex of log.exercises || []) {
+          if (ex.skipped) continue;
+          if (normalizeExerciseKey(ex.name) === targetKey) {
+            const completedSets = (ex.setsLog || []).filter(s => s.completed && !s.isWarmup);
+            if (completedSets.length > 0) {
+              const topWeight = Math.max(0, ...completedSets.map(s => Number(s.weight) || 0));
+              const topSet = completedSets.find(s => Number(s.weight) === topWeight) || completedSets[0];
+              const maxReps = Number(topSet?.reps) || 0;
+              const oneRM = estimate1RM(topWeight, maxReps, 'epley');
 
-            // Compute average RIR
-            let rirSum = 0;
-            let rirCount = 0;
-            for (const s of completedSets) {
-              if (s.rir !== undefined && s.rir !== null) {
-                rirSum += Number(s.rir);
-                rirCount++;
-              } else if (s.rpe !== undefined && s.rpe !== null) {
-                rirSum += 10 - Number(s.rpe);
-                rirCount++;
+              // Compute average RIR
+              let rirSum = 0;
+              let rirCount = 0;
+              for (const s of completedSets) {
+                if (s.rir !== undefined && s.rir !== null) {
+                  rirSum += Number(s.rir);
+                  rirCount++;
+                } else if (s.rpe !== undefined && s.rpe !== null) {
+                  rirSum += 10 - Number(s.rpe);
+                  rirCount++;
+                }
               }
-            }
-            const avgRIR = rirCount > 0 ? Math.round((rirSum / rirCount) * 10) / 10 : 2;
+              const avgRIR = rirCount > 0 ? Math.round((rirSum / rirCount) * 10) / 10 : 2;
 
-            sessions.push({
-              date: log.date,
-              topWeight,
-              maxReps,
-              oneRM,
-              avgRIR,
-              sets: completedSets,
-            });
+              sessions.push({
+                date: log.date,
+                topWeight,
+                maxReps,
+                oneRM,
+                avgRIR,
+                sets: completedSets,
+              });
+            }
           }
         }
       }
-    }
-    return sessions;
-  }, [gymLogs, targetKey]);
+      return sessions;
+    });
+  }, [gymLogs, targetKey, visible]);
 
   // All-time best 1RM and Heaviest weight
   const allTimeBest = useMemo(() => {
@@ -441,3 +445,5 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
 });
+
+export default React.memo(ExerciseDeepDiveModal);

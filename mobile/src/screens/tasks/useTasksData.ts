@@ -5,7 +5,7 @@
  * computations extracted from TasksScreen.tsx.
  * The screen coordinator imports this single hook for all data.
  */
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Task } from '../../contexts/MobileDataContext';
 import { getToday, parseTimeFloat } from './taskConstants';
 
@@ -131,13 +131,13 @@ export function useTasksData(tasks: Task[]) {
     };
   }, [tasks, selectedDate, sortBy]);
 
-  const toggleTaskSelection = (id: string) => {
+  const toggleTaskSelection = useCallback((id: string) => {
     setSelectedTaskIds(prev => {
       const newSet = new Set(prev);
       if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
       return newSet;
     });
-  };
+  }, []);
 
   return {
     // State values

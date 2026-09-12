@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import { onAuthStateChanged, signOut, getRedirectResult } from 'firebase/auth';
 import type { User } from 'firebase/auth';
-import { onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { onSnapshot, doc, setDoc, collection, addDoc, writeBatch } from 'firebase/firestore';
 import { auth, db } from './services/firebase';
 import { runModelHealthCheck } from './services/gemini/core';
+import { NewTaskModal } from './features/tasks/NewTaskModal';
+import { getLocalDateString, toYMD, parseLocalDate } from './utils/dateUtils';
+import { playPopSound } from './utils/sound';
 import Lenis from 'lenis';
 
 // ————————————————————————————————————————————————————————
@@ -33,14 +36,13 @@ import { MissionReport } from './features/dashboard/MissionReport';
 import { ReportArchive } from './features/dashboard/ReportArchive';
 
 import { CommandPalette } from './components/CommandPalette';
-import { Bot, ShieldAlert, Ghost, Code2, MessageSquare, Mail, Calendar, Target, Sun, Zap } from 'lucide-react';
-import { AgentDataStream } from './components/AgentDataStream';
+import { Bot, ShieldAlert, Ghost, Code2, MessageSquare, Mail, Calendar, Target, Sun, Zap, CheckCircle2, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { useDeadlineWatcher } from './hooks/useDeadlineWatcher';
-import { AppLoader } from './components/AppLoader';
+import { AppSkeletonScreen } from './components/AppSkeletonScreen';
 import { SaraInterface } from './components/SaraInterface';
 import { BottomHeader } from './components/BottomHeader';
-
-
+import { LeftSidebar } from './components/LeftSidebar';
+import { DocumentTitleWatcher, ROUTE_TITLES } from './hooks/useDocumentTitle';
 import { useContextReminders } from './hooks/useContextReminders';
 
 /** Mounts inside GlobalDataProvider so it can access attendanceSubjects */
@@ -314,21 +316,27 @@ const AnimatedRoutes = () => {
 // where every lazy-loaded module renders simultaneously with its own loading skeleton
 // while also making its own Firestore calls — creating a fragmented loading experience.
 // This gate renders ONCE at the top level, so all routes get clean data on first paint.
-const DataReadyGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const DataReadyGate: React.FC<{ children: React.ReactNode; isPlainTheme?: boolean }> = ({ children, isPlainTheme }) => {
   const { isLoading } = useGlobalData();
   
   return (
     <AnimatePresence mode="wait">
       {isLoading ? (
-        <motion.div key="data-loader" exit={{ opacity: 0, transition: { duration: 0.5, ease: 'easeInOut' } }} style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: '#000000' }}>
-          <AppLoader title="ZenTrack" subtitle="Syncing workspace data" />
+        <motion.div
+          key="data-skeleton"
+          initial={false}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, transition: { duration: 0.2, ease: 'easeInOut' } }}
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: isPlainTheme ? '#fcfcfc' : '#09080c' }}
+        >
+          <AppSkeletonScreen isPlainTheme={isPlainTheme} />
         </motion.div>
       ) : (
         <motion.div
           key="data-content"
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: [0.25, 0.8, 0.25, 1] }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.25, ease: 'easeOut' }}
           style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', flex: 1, position: 'relative' }}
         >
           {children}
@@ -378,12 +386,76 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showSara, setShowSara] = useState(false);
   // ✅ U2 FIX: Track panel closing animation state.
-  const [isPanelClosing, setIsPanelClosing] = useState(false);
   const [showDeveloperMatrix, setShowDeveloperMatrix] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
 
+  // ── Global Todoist Quick Add Modal State ──
+  const [showQuickAddModal, setShowQuickAddModal] = useState(false);
+  const [quickAddInitialDate, setQuickAddInitialDate] = useState(getLocalDateString());
 
-  // Use a ref to track previous user so we never add it to the effect dep array
+  // ── Plain / Todoist Theme Mode State ──
+  const [isPlainTheme, setIsPlainTheme] = useState<boolean>(() => {
+    const saved = localStorage.getItem('zen_theme');
+    return saved === 'light' || saved === 'plain' || saved === null;
+  });
+
+  useEffect(() => {
+    const metaTheme = document.getElementById('zen-theme-color') || document.querySelector('meta[name="theme-color"]');
+    if (isPlainTheme) {
+      document.documentElement.classList.add('theme-plain', 'theme-light');
+      document.documentElement.classList.remove('theme-dark');
+      document.documentElement.style.backgroundColor = '#f6f8fa';
+      document.documentElement.style.colorScheme = 'light';
+      document.body.classList.add('theme-plain', 'theme-light');
+      document.body.classList.remove('theme-dark');
+      document.body.style.backgroundColor = '#f6f8fa';
+      if (metaTheme) metaTheme.setAttribute('content', '#f6f8fa');
+      localStorage.setItem('zen_theme', 'light');
+    } else {
+      document.documentElement.classList.remove('theme-plain', 'theme-light');
+      document.documentElement.classList.add('theme-dark');
+      document.documentElement.style.backgroundColor = '#09080c';
+      document.documentElement.style.colorScheme = 'dark';
+      document.body.classList.remove('theme-plain', 'theme-light');
+      document.body.classList.add('theme-dark');
+      document.body.style.backgroundColor = '#09080c';
+      if (metaTheme) metaTheme.setAttribute('content', '#09080c');
+      localStorage.setItem('zen_theme', 'dark');
+    }
+  }, [isPlainTheme]);
+
+  useEffect(() => {
+    const handleThemeToggle = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.theme) {
+        setIsPlainTheme(detail.theme === 'light' || detail.theme === 'plain');
+      } else {
+        setIsPlainTheme(prev => !prev);
+      }
+    };
+    window.addEventListener('zen-theme-toggle', handleThemeToggle);
+    return () => window.removeEventListener('zen-theme-toggle', handleThemeToggle);
+  }, []);
+
+  const togglePlainTheme = () => {
+    setIsPlainTheme(prev => {
+      const next = !prev;
+      window.dispatchEvent(new CustomEvent('zen-theme-toggle', { detail: { theme: next ? 'light' : 'dark' } }));
+      return next;
+    });
+  };
+
+  // Sync document title immediately on route changes matching Todoist convention
+  useEffect(() => {
+    const rawTitle = ROUTE_TITLES[location.pathname];
+    if (location.pathname === '/landing') {
+      document.title = 'ZenTrack — AI-Powered Life OS';
+    } else if (rawTitle) {
+      document.title = `${rawTitle} – ZenTrack`;
+    } else {
+      document.title = 'ZenTrack';
+    }
+  }, [location.pathname]);
   // (adding it caused multiple auth subscriptions on each login/logout cycle).
   const prevUserRef = useRef<User | null>(null);
 
@@ -410,6 +482,173 @@ function App() {
       window.removeEventListener('close-sara-modal', handleCloseSara);
     };
   }, []);
+
+  // ── Global Todoist Quick Add Shortcut ('q' key) and Event Handler ──
+  useEffect(() => {
+    const handleOpenQuickAdd = (e: Event) => {
+      const customEvent = e as CustomEvent<{ date?: string }>;
+      if (customEvent.detail?.date) {
+        setQuickAddInitialDate(customEvent.detail.date);
+      } else {
+        setQuickAddInitialDate(getLocalDateString());
+      }
+      setShowQuickAddModal(true);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Todoist shortcut: press 'q' anywhere when not focused inside an input/textarea/contenteditable
+      if ((e.key === 'q' || e.key === 'Q') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement | null;
+        if (
+          target &&
+          (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.isContentEditable ||
+            target.closest('[contenteditable="true"]') ||
+            target.closest('.task-modal-container') ||
+            target.closest('.security-modal-container') ||
+            target.closest('.command-palette'))
+        ) {
+          return;
+        }
+        e.preventDefault();
+        setQuickAddInitialDate(getLocalDateString());
+        setShowQuickAddModal(true);
+      }
+    };
+
+    window.addEventListener('open-new-task-modal', handleOpenQuickAdd);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('open-new-task-modal', handleOpenQuickAdd);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  const handleGlobalCreateTask = async (taskData: any) => {
+    if (!user) return;
+    try {
+      // 1. Multi-day one-time dates (e.g. "only this monday, wednesday and friday")
+      if (taskData.oneTimeDates && taskData.oneTimeDates.length > 1) {
+        const batch = writeBatch(db);
+        for (const d of taskData.oneTimeDates) {
+          const docRef = doc(collection(db, 'todos'));
+          batch.set(docRef, {
+            userId: user.uid,
+            title: taskData.title,
+            text: taskData.title,
+            date: d,
+            status: 'pending',
+            priority: taskData.priority || 'medium',
+            timeSlot: taskData.timeSlot || null,
+            estimatedMinutes: taskData.estimatedMinutes || null,
+            subtasks: taskData.subtasks || [],
+            tags: taskData.tags || [],
+            isRecurring: false,
+            createdAt: Date.now(),
+            order: Date.now(),
+          });
+        }
+        await batch.commit();
+        playPopSound();
+        toast.success(`Created ${taskData.oneTimeDates.length} tasks across scheduled days ⚡`);
+        window.dispatchEvent(new CustomEvent('zen-task-created', { detail: taskData }));
+        return;
+      }
+
+      // 2. Recurring tasks (e.g. daily, Monday to Saturday, weekdays, weekly, etc.)
+      if (taskData.isRecurring && taskData.recurrenceRule) {
+        const rule = taskData.recurrenceRule;
+        const sourceId = `rec_${Date.now()}`;
+        const baseDateStr = taskData.date || quickAddInitialDate || getLocalDateString();
+        let curr = parseLocalDate(baseDateStr);
+        const end = rule.endDate
+          ? parseLocalDate(rule.endDate)
+          : new Date(curr.getTime() + 60 * 24 * 60 * 60 * 1000); // 60 days schedule window
+
+        // If weekly with specific days of week, snap forward to the first valid matching day
+        if (rule.type === 'weekly' && rule.daysOfWeek && rule.daysOfWeek.length > 0) {
+          while (!rule.daysOfWeek.includes(curr.getDay())) {
+            curr.setDate(curr.getDate() + 1);
+          }
+        }
+
+        const batch = writeBatch(db);
+        let count = 0;
+        const MAX_INSTANCES = 60;
+
+        while (curr <= end && count < MAX_INSTANCES) {
+          const docRef = doc(collection(db, 'todos'));
+          const dateStr = toYMD(curr);
+          batch.set(docRef, {
+            userId: user.uid,
+            title: taskData.title,
+            text: taskData.title,
+            date: dateStr,
+            status: 'pending',
+            priority: taskData.priority || 'medium',
+            timeSlot: taskData.timeSlot || null,
+            estimatedMinutes: taskData.estimatedMinutes || null,
+            subtasks: taskData.subtasks || [],
+            tags: taskData.tags || [],
+            isRecurring: true,
+            recurrenceRule: rule,
+            recurringSourceId: sourceId,
+            createdAt: Date.now(),
+            order: Date.now(),
+          });
+          count++;
+
+          if (rule.type === 'daily' || rule.type === 'custom') {
+            curr.setDate(curr.getDate() + (rule.interval || 1));
+          } else if (rule.type === 'weekly') {
+            if (rule.daysOfWeek && rule.daysOfWeek.length > 0) {
+              do {
+                curr.setDate(curr.getDate() + 1);
+              } while (curr <= end && !rule.daysOfWeek.includes(curr.getDay()));
+            } else {
+              curr.setDate(curr.getDate() + 7 * (rule.interval || 1));
+            }
+          } else if (rule.type === 'monthly') {
+            curr.setMonth(curr.getMonth() + (rule.interval || 1));
+          } else {
+            break;
+          }
+        }
+
+        await batch.commit();
+        playPopSound();
+        toast.success(`Recurring task created (${count} sessions scheduled) ⚡`);
+        window.dispatchEvent(new CustomEvent('zen-task-created', { detail: taskData }));
+        return;
+      }
+
+      // 3. Standard single task
+      const newDoc: any = {
+        userId: user.uid,
+        title: taskData.title,
+        text: taskData.title,
+        date: taskData.date || quickAddInitialDate || getLocalDateString(),
+        status: 'pending',
+        priority: taskData.priority || 'medium',
+        timeSlot: taskData.timeSlot || null,
+        estimatedMinutes: taskData.estimatedMinutes || null,
+        subtasks: taskData.subtasks || [],
+        tags: taskData.tags || [],
+        isRecurring: false,
+        recurrenceRule: null,
+        createdAt: Date.now(),
+        order: Date.now(),
+      };
+      await addDoc(collection(db, 'todos'), newDoc);
+      playPopSound();
+      toast.success(`Task added: "${newDoc.title}" ⚡`);
+      window.dispatchEvent(new CustomEvent('zen-task-created', { detail: newDoc }));
+    } catch (err) {
+      console.error('Failed to create task via Quick Add:', err);
+      toast.error('Failed to create task');
+    }
+  };
 
   useEffect(() => {
     // Skip Lenis on touch/mobile — native iOS scroll is already buttery smooth
@@ -549,17 +788,29 @@ function App() {
 
   const toasterProps = {
     position: 'top-right' as const,
+    theme: (isPlainTheme ? 'light' : 'dark') as 'light' | 'dark',
+    richColors: false,
+    closeButton: false,
+    icons: {
+      success: <CheckCircle2 size={18} className="zen-toast-icon zen-toast-icon-success" />,
+      error: <AlertCircle size={18} className="zen-toast-icon zen-toast-icon-error" />,
+      warning: <AlertTriangle size={18} className="zen-toast-icon zen-toast-icon-warning" />,
+      info: <Info size={18} className="zen-toast-icon zen-toast-icon-info" />,
+    },
     toastOptions: {
-      style: {
-        background: 'rgba(8, 20, 35, 0.97)', // Solid-ish — avoids backdrop-filter on mobile
-        border: '1px solid rgba(255,255,255,0.10)',
-        borderRadius: '0.875rem',
-        color: 'white',
-        fontFamily: "'Inter', sans-serif",
-        fontSize: '0.85rem',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+      className: 'zen-toast',
+      classNames: {
+        toast: 'zen-toast',
+        title: 'zen-toast-title',
+        description: 'zen-toast-desc',
+        actionButton: 'zen-toast-action-btn',
+        cancelButton: 'zen-toast-cancel-btn',
+        closeButton: 'zen-toast-close-btn',
+        success: 'toast-success',
+        error: 'toast-error',
+        warning: 'toast-warning',
+        info: 'toast-info',
       },
-      classNames: { success: 'toast-success', error: 'toast-error', warning: 'toast-warning' },
     },
   };
 
@@ -577,18 +828,22 @@ function App() {
   return (
     <AnimatePresence mode="wait">
       {showSolarLoader ? (
-        <motion.div key="solar-loader" exit={{ opacity: 1, transition: { duration: 0 } }} style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: '#000000' }}>
-          <AppLoader title="ZenTrack" subtitle="Authenticating session" />
+        <motion.div
+          key="solar-skeleton"
+          exit={{ opacity: 0, transition: { duration: 0 } }}
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: isPlainTheme ? '#fcfcfc' : '#09080c' }}
+        >
+          <AppSkeletonScreen isPlainTheme={isPlainTheme} />
         </motion.div>
       ) : authPhase === 'authenticated' && user ? (
         <motion.div 
           key="app-shell" 
-          style={{ position: 'contents' }}
+          style={{ display: 'contents' }}
         >
       <ErrorBoundary name="GlobalProviders">
       <GlobalDataProvider>
       <PomodoroProvider>
-        <DataReadyGate>
+        <DataReadyGate isPlainTheme={isPlainTheme}>
 
         <Toaster {...toasterProps} />
         <OfflineIndicator />
@@ -596,6 +851,7 @@ function App() {
         <ContextRemindersRunner />
         <DeadlineWatcherRunner />
         <AgentNavigator />
+        <DocumentTitleWatcher />
         <FocusModeOverlay />
         <DailyBriefingOverlay />
         <FloatingExtraWorks />
@@ -607,8 +863,27 @@ function App() {
         {/* Developer Matrix Overlay */}
         <AnimatePresence>
           {showDeveloperMatrix && <DeveloperMatrix onClose={() => setShowDeveloperMatrix(false)} />}
-          {showSecurityModal && <SecuritySettingsModal onClose={() => setShowSecurityModal(false)} />}
+          {showSecurityModal && (
+            <SecuritySettingsModal 
+              onClose={() => setShowSecurityModal(false)} 
+              user={user}
+              onLogout={() => {
+                setShowSecurityModal(false);
+                signOut(auth);
+              }}
+              isPlainTheme={isPlainTheme}
+              onToggleTheme={togglePlainTheme}
+            />
+          )}
         </AnimatePresence>
+
+        {/* Todoist-Style Global Quick Add Modal */}
+        <NewTaskModal
+          isOpen={showQuickAddModal}
+          onClose={() => setShowQuickAddModal(false)}
+          initialDate={quickAddInitialDate}
+          onSave={handleGlobalCreateTask}
+        />
 
         {/* Onboarding Carousel */}
         {showOnboarding && (
@@ -632,16 +907,22 @@ function App() {
         </AnimatePresence>
 
 
-
-        <BackgroundEffects />
-        <div className="app-container flex-col">
+        {!isPlainTheme && <BackgroundEffects />}
+        <div className="app-container app-layout-sidebar">
+          <LeftSidebar
+            user={user}
+            onLogout={() => signOut(auth)}
+            onOpenSecurity={() => setShowSecurityModal(true)}
+            onOpenSara={() => setShowSara(true)}
+            isPlainTheme={isPlainTheme}
+            onToggleTheme={togglePlainTheme}
+          />
           <div className="main-content full-width">
             <Suspense fallback={<PageLoader />}>
               <AnimatedRoutes />
             </Suspense>
           </div>
         </div>
-        <BottomHeader showSara={showSara} onOpenSara={() => setShowSara(true)} />
         </DataReadyGate>
       </PomodoroProvider>
       </GlobalDataProvider>

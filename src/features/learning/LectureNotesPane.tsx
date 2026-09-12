@@ -296,11 +296,10 @@ CRITICAL: Under NO circumstances should you echo, dump, or repeat the transcript
           {transcriptText && (
             <button
               type="button"
-              className="lp-stamp-ts-btn"
+              className="lp-stamp-ts-btn lp-ai-notes-btn"
               onClick={handleGenerateAiNotes}
               disabled={generatingNotes}
               title="Generate comprehensive master study notes for this full lecture with AI"
-              style={{ background: 'rgba(94, 218, 158, 0.15)', borderColor: 'rgba(94, 218, 158, 0.35)', color: '#5eda9e' }}
             >
               {generatingNotes ? <Loader2 size={12} className="lp-spin" /> : <Sparkles size={12} />}
               <span>{generatingNotes ? 'Generating...' : '✨ Full AI Notes'}</span>

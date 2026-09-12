@@ -1,0 +1,881 @@
+/* ==========================================================================
+   ZenTrack — sidebar-nav.css
+   Dedicated Stylesheet for the Left Navigation Sidebar.
+   Always stuck/fixed to the screen on scroll with ZenTrack brand purple/violet.
+   ========================================================================== */
+
+/* ── Main Sidebar Container ── */
+.todoist-sidebar {
+  width: 260px !important;
+  min-width: 260px !important;
+  max-width: 260px !important;
+  height: 100vh !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  bottom: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  box-sizing: border-box !important;
+  padding: 12px 0 8px 0 !important;
+  z-index: 100 !important;
+  user-select: none !important;
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  overflow: hidden !important;
+  font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif) !important;
+}
+
+.todoist-sidebar.collapsed {
+  width: 58px !important;
+  min-width: 58px !important;
+  max-width: 58px !important;
+}
+
+/* ── User Profile Header Row ── */
+.todoist-user-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 4px 14px 10px 14px !important;
+  min-height: 40px !important;
+  box-sizing: border-box !important;
+}
+
+.todoist-user-btn {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  cursor: pointer !important;
+  padding: 5px 8px !important;
+  border-radius: 8px !important;
+  transition: background 0.15s ease !important;
+  max-width: 185px !important;
+  text-align: left !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+.todoist-user-btn:focus,
+.todoist-user-btn:focus-visible,
+.todoist-user-btn:active,
+.todoist-user-btn[aria-expanded="true"] {
+  outline: none !important;
+  outline-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Constrain Avatar Image */
+.todoist-avatar {
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+}
+
+img.todoist-avatar {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+div.todoist-avatar {
+  background: #e2e8f0 !important;
+  color: #334155 !important;
+  font-weight: 600 !important;
+  font-size: 0.9rem !important;
+}
+
+.todoist-user-name {
+  font-size: 14.5px !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: 1.2 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.todoist-header-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+}
+
+.todoist-icon-btn {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 7px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer !important;
+  transition: background 0.15s ease, color 0.15s ease !important;
+  padding: 0 !important;
+}
+
+/* ── "+ Add task" Action Row ── */
+.todoist-add-task-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 2px 8px 6px 8px !important;
+  gap: 4px !important;
+}
+
+.todoist-add-task-btn {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer !important;
+  color: #a599ff !important;
+  font-weight: 600 !important;
+  font-size: 13.5px !important;
+  padding: 5px 8px !important;
+  border-radius: 5px !important;
+  transition: background 0.15s ease, color 0.15s ease !important;
+  text-align: left !important;
+  flex: 1 !important;
+  box-sizing: border-box !important;
+}
+
+.todoist-add-task-btn:hover {
+  background: rgba(165, 153, 255, 0.12) !important;
+}
+
+.todoist-add-task-btn .plus-circle {
+  width: 20px !important;
+  min-width: 20px !important;
+  height: 20px !important;
+  border-radius: 50% !important;
+  background: #a599ff !important;
+  color: #0f172a !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 2px 6px rgba(165, 153, 255, 0.35) !important;
+}
+
+.todoist-add-task-side-btn {
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 5px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: transparent !important;
+  border: none !important;
+  color: #a599ff !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  flex-shrink: 0 !important;
+}
+
+.todoist-add-task-side-btn:hover {
+  background: rgba(165, 153, 255, 0.12) !important;
+  transform: scale(1.05) !important;
+}
+
+/* ── Navigation List ── */
+.todoist-nav-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1px !important;
+  padding: 0 8px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  flex: 1 !important;
+  scrollbar-width: thin !important;
+}
+
+.todoist-nav-list::-webkit-scrollbar {
+  width: 4px !important;
+}
+
+.todoist-nav-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1) !important;
+  border-radius: 4px !important;
+}
+
+/* Links & Nav Items — Exactly matching Todoist 13.5px / 30px row height */
+.todoist-nav-item {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 0 8px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  border-radius: 5px !important;
+  border: none !important;
+  border-left: none !important;
+  text-decoration: none !important;
+  font-size: 13.5px !important;
+  font-weight: 400 !important;
+  transition: background 0.12s ease, color 0.12s ease !important;
+  cursor: pointer !important;
+  border-top: none !important;
+  border-right: none !important;
+  border-bottom: none !important;
+  background: transparent !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  text-align: left !important;
+  outline: none !important;
+  line-height: 20px !important;
+}
+
+.todoist-nav-item:visited,
+.todoist-nav-item:active,
+.todoist-nav-item:link {
+  text-decoration: none !important;
+}
+
+.todoist-nav-item span {
+  font-size: 13.5px !important;
+  font-weight: inherit !important;
+  line-height: 20px !important;
+  white-space: nowrap !important;
+}
+
+.todoist-nav-item-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+  flex: 1 !important;
+}
+
+.todoist-nav-item-icon {
+  width: 20px !important;
+  min-width: 20px !important;
+  height: 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  transition: color 0.12s ease !important;
+}
+
+.todoist-badge {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  margin-left: auto !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #a599ff !important;
+  font-feature-settings: 'tnum' 1 !important;
+  line-height: 1 !important;
+}
+
+/* Section Header (Workspace / My Projects) */
+.todoist-section-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 12px 8px 4px 8px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #666666 !important;
+  letter-spacing: -0.01em !important;
+  cursor: pointer !important;
+  border: none !important;
+  background: transparent !important;
+  width: 100% !important;
+  border-radius: 5px !important;
+  text-align: left !important;
+  margin-top: 4px !important;
+}
+
+.todoist-section-header span {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+
+.todoist-section-chevron {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #777777 !important;
+  margin-left: auto !important;
+}
+
+.todoist-section-header:hover {
+  color: #202020 !important;
+}
+
+/* ── Sidebar Footer (Help, Settings, Dark Mode) ── */
+.todoist-sidebar-footer {
+  padding: 4px 8px 8px 8px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  margin-top: auto !important;
+  flex-shrink: 0 !important;
+  border-top: 1px solid #edeae6 !important;
+}
+
+.todoist-sidebar.collapsed .todoist-sidebar-footer {
+  padding: 4px 0 8px 0 !important;
+  align-items: center !important;
+}
+
+.todoist-sidebar.collapsed .todoist-sidebar-footer .todoist-nav-item {
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  margin: 0 auto !important;
+  justify-content: center !important;
+  border-radius: 6px !important;
+}
+
+.todoist-sidebar.collapsed .todoist-sidebar-footer .todoist-nav-item-left {
+  justify-content: center !important;
+  flex: none !important;
+  gap: 0 !important;
+}
+
+.todoist-help-item {
+  color: #555555 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+.todoist-help-icon-wrap {
+  position: relative !important;
+}
+
+.todoist-help-dot {
+  position: absolute !important;
+  top: 1px !important;
+  right: 1px !important;
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background: #a599ff !important;
+  box-shadow: 0 0 0 1.5px #faf8f6 !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LIGHT THEME COLORS (TODOIST MINIMALIST 3-COLOR HARMONY)
+   [1. Warm linen #faf8f6] [2. Deep charcoal #202020] [3. Iconic terracotta #e44232]
+   ══════════════════════════════════════════════════════════════ */
+body.theme-light .todoist-sidebar,
+body.theme-plain .todoist-sidebar {
+  background: #faf8f6 !important;
+  border-right: 1px solid #edeae6 !important;
+}
+
+body.theme-light .todoist-user-name,
+body.theme-plain .todoist-user-name,
+body.theme-light .todoist-nav-item,
+body.theme-plain .todoist-nav-item {
+  color: #202020 !important;
+}
+
+body.theme-light .todoist-nav-item-icon,
+body.theme-plain .todoist-nav-item-icon,
+body.theme-light .todoist-icon-btn,
+body.theme-plain .todoist-icon-btn {
+  color: #5f6368 !important;
+}
+
+body.theme-light .todoist-nav-item:hover,
+body.theme-plain .todoist-nav-item:hover,
+body.theme-light .todoist-user-btn:hover,
+body.theme-plain .todoist-user-btn:hover,
+body.theme-light .todoist-user-btn[aria-expanded="true"],
+body.theme-plain .todoist-user-btn[aria-expanded="true"],
+body.theme-light .todoist-icon-btn:hover,
+body.theme-plain .todoist-icon-btn:hover,
+body.theme-light .todoist-section-header:hover,
+body.theme-plain .todoist-section-header:hover {
+  background: #f2efe9 !important;
+  color: #202020 !important;
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Light Active Item: ZenTrack Signature Purple Pill & Accent */
+body.theme-light .todoist-nav-item.active,
+body.theme-plain .todoist-nav-item.active {
+  background: rgba(165, 153, 255, 0.14) !important;
+  color: #a599ff !important;
+  font-weight: 600 !important;
+  border: none !important;
+  border-left: none !important;
+}
+
+body.theme-light .todoist-nav-item.active .todoist-nav-item-icon,
+body.theme-plain .todoist-nav-item.active .todoist-nav-item-icon {
+  color: #a599ff !important;
+}
+
+body.theme-light .todoist-nav-item.active .todoist-badge,
+body.theme-plain .todoist-nav-item.active .todoist-badge {
+  color: #a599ff !important;
+  background: transparent !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+}
+
+/* Light Add Task Button */
+body.theme-light .todoist-add-task-btn,
+body.theme-plain .todoist-add-task-btn {
+  color: #a599ff !important;
+  font-weight: 600 !important;
+  transition: all 0.15s ease !important;
+}
+
+body.theme-light .todoist-add-task-btn:hover,
+body.theme-plain .todoist-add-task-btn:hover {
+  background: rgba(165, 153, 255, 0.12) !important;
+  color: #7c6fe6 !important;
+  transform: translateY(-0.5px) !important;
+}
+
+body.theme-light .todoist-add-task-btn:active,
+body.theme-plain .todoist-add-task-btn:active {
+  transform: translateY(1px) !important;
+}
+
+body.theme-light .todoist-add-task-btn .plus-circle,
+body.theme-plain .todoist-add-task-btn .plus-circle {
+  background: #a599ff !important;
+  border-bottom: none !important;
+  color: #0f172a !important;
+  box-shadow: 0 2px 6px rgba(165, 153, 255, 0.35) !important;
+  transition: all 0.12s ease !important;
+}
+
+body.theme-light div.todoist-avatar,
+body.theme-plain div.todoist-avatar {
+  background: #e2e8f0 !important;
+  color: #334155 !important;
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
+}
+
+body.theme-light img.todoist-avatar,
+body.theme-plain img.todoist-avatar {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
+}
+
+body.theme-light .todoist-section-header,
+body.theme-plain .todoist-section-header {
+  color: #78716c !important;
+}
+
+body.theme-light .todoist-sidebar-footer,
+body.theme-plain .todoist-sidebar-footer {
+  border-top: 1px solid #edeae6 !important;
+}
+
+body.theme-light .todoist-badge,
+body.theme-plain .todoist-badge {
+  color: #a599ff !important;
+  background: transparent !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DARK THEME COLORS (COSMIC OBSIDIAN & LAVENDER)
+   ══════════════════════════════════════════════════════════════ */
+body.theme-dark .todoist-sidebar,
+body:not(.theme-light):not(.theme-plain) .todoist-sidebar {
+  background: #09090b !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+body.theme-dark .todoist-user-name,
+body:not(.theme-light):not(.theme-plain) .todoist-user-name,
+body.theme-dark .todoist-nav-item,
+body:not(.theme-light):not(.theme-plain) .todoist-nav-item {
+  color: #f2f2f7 !important;
+}
+
+body.theme-dark .todoist-nav-item-icon,
+body:not(.theme-light):not(.theme-plain) .todoist-nav-item-icon,
+body.theme-dark .todoist-icon-btn,
+body:not(.theme-light):not(.theme-plain) .todoist-icon-btn {
+  color: #8e8e93 !important;
+}
+
+body.theme-dark .todoist-nav-item:hover,
+body:not(.theme-light):not(.theme-plain) .todoist-nav-item:hover,
+body.theme-dark .todoist-user-btn:hover,
+body:not(.theme-light):not(.theme-plain) .todoist-user-btn:hover,
+body.theme-dark .todoist-user-btn[aria-expanded="true"],
+body:not(.theme-light):not(.theme-plain) .todoist-user-btn[aria-expanded="true"],
+body.theme-dark .todoist-icon-btn:hover,
+body:not(.theme-light):not(.theme-plain) .todoist-icon-btn:hover,
+body.theme-dark .todoist-section-header:hover,
+body:not(.theme-light):not(.theme-plain) .todoist-section-header:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #ffffff !important;
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Dark Active Item: ZenTrack Signature Cosmic Lavender Pill Fill */
+body.theme-dark .todoist-nav-item.active,
+body:not(.theme-light):not(.theme-plain) .todoist-nav-item.active {
+  background: rgba(165, 153, 255, 0.15) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  border: none !important;
+  border-left: none !important;
+}
+
+body.theme-dark .todoist-nav-item.active .todoist-nav-item-icon,
+body:not(.theme-light):not(.theme-plain) .todoist-nav-item.active .todoist-nav-item-icon {
+  color: #a599ff !important;
+}
+
+/* Dark Add Task Button */
+body.theme-dark .todoist-add-task-btn,
+body:not(.theme-light):not(.theme-plain) .todoist-add-task-btn {
+  color: #a599ff !important;
+}
+
+body.theme-dark .todoist-add-task-btn:hover,
+body:not(.theme-light):not(.theme-plain) .todoist-add-task-btn:hover {
+  background: rgba(165, 153, 255, 0.12) !important;
+}
+
+body.theme-dark .todoist-add-task-btn .plus-circle,
+body:not(.theme-light):not(.theme-plain) .todoist-add-task-btn .plus-circle {
+  background: #a599ff !important;
+  color: #09090b !important;
+  box-shadow: 0 2px 6px rgba(165, 153, 255, 0.35) !important;
+}
+
+body.theme-dark div.todoist-avatar,
+body:not(.theme-light):not(.theme-plain) div.todoist-avatar {
+  background: #27272a !important;
+  color: #f4f4f5 !important;
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
+}
+
+body.theme-dark img.todoist-avatar,
+body:not(.theme-light):not(.theme-plain) img.todoist-avatar {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
+}
+
+body.theme-dark .todoist-section-header,
+body:not(.theme-light):not(.theme-plain) .todoist-section-header {
+  color: #8e8e93 !important;
+}
+
+body.theme-dark .todoist-sidebar-footer,
+body:not(.theme-light):not(.theme-plain) .todoist-sidebar-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+body.theme-dark .todoist-badge,
+body:not(.theme-light):not(.theme-plain) .todoist-badge {
+  color: #8e8e93 !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.theme-dark .todoist-nav-item.active .todoist-badge,
+body:not(.theme-light):not(.theme-plain) .todoist-nav-item.active .todoist-badge {
+  color: #a599ff !important;
+  background: rgba(165, 153, 255, 0.22) !important;
+}
+
+/* SARA AI in Dark Mode */
+body.theme-dark .todoist-sara-item .todoist-sara-icon,
+body:not(.theme-light):not(.theme-plain) .todoist-sara-item .todoist-sara-icon {
+  color: #a599ff !important;
+}
+body.theme-dark .todoist-sara-item .todoist-sara-label,
+body:not(.theme-light):not(.theme-plain) .todoist-sara-item .todoist-sara-label {
+  color: #a599ff !important;
+  font-weight: 600 !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   USER PROFILE DROPDOWN MENU (MATCHING TODOIST IMAGE 2)
+   ══════════════════════════════════════════════════════════════ */
+.todoist-user-menu-popover {
+  position: absolute !important;
+  top: 38px !important;
+  left: 8px !important;
+  width: 244px !important;
+  border-radius: 12px !important;
+  padding: 6px !important;
+  box-sizing: border-box !important;
+  z-index: 1000 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif) !important;
+  transform-origin: top left !important;
+  will-change: transform, opacity !important;
+  max-height: calc(100vh - 56px) !important;
+  overflow-y: auto !important;
+  scrollbar-width: thin !important;
+}
+
+/* Light Mode Menu Popover */
+body.theme-light .todoist-user-menu-popover,
+body.theme-plain .todoist-user-menu-popover {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Dark Mode Menu Popover */
+body.theme-dark .todoist-user-menu-popover,
+body:not(.theme-light):not(.theme-plain) .todoist-user-menu-popover {
+  background: #18181b !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 20px 48px -8px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Profile Row Summary */
+.user-menu-profile-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 8px 10px !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  transition: background 0.12s ease !important;
+}
+
+body.theme-light .user-menu-profile-row:hover,
+body.theme-plain .user-menu-profile-row:hover {
+  background: #f8fafc !important;
+}
+
+body.theme-dark .user-menu-profile-row:hover,
+body:not(.theme-light):not(.theme-plain) .user-menu-profile-row:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.user-menu-avatar-badge {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+}
+
+body.theme-light .user-menu-avatar-badge,
+body.theme-plain .user-menu-avatar-badge {
+  background: rgba(228, 66, 50, 0.1) !important;
+  border: 1px solid rgba(228, 66, 50, 0.22) !important;
+  color: #e44232 !important;
+}
+
+body.theme-dark .user-menu-avatar-badge,
+body:not(.theme-light):not(.theme-plain) .user-menu-avatar-badge {
+  background: rgba(165, 153, 255, 0.15) !important;
+  border: 1px solid rgba(165, 153, 255, 0.28) !important;
+  color: #a599ff !important;
+}
+
+.user-menu-profile-info {
+  display: flex !important;
+  flex-direction: column !important;
+  min-width: 0 !important;
+  flex: 1 !important;
+}
+
+.user-menu-profile-name {
+  font-size: 0.88rem !important;
+  font-weight: 600 !important;
+  line-height: 1.25 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+body.theme-light .user-menu-profile-name,
+body.theme-plain .user-menu-profile-name {
+  color: #0f172a !important;
+}
+
+body.theme-dark .user-menu-profile-name,
+body:not(.theme-light):not(.theme-plain) .user-menu-profile-name {
+  color: #ffffff !important;
+}
+
+.user-menu-profile-tasks {
+  font-size: 0.76rem !important;
+  font-weight: 400 !important;
+  line-height: 1.2 !important;
+}
+
+body.theme-light .user-menu-profile-tasks,
+body.theme-plain .user-menu-profile-tasks {
+  color: #64748b !important;
+}
+
+body.theme-dark .user-menu-profile-tasks,
+body:not(.theme-light):not(.theme-plain) .user-menu-profile-tasks {
+  color: #94a3b8 !important;
+}
+
+/* Dividers */
+.user-menu-divider {
+  height: 1px !important;
+  margin: 4px 6px !important;
+}
+
+body.theme-light .user-menu-divider,
+body.theme-plain .user-menu-divider {
+  background: #f1f5f9 !important;
+}
+
+body.theme-dark .user-menu-divider,
+body:not(.theme-light):not(.theme-plain) .user-menu-divider {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Menu Items */
+.user-menu-item {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  padding: 6.5px 10px !important;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  font-size: 0.84rem !important;
+  font-weight: 450 !important;
+  text-align: left !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  transition: background 0.12s ease, color 0.12s ease !important;
+}
+
+.user-menu-item-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+  flex: 1 !important;
+}
+
+.user-menu-shortcut {
+  font-size: 0.74rem !important;
+  font-weight: 400 !important;
+  margin-left: auto !important;
+  white-space: nowrap !important;
+}
+
+body.theme-light .user-menu-shortcut,
+body.theme-plain .user-menu-shortcut {
+  color: #94a3b8 !important;
+}
+
+body.theme-dark .user-menu-shortcut,
+body:not(.theme-light):not(.theme-plain) .user-menu-shortcut {
+  color: #71717a !important;
+}
+
+/* Light item colors */
+body.theme-light .user-menu-item,
+body.theme-plain .user-menu-item {
+  color: #1e293b !important;
+}
+
+body.theme-light .user-menu-item-left svg,
+body.theme-plain .user-menu-item-left svg {
+  color: #64748b !important;
+}
+
+body.theme-light .user-menu-item:hover,
+body.theme-plain .user-menu-item:hover {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .user-menu-item:hover .user-menu-item-left svg,
+body.theme-plain .user-menu-item:hover .user-menu-item-left svg {
+  color: #0f172a !important;
+}
+
+/* Dark item colors */
+body.theme-dark .user-menu-item,
+body:not(.theme-light):not(.theme-plain) .user-menu-item {
+  color: #f1f5f9 !important;
+}
+
+body.theme-dark .user-menu-item-left svg,
+body:not(.theme-light):not(.theme-plain) .user-menu-item-left svg {
+  color: #94a3b8 !important;
+}
+
+body.theme-dark .user-menu-item:hover,
+body:not(.theme-light):not(.theme-plain) .user-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+body.theme-dark .user-menu-item:hover .user-menu-item-left svg,
+body:not(.theme-light):not(.theme-plain) .user-menu-item:hover .user-menu-item-left svg {
+  color: #ffffff !important;
+}
+
+/* Menu Footer */
+.user-menu-footer {
+  padding: 6px 10px 4px 10px !important;
+  font-size: 0.74rem !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  box-sizing: border-box !important;
+  font-weight: 500 !important;
+}
+
+body.theme-light .user-menu-footer,
+body.theme-plain .user-menu-footer {
+  color: #94a3b8 !important;
+}
+
+body.theme-dark .user-menu-footer,
+body:not(.theme-light):not(.theme-plain) .user-menu-footer {
+  color: #71717a !important;
+}
+

@@ -218,7 +218,7 @@ export const TodoCard = React.memo(({
                       onClick={() => startTimer(todo.id!, todo.title || todo.text || 'Task', undefined, undefined, computedMinutes)}
                       title="Launch Pomodoro Focus Timer"
                     >
-                      <Timer size={12} />
+                      <Timer size={13} strokeWidth={2.2} />
                       <span>Focus</span>
                     </button>
                   )}
@@ -229,7 +229,7 @@ export const TodoCard = React.memo(({
                       onClick={() => setExpandedTaskId(isExpanded ? null : todo.id!)}
                       title="Toggle Subtasks"
                     >
-                      {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                      {isExpanded ? <ChevronDown size={13} strokeWidth={2} /> : <ChevronRight size={13} strokeWidth={2} />}
                     </button>
                   )}
                   <button
@@ -238,7 +238,7 @@ export const TodoCard = React.memo(({
                     onClick={() => onEdit(todo)}
                     title="Edit Task"
                   >
-                    <Edit2 size={12} />
+                    <Edit2 size={13} strokeWidth={2} />
                   </button>
                   <button
                     type="button"
@@ -246,7 +246,7 @@ export const TodoCard = React.memo(({
                     onClick={() => handleDeleteTask(todo.id!)}
                     title="Delete Task"
                   >
-                    <Trash2 size={12} />
+                    <Trash2 size={13} strokeWidth={2} />
                   </button>
                 </div>
               )}

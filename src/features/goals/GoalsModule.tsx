@@ -3,8 +3,17 @@ import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestor
 import { db, auth } from '../../services/firebase';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import type { Goal, KeyResult } from '../../types/index';
-import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
-import { Target, Plus, Edit2, Trash2, X, Save, TrendingUp, ChevronUp, Wand2, Loader2 } from 'lucide-react';
+import { getLocalDateString } from '../../utils/dateUtils';
+import {
+  Target,
+  Plus,
+  Trash2,
+  X,
+  Save,
+  TrendingUp,
+  ListChecks,
+  Award,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { autoBreakdownGoal } from '../../services/gemini';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -49,7 +58,6 @@ export const GoalsModule = () => {
   // Last sync timestamps per goal — throttle to max once per 10s per goal
   const lastSyncRef = useRef<{ [goalId: string]: number }>({});
 
-  // Auto-sync engine and edit state unchanged below
   // Keyboard trap for Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -69,12 +77,9 @@ export const GoalsModule = () => {
   }, [isModalOpen]);
 
   // ── Auto-Sync Engine ──────────────────────────────────────────────────────
-  // Debounced: waits 4s after the last snapshot change before writing.
-  // Throttled: at most once per 10s per goal to prevent write storms.
   useEffect(() => {
     if (isLoading || goals.length === 0) return;
 
-    // Clear any pending debounce
     if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
 
     syncDebounceRef.current = setTimeout(() => {
@@ -84,7 +89,6 @@ export const GoalsModule = () => {
       goals.forEach(goal => {
         if (goal.status !== 'active' || !goal.id) return;
 
-        // Throttle: skip if synced this goal within last 10 seconds
         const lastSync = lastSyncRef.current[goal.id] || 0;
         if (now - lastSync < 10_000) return;
 
@@ -113,7 +117,6 @@ export const GoalsModule = () => {
             const newHistory = [...(kr.history || [])];
             if (newHistory.length === 0 || newHistory[newHistory.length - 1].value !== computedValue) {
               newHistory.push({ timestamp: now, value: computedValue });
-              // ✅ FIX: Cap history at 100 entries to prevent Firestore document bloat
               if (newHistory.length > 100) newHistory.splice(0, newHistory.length - 100);
             }
             return { ...kr, currentValue: computedValue, history: newHistory };
@@ -132,15 +135,11 @@ export const GoalsModule = () => {
       if (promises.length > 0) {
         Promise.all(promises).catch(err => console.error('Goals auto-sync error', err));
       }
-    }, 4000); // 4s debounce
+    }, 4000);
 
     return () => {
       if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
     };
-    // ✅ FIX: Removed extTodos and extLogs from dep array.
-    // These fire on every single task completion, causing the 4s debounce to reset
-    // constantly during active sessions — goals sync was being perpetually delayed.
-    // goals already reflects KR computed values; extJobs/extLearning update less frequently.
   }, [goals, extJobs, extLearning, isLoading]);
 
   const openNewGoal = () => {
@@ -214,10 +213,14 @@ export const GoalsModule = () => {
     setEditingGoal({ ...editingGoal, keyResults: [...editingGoal.keyResults, newKR] });
   };
 
-  const handleUpdateKR = (idx: number, field: keyof KeyResult, value: any) => {
+  const handleUpdateKR = (idx: number, field: keyof KeyResult | 'text', value: any) => {
     if (!editingGoal) return;
     const krs = [...editingGoal.keyResults];
-    krs[idx] = { ...krs[idx], [field]: value };
+    if (field === 'title' || field === 'text') {
+      krs[idx] = { ...krs[idx], title: value, text: value } as any;
+    } else {
+      krs[idx] = { ...krs[idx], [field]: value };
+    }
     setEditingGoal({ ...editingGoal, keyResults: krs });
   };
 
@@ -227,7 +230,6 @@ export const GoalsModule = () => {
     setEditingGoal({ ...editingGoal, keyResults: krs });
   };
 
-  // Debounced slider logic: update local state on drag, save to firestore on mouseup
   const handleLocalSliderChange = (krId: string, newValue: number) => {
     setLocalKrProgress(prev => ({ ...prev, [krId]: newValue }));
   };
@@ -236,16 +238,13 @@ export const GoalsModule = () => {
     const goal = goals.find(g => g.id === goalId);
     if (!goal) return;
     
-    // Check if it's actually different from the current saved value
     const currentKR = goal.keyResults.find((k: any) => k.id === krId);
     if (!currentKR || currentKR.currentValue === finalValue) return;
 
     const updatedKRs = goal.keyResults.map((kr: any) => {
       if (kr.id === krId) {
-        // Append to history
         const newHistory = [...(kr.history || [])];
         newHistory.push({ timestamp: Date.now(), value: finalValue });
-        // ✅ FIX: Cap history at 100 entries to prevent Firestore document bloat
         if (newHistory.length > 100) newHistory.splice(0, newHistory.length - 100);
         return { ...kr, currentValue: finalValue, history: newHistory };
       }
@@ -254,7 +253,6 @@ export const GoalsModule = () => {
     
     try {
       await updateDoc(doc(db, 'goals', goalId), { keyResults: updatedKRs, updatedAt: Date.now() });
-      // Remove from local tracking since db updated
       setLocalKrProgress(prev => {
         const copy = { ...prev };
         delete copy[krId];
@@ -264,7 +262,7 @@ export const GoalsModule = () => {
       const target = currentKR.targetValue || 100;
       if (finalValue >= target && currentKR.currentValue < target) {
         awardXP('GOAL_MILESTONE').then((res) => {
-          toast.success(`🎯 Key Result Achieved: "${currentKR.title}"! +${res.added} XP 🏆`);
+          toast.success(`🎯 Key Result Achieved: "${currentKR.title || (currentKR as any).text}"! +${res.added} XP 🏆`);
           if (res.leveledUp) {
             toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
           }
@@ -280,6 +278,40 @@ export const GoalsModule = () => {
     if (showArchived) return goals;
     return goals.filter(g => g.status === 'active');
   }, [goals, showArchived]);
+
+  // Summary Metrics
+  const metrics = useMemo(() => {
+    const active = goals.filter(g => g.status === 'active');
+    const totalGoals = active.length;
+    
+    let totalKRs = 0;
+    let completedKRs = 0;
+    let sumProgress = 0;
+
+    active.forEach(g => {
+      const krs = g.keyResults || [];
+      totalKRs += krs.length;
+      if (krs.length > 0) {
+        let gSum = 0;
+        krs.forEach(k => {
+          const val = localKrProgress[k.id] !== undefined ? localKrProgress[k.id] : (k.currentValue || 0);
+          const tgt = k.targetValue || 1;
+          if (val >= tgt) completedKRs++;
+          gSum += Math.min(val / tgt, 1);
+        });
+        sumProgress += (gSum / krs.length);
+      }
+    });
+
+    const avgProgress = totalGoals > 0 ? Math.round((sumProgress / totalGoals) * 100) : 0;
+
+    return {
+      activeCount: totalGoals,
+      avgProgress,
+      totalMilestones: totalKRs,
+      completedMilestones: completedKRs,
+    };
+  }, [goals, localKrProgress]);
 
   const handleAIBreakdown = async (goal: Goal) => {
     setIsBreakingDown(prev => ({ ...prev, [goal.id!]: true }));
@@ -307,7 +339,7 @@ export const GoalsModule = () => {
         });
         count++;
       }
-      toast.success(`🪄 AI successfully created ${count} tasks for this goal! Check your To-Do list.`);
+      toast.success(`🪄 AI successfully created ${count} tasks for this goal! Check your Inbox.`);
     } catch (err: any) {
       toast.error('AI Breakdown failed: ' + err.message);
     } finally {
@@ -315,42 +347,104 @@ export const GoalsModule = () => {
     }
   };
 
-  if (isLoading) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Loading Goals...</div>;
+  if (isLoading) {
+    return (
+      <div className="goals-page">
+        <div style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          Loading Goals & OKRs...
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="page-pad">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2rem', fontWeight: 400, color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Target size={28} style={{ color: '#a78bfa' }} />
-            Goals & OKRs
-          </h1>
-          <p style={{ color: 'rgba(255,255,255,0.45)', marginTop: '0.25rem' }}>Connect your daily tasks to your long-term vision.</p>
+    <div className="goals-page">
+      {/* ── Page Header ── */}
+      <div className="goals-header">
+        <div className="goals-header-left">
+          <div className="goals-header-icon-wrap">
+            <Target size={22} strokeWidth={2.2} />
+          </div>
+          <div className="goals-header-titles">
+            <h1>Goals & OKRs</h1>
+            <p>Connect high-impact life vision with daily tasks and measurable milestones.</p>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-            <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />
-            Show Archived
+        <div className="goals-header-actions">
+          <label className="goals-archive-label">
+            <input
+              type="checkbox"
+              className="goals-archive-checkbox"
+              checked={showArchived}
+              onChange={e => setShowArchived(e.target.checked)}
+            />
+            <span>Show Archived</span>
           </label>
-          <button onClick={openNewGoal} style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', color: '#a78bfa', borderRadius: '0.6rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', transition: 'all 0.2s' }}>
-            <Plus size={18} /> New Goal
+          <button type="button" className="goals-new-btn" onClick={openNewGoal}>
+            <Plus size={16} strokeWidth={2.5} />
+            <span>New Goal</span>
           </button>
         </div>
       </div>
 
+      {/* ── Metrics Summary Bar ── */}
+      <div className="goals-metrics-bar">
+        <div className="goals-metric-card">
+          <div className="goals-metric-icon" style={{ background: 'rgba(124, 58, 237, 0.1)', color: '#7c3aed' }}>
+            <Target size={18} />
+          </div>
+          <div className="goals-metric-info">
+            <span className="goals-metric-value">{metrics.activeCount}</span>
+            <span className="goals-metric-label">Active Goals</span>
+          </div>
+        </div>
+
+        <div className="goals-metric-card">
+          <div className="goals-metric-icon" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#059669' }}>
+            <TrendingUp size={18} />
+          </div>
+          <div className="goals-metric-info">
+            <span className="goals-metric-value">{metrics.avgProgress}%</span>
+            <span className="goals-metric-label">Avg Progress</span>
+          </div>
+        </div>
+
+        <div className="goals-metric-card">
+          <div className="goals-metric-icon" style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#2563eb' }}>
+            <ListChecks size={18} />
+          </div>
+          <div className="goals-metric-info">
+            <span className="goals-metric-value">{metrics.totalMilestones}</span>
+            <span className="goals-metric-label">Key Milestones</span>
+          </div>
+        </div>
+
+        <div className="goals-metric-card">
+          <div className="goals-metric-icon" style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#d97706' }}>
+            <Award size={18} />
+          </div>
+          <div className="goals-metric-info">
+            <span className="goals-metric-value">{metrics.completedMilestones}</span>
+            <span className="goals-metric-label">Targets Achieved</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Goals List or Empty State ── */}
       {filteredGoals.length === 0 ? (
-        <div className="empty-state" style={{ marginTop: '2rem' }}>
-          <Target size={48} style={{ color: 'var(--border-hover)', marginBottom: '1rem' }} />
-          <h3>No goals found</h3>
-          <p style={{ color: 'var(--text-muted)', maxWidth: '400px', margin: '0.5rem auto 1.5rem auto' }}>
-            You haven't set any {showArchived ? '' : 'active '}goals yet. Set a long-term goal and break it down into measurable Milestones.
+        <div className="goals-empty-state">
+          <Target size={44} className="goals-empty-icon" style={{ color: 'var(--text-muted)' }} />
+          <h3 className="goals-empty-title">No goals found</h3>
+          <p className="goals-empty-desc">
+            You haven't set any {showArchived ? '' : 'active '}goals yet. Set a long-term vision and break it down into measurable milestones.
           </p>
-          <button onClick={openNewGoal} style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', color: '#a78bfa', borderRadius: '0.6rem', padding: '0.5rem 1rem', display: 'inline-flex', cursor: 'pointer', transition: 'all 0.2s' }}>
-            Create your first Goal
+          <button type="button" className="goals-new-btn" onClick={openNewGoal} style={{ margin: '0 auto' }}>
+            <Plus size={16} strokeWidth={2.5} />
+            <span>Create your first Goal</span>
           </button>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div className="goals-list">
           {filteredGoals.map((goal: Goal) => (
             <GoalCard
               key={goal.id}
@@ -369,53 +463,129 @@ export const GoalsModule = () => {
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* ── Edit / Create Goal Modal ── */}
       {isModalOpen && editingGoal && (
         <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setIsModalOpen(false); }}>
-          <div className="bottom-sheet-mobile" style={{ width: '100%', maxWidth: '600px', background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
-            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1.2rem', fontWeight: 600 }}>{editingGoal.id ? 'Edit Goal' : 'New Goal'}</h2>
-              <button className="btn-icon" onClick={() => setIsModalOpen(false)}><X size={20} /></button>
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '600px',
+              background: 'var(--bg-surface, #ffffff)',
+              borderRadius: '12px',
+              border: '1px solid var(--border-subtle, #edeae6)',
+              overflow: 'hidden',
+              boxShadow: '0 20px 48px -10px rgba(0,0,0,0.2)',
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: '1.25rem 1.5rem',
+                borderBottom: '1px solid var(--border-subtle, #edeae6)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <h2 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-primary, #202020)', margin: 0 }}>
+                {editingGoal.id ? 'Edit Goal' : 'New Goal'}
+              </h2>
+              <button
+                type="button"
+                className="goal-action-btn"
+                onClick={() => setIsModalOpen(false)}
+                title="Close"
+              >
+                <X size={18} />
+              </button>
             </div>
 
-            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '70vh', overflowY: 'auto' }}>
+            {/* Modal Body */}
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '72vh', overflowY: 'auto' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Goal Title</label>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary, #475569)', marginBottom: '0.35rem' }}>
+                  Goal Title
+                </label>
                 <input 
                   type="text" 
                   ref={titleInputRef}
                   value={editingGoal.title}
                   onChange={e => setEditingGoal({ ...editingGoal, title: e.target.value })}
-                  style={{ width: '100%', padding: '0.75rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: 'var(--text-primary)' }}
+                  placeholder="e.g. Master React Native & Ship App"
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    background: 'var(--bg-base, #faf8f6)',
+                    border: '1px solid var(--border-subtle, #edeae6)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary, #202020)',
+                    fontSize: '0.9rem',
+                    boxSizing: 'border-box',
+                  }}
                 />
               </div>
               
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Description</label>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary, #475569)', marginBottom: '0.35rem' }}>
+                  Description
+                </label>
                 <textarea 
                   value={editingGoal.description}
                   onChange={e => setEditingGoal({ ...editingGoal, description: e.target.value })}
+                  placeholder="What is the strategic outcome and milestone vision?"
                   rows={3}
-                  style={{ width: '100%', padding: '0.75rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: 'var(--text-primary)', resize: 'vertical' }}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    background: 'var(--bg-base, #faf8f6)',
+                    border: '1px solid var(--border-subtle, #edeae6)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary, #202020)',
+                    fontSize: '0.9rem',
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
+                  }}
                 />
               </div>
 
               <div style={{ display: 'flex', gap: '1rem' }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Deadline</label>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary, #475569)', marginBottom: '0.35rem' }}>
+                    Target Deadline
+                  </label>
                   <input 
                     type="date" 
                     value={editingGoal.deadline}
                     onChange={e => setEditingGoal({ ...editingGoal, deadline: e.target.value })}
-                    style={{ width: '100%', padding: '0.75rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: 'var(--text-primary)' }}
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.85rem',
+                      background: 'var(--bg-base, #faf8f6)',
+                      border: '1px solid var(--border-subtle, #edeae6)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary, #202020)',
+                      fontSize: '0.9rem',
+                      boxSizing: 'border-box',
+                    }}
                   />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Status</label>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary, #475569)', marginBottom: '0.35rem' }}>
+                    Status
+                  </label>
                   <select 
                     value={editingGoal.status}
                     onChange={e => setEditingGoal({ ...editingGoal, status: e.target.value as any })}
-                    style={{ width: '100%', padding: '0.75rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: 'var(--text-primary)' }}
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.85rem',
+                      background: 'var(--bg-base, #faf8f6)',
+                      border: '1px solid var(--border-subtle, #edeae6)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary, #202020)',
+                      fontSize: '0.9rem',
+                      boxSizing: 'border-box',
+                    }}
                   >
                     <option value="active">Active</option>
                     <option value="completed">Completed</option>
@@ -425,80 +595,155 @@ export const GoalsModule = () => {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Subject / Course (Optional)</label>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary, #475569)', marginBottom: '0.35rem' }}>
+                  Subject / Category (Optional)
+                </label>
                 <input 
                   type="text" 
-                  placeholder="e.g., DBMS, Physics" 
+                  placeholder="e.g. Engineering, Fitness, Career" 
                   value={editingGoal.subject || ''}
                   onChange={e => setEditingGoal({ ...editingGoal, subject: e.target.value })}
-                  style={{ width: '100%', padding: '0.75rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: 'var(--text-primary)' }}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.85rem',
+                    background: 'var(--bg-base, #faf8f6)',
+                    border: '1px solid var(--border-subtle, #edeae6)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary, #202020)',
+                    fontSize: '0.9rem',
+                    boxSizing: 'border-box',
+                  }}
                 />
               </div>
 
-              <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle)', margin: '1rem 0' }} />
+              <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle, #edeae6)', margin: '0.5rem 0' }} />
 
+              {/* Milestones Builder */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Milestones & Trackers</h3>
-                  <button type="button" className="btn-secondary" onClick={handleAddKR} style={{ padding: '0.25rem 0.75rem', fontSize: '0.85rem' }}>
-                    <Plus size={14} /> Add Milestone
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+                  <h3 style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary, #202020)', margin: 0 }}>
+                    Milestones & Trackers
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={handleAddKR}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid var(--border-subtle, #edeae6)',
+                      color: 'var(--zen-purple, #7c3aed)',
+                      borderRadius: '6px',
+                      padding: '0.3rem 0.75rem',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                    }}
+                  >
+                    <Plus size={13} strokeWidth={2.5} /> Add Milestone
                   </button>
                 </div>
                 
                 {(editingGoal.keyResults || []).map((kr, idx) => (
-                  <div key={kr.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem', background: 'var(--bg-surface)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                  <div
+                    key={kr.id}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.6rem',
+                      marginBottom: '0.85rem',
+                      background: 'var(--bg-base, #faf8f6)',
+                      padding: '0.85rem 1rem',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-subtle, #edeae6)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                       <input 
                         type="text" 
                         placeholder="Milestone Title (e.g. Apply to 50 jobs)" 
-                        value={kr.text}
-                        onChange={e => handleUpdateKR(idx, 'text', e.target.value)}
-                        style={{ flex: 2, padding: '0.5rem', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: 'var(--text-primary)' }}
+                        value={kr.title || (kr as any).text || ''}
+                        onChange={e => handleUpdateKR(idx, 'title', e.target.value)}
+                        style={{
+                          flex: 2,
+                          padding: '0.5rem 0.65rem',
+                          background: 'var(--bg-surface, #ffffff)',
+                          border: '1px solid var(--border-subtle, #edeae6)',
+                          borderRadius: '5px',
+                          color: 'var(--text-primary, #202020)',
+                          fontSize: '0.85rem',
+                        }}
                       />
                       <input 
                         type="number" 
                         placeholder="Target" 
                         value={kr.targetValue}
                         onChange={e => handleUpdateKR(idx, 'targetValue', parseFloat(e.target.value))}
-                        style={{ flex: 1, padding: '0.5rem', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: 'var(--text-primary)' }}
+                        style={{
+                          width: '75px',
+                          padding: '0.5rem 0.65rem',
+                          background: 'var(--bg-surface, #ffffff)',
+                          border: '1px solid var(--border-subtle, #edeae6)',
+                          borderRadius: '5px',
+                          color: 'var(--text-primary, #202020)',
+                          fontSize: '0.85rem',
+                        }}
                       />
                       <input 
                         type="text" 
                         placeholder="Unit" 
                         value={kr.unit}
                         onChange={e => handleUpdateKR(idx, 'unit', e.target.value)}
-                        style={{ flex: 1, padding: '0.5rem', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: 'var(--text-primary)' }}
+                        style={{
+                          width: '65px',
+                          padding: '0.5rem 0.65rem',
+                          background: 'var(--bg-surface, #ffffff)',
+                          border: '1px solid var(--border-subtle, #edeae6)',
+                          borderRadius: '5px',
+                          color: 'var(--text-primary, #202020)',
+                          fontSize: '0.85rem',
+                        }}
                       />
-                      <button className="btn-icon" onClick={() => handleRemoveKR(idx)} style={{ color: '#ef4444', padding: '0.5rem' }}><Trash2 size={16} /></button>
+                      <button
+                        type="button"
+                        className="goal-action-btn delete-btn"
+                        onClick={() => handleRemoveKR(idx)}
+                        title="Delete Milestone"
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </div>
                     
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
-                      <label style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 600 }}>Auto-Sync Source <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400 }}>(updates automatically)</span></label>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.2rem' }}>
+                      <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary, #475569)', fontWeight: 600 }}>
+                        Auto-Sync Source <span style={{ fontSize: '0.72rem', color: 'var(--text-muted, #78716c)', fontWeight: 400 }}>(auto-computed from app data)</span>
+                      </label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                         {[
-                          { id: 'none', label: 'Manual Slider' },
+                          { id: 'none', label: 'Manual' },
                           { id: 'job_applications', label: 'Job Apps' },
                           { id: 'interviews', label: 'Interviews' },
-                          { id: 'todos_completed', label: 'Completed Tasks' },
+                          { id: 'todos_completed', label: 'Tasks' },
                           { id: 'learning_subtasks', label: 'Learning' },
-                          { id: 'gym_days', label: 'Gym Days' },
-                          { id: 'productive_hours', label: 'Focus Hours' }
+                          { id: 'gym_days', label: 'Gym' },
+                          { id: 'productive_hours', label: 'Hours' }
                         ].map(opt => (
                           <button
                             key={opt.id}
                             type="button"
                             onClick={() => handleUpdateKR(idx, 'syncType', opt.id)}
                             style={{
-                              padding: '0.35rem 0.75rem',
-                              fontSize: '0.75rem',
+                              padding: '0.25rem 0.65rem',
+                              fontSize: '0.74rem',
                               fontWeight: 600,
                               borderRadius: '999px',
                               border: '1px solid',
-                              borderColor: (kr.syncType || 'none') === opt.id ? 'var(--accent-primary)' : 'var(--border-subtle)',
-                              background: (kr.syncType || 'none') === opt.id ? 'rgba(124,58,237,0.1)' : 'var(--bg-base)',
-                              color: (kr.syncType || 'none') === opt.id ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                              borderColor: (kr.syncType || 'none') === opt.id ? 'var(--zen-purple, #7c3aed)' : 'var(--border-subtle, #edeae6)',
+                              background: (kr.syncType || 'none') === opt.id ? 'rgba(124, 58, 237, 0.1)' : 'transparent',
+                              color: (kr.syncType || 'none') === opt.id ? 'var(--zen-purple, #7c3aed)' : 'var(--text-secondary, #475569)',
                               cursor: 'pointer',
-                              transition: 'all 0.2s'
+                              transition: 'all 0.15s ease',
                             }}
                           >
                             {opt.label}
@@ -509,10 +754,20 @@ export const GoalsModule = () => {
                       {kr.syncType && kr.syncType !== 'none' && (kr.syncType === 'todos_completed' || kr.syncType === 'learning_subtasks') && (
                         <input 
                           type="text" 
-                          placeholder="Filter keyword (Optional, e.g. 'react')" 
+                          placeholder="Filter keyword (e.g. 'React' or 'DSA')" 
                           value={kr.syncQuery || ''}
                           onChange={e => handleUpdateKR(idx, 'syncQuery', e.target.value)}
-                          style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: 'var(--text-primary)', marginTop: '0.25rem' }}
+                          style={{
+                            width: '100%',
+                            padding: '0.45rem 0.65rem',
+                            fontSize: '0.82rem',
+                            background: 'var(--bg-surface, #ffffff)',
+                            border: '1px solid var(--border-subtle, #edeae6)',
+                            borderRadius: '5px',
+                            color: 'var(--text-primary, #202020)',
+                            marginTop: '0.2rem',
+                            boxSizing: 'border-box',
+                          }}
                         />
                       )}
                     </div>
@@ -522,14 +777,60 @@ export const GoalsModule = () => {
 
             </div>
             
-            <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-              <button className="btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-              <button className="btn-primary" onClick={handleSaveGoal}><Save size={16} /> Save Goal</button>
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: '1rem 1.5rem',
+                borderTop: '1px solid var(--border-subtle, #edeae6)',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '0.75rem',
+                background: 'var(--bg-base, #faf8f6)',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--border-subtle, #edeae6)',
+                  color: 'var(--text-secondary, #475569)',
+                  borderRadius: '6px',
+                  padding: '0.5rem 1rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveGoal}
+                style={{
+                  background: '#7c3aed',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '0.5rem 1.15rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  boxShadow: '0 1px 3px rgba(124, 58, 237, 0.3)',
+                }}
+              >
+                <Save size={15} />
+                <span>Save Goal</span>
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Delete Confirmation */}
       <ConfirmDialog 
         open={deleteConfirm.isOpen}
         title="Delete Goal"

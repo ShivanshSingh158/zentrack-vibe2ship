@@ -32,7 +32,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 export function useCalendarData() {
   const { customEvents, ensureSubscribed } = usePlannerData();
   const { tasks, user, googleAccessToken } = useCoreData();
-  const { attendance, holidays } = useAcademicData();
+  const { attendance, attendanceLogs, holidays } = useAcademicData();
   const { gymLogs, userGymPlan } = useWellnessData();
 
   useEffect(() => {
@@ -197,6 +197,25 @@ export function useCalendarData() {
       });
     }
 
+    // ── Build O(1) attendance log index for the selected date ──────────────────
+    // Key: `${subjectId}_${type}_${idx}` for scheduled sessions
+    // Extra class logs: isExtra === true, keyed by their own id
+    const logBySlot = new Map<string, { action: string; isExtra: boolean; id?: string }>();
+    const extraLogsForDate: any[] = [];
+
+    if (attendanceLogs && attendanceLogs.length > 0) {
+      for (let i = 0; i < attendanceLogs.length; i++) {
+        const log = attendanceLogs[i];
+        if ((log.date || '').slice(0, 10) !== selectedDate) continue;
+        if (log.isExtra) {
+          extraLogsForDate.push(log);
+        } else {
+          const slotKey = `${log.subjectId}_${log.type}_${log.idx ?? 0}`;
+          logBySlot.set(slotKey, { action: log.action, isExtra: false, id: log.id });
+        }
+      }
+    }
+
     const dayOfWeek = selDayOfWeek.toString();
     const dayName = DAY_NAMES[selDayOfWeek];
     const dayNameLower = dayName.toLowerCase();
@@ -216,6 +235,10 @@ export function useCalendarData() {
         if (sch.classes && Array.isArray(sch.classes)) {
           for (let i = 0; i < sch.classes.length; i++) {
             const c = sch.classes[i];
+            const slotKey = `${subj.id}_class_${i}`;
+            const log = logBySlot.get(slotKey);
+            const attendanceStatus = log?.action ?? null; // 'attended' | 'missed' | 'cancelled' | null
+
             if (c.time && c.time.trim() !== '') {
               const { hour: sh, min: sm } = parseTimeTo24h(c.time);
               const endH = Math.min(23, sh + 1);
@@ -231,6 +254,7 @@ export function useCalendarData() {
                 subjectName: subj.name,
                 sessionType: 'class',
                 sessionIdx: i,
+                attendanceStatus,
               });
             } else {
               unscheduledClasses.push({
@@ -245,6 +269,7 @@ export function useCalendarData() {
                 subjectName: subj.name,
                 sessionType: 'class',
                 sessionIdx: i,
+                attendanceStatus,
               });
             }
           }
@@ -253,6 +278,10 @@ export function useCalendarData() {
         if (sch.labs && Array.isArray(sch.labs)) {
           for (let i = 0; i < sch.labs.length; i++) {
             const l = sch.labs[i];
+            const slotKey = `${subj.id}_lab_${i}`;
+            const log = logBySlot.get(slotKey);
+            const attendanceStatus = log?.action ?? null;
+
             if (l.time && l.time.trim() !== '') {
               const { hour: sh, min: sm } = parseTimeTo24h(l.time);
               const endH = Math.min(23, sh + 2);
@@ -268,6 +297,7 @@ export function useCalendarData() {
                 subjectName: subj.name,
                 sessionType: 'lab',
                 sessionIdx: i,
+                attendanceStatus,
               });
             } else {
               unscheduledClasses.push({
@@ -282,11 +312,33 @@ export function useCalendarData() {
                 subjectName: subj.name,
                 sessionType: 'lab',
                 sessionIdx: i,
+                attendanceStatus,
               });
             }
           }
         }
       }
+    }
+
+    // ── Extra classes from attendance logs ────────────────────────────────────
+    // These don't exist in the timetable schedule — they're one-off logged sessions.
+    const extraClassEvents: any[] = [];
+    for (let i = 0; i < extraLogsForDate.length; i++) {
+      const log = extraLogsForDate[i];
+      extraClassEvents.push({
+        id: `extra-${log.id || i}`,
+        title: `${log.subjectName} (${log.type === 'lab' ? 'Extra Lab' : 'Extra Class'})`,
+        type: log.type === 'lab' ? 'lab' : 'class',
+        date: selectedDate,
+        startTime: '',
+        endTime: '',
+        location: '',
+        subjectId: log.subjectId,
+        subjectName: log.subjectName,
+        sessionType: log.type,
+        attendanceStatus: log.action,
+        isExtra: true,
+      });
     }
 
     const gLog = (gymLogs || []).find((g: any) => g.date === selectedDate);
@@ -317,9 +369,9 @@ export function useCalendarData() {
 
     return {
       timedDayEvents: [...events, ...timedTasks, ...timedClasses, ...gymEvts, ...gcalEvents] as CustomEvent[],
-      unscheduledDayEvents: [...holidayEvents, ...unscheduledTasks, ...unscheduledClasses] as CustomEvent[],
+      unscheduledDayEvents: [...holidayEvents, ...unscheduledTasks, ...unscheduledClasses, ...extraClassEvents] as CustomEvent[],
     };
-  }, [customEvents, tasks, attendance, gymLogs, userGymPlan, gcalEvents, holidays, selectedDate]);
+  }, [customEvents, tasks, attendance, attendanceLogs, gymLogs, userGymPlan, gcalEvents, holidays, selectedDate]);
 
   const dayEvents = useMemo(() => {
     const sortedTimed = [...timedDayEvents].sort((a, b) => {
@@ -527,8 +579,6 @@ export function useCalendarData() {
     return hours;
   }, [minHour, maxHour]);
 
-  const hasAutoScrolledRef = useRef<string | null>(null);
-
   const scrollToCurrentTime = useCallback((animated = false) => {
     if (!scrollViewRef.current) return;
     const currentHour = new Date().getHours();
@@ -538,21 +588,7 @@ export function useCalendarData() {
     scrollViewRef.current?.scrollTo({ y: targetY, animated });
   }, [minHour]);
 
-  // Scroll to current time on mount, when switching to Day view on today, or when events/minHour change
-  useEffect(() => {
-    if (currentView !== 'Day') return;
-    const today = formatLocalDateStr(new Date());
-    if (selectedDate !== today) return;
-
-    const scrollKey = `${today}_${minHour}`;
-    if (hasAutoScrolledRef.current === scrollKey) return;
-    hasAutoScrolledRef.current = scrollKey;
-
-    const timer = setTimeout(() => scrollToCurrentTime(false), 150);
-    return () => clearTimeout(timer);
-  }, [selectedDate, currentView, minHour, scrollToCurrentTime]);
-
-  return {
+  return useMemo(() => ({
     scrollToCurrentTime,
     now, selectedDate, setSelectedDate,
     showEventModal, setShowEventModal,
@@ -570,5 +606,22 @@ export function useCalendarData() {
     minHour, maxHour, DYNAMIC_HOURS,
     handleSaveGymTime,
     tasks, attendance, customEvents, gymLogs, userGymPlan, holidays
-  };
+  }), [
+    scrollToCurrentTime,
+    now, selectedDate, setSelectedDate,
+    showEventModal, setShowEventModal,
+    showAddModal, setShowAddModal,
+    showGymModal, setShowGymModal,
+    selectedEvent, setSelectedEvent,
+    selectedGymLog, setSelectedGymLog,
+    gymStartTimeInput, setGymStartTimeInput,
+    gymEndTimeInput, setGymEndTimeInput,
+    isMonthDropdownOpen, setIsMonthDropdownOpen,
+    initialTime, setInitialTime,
+    currentTime, currentView, setCurrentView,
+    timedDayEvents, unscheduledDayEvents, dayEvents, processedEvents, weekEvents,
+    minHour, maxHour, DYNAMIC_HOURS,
+    handleSaveGymTime,
+    tasks, attendance, customEvents, gymLogs, userGymPlan, holidays
+  ]);
 }

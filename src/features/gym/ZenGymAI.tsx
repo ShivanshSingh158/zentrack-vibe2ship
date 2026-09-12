@@ -347,9 +347,9 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
   const [showQuickPrompts, setShowQuickPrompts] = useState(true);
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     try {
-      return localStorage.getItem('zen_preferred_gym_model') || 'gemini-3.7-flash';
+      return localStorage.getItem('zen_preferred_gym_model') || 'gemini-2.5-flash';
     } catch {
-      return 'gemini-3.7-flash';
+      return 'gemini-2.5-flash';
     }
   });
   const [usingOAuth, setUsingOAuth] = useState(false);

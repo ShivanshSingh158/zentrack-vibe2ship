@@ -26,10 +26,11 @@ interface Props {
   userId: string;
   target: number;
   onUpdateTarget: (val: number) => void;
+  hideDashboardBtn?: boolean;
 }
 
 
-export default function WaterLogSheet({ visible, onClose, userId, target, onUpdateTarget }: Props) {
+export default function WaterLogSheet({ visible, onClose, userId, target, onUpdateTarget, hideDashboardBtn = false }: Props) {
   const { colors, isDark } = useTheme();
   const s = makeStyles(colors, isDark);
   const navigation = useNavigation<any>();
@@ -321,16 +322,18 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
             </View>
           </View>
 
-          <TouchableOpacity
-            style={s.dashboardBtn}
-            onPress={() => {
-              onClose();
-              navigation.navigate('MoreStack', { screen: 'WellbeingDashboard' });
-            }}
-          >
-            <Ionicons name="bar-chart-outline" size={20} color={colors.accentPrimary} />
-            <Text style={s.dashboardBtnText}>View Wellbeing Dashboard</Text>
-          </TouchableOpacity>
+          {!hideDashboardBtn && (
+            <TouchableOpacity
+              style={s.dashboardBtn}
+              onPress={() => {
+                onClose();
+                navigation.navigate('MoreStack', { screen: 'WellbeingDashboard' });
+              }}
+            >
+              <Ionicons name="bar-chart-outline" size={20} color={colors.accentPrimary} />
+              <Text style={s.dashboardBtnText}>View Wellbeing Dashboard</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </BlurView>
     </Modal>

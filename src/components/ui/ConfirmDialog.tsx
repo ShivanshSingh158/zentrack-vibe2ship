@@ -1,4 +1,6 @@
-import { X, AlertTriangle } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 
 interface ConfirmDialogProps {
   open?: boolean;
@@ -16,7 +18,7 @@ interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
-export const ConfirmDialog = ({
+export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   open,
   isOpen,
   title,
@@ -30,97 +32,105 @@ export const ConfirmDialog = ({
   variant,
   onConfirm,
   onCancel,
-}: ConfirmDialogProps) => {
+}) => {
   const isVisible = open !== undefined ? open : (isOpen !== undefined ? isOpen : false);
-  if (!isVisible) return null;
 
   const finalMessage = message || description || '';
   const finalConfirmText = confirmText || confirmLabel || 'Confirm';
   const finalCancelText = cancelText || cancelLabel || 'Cancel';
   const isDanger = danger || variant === 'danger';
   const isWarning = variant === 'warning';
+  const isInfo = variant === 'info';
 
-  const iconColor = isDanger ? '#ef4444' : isWarning ? '#fbbf24' : 'var(--accent-primary)';
-  const btnBg = isDanger
-    ? 'linear-gradient(135deg, #ef4444, #dc2626)'
-    : isWarning
-    ? 'linear-gradient(135deg, #fbbf24, #f59e0b)'
-    : undefined;
+  const toneClass = isDanger ? 'danger' : isWarning ? 'warning' : isInfo ? 'info' : 'danger';
+
+  // Handle Escape key
+  useEffect(() => {
+    if (!isVisible) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isVisible, onCancel]);
 
   return (
-    <div
-      onClick={onCancel}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 999999,
-        background: 'rgba(0, 0, 0, 0.6)',
-        backdropFilter: 'blur(4px)',
-        padding: '1rem',
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'linear-gradient(145deg, rgba(24,24,27,0.97), rgba(9,9,11,0.99))',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: '16px',
-          padding: '1.5rem',
-          width: '100%',
-          maxWidth: '400px',
-          boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
-        }}
-      >
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-          {(isDanger || isWarning) && (
-            <div
-              style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '50%',
-                background: `${iconColor}20`,
-                color: iconColor,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <AlertTriangle size={20} />
+    <AnimatePresence>
+      {isVisible && (
+        <motion.div
+          className="confirm-dialog-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
+          onClick={onCancel}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-dialog-title"
+        >
+          <motion.div
+            className="confirm-dialog-card"
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="confirm-dialog-header-row">
+              <div className={`confirm-dialog-icon-wrap ${toneClass}`}>
+                {isDanger ? (
+                  <AlertTriangle size={18} strokeWidth={2.2} />
+                ) : isWarning ? (
+                  <AlertCircle size={18} strokeWidth={2.2} />
+                ) : (
+                  <Info size={18} strokeWidth={2.2} />
+                )}
+              </div>
+              <div className="confirm-dialog-content">
+                <div className="confirm-dialog-title-bar">
+                  <h3 id="confirm-dialog-title" className="confirm-dialog-title">
+                    {title}
+                  </h3>
+                  <button
+                    type="button"
+                    className="confirm-dialog-close-btn"
+                    onClick={onCancel}
+                    aria-label="Close dialog"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                {finalMessage && (
+                  <p className="confirm-dialog-desc">
+                    {finalMessage}
+                  </p>
+                )}
+              </div>
             </div>
-          )}
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>{title}</h3>
-              <button className="btn-icon" onClick={onCancel}>
-                <X size={16} />
+
+            <div className="confirm-dialog-actions">
+              <button
+                type="button"
+                className="confirm-dialog-btn-cancel"
+                onClick={onCancel}
+              >
+                {finalCancelText}
+              </button>
+              <button
+                type="button"
+                className={`confirm-dialog-btn-confirm ${isDanger ? 'danger' : isWarning ? 'warning' : 'primary'}`}
+                onClick={onConfirm}
+              >
+                {finalConfirmText}
               </button>
             </div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: '0 0 1.25rem 0', lineHeight: 1.5 }}>
-              {finalMessage}
-            </p>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-          <button className="btn-secondary" onClick={onCancel} style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
-            {finalCancelText}
-          </button>
-          <button
-            className="btn-primary"
-            onClick={onConfirm}
-            style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.85rem',
-              background: btnBg || undefined,
-            }}
-          >
-            {finalConfirmText}
-          </button>
-        </div>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
+

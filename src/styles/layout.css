@@ -20,6 +20,13 @@
   background: transparent;
 }
 
+.main-content:has(.life-dashboard-root) {
+  padding: 0.35rem 1.5rem 0.55rem 1.5rem !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
 
 .main-content.full-width {
   /* full width but maxed out for large screens */

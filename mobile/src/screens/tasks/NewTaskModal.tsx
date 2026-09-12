@@ -61,6 +61,9 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   const [priority, setPriority] = useState<Priority>('low');
   const [nlpParsed, setNlpParsed] = useState<ParsedTask | null>(null);
   const [nlpDuration, setNlpDuration] = useState<number | null>(null);
+  // One-time multi-day dates: resolved YYYY-MM-DD list when user says
+  // "only this monday, tuesday and friday" — we batch-create one task per date.
+  const [oneTimeDates, setOneTimeDates] = useState<string[] | undefined>(undefined);
 
   // Tags
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -145,6 +148,13 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       if (parsed.tokens.some(t => t.type === 'priority') && parsed.priority !== priority) setPriority(parsed.priority);
       if (parsed.isRecurring && parsed.recurrenceRule && parsed.tokens.some(t => t.type === 'recurrence')) setRecurrenceRule(parsed.recurrenceRule);
       if (parsed.isReminder) setIsReminder(true);
+      // Multi-day one-time dates (e.g. "only this mon, wed, fri")
+      if (parsed.oneTimeDates && parsed.oneTimeDates.length > 1) {
+        setOneTimeDates(parsed.oneTimeDates);
+      } else {
+        setOneTimeDates(undefined);
+      }
+
       // Auto-apply extracted #tags to the tag selection
       if (parsed.tags && parsed.tags.length > 0) {
         parsed.tags.forEach(tag => addTag(tag));
@@ -163,7 +173,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
 
   const handleDismissToken = useCallback((token: NLPToken) => {
     const { type, start, end, display } = token;
-    if (type === 'date')       { setTaskDate(selectedDate); }
+    if (type === 'date')       { setTaskDate(selectedDate); setOneTimeDates(undefined); }
     if (type === 'time')       { setStartTime(''); setEndTime(''); }
     if (type === 'priority')   { setPriority('low'); }
     if (type === 'recurrence') { setRecurrenceRule(null); }
@@ -237,7 +247,9 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     setSelectedTags([]); setNewTagInput(''); setShowTagInput(false);
     setLocationTrigger(null);
     setIsReminder(false);
+    setOneTimeDates(undefined);
   }, []);
+
 
   const resetAndClose = useCallback(() => {
     Keyboard.dismiss();
@@ -389,6 +401,45 @@ export const NewTaskModal = React.memo(function NewTaskModal({
           await batch.commit();
         } catch (e) {
           console.error('Error committing recurring tasks batch:', e);
+        }
+      })();
+    } else if (oneTimeDates && oneTimeDates.length > 1 && !finalRecurrence) {
+      // ── One-time multi-day batch (e.g. "only this mon, tue, fri") ──────────
+      // Create one task per resolved date. Uses writeBatch for atomicity.
+      // optimisticAddTask is called for each so the UI updates instantly.
+      const batch = writeBatch(db);
+      const subtaskObjects = subtasks.map((s, i) => ({ id: `st-${i}`, title: s, completed: false }));
+
+      for (const dateStr of oneTimeDates) {
+        const docRef = doc(collection(db, COLLECTION.TASKS));
+        const taskId = docRef.id;
+        const taskPayload: any = {
+          id: taskId,
+          userId, title: finalTitle, status: 'pending',
+          priority: finalPriority, date: dateStr, timeSlot: ts || undefined,
+          estimatedMinutes: est, isRecurring: false, recurrenceRule: undefined,
+          recurringSourceId: undefined, subject: undefined, tags: selectedTags,
+          order: listCount, subtasks: subtaskObjects,
+        };
+        optimisticAddTask(taskPayload);
+        batch.set(docRef, {
+          userId, title: finalTitle, text: finalTitle, status: 'pending',
+          priority: finalPriority, date: dateStr, timeSlot: ts || null,
+          estimatedMinutes: est, isRecurring: false, recurrenceRule: null,
+          recurringSourceId: null, subject: null, tags: selectedTags,
+          order: listCount, subtasks: subtaskObjects,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
+      resetAndClose();
+
+      (async () => {
+        try {
+          await batch.commit();
+        } catch (e) {
+          console.error('Error committing one-time multi-day batch:', e);
         }
       })();
     } else {
@@ -727,6 +778,30 @@ export const NewTaskModal = React.memo(function NewTaskModal({
           title="Pick a Date"
         />
 
+        {/* One-time multi-day hint banner */}
+        {oneTimeDates && oneTimeDates.length > 1 && (
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            paddingHorizontal: 16, paddingVertical: 8,
+            marginHorizontal: 0, marginBottom: 4,
+            backgroundColor: 'rgba(245, 158, 11, 0.08)',
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: 'rgba(245, 158, 11, 0.25)',
+          }}>
+            <Ionicons name="calendar-outline" size={13} color="#f59e0b" />
+            <Text style={{ flex: 1, fontSize: 12, color: '#f59e0b', fontFamily: undefined }}>
+              {`Will create ${oneTimeDates.length} tasks: `}
+              {oneTimeDates.map((d, i) => {
+                const date = new Date(d + 'T00:00:00');
+                const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][date.getDay()];
+                const monthName = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][date.getMonth()];
+                return `${dayName} ${monthName} ${date.getDate()}${i < oneTimeDates.length - 1 ? ', ' : ''}`;
+              })}
+            </Text>
+          </View>
+        )}
+
         <AnimatedPressable
           style={[styles.addTaskBtnFull, !title.trim() && styles.addTaskBtnDisabled]}
           onPress={() => handleSave()}
@@ -738,7 +813,11 @@ export const NewTaskModal = React.memo(function NewTaskModal({
             color={title.trim() ? (isDark ? '#000000' : '#ffffff') : colors.textMuted}
           />
           <Text style={[styles.addTaskBtnFullText, !title.trim() && styles.addTaskBtnDisabledText]}>
-            {saving ? 'Adding Task...' : 'Add task'}
+            {saving
+              ? 'Adding...'
+              : oneTimeDates && oneTimeDates.length > 1
+                ? `Add ${oneTimeDates.length} tasks`
+                : 'Add task'}
           </Text>
         </AnimatedPressable>
       </View>

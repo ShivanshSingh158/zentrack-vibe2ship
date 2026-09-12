@@ -16,7 +16,6 @@ import { formatSeconds } from '../../services/youtubeTranscriptService';
 import { stripTranscriptArtifacts } from './learningHelpers';
 import { toast } from 'sonner';
 import { awardXP } from '../../services/xpSystem';
-import { AVAILABLE_GEMINI_MODELS } from '../../config/constants';
 
 interface Message {
   role: 'user' | 'model';
@@ -743,11 +742,11 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
     return current ? current.messages : [];
   });
 
-  const [selectedModel, setSelectedModel] = useState<string>(() => {
+  const [selectedModel] = useState<string>(() => {
     try {
-      return localStorage.getItem('zen_preferred_learning_model') || 'gemini-3.7-flash';
+      return localStorage.getItem('zen_preferred_learning_model') || 'gemini-2.5-flash';
     } catch {
-      return 'gemini-3.7-flash';
+      return 'gemini-2.5-flash';
     }
   });
 
@@ -760,13 +759,6 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const handleModelChange = (newModel: string) => {
-    setSelectedModel(newModel);
-    try { localStorage.setItem('zen_preferred_learning_model', newModel); } catch {}
-    const modelObj = AVAILABLE_GEMINI_MODELS.find(m => m.id === newModel);
-    toast.success(`Active Model: ${modelObj?.label || newModel}`);
-  };
 
   // Auto-sync active conversation to sessions list
   useEffect(() => {
@@ -909,7 +901,7 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
       let responseText = '';
       try {
         responseText = await callWithFallback(async (genAI: any, modelName: string) => {
-          const modelToUse = selectedModel || modelName || 'gemini-3.7-flash';
+          const modelToUse = selectedModel || modelName || 'gemini-2.5-flash';
           const model = genAI.getGenerativeModel({ model: modelToUse });
           const res = await model.generateContent(fullPrompt);
           return res.response.text();
@@ -929,7 +921,7 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
         });
 
         const res = await callGeminiProxy({
-          model: selectedModel || 'gemini-3.7-flash',
+          model: selectedModel || 'gemini-2.5-flash',
           systemInstruction: { parts: [{ text: basePrompt }] },
           contents: proxyContents
         });
@@ -989,7 +981,7 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
       <div className="lp-chatgpt-header">
         <div className="lp-chatgpt-header-left">
           <div className="lp-chatgpt-avatar-glow">
-            <img src="/logo_white.png" alt="ZEN-GPT" style={{ width: 17, height: 17, objectFit: 'contain' }} />
+            <img src="/logo_white.png" alt="ZEN-GPT" className="lp-chatgpt-avatar-logo" style={{ width: 17, height: 17, objectFit: 'contain' }} />
           </div>
           <div className="lp-chatgpt-title-meta">
             <div className="lp-chatgpt-name">
@@ -1004,29 +996,6 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
         </div>
 
         <div className="lp-chatgpt-header-right-actions">
-          <select
-            value={selectedModel}
-            onChange={(e) => handleModelChange(e.target.value)}
-            title="Select Gemini Model"
-            style={{
-              padding: '0.2rem 0.4rem',
-              borderRadius: '8px',
-              border: '1px solid rgba(255,255,255,0.12)',
-              background: 'rgba(255,255,255,0.06)',
-              color: '#ececec',
-              fontSize: '0.62rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              outline: 'none',
-            }}
-          >
-            {AVAILABLE_GEMINI_MODELS.map(m => (
-              <option key={m.id} value={m.id} style={{ background: '#212121', color: '#fff' }}>
-                {m.icon} {m.label.replace('Gemini ', '')}
-              </option>
-            ))}
-          </select>
-
           <button
             type="button"
             className={`lp-chatgpt-hdr-btn ${showHistory ? 'active' : ''}`}
@@ -1174,7 +1143,7 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
           /* Empty State / Welcome Screen */
           <div className="lp-chatgpt-welcome-state">
             <div className="lp-chatgpt-welcome-icon">
-              <img src="/logo_white.png" alt="ZEN-GPT" style={{ width: 34, height: 34, objectFit: 'contain' }} />
+              <img src="/logo_white.png" alt="ZEN-GPT" className="lp-chatgpt-welcome-logo" style={{ width: 34, height: 34, objectFit: 'contain' }} />
             </div>
             <h3 className="lp-chatgpt-welcome-title">How can I help with this lecture?</h3>
             <p className="lp-chatgpt-welcome-subtitle">
@@ -1224,7 +1193,7 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
             <div key={i} className={`lp-chatgpt-msg-row ${m.role}`}>
               {m.role === 'model' && (
                 <div className="lp-chatgpt-msg-avatar">
-                  <img src="/logo_white.png" alt="ZEN-GPT" style={{ width: 16, height: 16, objectFit: 'contain' }} />
+                  <img src="/logo_white.png" alt="ZEN-GPT" className="lp-chatgpt-avatar-logo" style={{ width: 16, height: 16, objectFit: 'contain' }} />
                 </div>
               )}
 
@@ -1265,7 +1234,7 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
                               );
                             },
                             strong({ children }) {
-                              return <strong style={{ color: '#ffffff', fontWeight: 700 }}>{children}</strong>;
+                              return <strong className="lp-chatgpt-strong">{children}</strong>;
                             }
                           }}
                         >
@@ -1323,7 +1292,7 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
         {loading && (
           <div className="lp-chatgpt-msg-row model">
             <div className="lp-chatgpt-msg-avatar">
-              <img src="/logo_white.png" alt="ZEN-GPT" style={{ width: 16, height: 16, objectFit: 'contain' }} />
+              <img src="/logo_white.png" alt="ZEN-GPT" className="lp-chatgpt-avatar-logo" style={{ width: 16, height: 16, objectFit: 'contain' }} />
             </div>
             <div className="lp-chatgpt-msg-body model">
               <div className="lp-chatgpt-loading-indicator">

@@ -83,7 +83,7 @@ export interface ProxyCallOptions {
 
 export async function callProxy(options: ProxyCallOptions): Promise<any> {
   const {
-    model = 'gemini-3.6-flash',
+    model = 'gemini-2.5-flash',
     contents,
     systemInstruction,
     tools,
@@ -198,7 +198,7 @@ export async function streamProxy(
   onChunk: (text: string) => void
 ): Promise<string> {
   const {
-    model = 'gemini-3.6-flash',
+    model = 'gemini-2.5-flash',
     contents,
     systemInstruction,
     generationConfig,
@@ -278,7 +278,7 @@ export async function transcribeAudioViaProxy(
         {
           role: 'user',
           parts: [
-            { inlineData: { mimeType: 'audio/wav', data: base64Audio } },
+            { inlineData: { mimeType: 'audio/mp4', data: base64Audio } },
             {
               text: `You are an expert, high-accuracy speech-to-text transcriber for ZenTrack, a task management and productivity app.
 Transcribe this user voice audio recording accurately into text.
@@ -291,9 +291,12 @@ CRITICAL TASK VOCABULARY RULES:
    - E.g.: "study physics at 6pm priority high" -> "study physics at 6pm priority high"
 2. PRIORITY TERMS:
    - "high priority", "urgent", "critical", "p1", "p2", "p3", "medium priority", "low priority", "asap".
-3. TASK DATES & TIMES:
+3. TASK DATES & TIMES (English & Hinglish):
    - E.g. "tomorrow", "today", "tonight", "5pm", "9:30 am", "noon", "next Monday", "every day", "every weekday".
-4. SUBTASKS & TAGS:
+   - Indian/Hinglish terms: "kal", "aaj", "parso", "shaam ko", "subah", "dopahar", "raat", "baje".
+4. TECH & ACADEMIC TERMS:
+   - "DSA", "LeetCode", "DBMS", "OS", "midsem", "endsem", "viva", "lab report", "NPTEL", "GATE", "assignment".
+5. SUBTASKS & TAGS:
    - E.g. "with subtasks...", "checklist...", "tag...", "hashtag...".
 
 Return ONLY the raw transcribed text with no quotes, explanations, or commentary.`,
@@ -301,7 +304,7 @@ Return ONLY the raw transcribed text with no quotes, explanations, or commentary
           ],
         },
       ],
-      generationConfig: { temperature: 0, maxOutputTokens: 250 },
+      generationConfig: { temperature: 0, maxOutputTokens: 80 },
     });
     const parsed = parseProxyResponse(data);
     const text = parsed.text?.trim() || null;

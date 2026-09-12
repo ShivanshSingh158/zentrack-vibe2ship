@@ -36,14 +36,22 @@ function evaluateLocalSurfaceInsight(
   switch (screenName) {
     case 'AttendanceScreen': {
       if (!ctx.attendance?.length) return null;
-      const atRisk = ctx.attendance.filter(
-        s => s.classesTotal > 0 && (s.classesAttended / s.classesTotal) < 0.75
-      );
+      // Fix #9: Use per-subject targetPercentage instead of hardcoded 0.75.
+      // Also include labs in the calculation — pure lab courses appeared at 0%.
+      const atRisk = ctx.attendance.filter(s => {
+        const totalAtt = (s.classesAttended || 0) + (s.labsAttended || 0);
+        const totalCls = (s.classesTotal || 0) + (s.labsTotal || 0);
+        const target = (s.targetPercentage || 75) / 100;
+        return totalCls > 0 && (totalAtt / totalCls) < target;
+      });
       if (atRisk.length === 0) return null;
       const first = atRisk[0];
-      const pct = Math.round((first.classesAttended / first.classesTotal) * 100);
+      const totalAtt = (first.classesAttended || 0) + (first.labsAttended || 0);
+      const totalCls = (first.classesTotal || 0) + (first.labsTotal || 0);
+      const pct = Math.round((totalAtt / totalCls) * 100);
       const target = first.targetPercentage || 75;
-      const need = Math.max(1, Math.ceil((target * first.classesTotal - 100 * first.classesAttended) / (100 - target)));
+      // Fix #8 (consistency): Use integer-scaled math for 'needed' calculation
+      const need = Math.max(1, Math.ceil((target * totalCls - 100 * totalAtt) / (100 - target)));
       return {
         message: `⚠️ ${first.name} at ${pct}% — attend ${need} more classes to recover.`,
         action: 'View Details',

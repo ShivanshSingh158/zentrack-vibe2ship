@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, {
   FadeInDown,
@@ -18,16 +19,36 @@ import { FONT_FAMILY, FONT_SIZE, RADIUS, SHADOW } from '../theme/tokens';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 18;
 
-const MODULE_PILLARS = [
+interface FeatureItem {
+  icon: keyof typeof Ionicons.glyphMap;
+  text: string;
+}
+
+interface ModulePillar {
+  id: string;
+  step: string;
+  badge: string;
+  title: string;
+  desc: string;
+  features: FeatureItem[];
+  preview: string;
+  status: string;
+}
+
+const MODULE_PILLARS: ModulePillar[] = [
   {
-    id: 'sara',
-    step: '01 / S.A.R.A INTELLIGENCE',
-    badge: 'VOICE AGENT',
-    title: 'Voice-First AI Companion',
-    desc: 'Hands-free execution for scheduling, logging, reminders & telemetry',
-    features: ['Natural voice command parsing', 'Proactive timetable alerts', 'Zero-latency actions'],
-    preview: '🗣️ “SARA, log 250ml water & remind DSA at 10 AM”',
-    status: '100% On-Device Voice Flow',
+    id: 'voice_nlp',
+    step: '01 / VOICE NLP INTELLIGENCE',
+    badge: 'VOICE NLP',
+    title: 'Voice-to-Action NLP Engine',
+    desc: 'Speak naturally to capture tasks, log habits, schedule routines & query telemetry hands-free',
+    features: [
+      { icon: 'mic-outline', text: 'Natural speech-to-intent command parsing' },
+      { icon: 'flash-outline', text: 'Zero-latency multi-action autonomous pipeline' },
+      { icon: 'notifications-outline', text: 'Proactive routine alerts & schedule warnings' },
+    ],
+    preview: '🎙️ "Log 300ml water and remind DSA study for 6 PM"',
+    status: 'Neural Voice Pipeline · Low Latency',
   },
   {
     id: 'tasks',
@@ -35,7 +56,11 @@ const MODULE_PILLARS = [
     badge: 'NLP ENGINE',
     title: 'Smart Task Management',
     desc: 'Frictionless capture with intelligent deadline parsing & recurring cadence',
-    features: ['Natural language time parsing', 'Checklist subtasks', 'Priority & tag filters'],
+    features: [
+      { icon: 'time-outline', text: 'Natural language time & recurrence parser' },
+      { icon: 'checkbox-outline', text: 'Eisenhower matrix & subtask checklists' },
+      { icon: 'pricetag-outline', text: 'Smart tag filters & priority weighting' },
+    ],
     preview: '⚡ Quick Capture · Auto-scheduled for 6:00 PM',
     status: 'Offline-First Local Sync',
   },
@@ -45,7 +70,11 @@ const MODULE_PILLARS = [
     badge: 'SAFE ZONE',
     title: 'Timetable & Attendance',
     desc: 'Live college schedule radar with automated bunk safety calculations',
-    features: ['75% safe-zone threshold', 'Bunk availability predictor', 'Timetable slot alerts'],
+    features: [
+      { icon: 'shield-checkmark-outline', text: '75% safe-zone threshold safeguard' },
+      { icon: 'calculator-outline', text: 'Predictive bunk availability calculator' },
+      { icon: 'school-outline', text: 'Live college timetable slot alerts' },
+    ],
     preview: '🎓 Data Structures · 84.2% · 2 Bunks Safe',
     status: 'Bunk Safeguard Active',
   },
@@ -55,7 +84,11 @@ const MODULE_PILLARS = [
     badge: 'PROGRESSION',
     title: 'Gym & Progressive Overload',
     desc: 'Log sets, calculate 1RM velocity, track muscle splits and rest intervals',
-    features: ['Push / Pull / Legs tracking', 'Auto rest interval timer', 'Volume & 1RM history'],
+    features: [
+      { icon: 'barbell-outline', text: 'Push / Pull / Legs split workout tracker' },
+      { icon: 'timer-outline', text: 'Automated rest interval stopwatch' },
+      { icon: 'trending-up-outline', text: 'Dynamic volume & 1RM progressive overload' },
+    ],
     preview: '🏋️ Push Day A · Bench Press: 80kg × 8 reps',
     status: 'Volume PR Tracked',
   },
@@ -65,7 +98,11 @@ const MODULE_PILLARS = [
     badge: 'MYTHIC TIER',
     title: 'Habit Constellations & Water',
     desc: 'Gamified consistency streaks, hydration targets, and character XP',
-    features: ['Multi-day streak shields', 'Dynamic hydration dial', 'XP level progression'],
+    features: [
+      { icon: 'flame-outline', text: 'Unbreakable multi-day habit streak shields' },
+      { icon: 'water-outline', text: 'Adaptive hydration dial & interval logging' },
+      { icon: 'trophy-outline', text: 'Gamified character XP & mythic tier badges' },
+    ],
     preview: '💧 Hydration: 2.8 / 3.0L · 🔥 42-Day Streak',
     status: 'Level 14 · Mythic Rank',
   },
@@ -75,7 +112,11 @@ const MODULE_PILLARS = [
     badge: 'ENCRYPTED',
     title: 'Analytics & Secure Vault',
     desc: 'Life balance telemetry, focus velocity, and encrypted markdown notes',
-    features: ['Discipline balance index', 'Weekly productivity curves', 'Private encrypted notes'],
+    features: [
+      { icon: 'lock-closed-outline', text: 'Private encrypted markdown journal & vault' },
+      { icon: 'analytics-outline', text: 'Life balance telemetry & focus velocity index' },
+      { icon: 'cloud-offline-outline', text: 'Offline-first WhatsApp-grade local sync' },
+    ],
     preview: '🔒 Private Notes · 94% Focus Velocity Index',
     status: 'End-to-End Encrypted',
   },
@@ -219,8 +260,16 @@ export default function LandingScreen() {
                     {/* Card Top Label & Badge */}
                     <View style={styles.cardTopRow}>
                       <Text style={[styles.cardStepText, { color: colors.textMuted }]}>{item.step}</Text>
-                      <View style={[styles.cardBadge, { borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)' }]}>
-                        <Text style={[styles.cardBadgeText, { color: colors.textSecondary }]}>{item.badge}</Text>
+                      <View
+                        style={[
+                          styles.cardBadge,
+                          {
+                            backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
+                            borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.18)',
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.cardBadgeText, { color: colors.accentPrimary }]}>{item.badge}</Text>
                       </View>
                     </View>
 
@@ -228,18 +277,38 @@ export default function LandingScreen() {
                     <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.title}</Text>
                     <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>{item.desc}</Text>
 
-                    {/* Feature Micro-Bullets Row */}
+                    {/* Feature Rows with dedicated icons */}
                     <View style={styles.featuresRow}>
                       {item.features.map((feat, i) => (
                         <View key={i} style={styles.featureItem}>
-                          <View style={[styles.featureDot, { backgroundColor: colors.accentPrimary }]} />
-                          <Text style={[styles.featureText, { color: colors.textSecondary }]}>{feat}</Text>
+                          <View
+                            style={[
+                              styles.featureIconBox,
+                              {
+                                backgroundColor: isDark
+                                  ? 'rgba(165,153,255,0.12)'
+                                  : 'rgba(108,92,231,0.08)',
+                              },
+                            ]}
+                          >
+                            <Ionicons
+                              name={feat.icon}
+                              size={12}
+                              color={colors.accentPrimary}
+                            />
+                          </View>
+                          <Text
+                            style={[styles.featureText, { color: colors.textSecondary }]}
+                            numberOfLines={1}
+                          >
+                            {feat.text}
+                          </Text>
                         </View>
                       ))}
                     </View>
 
                     {/* Monochromatic Preview Capsule */}
-                    <View style={[styles.previewCapsule, { backgroundColor: isDark ? 'rgba(0,0,0,0.40)' : 'rgba(255,255,255,0.6)', borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+                    <View style={[styles.previewCapsule, { backgroundColor: isDark ? 'rgba(0,0,0,0.40)' : 'rgba(255,255,255,0.6)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
                       <Text style={[styles.previewText, { color: colors.textPrimary }]} numberOfLines={1}>
                         {item.preview}
                       </Text>
@@ -247,7 +316,7 @@ export default function LandingScreen() {
 
                     {/* Bottom Status Row */}
                     <View style={styles.cardStatusRow}>
-                      <View style={[styles.statusDot, { backgroundColor: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }]} />
+                      <View style={[styles.statusDot, { backgroundColor: isDark ? '#5EDA9E' : '#059669' }]} />
                       <Text style={[styles.statusText, { color: colors.textMuted }]}>{item.status}</Text>
                     </View>
                   </View>
@@ -393,10 +462,10 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   cardBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: RADIUS.full,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
   },
   cardBadgeText: {
     fontFamily: FONT_FAMILY.bold,
@@ -405,7 +474,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 16,
+    fontSize: 16.5,
     letterSpacing: 0.2,
     marginBottom: 3,
   },
@@ -422,17 +491,21 @@ const styles = StyleSheet.create({
   featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 2,
   },
-  featureDot: {
-    width: 3.5,
-    height: 3.5,
-    borderRadius: 2,
-    marginRight: 6,
+  featureIconBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
   },
   featureText: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: 11.5,
     lineHeight: 16,
+    flex: 1,
   },
   previewCapsule: {
     paddingHorizontal: 12,

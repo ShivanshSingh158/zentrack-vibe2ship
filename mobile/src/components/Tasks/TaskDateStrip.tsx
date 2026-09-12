@@ -101,7 +101,7 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({ selectedDate, o
 const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   container: {
     paddingTop: 8,
-    paddingBottom: 16,
+    paddingBottom: 4,
     backgroundColor: 'transparent',
     width: '100%',
   },

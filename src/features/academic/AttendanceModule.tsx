@@ -688,9 +688,9 @@ export const AttendanceModule = () => {
           </div>
 
           <div className="att-overview-meter-row">
-            <span className="att-overview-big-pct" style={{
-              color: globalPct !== null ? (globalPct >= 75 ? '#5eda9e' : (globalPct >= 70 ? '#ff9f4d' : '#ff6961')) : '#8e8e93'
-            }}>
+            <span
+              className={`att-overview-big-pct ${globalPct !== null ? (globalPct >= 75 ? 'safe' : (globalPct >= 70 ? 'warning' : 'danger')) : ''}`}
+            >
               {globalPct !== null ? `${globalPct}%` : '--%'}
             </span>
 
@@ -740,9 +740,9 @@ export const AttendanceModule = () => {
           </div>
         ) : (
           <div className="att-overview-card safe-centered">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', color: '#5eda9e' }}>
+            <div className="att-safe-status-banner">
               <CheckCircle2 size={18} />
-              <span style={{ fontSize: '0.86rem', fontWeight: 600 }}>All subjects meet the target percentage!</span>
+              <span>All subjects meet the target percentage!</span>
             </div>
           </div>
         )}
@@ -752,7 +752,7 @@ export const AttendanceModule = () => {
       <div>
         <div className="att-week-nav-bar">
           <div className="att-week-range-label">
-            <CalendarDays size={15} color="#a599ff" />
+            <CalendarDays size={15} color="currentColor" />
             <span>{weekRangeLabel}</span>
           </div>
 
@@ -767,9 +767,8 @@ export const AttendanceModule = () => {
             </button>
             <button
               type="button"
-              className="att-week-nav-btn"
+              className={`att-week-nav-btn ${selectedDate === todayStr ? 'is-current-week' : ''}`}
               onClick={() => setSelectedDate(todayStr)}
-              style={selectedDate === todayStr ? { borderColor: 'rgba(165,153,255,0.4)', color: '#a599ff', background: 'rgba(165,153,255,0.1)' } : {}}
             >
               This Week
             </button>
@@ -821,18 +820,18 @@ export const AttendanceModule = () => {
         </div>
 
         {isSelectedHoliday ? (
-          <div className="att-overview-card" style={{ textAlign: 'center', padding: '2rem 1rem', alignItems: 'center' }}>
+          <div className="att-overview-card att-empty-card">
             <span style={{ fontSize: '2rem' }}>🌴</span>
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', margin: '0.4rem 0 0.2rem 0' }}>Holiday</h3>
-            <p style={{ fontSize: '0.78rem', color: '#8e8e93', margin: 0 }}>
+            <h3 className="att-empty-day-title">Holiday</h3>
+            <p className="att-empty-day-desc">
               Enjoy your day off! No classes scheduled for this date.
             </p>
           </div>
         ) : todaySessions.length === 0 ? (
-          <div className="att-overview-card" style={{ textAlign: 'center', padding: '2rem 1rem', alignItems: 'center' }}>
-            <CheckCircle2 size={26} color="#a599ff" />
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', margin: '0.4rem 0 0.2rem 0' }}>All clear!</h3>
-            <p style={{ fontSize: '0.78rem', color: '#8e8e93', margin: 0 }}>
+          <div className="att-overview-card att-empty-card">
+            <CheckCircle2 size={26} color="currentColor" className="att-all-clear-icon" />
+            <h3 className="att-empty-day-title">All clear!</h3>
+            <p className="att-empty-day-desc">
               No classes scheduled for this day. Relax or catch up on work.
             </p>
           </div>
@@ -939,7 +938,7 @@ export const AttendanceModule = () => {
         {subjects.length === 0 ? (
           <div className="notes-empty-state">
             <GraduationCap size={32} color="var(--att-accent-purple)" />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff', margin: 0 }}>No subjects configured</h3>
+            <h3 className="att-empty-day-title" style={{ margin: 0 }}>No subjects configured</h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--att-text-tertiary)', margin: 0 }}>
               Add your courses and timetable to start tracking attendance and bunk budgets.
             </p>
@@ -979,9 +978,7 @@ export const AttendanceModule = () => {
                 <div key={subject.id} className="att-subject-card">
                   <div className="att-subject-card-top">
                     <h4 className="att-subject-name">{subject.name}</h4>
-                    <span className="att-subject-total-pct" style={{
-                      color: totalPct >= target ? '#5eda9e' : (totalPct >= target - 5 ? '#fbbf24' : '#ff6961')
-                    }}>
+                    <span className={`att-subject-total-pct ${totalPct >= target ? 'safe' : (totalPct >= target - 5 ? 'warning' : 'danger')}`}>
                       {tot > 0 ? `${totalPct}%` : '--%'}
                     </span>
                   </div>
@@ -1196,7 +1193,7 @@ export const AttendanceModule = () => {
                   className="att-modal-input"
                 >
                   {subjects.map(s => (
-                    <option key={s.id} value={s.id} style={{ background: '#141416' }}>{s.name}</option>
+                    <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
               </label>
@@ -1204,7 +1201,7 @@ export const AttendanceModule = () => {
               {/* Class & Lab Buttons */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginTop: '0.2rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '0.86rem', fontWeight: 600, color: '#a599ff' }}>Extra Lecture</span>
+                  <span className="att-extra-type-label class">Extra Lecture</span>
                   <div style={{ display: 'flex', gap: '0.45rem' }}>
                     <button
                       type="button"
@@ -1232,7 +1229,7 @@ export const AttendanceModule = () => {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '0.86rem', fontWeight: 600, color: '#38bdf8' }}>Extra Practical / Lab</span>
+                  <span className="att-extra-type-label lab">Extra Practical / Lab</span>
                   <div style={{ display: 'flex', gap: '0.45rem' }}>
                     <button
                       type="button"

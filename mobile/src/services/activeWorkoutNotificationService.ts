@@ -25,6 +25,13 @@ export interface ActiveWorkoutNotificationPayload {
 let lastNotificationState: ActiveWorkoutNotificationPayload | null = null;
 let isNotificationActive = false;
 
+// ── 2-second debounce for HUD updates ────────────────────────────────────────
+// Every set completion fires updateActiveWorkoutNotification. Without debouncing,
+// rapid taps cause the OS to continuously re-post the notification to the top of
+// the shade and "bump" the lockscreen display. Coalescing to 2s gives a smooth UX.
+let _hudUpdateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let _pendingHudPayload: ActiveWorkoutNotificationPayload | null = null;
+
 function formatRestTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -32,7 +39,8 @@ function formatRestTime(seconds: number): string {
 }
 
 /**
- * Updates or presents the lock screen active workout / rest timer notification
+ * Updates or presents the lock screen active workout / rest timer notification.
+ * Debounced to 2s to prevent visual "bumping" on rapid set completions.
  */
 export async function updateActiveWorkoutNotification(
   payload: ActiveWorkoutNotificationPayload
@@ -40,6 +48,31 @@ export async function updateActiveWorkoutNotification(
   lastNotificationState = payload;
   isNotificationActive = true;
 
+  // For rest timer: update immediately (rest state is time-sensitive)
+  // For set logging: debounce to prevent notification shade bumping on every tap
+  const isRestUpdate = payload.isResting && (payload.restSecondsRemaining ?? 0) > 0;
+
+  if (isRestUpdate) {
+    // Rest timer updates are immediate — countdown accuracy matters
+    await _flushHudUpdate(payload);
+    return;
+  }
+
+  // Set-log updates: debounce so rapid set completions only cause one notification re-post
+  _pendingHudPayload = payload;
+  if (_hudUpdateDebounceTimer) {
+    clearTimeout(_hudUpdateDebounceTimer);
+  }
+  _hudUpdateDebounceTimer = setTimeout(async () => {
+    _hudUpdateDebounceTimer = null;
+    if (_pendingHudPayload) {
+      await _flushHudUpdate(_pendingHudPayload);
+      _pendingHudPayload = null;
+    }
+  }, 2000);
+}
+
+async function _flushHudUpdate(payload: ActiveWorkoutNotificationPayload): Promise<void> {
   try {
     const isRest = payload.isResting && (payload.restSecondsRemaining ?? 0) > 0;
 
@@ -88,6 +121,12 @@ export async function updateActiveWorkoutNotification(
 export async function dismissActiveWorkoutNotification(): Promise<void> {
   isNotificationActive = false;
   lastNotificationState = null;
+  // Cancel any pending debounced update
+  if (_hudUpdateDebounceTimer) {
+    clearTimeout(_hudUpdateDebounceTimer);
+    _hudUpdateDebounceTimer = null;
+    _pendingHudPayload = null;
+  }
   try {
     await Notifications.dismissNotificationAsync(WORKOUT_NOTIFICATION_ID);
   } catch (err) {
@@ -132,3 +171,4 @@ export function registerActiveWorkoutNotificationListeners() {
 
   return () => subscription.remove();
 }
+

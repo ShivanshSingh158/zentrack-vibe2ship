@@ -571,13 +571,13 @@ export const HabitsModule = () => {
       {/* ── DAILY MOMENTUM WATCHTOWER (3-CARD GRID) ── */}
       <div className="hb-momentum-grid">
         {/* Card 1: Today's Perfect Day Progress */}
-        <div className="hb-momentum-card">
+        <div className="hb-momentum-card card-progress">
           <div className="hb-momentum-card-top">
             <span className="hb-momentum-label">Today's Progress</span>
-            <CheckCircle2 size={16} color="#5eda9e" />
+            <CheckCircle2 size={16} className="hb-momentum-icon icon-emerald" />
           </div>
           <div className="hb-momentum-val-row">
-            <span className="hb-momentum-value" style={{ color: '#5eda9e' }}>
+            <span className="hb-momentum-value">
               {metrics.completionRate}%
             </span>
             <span className="hb-momentum-count">
@@ -590,13 +590,13 @@ export const HabitsModule = () => {
         </div>
 
         {/* Card 2: Consistency Multiplier */}
-        <div className="hb-momentum-card">
+        <div className="hb-momentum-card card-streak">
           <div className="hb-momentum-card-top">
             <span className="hb-momentum-label">Streak Multiplier</span>
-            <Flame size={16} color="#ff9f4d" />
+            <Flame size={16} className="hb-momentum-icon icon-flame" />
           </div>
           <div className="hb-momentum-val-row">
-            <span className="hb-momentum-value" style={{ color: '#ff9f4d' }}>
+            <span className="hb-momentum-value">
               🔥 {metrics.bestStreak}d
             </span>
             <span className="hb-momentum-count">
@@ -611,13 +611,13 @@ export const HabitsModule = () => {
         </div>
 
         {/* Card 3: Money Saved (Break Bad Habits) or Freeze Inventory */}
-        <div className="hb-momentum-card">
+        <div className="hb-momentum-card card-savings">
           <div className="hb-momentum-card-top">
             <span className="hb-momentum-label">Money & Health Saved</span>
-            <DollarSign size={16} color="#38bdf8" />
+            <DollarSign size={16} className="hb-momentum-icon icon-ocean" />
           </div>
           <div className="hb-momentum-val-row">
-            <span className="hb-momentum-value" style={{ color: '#38bdf8' }}>
+            <span className="hb-momentum-value">
               +${metrics.totalSaved}
             </span>
             <span className="hb-momentum-count">
@@ -635,7 +635,7 @@ export const HabitsModule = () => {
         {displayedHabits.length === 0 ? (
           <div className="notes-empty-state">
             <Sparkles size={32} color="var(--hb-accent-purple)" />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff', margin: 0 }}>No habits found</h3>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--hb-text-primary, #ffffff)', margin: 0 }}>No habits found</h3>
             <p style={{ fontSize: '0.82rem', color: 'var(--hb-text-tertiary)', margin: 0 }}>
               {filterType === 'all'
                 ? 'Create your first daily habit to start building streaks and momentum.'
@@ -795,7 +795,7 @@ export const HabitsModule = () => {
                             }}
                           >
                             <span className="hb-day-node-letter">{d.dayLabel}</span>
-                            {isDone && <Check size={10} strokeWidth={3} color="#000" />}
+                            {isDone && <Check size={10} strokeWidth={3} className="hb-day-node-check" />}
                             {isFrozen && <Snowflake size={10} color="#89dceb" />}
                           </div>
                         );

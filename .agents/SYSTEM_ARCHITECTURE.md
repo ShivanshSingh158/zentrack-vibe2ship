@@ -82,6 +82,7 @@ zentrack-vibe2ship/
 │   │       └── shared.ts           Tool helpers: requestApproval, requireGoogleAuth, ToolResult
 │   ├── components/
 │   │   ├── SaraInterface.tsx       Main voice orb UI: pulsing orb, terminal feed, controls (~39KB)
+│   │   ├── LeftSidebar.tsx         Todoist-style left navigation sidebar (Dashboard, Inbox, Calendar, Habits, Analytics, Workspace, Settings, Theme toggle, Help)
 │   │   ├── Sidebar.tsx             Desktop navigation sidebar + agent dock
 │   │   ├── TopNav.tsx              Top bar: logo, search, Gemini auth badge, settings
 │   │   ├── BottomNav.tsx           Mobile bottom navigation tabs
@@ -96,7 +97,7 @@ zentrack-vibe2ship/
 │   │   │   └── TerminalFeed.tsx    Terminal-style feed inside Sara interface
 │   │   ├── overlays/
 │   │   │   ├── FocusModeOverlay.tsx Full-screen focus mode + Pomodoro timer
-│   │   │   ├── SecuritySettingsModal.tsx Security/privacy settings panel (~22KB)
+│   │   │   ├── SecuritySettingsModal.tsx Comprehensive ZenTrack Settings Hub (Account & Log Out, Appearance, AI Autonomy, Integrations, Notifications, Data & JSON Export, dual-theme, security-modal.css)
 │   │   │   ├── OnboardingCarousel.tsx First-time user onboarding flow
 │   │   │   ├── DailyBriefingOverlay.tsx Morning AI briefing panel
 │   │   │   └── DeveloperMatrix.tsx Dev-only debug panel (network logs, agent state)
@@ -116,27 +117,29 @@ zentrack-vibe2ship/
 │   │   │   └── VoiceQuickCaptureWidget.tsx Floating voice-to-text quick capture (~22KB)
 │   │   ├── dashboard/
 │   │   │   ├── HomeDashboard.tsx   Main app screen: agent orchestration entry point (~50KB)
-│   │   │   ├── LifeHomeDashboard.tsx Unified life dashboard (streak, daily agenda, active recall, habits, XP)
+│   │   │   ├── LifeHomeDashboard.tsx Unified life dashboard (Balanced 3-column Bento Grid: Col 1 Life Matrix & Daily Vitality, Col 2 Master Flow & Upcoming Radar, Col 3 Attendance, Habits, Active Goals & Scratchpad)
 │   │   │   ├── AgentShutter.tsx    Animated panel revealing agent fleet during missions
 │   │   │   ├── MissionReport.tsx   Structured mission report display
 │   │   │   ├── VaultOrb.tsx        Animated 3D orb visualization (~20KB)
 │   │   │   └── ConflictCard.tsx    Scheduling conflict notification card
 │   │   ├── tasks/
 │   │   │   ├── TodoListModule.tsx  Full task management UI (~46KB)
-│   │   │   ├── TodoCard.tsx        Individual task card with inline edit + completion
-│   │   │   └── EditTodoModal.tsx   Task edit modal
+│   │   │   ├── NewTaskModal.tsx    Todoist-style Quick Add task bar (real-time NLP, dynamic action pills, Date/Priority/Time/Tags popovers, dual-theme, task-modal.css)
+│   │   │   └── EditTodoModal.tsx   Task edit modal (dual-theme light/dark mode, task-modal.css)
 │   │   ├── calendar/
 │   │   │   ├── CalendarModule.tsx  Calendar with Google Calendar + task overlay (~51KB)
+│   │   │   ├── CalendarMiniMonth.tsx Mini-month date picker with smart event indicator dots & squircle cells
+│   │   │   ├── AiFreeSlotModal.tsx Algorithmic deterministic free time slot finder & focus window scheduler
 │   │   │   └── EventPopover.tsx    Event detail popover
 │   │   ├── notes/
-│   │   │   ├── NotesModule.tsx     Note-taking with AI panel, rich editor, and rotatable document/PDF preview (~75KB)
+│   │   │   ├── NotesModule.tsx     Note-taking with AI panel, rich editor, rotatable/zoomable document & PDF viewer with mouse-wheel zoom & drag-pan engine (~78KB)
 │   │   │   ├── NotesFeed.tsx       Notes and documents list feed with search and filter
 │   │   │   ├── NotesSidebar.tsx    Vault folders and storage meter sidebar
 │   │   │   ├── NotesEditor.tsx     Rich text editor component
 │   │   │   └── NotesAIPanel.tsx    AI suggestions panel for notes
 │   │   ├── goals/
-│   │   │   ├── GoalsModule.tsx     Goals + OKR tracking
-│   │   │   └── GoalCard.tsx        Individual goal card
+│   │   │   ├── GoalsModule.tsx     Goals + OKR tracking (Metrics bar, dual-theme support)
+│   │   │   └── GoalCard.tsx        Individual goal card (goals.css, light & dark theme styling)
 │   │   ├── gym/
 │   │   │   ├── GymModule.tsx       Gym tracking UI
 │   │   │   ├── ZenGymAI.tsx        AI gym coaching panel (~51KB)
@@ -180,6 +183,7 @@ zentrack-vibe2ship/
 │   ├── hooks/
 │   │   ├── useProactiveAgent.ts    Background AI: periodic deadline/habit/risk checks (~41KB)
 │   │   ├── useDeadlineWatcher.ts   Watches tasks approaching deadline, fires browser notifs
+│   │   ├── useDocumentTitle.ts     Dynamic Todoist-style document title sync engine
 │   │   ├── useAgentVoice.ts        Integrates agent output with TTS
 │   │   └── useClassNotifications.ts Class schedule notification hook
 │   ├── services/
@@ -516,6 +520,8 @@ User clicks "Connect Google" → signInWithGoogle() in googleCalendar.ts
 | `agent-stop-conversation-command` | Idle timer (30s), user action | `VoiceContext.tsx` | `{}` |
 | `show-mission-report` | User explicit action only | `HomeDashboard.tsx` | `{ report: MissionReport }` |
 | `gym-log-updated` | `gym.executor.ts` | `GymModule.tsx` | `{}` |
+| `open-new-task-modal` | `LeftSidebar.tsx`, `TodoListModule.tsx`, 'q' hotkey | `App.tsx` | `{ date?: string }` |
+| `zen-task-created` | `App.tsx` | Global subscribers | `{ title: string, ... }` |
 
 > [!IMPORTANT]
 > `show-mission-report` must ONLY be dispatched by explicit user action (e.g., "View Report" button). Never dispatch it automatically at the end of a mission. See AGENTS.md Rule: No Automatic Mission Report Popups.
@@ -591,6 +597,19 @@ User clicks "Connect Google" → signInWithGoogle() in googleCalendar.ts
 
 ## 12. Changelog
 
+### 2026-09-11 — Notification Settings Overhaul
+- **ADDED** 7 new configurable notification controls to `mobile/src/screens/NotificationsSettingsScreen.tsx`:
+  - **TASK NOTIFICATIONS** section: Default reminder time picker, pre-task buffer (now 15/30/60/120 min), 5-min start alert toggle, overdue nudge toggle + time picker
+  - **HABIT NOTIFICATIONS** section: Streak at-risk toggle + alert time picker (was hidden with no time control)
+  - **CALENDAR EVENTS** section: Event reminder lead-time chips (10/15/30/60/120 min, was hardcoded 60 min)
+  - **WEEKLY REVIEW** section: Toggle for Sunday 8 PM review reminder (was read from kv but never exposed in UI)
+- **MODIFIED** `mobile/src/services/notifications.ts`:
+  - `calendarOffsetMin` now reads `zentrack_notif_calendar_offset` from AsyncStorage (default 60 min) — was hardcoded
+  - 5-min task alert now gated by `zentrack_notif_task_5min_alert` boolean (default true) — was always on
+  - `task5MinAlert` added to `BOOL_KEYS` batch retrieval
+  - `zentrack_notif_calendar_offset` added to `STR_KEYS` batch retrieval
+  - Fingerprint updated with 5 new keys: `calendar_offset`, `task_5min_alert`, `overdue_nudge`, `habit_streak_risk`, `weekly_review`
+
 ### 2026-08-27 — PDF & Document In-App Viewer Fix
 - **FIXED** `src/features/notes/NotesModule.tsx` & `src/styles/notes.css` — Resolved browser iframe security blocking (`X-Frame-Options` / CSP `frame-ancestors`) on uploaded cloud documents (Cloudinary/Storage). Routed PDF and Office document previews through the Google Docs Viewer embed URL (`https://docs.google.com/gview?embedded=true&url=...`) with an animated loading spinner overlay.
 
@@ -643,14 +662,54 @@ User clicks "Connect Google" → signInWithGoogle() in googleCalendar.ts
 - **FIXED** `api/gemini-proxy-stream.js` — was missing `tools` and `toolConfig` forwarding (silently broke all streaming agent tool calls)
 - **FIXED** `api/gemini-proxy.js` (TTS) — server-side Sarvam was hardcoded to `hi-IN` + `pace:1.1`. Now auto-detects language + `pace:1.0`
 
-### 2026-09-05 — YouTube Playlist Import "n.map is not a function" Fix
-- **ROOT CAUSE**:
-  - `src/services/youtube.ts`'s `fetchYouTubePlaylist` returns an object: `{ title: string, videos: Array<{ title, link, videoId, durationStr }> }`.
-  - In `src/features/learning/PlaylistImportModal.tsx`, the return value was assigned to `const items = await fetchYouTubePlaylist(playlistId)` and directly called `items.map(...)`.
-  - Because `items` is an Object (not an Array), `items.map` was `undefined`, throwing `TypeError: items.map is not a function` (minified in production as `Failed to import playlist: n.map is not a function`).
-  - Additionally, `PlaylistImportModal` read `it.url` while `fetchYouTubePlaylist` returned `it.link`.
+### 2026-09-12 — Light Mode Refresh Black Screen Jitter Fix
+- **FIXED**: Eliminated the brief black flash/jitter during page refresh in Light Mode.
+- **ROOT CAUSES**:
+  1. `index.html` had `<meta name="color-scheme" content="dark" />` and `<meta name="theme-color" content="#000000">`.
+  2. `src/index.css` defaulted `body { background: ... #09080c; }`.
+  3. `theme-light` was applied asynchronously in React's `useEffect`, causing the browser to paint `#09080c` for ~100ms before React mounted.
+  4. In `src/App.tsx`, `solar-skeleton` faded out over 200ms while `data-skeleton` mounted from `opacity: 0`, causing an intermediate blank flash.
+- **SOLUTIONS**:
+  1. Injected synchronous inline theme scripts in `index.html` `<head>` and top of `<body>` to set `.theme-light`, `.theme-plain`, `backgroundColor = '#fdfdfd'`, and `colorScheme = 'light'` before any CSS/DOM is painted.
+  2. Added pre-hydration light mode rules in `src/index.css` and `src/styles/plain-theme.css` for `html.theme-light, html.theme-plain, body.theme-light, body.theme-plain`.
+  3. Set `solar-skeleton` to exit instantly (`duration: 0`) and `data-skeleton` to mount with `initial={false}` (directly at `opacity: 1`) with explicit theme background colors in `src/App.tsx`.
+- **VERIFIED**: `npx tsc --noEmit` exited 0.
+
+### 2026-09-12 — Premium Todoist Typography, Box Shading & Button Depth Upgrade
+- **DESIGN UPGRADE**:
+  1. **Typography**: Applied Todoist/Swiss modern font stack (`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, 'Inter'`) with crisp letter-spacing (`-0.015em`), tight weights, and tabular numerals (`tnum: 1`) for counts and metrics.
+  2. **Box Shades & Card Elevation**: Multi-tiered box shadow (`0 1px 3px rgba(0,0,0,0.04), 0 4px 14px -2px rgba(0,0,0,0.05), 0 12px 24px -4px rgba(0,0,0,0.02)`) on `#ffffff` cards against `#f6f8fa` canvas. Card-in-card sub-rows (`#f8fafc`) with 1px border (`#eef2f6`), micro-highlight (`inset 0 1px 0 #ffffff`), and hover micro-elevation.
+  3. **Tactile Button Colour Depth**: Every button given physical lighting depth with top-to-bottom gradients, inset white specular highlights (`inset 0 1px 0 rgba(255,255,255,0.3)`), darker bottom shelf borders (`border-bottom: 2px solid ...`), and active `:active` press depression states (`transform: translateY(1px)`).
+  4. **Buttons Enhanced**: SARA Send button, Hydration quick chips (`+250ml`, `+500ml`), Active Recall `Review (SM-2)` button, Header & Habit streak pills, Habit checkmark pills, Master Flow class attendance actions (Present / Absent / Cancelled), and LeftSidebar `+ Add task` button.
+- **VERIFIED**: `npx tsc --noEmit` passed with 0 errors.
+
+### 2026-09-12 — Tasks Module: View Switcher Hover Fix & Todoist Styling Upgrade
 - **FIXED**:
-  - `src/features/learning/PlaylistImportModal.tsx`: Safely extracted `videoList` from `result?.videos || (Array.isArray(result) ? result : [])`, adopted `result?.title` when user title is blank, and supported both `it.link` and `it.url`.
-  - `src/services/youtube.ts`: Added `url` property alongside `link` in each video item for seamless cross-component compatibility.
-- **VERIFIED**: `npx tsc --noEmit` passes with 0 errors.
+  1. **View Switcher Hover Invisibility**: In `src/styles/todo.css`, `.segmented-view-btn:hover` had hardcoded `color: #ffffff`. In Light Mode, hovering over view tabs ("Timeline", "Kanban", "Matrix", "List") turned text white on a white background, making it invisible. Replaced with `color: var(--text-primary, #ffffff)` in dark mode and explicit `body.theme-light .segmented-view-btn:hover { color: #0f172a !important; background: #ffffff !important; }` in `src/styles/plain-theme.css`.
+  2. **Empty State Typography**: Overrode the old Playfair Display serif font in `.tasks-empty-placeholder h3` with the Todoist modern sans-serif system stack (`750` weight, `-0.02em` tracking).
+- **ENHANCED**:
+  1. **Segmented View Bar**: `#f1f5f9` container, `#e2e8f0` border, soft inset shadow; active view button styled with `#ffffff` pill, `#7c3aed` text, `#cbd5e1` bottom shelf, and subtle elevation.
+  2. **Tasks Action Pills & Add Task Primary**: Styled with signature violet gradient (`#8b5cf6` → `#7c3aed` → `#6d28d9`), bottom shelf `2.5px solid #581c87`, specular highlight, and click depression.
+  3. **Date Strip & Jump Button**: 3-tiered elevation, selected date pill in lavender gradient with violet shelf, and tactile jump button.
+  4. **Filter Toolbar & Empty Card**: Elevated `#ffffff` card, tactile filter chips, glowing violet focus ring on search input, and clean dashed perimeter on empty state.
+  5. **Kanban & Eisenhower Matrix Views**: Added light mode card styles (`.kanban-column`, `.kanban-card`, `.matrix-quadrant`, `.matrix-task-item`) with `#ffffff` elevation and hover lift.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0.
+
+### 2026-09-12 — Tasks Module: Light Mode Invisible Task Title & Element Fix
+- **FIXED**:
+  1. **Task Title Invisibility**: In `src/styles/todo.css`, `.todo-title-text` had hardcoded `color: #ffffff`. Against light mode `#ffffff` cards, the task title was completely white-on-white (invisible). Replaced default color with `color: var(--text-primary, #ffffff);` and added explicit `body.theme-light .todo-title-text { color: #0f172a !important; font-weight: 550 !important; }` in `plain-theme.css`.
+  2. **Filter Toolbar Purple Rings Removed**: Removed purple rings on filter pills, tag select dropdown, and search input in light mode. Filter pills now use clean neutral Todoist styling (`#0f172a` active pill, neutral `#e2e8f0` borders, `#94a3b8` focus rings).
+  3. **Task Cards Stack & Row Dividers**: In light mode, `.tasks-cards-stack` is now an elevated clean white container with `#e2e8f0` border, and `.todo-card-row` rows have clean `#f1f5f9` dividers and `#f8fafc` hover states.
+  4. **Circular Checkboxes & Drag Handles**: Replaced invisible white checkbox borders with `#cbd5e1` (green `#059669` when checked), and drag handles with `#94a3b8` slate.
+  5. **Subtasks, Drawers & Modals**: Added light mode styles for `.subtask-item-title`, `.quick-subtask-input`, `.inbox-overdue-drawer`, `.drawer-task-title`, `.task-modal-card`, and post-completion time-log sheets.
+  6. **Timeline, Kanban & Matrix Views**: All card titles (`.event-block-title`, `.kanban-card-title`, `.matrix-task-title`) now adapt cleanly to `#0f172a` in light mode.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0.
+
+### 2026-09-12 — Tasks Module: Empty State "Create Task" Modal Trigger Fix
+- **FIXED**: The `+ Create Task` button inside the empty state placeholder (`.empty-create-btn` in `src/features/tasks/TodoListModule.tsx`) was calling an unhandled local state instead of dispatching the global `open-new-task-modal` custom event. Updated `onClick` to dispatch `window.dispatchEvent(new CustomEvent('open-new-task-modal', { detail: { date: selectedDate } }))`, aligning it with the top header "+ Add Task" button and the sidebar "+ Add task" button. Clicking "+ Create Task" now immediately opens the unified `NewTaskModal` with the current selected date pre-filled.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0.
+
+
+
+
 

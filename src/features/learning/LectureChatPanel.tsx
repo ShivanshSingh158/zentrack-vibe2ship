@@ -220,9 +220,9 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
   const [input, setInput] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     try {
-      return localStorage.getItem('zen_preferred_learning_model') || 'gemini-3.7-flash';
+      return localStorage.getItem('zen_preferred_learning_model') || 'gemini-2.5-flash';
     } catch {
-      return 'gemini-3.7-flash';
+      return 'gemini-2.5-flash';
     }
   });
   const [isLoading, setIsLoading] = useState(false);

@@ -182,6 +182,7 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
                 styles.dayColSelected,
                 { backgroundColor: colors.accentPrimary || '#5046E5' },
               ],
+              item.dateStr > today && { opacity: 0.4 }, // dim future dates but still tappable
             ]}
             activeOpacity={0.7}
           >

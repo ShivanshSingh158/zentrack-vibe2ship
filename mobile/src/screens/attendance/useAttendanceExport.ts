@@ -38,21 +38,42 @@ export function useAttendanceExport(
         return;
       }
 
-      // Index logs: key = date__subjectId__type -> action
+      // Index logs per session: key = date__subjectId__type__idx -> action
+      // Previously key lacked idx — last-written log overwrote earlier ones for the same day/type,
+      // silently dropping the other session's recorded status from the export.
       const logIndex: Record<string, string> = {};
       logs.forEach((l: any) => {
         const type = l.type === 'lab' ? 'lab' : 'class';
-        logIndex[`${l.date}__${l.subjectId}__${type}`] = l.action;
+        const idx  = l.idx ?? 0;
+        const key  = `${l.date}__${l.subjectId}__${type}__${idx}`;
+        if (!logIndex[key]) logIndex[key] = l.action; // first write wins (logs already newest-first)
       });
 
-      const cellValue = (date: string, subjectId: string, type: 'class' | 'lab'): string => {
+      // Returns the max session count for a given subject+type across all scheduled days.
+      const getSessionCount = (subj: any, type: 'class' | 'lab'): number => {
+        let max = 0;
+        Object.values(subj.schedule ?? {}).forEach((sch: any) => {
+          const count = type === 'class'
+            ? (sch?.classes?.length || sch?.classCount || 0)
+            : (sch?.labs?.length   || sch?.labCount   || 0);
+          if (count > max) max = count;
+        });
+        return max || 1;
+      };
+
+      const cellValue = (date: string, subjectId: string, type: 'class' | 'lab', sessionCount: number): string => {
         if (holidays.includes(date)) return 'Hol';
-        const action = logIndex[`${date}__${subjectId}__${type}`];
-        if (!action) return '-';
-        if (action === 'attended')  return 'P';
-        if (action === 'missed')    return 'A';
-        if (action === 'cancelled') return 'Can';
-        return action.charAt(0).toUpperCase();
+        const parts: string[] = [];
+        for (let i = 0; i < sessionCount; i++) {
+          const action = logIndex[`${date}__${subjectId}__${type}__${i}`];
+          if (!action) { parts.push('-'); continue; }
+          if (action === 'attended')  parts.push('P');
+          else if (action === 'missed')    parts.push('A');
+          else if (action === 'cancelled') parts.push('Can');
+          else parts.push(action.charAt(0).toUpperCase());
+        }
+        // Single session: return plain value. Multiple: join with slash e.g. "P/A"
+        return parts.length === 1 ? parts[0] : parts.join('/');
       };
 
       const hasLab = (subj: any): boolean =>
@@ -60,11 +81,13 @@ export function useAttendanceExport(
           (sch: any) => (sch?.labs?.length > 0) || (sch?.labCount > 0)
         );
 
-      interface Col { subjectId: string; subjectName: string; type: 'class' | 'lab'; }
+      interface Col { subjectId: string; subjectName: string; type: 'class' | 'lab'; sessionCount: number; }
       const cols: Col[] = [];
       subjects.forEach((s: any) => {
-        cols.push({ subjectId: s.id, subjectName: s.name, type: 'class' });
-        if (hasLab(s)) cols.push({ subjectId: s.id, subjectName: s.name, type: 'lab' });
+        const classCount = getSessionCount(s, 'class');
+        const labCount   = getSessionCount(s, 'lab');
+        cols.push({ subjectId: s.id, subjectName: s.name, type: 'class', sessionCount: classCount });
+        if (hasLab(s)) cols.push({ subjectId: s.id, subjectName: s.name, type: 'lab', sessionCount: labCount });
       });
 
       const esc = (v: string) => v.includes(',') ? `"${v}"` : v;
@@ -75,13 +98,16 @@ export function useAttendanceExport(
       rows.push(`ZenTrack Attendance Report,Generated: ${exportDate}`);
       rows.push('');
       rows.push(['Date', ...cols.map(c => esc(c.subjectName))].join(','));
-      rows.push(['', ...cols.map(c => c.type === 'lab' ? 'LAB' : 'CLASS')].join(','));
+      rows.push(['', ...cols.map(c => {
+        const typeLabel = c.type === 'lab' ? 'LAB' : 'CLASS';
+        return c.sessionCount > 1 ? `${typeLabel}(×${c.sessionCount})` : typeLabel;
+      })].join(','));
       rows.push('');
 
       allDates.forEach(date => {
         const [y, mo, dy] = date.split('-');
         const prettyDate = `${dy}-${monthNames[parseInt(mo, 10) - 1]}-${y}`;
-        const cells = cols.map(c => cellValue(date, c.subjectId, c.type));
+        const cells = cols.map(c => cellValue(date, c.subjectId, c.type, c.sessionCount));
         rows.push([prettyDate, ...cells].join(','));
       });
 

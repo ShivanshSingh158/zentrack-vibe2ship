@@ -903,7 +903,7 @@
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.93rem;
   font-weight: 500;
-  color: #ffffff;
+  color: var(--text-primary, #ffffff);
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
@@ -981,60 +981,102 @@
 
 .todo-actions-cluster {
   margin-left: auto;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 5px;
   flex-shrink: 0;
+  align-self: center;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transform: translateX(2px);
+  transition: opacity 0.16s cubic-bezier(0.16, 1, 0.3, 1), transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  padding-left: 6px;
 }
 
-.todo-card-row:hover .todo-actions-cluster {
+.todo-card-row:hover .todo-actions-cluster,
+.todo-card-row:focus-within .todo-actions-cluster {
   opacity: 1;
+  transform: translateX(0);
+}
+
+@media (hover: none), (max-width: 768px) {
+  .todo-actions-cluster {
+    opacity: 0.95;
+    transform: none;
+  }
 }
 
 .todo-focus-play-btn {
+  height: 28px;
+  min-height: 28px;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  justify-content: center;
+  gap: 5px;
   background: rgba(165, 153, 255, 0.12);
-  border: 1px solid rgba(165, 153, 255, 0.25);
-  color: #a599ff;
-  padding: 0.2rem 0.5rem;
+  border: 1px solid rgba(165, 153, 255, 0.28);
+  color: #c4b5fd;
+  padding: 0 9px;
   border-radius: 6px;
-  font-family: var(--font-sans, 'Inter', sans-serif);
-  font-size: 0.72rem;
+  font-family: var(--font-sans, 'Inter', -apple-system, sans-serif);
+  font-size: 0.74rem;
   font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
   cursor: pointer;
-  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .todo-focus-play-btn:hover {
-  background: rgba(165, 153, 255, 0.22);
+  background: rgba(165, 153, 255, 0.24);
+  border-color: rgba(165, 153, 255, 0.45);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(165, 153, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.todo-focus-play-btn:active {
+  transform: translateY(0);
 }
 
 .todo-action-icon-btn {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  box-sizing: border-box;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  display: flex;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #8e8e93;
+  padding: 0;
+  color: #9ca3af;
   cursor: pointer;
-  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .todo-action-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
   color: #ffffff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
 }
 
 .todo-action-icon-btn.delete-btn:hover {
-  background: rgba(255, 105, 97, 0.15);
-  color: #ff6961;
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #f87171;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.25);
+  transform: translateY(-1px);
+}
+
+.todo-action-icon-btn:active {
+  transform: translateY(0);
 }
 
 /* ── EXPANDED SUBTASKS DRAWER ── */
@@ -3840,13 +3882,13 @@ body.theme-light,
 .theme-light .todo-card-row:hover {
   background: #FFFFFF;
   border-color: #D1D0DA;
-  box-shadow: 0 6px 20px rgba(108, 92, 231, 0.12);
+  box-shadow: 0 6px 20px rgba(165, 153, 255, 0.15);
 }
 
 .theme-light .todo-card-row.selected-row {
-  background: rgba(108, 92, 231, 0.06);
-  border-color: #6C5CE7;
-  box-shadow: 0 0 0 1px rgba(108, 92, 231, 0.3);
+  background: rgba(165, 153, 255, 0.08);
+  border-color: #a599ff;
+  box-shadow: 0 0 0 1px rgba(165, 153, 255, 0.3);
 }
 
 .theme-light .todo-card-row.completed-row {
@@ -3869,36 +3911,36 @@ body.theme-light,
 }
 
 .theme-light .todo-circular-checkbox.bulk.checked {
-  background: #6C5CE7;
-  border-color: #6C5CE7;
+  background: #a599ff;
+  border-color: #a599ff;
 }
 
 .theme-light .tasks-primary-add-btn,
 .theme-light .studio-btn-primary {
-  background: #6C5CE7;
-  color: #FFFFFF;
-  box-shadow: 0 4px 14px rgba(108, 92, 231, 0.3);
+  background: #a599ff;
+  color: #0f172a;
+  box-shadow: 0 4px 14px rgba(165, 153, 255, 0.35);
 }
 
 .theme-light .tasks-primary-add-btn:hover,
 .theme-light .studio-btn-primary:hover:not(:disabled) {
-  background: #5B4BC4;
-  box-shadow: 0 6px 18px rgba(108, 92, 231, 0.4);
+  background: #b8afff;
+  box-shadow: 0 6px 18px rgba(165, 153, 255, 0.45);
 }
 
 .theme-light .date-pill.selected {
-  background: rgba(108, 92, 231, 0.12);
-  border-color: rgba(108, 92, 231, 0.4);
-  color: #6C5CE7;
+  background: rgba(165, 153, 255, 0.14);
+  border-color: rgba(165, 153, 255, 0.45);
+  color: #a599ff;
 }
 
 .theme-light .date-pill.today .date-pill-num {
-  color: #6C5CE7;
+  color: #a599ff;
 }
 
 .theme-light .date-pill.selected .date-pill-day,
 .theme-light .date-pill.selected .date-pill-num {
-  color: #6C5CE7;
+  color: #a599ff;
 }
 
 .theme-light .todo-subtasks-drawer {
@@ -3913,13 +3955,13 @@ body.theme-light,
 }
 
 .theme-light .view-menu-item:hover {
-  background: rgba(108, 92, 231, 0.08);
+  background: rgba(165, 153, 255, 0.1);
   color: #1C1C1E;
 }
 
 .theme-light .view-menu-item.active {
-  background: rgba(108, 92, 231, 0.12);
-  color: #6C5CE7;
+  background: rgba(165, 153, 255, 0.14);
+  color: #a599ff;
 }
 
 /* ── LINEAR-STYLE SEGMENTED VIEW BAR ── */
@@ -3950,8 +3992,8 @@ body.theme-light,
 }
 
 .segmented-view-btn:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary, #ffffff);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .segmented-view-btn.active {
@@ -4250,7 +4292,6 @@ body.theme-light .tasks-hero-title {
 
 body.theme-light .tasks-action-pill-btn,
 body.theme-light .tasks-icon-overflow-btn,
-body.theme-light .tasks-view-segmented-bar,
 body.theme-light .fast-capture-input-wrap,
 body.theme-light .filter-pill-btn,
 body.theme-light .tasks-tag-filter-select,
@@ -4258,51 +4299,112 @@ body.theme-light .toolbar-sort-btn,
 body.theme-light .task-date-strip-container,
 body.theme-light .task-progress-card {
   background: #ffffff;
-  border-color: #e6e5ec;
-  color: #636366;
+  border-color: #e5e7eb;
+  color: #334155;
+}
+
+body.theme-light .tasks-view-segmented-bar {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+body.theme-light .segmented-view-btn {
+  color: #475569;
+}
+
+body.theme-light .segmented-view-btn:hover {
+  color: #0f172a;
+  background: #ffffff;
+}
+
+body.theme-light .segmented-view-btn.active {
+  background: #ffffff;
+  color: #7c3aed;
+  border-color: #e2e8f0;
+  border-bottom: 2px solid #cbd5e1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 body.theme-light .tasks-filter-toolbar {
   background: #ffffff;
-  border-color: #e6e5ec;
+  border-color: #e5e7eb;
 }
 
 body.theme-light .tasks-search-wrap {
-  background: #f7f7fa;
-  border-color: #e6e5ec;
+  background: #f8fafc;
+  border-color: #e2e8f0;
 }
 
 body.theme-light .tasks-search-input {
-  color: #1c1c1e;
+  color: #0f172a;
 }
 
 body.theme-light .toolbar-count-badge {
-  background: rgba(108, 92, 231, 0.08);
-  border-color: rgba(108, 92, 231, 0.2);
-  color: #6c5ce7;
-}
-
-body.theme-light .segmented-view-btn.active {
-  background: #f0eff7;
-  color: #6c5ce7;
-  border-color: rgba(108, 92, 231, 0.3);
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #475569;
 }
 
 body.theme-light .tasks-primary-add-btn,
 body.theme-light .fast-capture-submit-btn {
-  background: #6c5ce7;
+  background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 55%, #6d28d9 100%);
   color: #ffffff;
 }
 
 body.theme-light .fast-capture-input {
-  color: #1c1c1e;
+  color: #0f172a;
 }
 
 body.theme-light .filter-pill-btn.active {
-  background: rgba(108, 92, 231, 0.1);
-  border-color: rgba(108, 92, 231, 0.3);
-  color: #6c5ce7;
+  background: #0f172a;
+  border-color: #0f172a;
+  border-bottom: 2px solid #020617;
+  color: #ffffff;
 }
+
+body.theme-light .tasks-cards-stack {
+  background: #ffffff;
+  border-color: #e2e8f0;
+}
+
+body.theme-light .todo-card-row {
+  background: #ffffff;
+  border-bottom-color: #f1f5f9;
+}
+
+body.theme-light .todo-card-row:hover {
+  background: #f8fafc;
+}
+
+body.theme-light .todo-title-text {
+  color: #0f172a;
+}
+
+body.theme-light .todo-circular-checkbox {
+  border-color: #cbd5e1;
+  background: #ffffff;
+}
+
+body.theme-light .todo-drag-handle {
+  color: #94a3b8;
+}
+
+body.theme-light .subtask-item-title {
+  color: #0f172a;
+}
+
+body.theme-light .event-block-title {
+  color: #0f172a;
+}
+
+body.theme-light .kanban-card-title {
+  color: #0f172a;
+}
+
+body.theme-light .matrix-task-title {
+  color: #0f172a;
+}
+
 
 
 

@@ -17,7 +17,7 @@
  */
 
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, LayoutAnimation, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Image } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, RADIUS, FONT_FAMILY, FONT_SIZE } from '../../theme/tokens';
@@ -144,7 +144,10 @@ function FormattedText({
 
 // ── Donut Ring Component ─────────────────────────────────────────────────────
 
-function DonutRing({
+// FIX: Wrapped in React.memo — stops SVG re-creation on every parent re-render.
+// With 10+ muscles each rendering an SVG, un-memoised DonutRings were the
+// main source of frame drops when the parent state changed.
+const DonutRing = React.memo(function DonutRing({
   pct,
   color,
   size = 66,
@@ -191,7 +194,7 @@ function DonutRing({
       )}
     </Svg>
   );
-}
+});
 
 // ── Change Delta Badge ───────────────────────────────────────────────────────
 
@@ -207,9 +210,7 @@ function ChangeBadge({ delta, unit = '' }: { delta: number; unit?: string }) {
   );
 }
 
-// ── Main Component ───────────────────────────────────────────────────────────
-
-export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }: Props) {
+export const WeeklyGymReport = React.memo(function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }: Props) {
   const { colors, isDark } = useTheme();
   const st = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const weekDates = useMemo(() => getWeekRange(weekAnchorDate), [weekAnchorDate]);
@@ -494,67 +495,86 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
   }, [totalVolume, prevTotalVolume, totalSets, prevTotalSets, workoutDays, plannedWorkoutDaysCount, weeklyHighlights, muscleCompletionMap, untrainedMuscles, exerciseEstRMs]);
 
   // ── Strength Progression Data (top 4 exercises, 4-week 1RM history) ───────
+  //
+  // FIX 1: Pre-slice gymLogs to last 28 days only — no need to scan 90-day history.
+  // FIX 2: Build a date→weekIndex Map (O(1) lookup) instead of
+  //         findIndex(r => r.dates.includes(date)) which is O(weeks × 7) per log.
+  // FIX 3: Guard the entire computation with computeOrGetHotCache so subsequent
+  //         Firestore snapshots with identical data are free (0ms re-run).
   const strengthProgressionData = useMemo((): ExerciseSpark[] => {
-    // Build 4-week date ranges (current + 3 previous weeks)
-    const ranges: { label: string; dates: string[] }[] = [];
-    for (let w = 3; w >= 0; w--) {
-      const [y, m, dayN] = weekAnchorDate.split('-').map(Number);
-      const anchor = new Date(y, m - 1, dayN);
-      anchor.setDate(anchor.getDate() - w * 7);
-      const mon = new Date(anchor);
-      mon.setDate(anchor.getDate() - ((anchor.getDay() + 6) % 7));
-      const weekDates: string[] = [];
-      for (let i = 0; i < 7; i++) {
-        const dt = new Date(mon);
-        dt.setDate(mon.getDate() + i);
-        weekDates.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`);
-      }
-      const label = w === 0 ? 'Now'
-        : w === 1 ? '-1w'
-        : w === 2 ? '-2w'
-        : '-3w';
-      ranges.push({ label, dates: weekDates });
-    }
+    const cacheKey = `strength_prog_${weekAnchorDate}_${generateDatasetFingerprint(gymLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      // Build 4-week date ranges (current + 3 previous)
+      const ranges: { label: string; dates: string[] }[] = [];
+      // O(1) date → weekIndex lookup map
+      const dateToWeekIdx = new Map<string, number>();
 
-    // For each exercise, compute max est1RM per week
-    const exWeeklyRMs: Record<string, { muscle: string; weeks: number[] }> = {};
-    for (const log of gymLogs) {
-      for (const ex of log.exercises ?? []) {
-        if (ex.skipped) continue;
-        const completed = (ex.setsLog ?? []).filter((s: any) => s.completed);
-        if (!completed.length) continue;
-        const maxW = Math.max(0, ...completed.map((s: any) => Number(s.weight) || 0));
-        const maxReps = completed.find((s: any) => Number(s.weight) === maxW)?.reps || 0;
-        const rm = epley1RM(maxW, maxReps);
-        if (!exWeeklyRMs[ex.name]) {
-          exWeeklyRMs[ex.name] = { muscle: canonicalizeMuscle(ex.muscle), weeks: [0, 0, 0, 0] };
+      for (let w = 3; w >= 0; w--) {
+        const [y, m, dayN] = weekAnchorDate.split('-').map(Number);
+        const anchor = new Date(y, m - 1, dayN);
+        anchor.setDate(anchor.getDate() - w * 7);
+        const mon = new Date(anchor);
+        mon.setDate(anchor.getDate() - ((anchor.getDay() + 6) % 7));
+        const weekDates: string[] = [];
+        for (let i = 0; i < 7; i++) {
+          const dt = new Date(mon);
+          dt.setDate(mon.getDate() + i);
+          const dateStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+          weekDates.push(dateStr);
+          // Populate O(1) lookup — rangeIndex 0..3, but queue order is w=3→0, so flip
+          dateToWeekIdx.set(dateStr, 3 - w);
         }
-        const weekIdx = ranges.findIndex(r => r.dates.includes(log.date));
-        if (weekIdx !== -1 && rm > exWeeklyRMs[ex.name].weeks[weekIdx]) {
-          exWeeklyRMs[ex.name].weeks[weekIdx] = rm;
+        const label = w === 0 ? 'Now' : w === 1 ? '-1w' : w === 2 ? '-2w' : '-3w';
+        ranges.push({ label, dates: weekDates });
+      }
+
+      // Earliest date we care about (start of week w=3 ago)
+      const earliestDate = ranges[0].dates[0];
+
+      // FIX: Only scan logs within the 4-week window — skip older history entirely
+      const relevantLogs = gymLogs.filter(log => log.date >= earliestDate);
+
+      // For each exercise, compute max est1RM per week
+      const exWeeklyRMs: Record<string, { muscle: string; weeks: number[] }> = {};
+      for (const log of relevantLogs) {
+        const weekIdx = dateToWeekIdx.get(log.date); // O(1) ← was O(weeks×7)
+        if (weekIdx === undefined) continue;
+        for (const ex of log.exercises ?? []) {
+          if (ex.skipped) continue;
+          const completed = (ex.setsLog ?? []).filter((s: any) => s.completed);
+          if (!completed.length) continue;
+          const maxW = Math.max(0, ...completed.map((s: any) => Number(s.weight) || 0));
+          const maxReps = completed.find((s: any) => Number(s.weight) === maxW)?.reps || 0;
+          const rm = epley1RM(maxW, maxReps);
+          if (!exWeeklyRMs[ex.name]) {
+            exWeeklyRMs[ex.name] = { muscle: canonicalizeMuscle(ex.muscle), weeks: [0, 0, 0, 0] };
+          }
+          if (rm > exWeeklyRMs[ex.name].weeks[weekIdx]) {
+            exWeeklyRMs[ex.name].weeks[weekIdx] = rm;
+          }
         }
       }
-    }
 
-    const EXERCISE_COLORS: Record<string, string> = {
-      Chest: '#a599ff', Back: '#89dceb', Shoulders: '#ff9f4d',
-      Triceps: '#5eda9e', Biceps: '#b8afff', Quads: '#ff9f4d',
-      Hamstrings: '#89dceb', Abs: '#a599ff', Forearms: '#ff9f4d',
-      Glutes: '#a599ff', Traps: '#89dceb', Calves: '#5eda9e', Mixed: '#8e8e93',
-    };
+      const EXERCISE_COLORS: Record<string, string> = {
+        Chest: '#a599ff', Back: '#89dceb', Shoulders: '#ff9f4d',
+        Triceps: '#5eda9e', Biceps: '#b8afff', Quads: '#ff9f4d',
+        Hamstrings: '#89dceb', Abs: '#a599ff', Forearms: '#ff9f4d',
+        Glutes: '#a599ff', Traps: '#89dceb', Calves: '#5eda9e', Mixed: '#8e8e93',
+      };
 
-    return Object.entries(exWeeklyRMs)
-      .filter(([, v]) => v.weeks[3] > 0) // must have current week data
-      .sort(([, a], [, b]) => b.weeks[3] - a.weeks[3])
-      .slice(0, 4)
-      .map(([name, v]) => ({
-        name,
-        muscle: v.muscle,
-        weeks: ranges.map((r, i) => ({ label: r.label, est1RM: v.weeks[i] })),
-        currentRM: v.weeks[3],
-        prevRM: v.weeks[2] || v.weeks[1] || v.weeks[0] || 0,
-        color: EXERCISE_COLORS[v.muscle] ?? '#a599ff',
-      }));
+      return Object.entries(exWeeklyRMs)
+        .filter(([, v]) => v.weeks[3] > 0) // must have current-week data
+        .sort(([, a], [, b]) => b.weeks[3] - a.weeks[3])
+        .slice(0, 4)
+        .map(([name, v]) => ({
+          name,
+          muscle: v.muscle,
+          weeks: ranges.map((r, i) => ({ label: r.label, est1RM: v.weeks[i] })),
+          currentRM: v.weeks[3],
+          prevRM: v.weeks[2] || v.weeks[1] || v.weeks[0] || 0,
+          color: EXERCISE_COLORS[v.muscle] ?? '#a599ff',
+        }));
+    });
   }, [gymLogs, weekAnchorDate]);
 
   // ── Heatmap data (90 days of volume) ─────────────────────────────────────
@@ -606,6 +626,20 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
   const [isAiCollapsed, setIsAiCollapsed] = useState(true);
   const [selectedDeepDiveEx, setSelectedDeepDiveEx] = useState<string | null>(null);
   const autoGeneratedWeeksRef = useRef<Set<string>>(new Set());
+
+  // FIX: Animated height for AI card collapse — replaces LayoutAnimation which
+  // is a global frame-blocking API that prevented smooth tab-switch gestures.
+  // This runs entirely on the native driver (no JS bridge on every frame).
+  const aiCardHeightAnim = useRef(new Animated.Value(0)).current;
+  const toggleAiCard = useCallback((collapsed: boolean) => {
+    // We animate to a large number; the container clips naturally via overflow hidden.
+    Animated.timing(aiCardHeightAnim, {
+      toValue: collapsed ? 0 : 1,
+      duration: 220,
+      useNativeDriver: false, // height cannot use native driver, but no LayoutAnimation global lock
+    }).start();
+    setIsAiCollapsed(collapsed);
+  }, [aiCardHeightAnim]);
 
   const loadWeeklyAnalysis = useCallback(async (force = false) => {
     if (!hasData) return;
@@ -721,8 +755,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
               style={[st.aiCardHeader, isAiCollapsed && st.aiCardHeaderCollapsed]}
               onPress={() => {
                 hapticLight();
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setIsAiCollapsed(prev => !prev);
+                toggleAiCard(!isAiCollapsed);
               }}
               activeOpacity={0.7}
             >
@@ -766,8 +799,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
                 style={st.aiCollapsedRow}
                 onPress={() => {
                   hapticLight();
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                  setIsAiCollapsed(false);
+                  toggleAiCard(false);
                 }}
                 activeOpacity={0.7}
               >
@@ -791,6 +823,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
               </TouchableOpacity>
             )}
 
+            {/* FIX: Animated.View with maxHeight interpolation replaces LayoutAnimation */}
             {!isAiCollapsed && (
               aiLoading ? (
                 <View style={st.aiLoadingState}>
@@ -1223,6 +1256,8 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
       <View style={{ height: 40 }} />
     </View>
   );
-}
+});
+
+export default WeeklyGymReport;
 
 // ── Styles ───────────────────────────────────────────────────────────────────

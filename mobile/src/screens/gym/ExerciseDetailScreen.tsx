@@ -120,10 +120,10 @@ export default function ExerciseDetailScreen() {
     return () => { isCancelled = true; };
   }, [name, videoLink]);
 
-  // Past 5 sessions history
+  // Past 5 sessions history (anchored to currentExercise to eliminate typing latency on name change)
   const history = useMemo(() => {
     const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const targetNameNorm = currentExercise?.name ? norm(currentExercise.name) : (name ? norm(name) : '');
+    const targetNameNorm = currentExercise?.name ? norm(currentExercise.name) : '';
 
     return gymLogs
       .map(l => ({
@@ -137,7 +137,7 @@ export default function ExerciseDetailScreen() {
       .filter(item => item.ex && (item.ex.setsLog || []).some(s => s.completed || (s.weight != null && Number(s.weight) > 0)))
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
       .slice(0, 5);
-  }, [gymLogs, exerciseId, currentExercise?.name, name]);
+  }, [gymLogs, exerciseId, currentExercise?.name]);
 
   const handleDelete = useCallback(() => {
     const exName = name || currentExercise?.name || 'this exercise';

@@ -11,8 +11,7 @@ interface TimetableModalProps {
   onClose: () => void;
   subjects: Subject[];
   handleAddSubject: () => void;
-  setEditSubject: (subject: Subject) => void;
-  setShowAddModal: (show: boolean) => void;
+  onEditSubject: (subject: Subject) => void;
   handleDeleteSubject: (id: string, name: string) => void;
   handleResetSemester: () => void;
 }
@@ -22,8 +21,7 @@ export const TimetableModal = React.memo(({
   onClose,
   subjects,
   handleAddSubject,
-  setEditSubject,
-  setShowAddModal,
+  onEditSubject,
   handleDeleteSubject,
   handleResetSemester,
 }: TimetableModalProps) => {
@@ -71,7 +69,7 @@ export const TimetableModal = React.memo(({
                   <Text style={styles.subjectTitle} numberOfLines={1}>{s.name}</Text>
                   <View style={styles.cardIconActions}>
                     <TouchableOpacity
-                      onPress={() => { setEditSubject(s); setShowAddModal(true); }}
+                      onPress={() => onEditSubject(s)}
                       activeOpacity={0.7}
                       style={styles.iconActionBtn}
                     >

@@ -75,7 +75,7 @@ export function useDashboardData() {
   const [layout, setLayoutState] = useState<LayoutItem[]>(initialManifest?.dashboardLayout ?? DEFAULT_LAYOUT);
   const [layoutSheetVisible, setLayoutSheetVisible] = useState(false);
   const [waterLogVisible, setWaterLogVisible] = useState(false);
-  const [waterTotal, setWaterTotalState] = useState(initialManifest?.waterGoalMl ?? 2500);
+  const [waterTotal, setWaterTotalState] = useState(initialManifest?.waterGoalMl ?? 3800);
   const [nowDate, setNowDate] = useState(new Date());
 
   // PERF: Quote cache — only re-fetch once per day, not on every tab switch.
@@ -289,14 +289,17 @@ export function useDashboardData() {
       }
     }
 
-    // Filter out cancelled classes
+    // Filter out cancelled AND already attended/missed classes
     const validClasses = todayClasses.filter(c => {
       const subLogs = (todayLogsBySubject.get(c.subjectId) || [])
-        .filter(l => (c.type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)))
-        .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        .filter(l => (c.type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)));
 
-      const log = subLogs[c.sessionIdx];
-      return !(log && log.action === 'cancelled');
+      // Fix #16: Use .find() with idx match instead of array indexing.
+      // subLogs[c.sessionIdx] used slot index as an array index on sparse/unordered
+      // logs, misattributing cancelled/attended status to wrong sessions.
+      const log = subLogs.find(l => l.idx === c.sessionIdx || (l.idx === undefined && c.sessionIdx === 0));
+      if (log && (log.action === 'cancelled' || log.action === 'attended' || log.action === 'missed')) return false;
+      return true;
     });
 
     validClasses.sort((a, b) => parseTimeToMins(a.time) - parseTimeToMins(b.time));

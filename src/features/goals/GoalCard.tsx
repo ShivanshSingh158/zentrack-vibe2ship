@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit2, Trash2, TrendingUp, ChevronUp, Wand2, Loader2 } from 'lucide-react';
+import { Edit2, Trash2, TrendingUp, ChevronUp, Wand2, Loader2, Calendar, Sparkles } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import type { Goal, KeyResult } from '../../types/index';
 import { formatDisplayDate } from '../../utils/dateUtils';
@@ -41,150 +41,241 @@ export const GoalCard: React.FC<GoalCardProps> = ({
     totalProgress = Math.round((sum / krs.length) * 100);
   }
 
+  const isCompleted = goal.status === 'completed';
+
   return (
-    <div style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '1rem', padding: '1.25rem', opacity: goal.status === 'active' ? 1 : 0.6 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-        <div>
-          <h2 style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.1rem', fontWeight: 400, color: 'white', textDecoration: goal.status === 'completed' ? 'line-through' : 'none' }}>{goal.title}</h2>
-          <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+    <div className={`goal-card ${goal.status}`}>
+      {/* ── Top Header ── */}
+      <div className="goal-card-top">
+        <div className="goal-card-titles">
+          <h2 className="goal-title" style={{ textDecoration: isCompleted ? 'line-through' : 'none' }}>
+            {goal.title}
+          </h2>
+          <div className="goal-meta-row">
             {goal.subject && (
-              <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '9999px', background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', fontWeight: 600 }}>
+              <span className="goal-subject-pill">
                 {goal.subject}
               </span>
             )}
-            <span>Deadline: <span style={{ color: 'var(--text-primary)' }}>{formatDisplayDate(goal.deadline)}</span></span>
+            <div className="goal-deadline">
+              <Calendar size={13} style={{ opacity: 0.7 }} />
+              <span>Deadline: <span>{formatDisplayDate(goal.deadline)}</span></span>
+            </div>
             <span>•</span>
-            <span style={{ 
-              fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '999px', fontWeight: 500, textTransform: 'capitalize',
-              ...(goal.status === 'active' ? { background: 'rgba(52,211,153,0.1)', color: '#34d399', border: '1px solid rgba(52,211,153,0.2)' } :
-                  goal.status === 'completed' ? { background: 'rgba(165,153,255,0.1)', color: '#b8afff', border: '1px solid rgba(165,153,255,0.2)' } :
-                  { background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' })
-            }}>{goal.status}</span>
+            <span className={`goal-status-badge ${goal.status}`}>
+              {goal.status}
+            </span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button className="btn-icon" style={{ color: '#8b5cf6' }} onClick={() => handleAIBreakdown(goal)} title="AI Breakdown" disabled={isBreakingDown}>
-            {isBreakingDown ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Wand2 size={16} />}
+
+        {/* Action Buttons */}
+        <div className="goal-card-actions">
+          <button
+            type="button"
+            className="goal-action-btn ai-btn"
+            onClick={() => handleAIBreakdown(goal)}
+            title="AI Milestone Breakdown"
+            disabled={isBreakingDown}
+          >
+            {isBreakingDown ? (
+              <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <Wand2 size={15} />
+            )}
           </button>
-          <button className="btn-icon" onClick={() => onEdit(goal)} title="Edit Goal"><Edit2 size={16} /></button>
-          <button className="btn-icon" style={{ color: '#ef4444' }} onClick={() => onDelete(goal.id!)} title="Delete Goal"><Trash2 size={16} /></button>
+          <button
+            type="button"
+            className="goal-action-btn"
+            onClick={() => onEdit(goal)}
+            title="Edit Goal"
+          >
+            <Edit2 size={15} />
+          </button>
+          <button
+            type="button"
+            className="goal-action-btn delete-btn"
+            onClick={() => onDelete(goal.id!)}
+            title="Delete Goal"
+          >
+            <Trash2 size={15} />
+          </button>
         </div>
       </div>
-      
-      <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.82rem', lineHeight: 1.6, marginBottom: '1.5rem' }}>{goal.description}</p>
 
-      {/* Overall Progress Bar */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+      {/* Description */}
+      {goal.description && (
+        <p className="goal-description">{goal.description}</p>
+      )}
+
+      {/* ── Overall Progress Bar ── */}
+      <div className="goal-progress-section">
+        <div className="goal-progress-labels">
           <span>Overall Progress</span>
-          <span style={{ fontSize: '0.7rem', color: '#a78bfa', fontFamily: 'monospace' }}>{totalProgress}%</span>
+          <span className="goal-progress-pct">{totalProgress}%</span>
         </div>
-        <div style={{ height: '4px', background: 'rgba(255,255,255,0.07)', borderRadius: '999px', overflow: 'hidden' }}>
-          <div style={{ width: `${totalProgress}%`, height: '100%', background: 'linear-gradient(90deg, #a78bfa, #b8afff)', borderRadius: '999px', transition: 'width 0.8s cubic-bezier(0.16,1,0.3,1)' }} />
+        <div className="goal-progress-track">
+          <div
+            className="goal-progress-fill"
+            style={{ width: `${Math.min(Math.max(totalProgress, 0), 100)}%` }}
+          />
         </div>
       </div>
 
-      {/* Key Results */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Milestones</h3>
-          <button className="btn-icon" onClick={toggleExpanded} style={{ fontSize: '0.8rem', padding: '0.2rem 0.5rem' }}>
-            {isExpanded ? <><ChevronUp size={14}/> Hide History</> : <><TrendingUp size={14}/> Show History</>}
-          </button>
+      {/* ── Milestones & Key Results ── */}
+      <div className="goal-milestones-box">
+        <div className="goal-milestones-header">
+          <span className="goal-milestones-title">Milestones & Key Results</span>
+          {krs.length > 0 && (
+            <button
+              type="button"
+              className="goal-history-toggle"
+              onClick={toggleExpanded}
+            >
+              {isExpanded ? (
+                <>
+                  <ChevronUp size={13} /> Hide History
+                </>
+              ) : (
+                <>
+                  <TrendingUp size={13} /> Show History
+                </>
+              )}
+            </button>
+          )}
         </div>
-        
-        {krs.length === 0 && <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>No milestones defined.</div>}
-        
-        {krs.map((kr: KeyResult) => {
-          const displayValue = localKrProgress[kr.id] !== undefined ? localKrProgress[kr.id] : (kr.currentValue || 0);
-          const target = kr.targetValue || 1;
-          const pct = Math.round((displayValue / target) * 100);
-          
-          return (
-            <div key={kr.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '0.95rem', fontWeight: 500, marginBottom: '0.25rem' }}>{kr.text}</div>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  {displayValue} / {kr.targetValue} {kr.unit} ({pct}%)
+
+        {krs.length === 0 ? (
+          <div className="goal-empty-milestones">
+            <span>No milestones defined yet.</span>
+            <button
+              type="button"
+              onClick={() => onEdit(goal)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--zen-purple, #7c3aed)',
+                fontWeight: 600,
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                padding: '2px 6px',
+              }}
+            >
+              + Add Milestone
+            </button>
+          </div>
+        ) : (
+          krs.map((kr: KeyResult) => {
+            const displayValue = localKrProgress[kr.id] !== undefined ? localKrProgress[kr.id] : (kr.currentValue || 0);
+            const target = kr.targetValue || 1;
+            const pct = Math.min(Math.round((displayValue / target) * 100), 100);
+            const milestoneTitle = kr.title || (kr as any).text || 'Milestone';
+
+            return (
+              <div key={kr.id} className="goal-milestone-item">
+                <div className="goal-milestone-info">
+                  <div className="goal-milestone-name">{milestoneTitle}</div>
+                  <div className="goal-milestone-metrics">
+                    {displayValue} / {kr.targetValue} {kr.unit || '%'} ({pct}%)
+                  </div>
+                  <div className="goal-milestone-mini-track">
+                    <div
+                      className="goal-milestone-mini-fill"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="goal-milestone-controls">
+                  {(!kr.syncType || kr.syncType === 'none') ? (
+                    <>
+                      <input
+                        type="range"
+                        min="0"
+                        max={kr.targetValue}
+                        value={displayValue}
+                        onChange={(e) => handleLocalSliderChange(kr.id, parseFloat(e.target.value))}
+                        onMouseUp={() => commitGoalKRProgress(goal.id!, kr.id, displayValue)}
+                        onTouchEnd={() => commitGoalKRProgress(goal.id!, kr.id, displayValue)}
+                        className="goal-slider"
+                        disabled={goal.status !== 'active'}
+                      />
+                      <input
+                        type="number"
+                        value={displayValue}
+                        onChange={(e) => handleLocalSliderChange(kr.id, parseFloat(e.target.value))}
+                        onBlur={() => commitGoalKRProgress(goal.id!, kr.id, displayValue)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitGoalKRProgress(goal.id!, kr.id, displayValue);
+                        }}
+                        className="goal-number-input"
+                        disabled={goal.status !== 'active'}
+                      />
+                    </>
+                  ) : (
+                    <span className="goal-auto-sync-tag">
+                      <Sparkles size={12} /> Auto-Synced
+                    </span>
+                  )}
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {(!kr.syncType || kr.syncType === 'none') ? (
-                  <>
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max={kr.targetValue} 
-                      value={displayValue}
-                      onChange={(e) => handleLocalSliderChange(kr.id, parseFloat(e.target.value))}
-                      onMouseUp={() => commitGoalKRProgress(goal.id!, kr.id, displayValue)}
-                      onTouchEnd={() => commitGoalKRProgress(goal.id!, kr.id, displayValue)}
-                      style={{ width: '100px' }}
-                      disabled={goal.status !== 'active'}
-                    />
-                    <input 
-                      type="number" 
-                      value={displayValue}
-                      onChange={(e) => handleLocalSliderChange(kr.id, parseFloat(e.target.value))}
-                      onBlur={() => commitGoalKRProgress(goal.id!, kr.id, displayValue)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') commitGoalKRProgress(goal.id!, kr.id, displayValue) }}
-                      style={{ width: '60px', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', padding: '0.25rem 0.5rem', borderRadius: '4px', color: 'var(--text-primary)', fontSize: '0.9rem' }}
-                      disabled={goal.status !== 'active'}
-                    />
-                  </>
-                ) : (
-                  <span style={{ fontSize: '0.8rem', color: 'var(--accent-primary)', background: 'rgba(99, 102, 241, 0.1)', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid var(--accent-primary)' }}>
-                    Auto-Synced
-                  </span>
-                )}
-              </div>
-            </div>
-          )
-        })}
+            );
+          })
+        )}
 
         {/* Progress History Chart */}
-        {isExpanded && goal.keyResults.length > 0 && (
-          <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--bg-base)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-            <h4 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>Progress History</h4>
+        {isExpanded && krs.length > 0 && (
+          <div className="goal-history-card">
+            <h4 className="goal-history-heading">Progress History</h4>
             <div style={{ height: '200px', width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                  <XAxis 
-                    dataKey="timestamp" 
-                    type="number" 
-                    domain={['dataMin', 'dataMax']} 
-                    tickFormatter={(ts) => new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} 
-                    stroke="var(--text-muted)" 
-                    fontSize={11} 
-                    tickLine={false} 
+                <LineChart margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
+                  <XAxis
+                    dataKey="timestamp"
+                    type="number"
+                    domain={['dataMin', 'dataMax']}
+                    tickFormatter={(ts) => new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    stroke="var(--text-muted, #78716c)"
+                    fontSize={11}
+                    tickLine={false}
                     axisLine={false}
                   />
-                  <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} axisLine={false} />
-                  <RechartsTooltip 
+                  <YAxis
+                    stroke="var(--text-muted, #78716c)"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <RechartsTooltip
                     labelFormatter={(label) => new Date(label).toLocaleString()}
-                    contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '8px' }}
+                    contentStyle={{
+                      background: 'var(--bg-surface, #ffffff)',
+                      border: '1px solid var(--border-subtle, #edeae6)',
+                      borderRadius: '8px',
+                      color: 'var(--text-primary, #202020)',
+                      fontSize: '12px',
+                    }}
                   />
                   {krs.map((kr: KeyResult, idx: number) => {
-                    const colors = ['#7c3aed', '#fbbf24', '#ef4444', '#10b981', '#a855f7'];
+                    const colors = ['#7c3aed', '#059669', '#f59e0b', '#ef4444', '#0284c7'];
+                    const milestoneName = kr.title || (kr as any).text || `Milestone ${idx + 1}`;
                     return (
-                      <Line 
-                        key={kr.id} 
-                        data={kr.history || []} 
-                        type="monotone" 
-                        dataKey="value" 
-                        name={kr.text || `Milestone ${idx+1}`} 
-                        stroke={colors[idx % colors.length]} 
+                      <Line
+                        key={kr.id}
+                        data={kr.history || []}
+                        type="monotone"
+                        dataKey="value"
+                        name={milestoneName}
+                        stroke={colors[idx % colors.length]}
                         strokeWidth={2}
                         dot={{ r: 3, fill: colors[idx % colors.length] }}
                       />
-                    )
+                    );
                   })}
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

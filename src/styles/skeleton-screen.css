@@ -1,0 +1,234 @@
+/* ==========================================================================
+   ZenTrack App Skeleton Loading Screen (Theme-Adaptive & iOS / Todoist Clean)
+   ========================================================================== */
+
+.app-skeleton-root {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  z-index: 99999;
+  font-family: var(--font-sans, 'Inter', -apple-system, sans-serif);
+  box-sizing: border-box;
+}
+
+/* Light Theme Skeleton Root */
+.app-skeleton-root.theme-light,
+.app-skeleton-root.theme-plain,
+html.theme-light .app-skeleton-root,
+html.theme-plain .app-skeleton-root,
+body.theme-light .app-skeleton-root,
+body.theme-plain .app-skeleton-root {
+  background: #fcfcfc !important;
+  color: #0f172a !important;
+}
+
+/* Dark Theme Skeleton Root */
+.app-skeleton-root.theme-dark,
+html.theme-dark .app-skeleton-root,
+body.theme-dark .app-skeleton-root,
+body:not(.theme-light):not(.theme-plain) .app-skeleton-root {
+  background: #09080c !important;
+  color: #f4f4f5 !important;
+}
+
+/* Skeleton Base Shimmer Block */
+.sk-block {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.sk-block::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  animation: sk-shimmer 1.8s infinite ease-in-out;
+}
+
+/* Light Theme Shimmer */
+.app-skeleton-root.theme-light .sk-block,
+.app-skeleton-root.theme-plain .sk-block,
+body.theme-light .sk-block,
+body.theme-plain .sk-block {
+  background: #f1f5f9;
+}
+
+.app-skeleton-root.theme-light .sk-block::after,
+.app-skeleton-root.theme-plain .sk-block::after,
+body.theme-light .sk-block::after,
+body.theme-plain .sk-block::after {
+  background-image: linear-gradient(
+    90deg,
+    rgba(241, 245, 249, 0) 0%,
+    rgba(226, 232, 240, 0.7) 50%,
+    rgba(241, 245, 249, 0) 100%
+  );
+}
+
+/* Dark Theme Shimmer */
+.app-skeleton-root.theme-dark .sk-block,
+body.theme-dark .sk-block,
+body:not(.theme-light):not(.theme-plain) .sk-block {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.app-skeleton-root.theme-dark .sk-block::after,
+body.theme-dark .sk-block::after,
+body:not(.theme-light):not(.theme-plain) .sk-block::after {
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(165, 153, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+
+@keyframes sk-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ── SIDEBAR SKELETON ── */
+.sk-sidebar {
+  width: 260px;
+  min-width: 260px;
+  height: 100vh;
+  padding: 1rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  box-sizing: border-box;
+}
+
+.app-skeleton-root.theme-light .sk-sidebar,
+.app-skeleton-root.theme-plain .sk-sidebar {
+  background: #fafafa;
+  border-right: 1px solid #e2e8f0;
+}
+
+.app-skeleton-root.theme-dark .sk-sidebar,
+body.theme-dark .sk-sidebar {
+  background: #141318;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sk-sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.sk-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1;
+}
+
+.sk-sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+}
+
+/* ── MAIN CONTENT SKELETON ── */
+.sk-main {
+  flex: 1;
+  min-width: 0;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 1.5rem 2.5rem 3rem 2.5rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Header bar skeleton */
+.sk-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 1rem;
+  width: 100%;
+  padding-bottom: 0.35rem;
+}
+
+.sk-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.sk-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+/* Bento Grid skeleton */
+.sk-bento-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 1.35fr 1.05fr;
+  gap: 1.25rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1024px) {
+  .sk-bento-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sk-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Bento Card skeleton */
+.sk-card {
+  border-radius: 16px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-sizing: border-box;
+}
+
+.app-skeleton-root.theme-light .sk-card,
+.app-skeleton-root.theme-plain .sk-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.app-skeleton-root.theme-dark .sk-card,
+body.theme-dark .sk-card {
+  background: rgba(26, 22, 30, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+@media (max-width: 768px) {
+  .sk-sidebar {
+    display: none !important;
+  }
+  .sk-main {
+    padding: 1rem 1rem 5rem 1rem !important;
+  }
+}

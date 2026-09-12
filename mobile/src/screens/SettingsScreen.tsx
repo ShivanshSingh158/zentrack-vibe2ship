@@ -27,6 +27,7 @@ import {
   Alert,
   InteractionManager,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +36,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Updates from 'expo-updates';
+import * as Clipboard from 'expo-clipboard';
 import { useNavigation } from '@react-navigation/native';
 
 import AnimatedPressable from '../components/AnimatedPressable';
@@ -73,6 +75,17 @@ function parseTimeString(t?: string): { hours: number; minutes: number } | null 
   return null;
 }
 
+function formatMetaDate(dStr?: string | null): string {
+  if (!dStr) return 'Active Operator';
+  try {
+    const d = new Date(dStr);
+    if (isNaN(d.getTime())) return 'Active Operator';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return 'Active Operator';
+  }
+}
+
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
   const { user, tasks, habitLogs, allHabits } = useCoreData();
@@ -100,6 +113,9 @@ export default function SettingsScreen() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [isResyncing, setIsResyncing] = useState(false);
   const [signOutModal, setSignOutModal] = useState(false);
+  const [accountModalVisible, setAccountModalVisible] = useState(false);
+  const [copiedUid, setCopiedUid] = useState(false);
+  const [avatarPhotoError, setAvatarPhotoError] = useState(false);
 
   // ── Load Saved Preferences ─────────────────────────────────────────────────
   useEffect(() => {
@@ -304,11 +320,19 @@ export default function SettingsScreen() {
 
   const handleShowAccountDetails = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert(
-      'Account Details',
-      `Name: ${user?.displayName || 'ZenTrack Member'}\nEmail: ${user?.email || 'N/A'}\nUser ID: ${user?.uid || 'Local'}\nStatus: Active Member\nCloud Sync: Connected`,
-      [{ text: 'Done' }]
-    );
+    setAccountModalVisible(true);
+  };
+
+  const handleCopyUid = async () => {
+    if (!user?.uid) return;
+    try {
+      await Clipboard.setStringAsync(user.uid);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setCopiedUid(true);
+      setTimeout(() => setCopiedUid(false), 2000);
+    } catch (err) {
+      console.warn('Failed to copy UID', err);
+    }
   };
 
   const avatarLetter =
@@ -330,7 +354,15 @@ export default function SettingsScreen() {
           onPress={handleShowAccountDetails}
         >
           <View style={s.profileAvatar}>
-            <Text style={s.profileAvatarText}>{avatarLetter}</Text>
+            {user?.photoURL && !avatarPhotoError ? (
+              <Image
+                source={{ uri: user.photoURL }}
+                style={{ width: '100%', height: '100%', borderRadius: 999 }}
+                onError={() => setAvatarPhotoError(true)}
+              />
+            ) : (
+              <Text style={s.profileAvatarText}>{avatarLetter}</Text>
+            )}
           </View>
           <View style={s.profileInfo}>
             <Text style={s.profileName} numberOfLines={1}>
@@ -670,15 +702,26 @@ export default function SettingsScreen() {
         </View>
 
         {/* ── FOOTER ── */}
-        <View style={s.footerBox}>
-          <Text style={s.versionText}>ZenTrack v1.0.0 (Build 1)</Text>
-          <Text style={s.versionSubText}>Direct Gemini Intelligence · Offline First</Text>
-        </View>
+        <TouchableOpacity
+          style={s.footerBox}
+          activeOpacity={0.7}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+        >
+          <Text style={s.versionText}>ZenTrack Mobile • v1.0.0 (Build 2026.1)</Text>
+          <Text style={s.versionSubText}>
+            Direct Gemini Intelligence · Offline-First Architecture
+          </Text>
+          <Text style={s.footerMotto}>
+            "Crafted for relentless focus & peak execution."
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* ── Sign Out Confirmation Modal ── */}
       {signOutModal && (
-        <Modal visible={signOutModal} transparent animationType="fade">
+        <Modal visible={signOutModal} transparent animationType="fade" onRequestClose={() => setSignOutModal(false)}>
           <View style={s.modalOverlay}>
             <View style={s.confirmCard}>
               <View style={s.confirmIconBox}>
@@ -699,6 +742,171 @@ export default function SettingsScreen() {
                   <Text style={s.confirmDangerText}>Sign out</Text>
                 </AnimatedPressable>
               </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* ── Account Details / Identity Dossier Modal ── */}
+      {accountModalVisible && (
+        <Modal
+          visible={accountModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setAccountModalVisible(false)}
+        >
+          <View style={s.modalOverlay}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={() => setAccountModalVisible(false)}
+            />
+            <View style={s.accountCard}>
+              {/* Header: Badge & Close Button */}
+              <View style={s.accountHeader}>
+                <View style={s.accountBadge}>
+                  <Ionicons name="shield-checkmark" size={12} color={isDark ? '#5EDA9E' : '#059669'} />
+                  <Text style={s.accountBadgeText}>VERIFIED IDENTITY</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setAccountModalVisible(false);
+                  }}
+                  style={s.accountCloseBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel="Close account details"
+                >
+                  <Ionicons name="close" size={18} color={colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 440 }}>
+                {/* Hero Avatar & Identity */}
+                <View style={s.accountHero}>
+                  <View style={s.accountAvatarWrapper}>
+                    {user?.photoURL && !avatarPhotoError ? (
+                      <Image
+                        source={{ uri: user.photoURL }}
+                        style={s.accountAvatarImg}
+                        onError={() => setAvatarPhotoError(true)}
+                      />
+                    ) : (
+                      <View style={s.accountAvatarFallback}>
+                        <Text style={s.accountAvatarLetter}>{avatarLetter}</Text>
+                      </View>
+                    )}
+                    <View style={s.accountOnlineRing} />
+                  </View>
+                  <Text style={s.accountName} numberOfLines={1}>
+                    {displayName}
+                  </Text>
+                  <Text style={s.accountEmail} numberOfLines={1}>
+                    {emailLine}
+                  </Text>
+                </View>
+
+                {/* User ID Copy Strip */}
+                <TouchableOpacity
+                  style={s.uidStrip}
+                  activeOpacity={0.7}
+                  onPress={handleCopyUid}
+                >
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={s.uidLabel}>SYSTEM USER ID (UID)</Text>
+                    <Text style={s.uidValue} numberOfLines={1} ellipsizeMode="middle">
+                      {user?.uid || 'Local Operator'}
+                    </Text>
+                  </View>
+                  <View style={[s.copyBtn, copiedUid && s.copyBtnActive]}>
+                    <Ionicons
+                      name={copiedUid ? 'checkmark' : 'copy-outline'}
+                      size={13}
+                      color={copiedUid ? (isDark ? '#5EDA9E' : '#059669') : colors.accentPrimary}
+                    />
+                    <Text style={[s.copyBtnText, copiedUid && s.copyBtnTextActive]}>
+                      {copiedUid ? 'Copied' : 'Copy'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Workspace Telemetry Stats */}
+                <Text style={s.accountSectionTitle}>WORKSPACE ACTIVITY</Text>
+                <View style={s.statsRow}>
+                  <View style={s.statBox}>
+                    <Text style={s.statValue}>{tasks.length}</Text>
+                    <Text style={s.statLabel}>Tasks</Text>
+                  </View>
+                  <View style={s.statBoxDivider} />
+                  <View style={s.statBox}>
+                    <Text style={s.statValue}>{allHabits.length}</Text>
+                    <Text style={s.statLabel}>Habits</Text>
+                  </View>
+                  <View style={s.statBoxDivider} />
+                  <View style={s.statBox}>
+                    <Text style={s.statValue}>{gymLogs.length}</Text>
+                    <Text style={s.statLabel}>Workouts</Text>
+                  </View>
+                </View>
+
+                {/* System & Security Telemetry Grid */}
+                <Text style={s.accountSectionTitle}>SYSTEM & SECURITY</Text>
+                <View style={s.telemetryGrid}>
+                  <View style={s.telemetryTile}>
+                    <View style={[s.telemetryIconBox, { backgroundColor: isDark ? 'rgba(94,218,158,0.14)' : 'rgba(5,150,105,0.1)' }]}>
+                      <Ionicons name="cloud-done-outline" size={14} color={isDark ? '#5EDA9E' : '#059669'} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.telemetryLabel}>Cloud Sync</Text>
+                      <Text style={s.telemetryValue}>Connected (Firebase v12)</Text>
+                    </View>
+                  </View>
+
+                  <View style={s.telemetryTile}>
+                    <View style={[s.telemetryIconBox, { backgroundColor: colors.accentDim }]}>
+                      <Ionicons name="shield-checkmark-outline" size={14} color={colors.accentPrimary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.telemetryLabel}>Auth Provider</Text>
+                      <Text style={s.telemetryValue}>
+                        {user?.providerData?.[0]?.providerId === 'google.com' ? 'Google Workspace' : 'Firebase Cloud Auth'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={s.telemetryTile}>
+                    <View style={[s.telemetryIconBox, { backgroundColor: isDark ? 'rgba(137,220,235,0.14)' : 'rgba(2,132,199,0.1)' }]}>
+                      <Ionicons name="server-outline" size={14} color={isDark ? '#89DCEB' : '#0284C7'} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.telemetryLabel}>Offline Engine</Text>
+                      <Text style={s.telemetryValue}>L1/L2 LWW Cache</Text>
+                    </View>
+                  </View>
+
+                  <View style={s.telemetryTile}>
+                    <View style={[s.telemetryIconBox, { backgroundColor: isDark ? 'rgba(255,159,77,0.14)' : 'rgba(234,88,12,0.1)' }]}>
+                      <Ionicons name="calendar-outline" size={14} color={isDark ? '#FF9F4D' : '#EA580C'} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.telemetryLabel}>Member Since</Text>
+                      <Text style={s.telemetryValue}>{formatMetaDate(user?.metadata?.creationTime)}</Text>
+                    </View>
+                  </View>
+                </View>
+              </ScrollView>
+
+              {/* Bottom Done Button */}
+              <TouchableOpacity
+                style={s.accountDoneBtn}
+                activeOpacity={0.8}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setAccountModalVisible(false);
+                }}
+              >
+                <Text style={s.accountDoneBtnText}>Done</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -892,22 +1100,31 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
 
     footerBox: {
       alignItems: 'center',
-      marginTop: 20,
-      marginBottom: 10,
+      marginTop: 26,
+      marginBottom: 16,
+      paddingHorizontal: 20,
     },
     versionText: {
-      fontFamily: 'Inter_500Medium',
-      fontSize: 12,
-      color: colors.textTertiary,
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 12.5,
+      color: colors.textSecondary,
       textAlign: 'center',
     },
     versionSubText: {
       fontFamily: 'Inter_400Regular',
-      fontSize: 10,
+      fontSize: 11,
       color: colors.textTertiary,
       textAlign: 'center',
-      marginTop: 2,
-      opacity: 0.7,
+      marginTop: 3,
+    },
+    footerMotto: {
+      fontFamily: 'Inter_500Medium',
+      fontSize: 11,
+      color: isDark ? '#71717A' : '#9CA3AF',
+      textAlign: 'center',
+      marginTop: 8,
+      fontStyle: 'italic',
+      letterSpacing: 0.2,
     },
 
     // Modal
@@ -1017,5 +1234,228 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       fontFamily: 'Inter_600SemiBold',
       fontSize: 13,
       color: colors.accentPrimary,
+    },
+
+    // Account Details Modal
+    accountCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 24,
+      padding: 20,
+      width: '100%',
+      maxWidth: 380,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    accountHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 14,
+    },
+    accountBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: isDark ? 'rgba(94,218,158,0.12)' : 'rgba(5,150,105,0.08)',
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(94,218,158,0.25)' : 'rgba(5,150,105,0.2)',
+    },
+    accountBadgeText: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 10.5,
+      color: isDark ? '#5EDA9E' : '#059669',
+      letterSpacing: 0.5,
+    },
+    accountCloseBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    accountHero: {
+      alignItems: 'center',
+      marginBottom: 14,
+    },
+    accountAvatarWrapper: {
+      position: 'relative',
+      marginBottom: 8,
+    },
+    accountAvatarImg: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      borderWidth: 2,
+      borderColor: colors.accentPrimary,
+    },
+    accountAvatarFallback: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: colors.accentPrimary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    accountAvatarLetter: {
+      fontFamily: 'Inter_700Bold',
+      fontSize: 22,
+      color: '#000000',
+    },
+    accountOnlineRing: {
+      position: 'absolute',
+      bottom: 0,
+      right: 0,
+      width: 14,
+      height: 14,
+      borderRadius: 7,
+      backgroundColor: isDark ? '#5EDA9E' : '#059669',
+      borderWidth: 2.5,
+      borderColor: colors.surface,
+    },
+    accountName: {
+      fontFamily: 'Inter_700Bold',
+      fontSize: 17,
+      color: colors.textPrimary,
+      textAlign: 'center',
+    },
+    accountEmail: {
+      fontFamily: 'Inter_400Regular',
+      fontSize: 12.5,
+      color: colors.textSecondary,
+      marginTop: 2,
+      textAlign: 'center',
+    },
+    uidStrip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: isDark ? '#141416' : '#F5F4FA',
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: 14,
+    },
+    uidLabel: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 9.5,
+      color: colors.textTertiary,
+      letterSpacing: 0.5,
+      marginBottom: 2,
+    },
+    uidValue: {
+      fontFamily: 'Inter_500Medium',
+      fontSize: 12,
+      color: colors.textPrimary,
+    },
+    copyBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 9,
+      paddingVertical: 5,
+      borderRadius: 7,
+      backgroundColor: colors.accentDim,
+    },
+    copyBtnActive: {
+      backgroundColor: isDark ? 'rgba(94,218,158,0.16)' : 'rgba(5,150,105,0.12)',
+    },
+    copyBtnText: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 11,
+      color: colors.accentPrimary,
+    },
+    copyBtnTextActive: {
+      color: isDark ? '#5EDA9E' : '#059669',
+    },
+    accountSectionTitle: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 10.5,
+      letterSpacing: 0.8,
+      color: colors.textTertiary,
+      marginBottom: 8,
+      marginLeft: 2,
+    },
+    statsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? '#141416' : '#F5F4FA',
+      borderRadius: 14,
+      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: 14,
+    },
+    statBox: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    statValue: {
+      fontFamily: 'Inter_700Bold',
+      fontSize: 17,
+      color: colors.textPrimary,
+    },
+    statLabel: {
+      fontFamily: 'Inter_400Regular',
+      fontSize: 11,
+      color: colors.textSecondary,
+      marginTop: 1,
+    },
+    statBoxDivider: {
+      width: 1,
+      height: 24,
+      backgroundColor: colors.border,
+    },
+    telemetryGrid: {
+      gap: 8,
+      marginBottom: 14,
+    },
+    telemetryTile: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: isDark ? '#141416' : '#F5F4FA',
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    telemetryIconBox: {
+      width: 28,
+      height: 28,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    telemetryLabel: {
+      fontFamily: 'Inter_400Regular',
+      fontSize: 11,
+      color: colors.textSecondary,
+    },
+    telemetryValue: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 12,
+      color: colors.textPrimary,
+      marginTop: 1,
+    },
+    accountDoneBtn: {
+      backgroundColor: colors.accentPrimary,
+      borderRadius: 14,
+      paddingVertical: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 6,
+    },
+    accountDoneBtnText: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 14,
+      color: '#000000',
     },
   });

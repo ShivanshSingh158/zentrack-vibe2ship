@@ -24,11 +24,11 @@ export function useTabBarBadges() {
     const newBadges: Record<string, number> = {};
 
     // --- Tasks Badge ---
-    // Count pending tasks that are scheduled for today or are overdue.
+    // Count pending tasks scheduled for TODAY only (not overdue).
     let pendingTasks = 0;
     (tasks || []).forEach(task => {
       if (task.status === 'pending' && task.date) {
-        if (task.date <= localISOTime) {
+        if (task.date === localISOTime) {
           pendingTasks++;
         }
       }

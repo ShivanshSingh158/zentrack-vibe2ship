@@ -69,6 +69,13 @@ export interface ParsedTask {
   isRecurring: boolean;
   recurrenceRule: { type: 'daily' | 'weekly' | 'monthly'; interval: number; daysOfWeek?: number[] } | null;
   multiDays?: number;
+  /**
+   * One-time multi-day list: resolved YYYY-MM-DD dates for THIS week.
+   * Set when user says "only this monday, tuesday and friday" or a bare
+   * comma-list of days without "every". The modal batch-creates one task
+   * per date. The first date is also stored in `date`.
+   */
+  oneTimeDates?: string[];
   /** Auto-extracted #hashtag values, lowercased, without the # */
   tags?: string[];
   /** Parsed duration in minutes (e.g. "for 45m" → 45, "1h30m" → 90) */
@@ -116,6 +123,56 @@ export function nextWeekday(targetDayIndex: number, forceNext = false): Date {
   if (diff < 0 || (diff === 0 && forceNext)) {
     diff += 7;
   }
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+/**
+ * Extracts an ordered list of unique day indices from a comma/"and"-separated
+ * day-name string like "friday, saturday and monday" or "mon, wed, fri".
+ *
+ * Returns [] if fewer than 2 distinct days are found.
+ * The caller decides whether 2 days should also use this path or fall back
+ * to the existing andPat (which handles the 2-day case already).
+ */
+export function extractDayListFromText(raw: string): number[] {
+  // Tokenise: split on commas, " and ", " & ", " + "
+  const parts = raw
+    .toLowerCase()
+    .split(/[,&+]|\band\b/)
+    .map(p => p.trim())
+    .filter(Boolean);
+
+  const seen = new Set<number>();
+  const result: number[] = [];
+
+  for (const part of parts) {
+    // Try full name first, then 3-letter short form
+    let idx = DAY_NAMES.findIndex(d => part.startsWith(d));
+    if (idx === -1) idx = DAY_SHORT.findIndex(d => part.startsWith(d));
+    if (idx !== -1 && !seen.has(idx)) {
+      seen.add(idx);
+      result.push(idx);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Resolve a day index to its YYYY-MM-DD date in the CURRENT week
+ * (Mon-Sun window that contains today).
+ * Unlike nextWeekday(), this never jumps to next week — it always
+ * returns the day within the current Mon–Sun span even if already past.
+ */
+export function thisWeekDate(dayIndex: number): Date {
+  const d = new Date();
+  const today = d.getDay(); // 0=Sun…6=Sat
+  // Difference in days: positive = ahead, negative = behind in this week
+  let diff = dayIndex - today;
+  // Clamp to current week: diff is always in [-6, 6]
+  // We do NOT wrap to next week, so days that already passed this week
+  // still resolve to their date (e.g. Monday when today is Wednesday).
   d.setDate(d.getDate() + diff);
   return d;
 }
@@ -194,12 +251,14 @@ export function cleanTaskTitle(rawTitle: string): string {
     // Prefixes like "todo:", "task:", "new task:"
     /^(?:to-?do|task|action\s+item|new\s+task|note)\s*[:\-]\s*/i,
     // Conversational spoken fillers & hesitation markers
-    /^(?:um+|uh+|er+|ah+|like|you\s+know|basically|actually|literally|just|so|well)[,\s]+/i,
-    /^(?:i\s+want\s+you\s+to|can\s+you\s+help\s+me\s+to|help\s+me\s+to|i\s+need\s+you\s+to)\s+/i,
-    /^(?:make\s+sure\s+(?:that\s+)?(?:i|we)\s+(?:have\s+to|need\s+to|don'?t\s+forget\s+to)?|ensure\s+(?:that\s+)?)\s*/i,
+    /^(?:um+|uh+|er+|ah+|like|you\s+know|basically|actually|literally|honestly|i\s+mean|to\s+be\s+honest|just\s+wanted\s+to|i\s+think\s+i\s+should|just|so|well)[,\s]+/i,
+    /^(?:i\s+want\s+you\s+to|can\s+you\s+help\s+me\s+to|help\s+me\s+to|i\s+need\s+you\s+to|can\s+you\s+make\s+sure\s+to)\s+/i,
+    /^(?:make\s+sure\s+(?:that\s+)?(?:i|we)\s+(?:have\s+to|need\s+to|don'?t\s+forget\s+to)?|ensure\s+(?:that\s+)?|ensure\s+to)\s*/i,
     /^(?:note\s+to\s+self|memo|quick\s+note)[,\s:]+/i,
-    // Hinglish command prefixes
-    /^(?:mujhe\s+)?(?:ek\s+)?task\s+(?:bana\s+(?:do|o)|add\s+(?:karo|kar\s+do)|create\s+(?:karo|kar\s+do))\s*/i,
+    // Hinglish command prefixes & conversational speech starters
+    /^(?:bhai\s+sun|ek\s+kaam\s+kar|dekh\s+bhai|dekh\s+yaar|yaar\s+ek|mujhe\s+lagta\s+hai|suno)[,\s:]+/i,
+    /^(?:please\s+yaar|pls\s+yaar|bhai\s+please|yaar\s+please)[,\s]+/i,
+    /^(?:mujhe\s+)?(?:aaj|kal|parso)?\s*(?:subah|shaam|dopahar|raat)?\s*(?:ko)?\s*(?:ek\s+)?task\s+(?:bana\s+(?:do|o)|add\s+(?:karo|kar\s+do)|create\s+(?:karo|kar\s+do))\s*/i,
     /^mujhe\s+/i,
     /^(?:yaad\s+(?:dilana|dila\s+do|rakhna))\s+(?:ki\s+)?/i,
   ];
@@ -316,6 +375,14 @@ export function cleanTaskTitle(rawTitle: string): string {
   // 3. Strip leading connector prepositions and articles left over
   t = t.replace(/^(?:to|for|about|of|regarding|that|a|an|the)\s+/i, '').trim();
 
+  // 3b. Generalized Hinglish verb reversal: "[Object] [Action Verb] karna hai" -> "[Action Verb] [Object]"
+  // E.g. "assignment submit karna hai" -> "submit assignment"
+  // E.g. "DSA and DBMS revise karna hai" -> "revise DSA and DBMS"
+  const hinglishVerbReversal = t.match(/^(.+?)\s+(submit|complete|finish|pay|clean|check|update|fix|verify|revise|study|read|write|deploy|book|buy|order)\s+(?:karna|krna|karni|krni|kar\s+dena|kar\s+do|karo)(?:\s+(?:hai|h))?$/i);
+  if (hinglishVerbReversal) {
+    t = `${hinglishVerbReversal[2]} ${hinglishVerbReversal[1]}`.trim();
+  }
+
   // 4. Strip specific conversational / voice filler clauses
   t = t.replace(/\s+(?:dena|deni|bhejna|bhejni|lena|leni|jana|aana|khatam\s+karna)\s+(?:hai|h)$/i, '').trim();
   t = t.replace(/\s+(?:karna|krna|karni|krni)\s+(?:hai|h)$/i, '').trim();
@@ -328,6 +395,8 @@ export function cleanTaskTitle(rawTitle: string): string {
   t = t.replace(/\s+and\s+(?:remind\s+(?:me\s+)?(?:to\s+|about\s+)?|set\s+(?:a[n]?\s+)?(?:alarm|reminder)|notify\s+(?:me\s+)?)$/i, '').trim();
   t = t.replace(/\s+at\s+\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm|a\.?m\.?|p\.?m\.?)?$/i, '').trim();
   t = t.replace(/\s+(?:today|tomorrow|tonight|aaj|kal|parso)$/i, '').trim();
+  t = t.replace(/\s+(?:by|around|sharp|at|on|for|due)\s*$/i, '').trim();
+  t = t.replace(/\s+(?:right\s+now|at\s+the\s+earliest|on\s+urgent\s+basis|urgent\s+basis)$/i, '').trim();
 
   // 5. Multi-pass trailing connector, preposition & punctuation scrubber
   let trailChanged = true;
@@ -361,24 +430,51 @@ export function cleanTaskTitle(rawTitle: string): string {
   t = t.replace(/\s*,\s*,+/g, ', ');
   t = t.replace(/\s{2,}/g, ' ').trim();
 
-  // 6. Expanded Inverted action normalization (SOV -> SVO for task intents)
+  // 6. Hinglish & Colloquial Action Transformations
+  if (/^gym(?:\s+(?:jana|jaana|chale\s+jana))?(?:\s+(?:hai|h))?$/i.test(t)) {
+    t = 'Hit the gym';
+  } else if (/^doctor(?:\s+ke\s+paas)?\s+(?:jana|appointment|dikhana)(?:\s+(?:hai|h))?$/i.test(t)) {
+    t = 'Visit doctor';
+  } else if (/^(?:dawai|medicine|dawa)\s+(?:lena|khana)(?:\s+(?:hai|h))?$/i.test(t)) {
+    t = 'Take medicine';
+  } else if (/^(?:groceries|grocery|sabzi|sabji)\s+(?:lana|kharidna|laana)(?:\s+(?:hai|h))?$/i.test(t)) {
+    t = 'Buy groceries';
+  } else if (/^(?:dost|friend|friends)\s+(?:se\s+milna|milna)(?:\s+(?:hai|h))?$/i.test(t)) {
+    t = 'Meet friend';
+  } else if (/^(?:room|kamra)\s+(?:clean\s+karna|saaf\s+karna)(?:\s+(?:hai|h))?$/i.test(t)) {
+    t = 'Clean room';
+  } else if (/^(?:electricity\s+bill|bijli\s+ka\s+bill)\s+(?:pay|bharna|bharo)(?:\s+(?:hai|h|karna\s+hai))?$/i.test(t)) {
+    t = 'Pay electricity bill';
+  } else if (/^(?:recharge)\s+(?:karna|kar\s+do)(?:\s+(?:hai|h))?$/i.test(t)) {
+    t = 'Recharge phone';
+  }
+
+  // Pronoun & Determiner Simplification for crisp titles
+  t = t.replace(/\bcall\s+my\s+(mom|dad|mother|father|mummy|papa|parents|brother|sister|bro|sis)\b/i, 'call $1');
+  t = t.replace(/\bclean\s+my\s+room\b/i, 'clean room');
+  t = t.replace(/\bpick\s+up\s+my\s+/i, 'pick up ');
+  t = t.replace(/\bbuy\s+some\s+/i, 'buy ');
+  t = t.replace(/\bdo\s+my\s+laundry\b/i, 'wash laundry');
+
+  // 6b. Expanded Inverted action normalization (SOV -> SVO for task intents)
   // e.g. "dsa study" -> "study dsa", "groceries buy" -> "buy groceries"
   const sovPatterns: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+study$/i, m => m[1].toLowerCase() !== 'case' ? `study ${m[1]}` : m[0]],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+practice$/i, m => `practice ${m[1]}`],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:revision|revise)$/i, m => `revise ${m[1]}`],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:prep|preparation)$/i, m => `prep for ${m[1]}`],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:submission|submit)$/i, m => `submit ${m[1]}`],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:payment|pay)$/i, m => `pay ${m[1]}`],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:booking|book)$/i, m => `book ${m[1]}`],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:cleaning|clean)$/i, m => `clean ${m[1]}`],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:washing|wash)$/i, m => `wash ${m[1]}`],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:buying|buy)$/i, m => `buy ${m[1]}`],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:calling|call)$/i, m => `call ${m[1]}`],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:reviewing|review)$/i, m => `review ${m[1]}`],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:scheduling|schedule)$/i, m => `schedule ${m[1]}`],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:sending|send)$/i, m => `send ${m[1]}`],
-    [/^([a-zA-Z0-9+#]+(?:\s+[a-zA-Z0-9+#]+)?)\s+(?:ordering|order)$/i, m => `order ${m[1]}`],
+    [/^(.+?)\s+study$/i, m => m[1].toLowerCase() !== 'case' ? `study ${m[1]}` : m[0]],
+    [/^(.+?)\s+practice$/i, m => `practice ${m[1]}`],
+    [/^(.+?)\s+(?:revision|revise)$/i, m => `revise ${m[1]}`],
+    [/^(.+?)\s+(?:prep|preparation)$/i, m => `prep for ${m[1]}`],
+    [/^(.+?)\s+(?:submission|submit)$/i, m => `submit ${m[1]}`],
+    [/^(.+?)\s+(?:payment|pay)$/i, m => `pay ${m[1]}`],
+    [/^(.+?)\s+(?:booking|book)$/i, m => `book ${m[1]}`],
+    [/^(.+?)\s+(?:cleaning|clean)$/i, m => `clean ${m[1]}`],
+    [/^(.+?)\s+(?:washing|wash)$/i, m => `wash ${m[1]}`],
+    [/^(.+?)\s+(?:buying|buy)$/i, m => `buy ${m[1]}`],
+    [/^(.+?)\s+(?:calling|call)$/i, m => `call ${m[1]}`],
+    [/^(.+?)\s+(?:reviewing|review)$/i, m => `review ${m[1]}`],
+    [/^(.+?)\s+(?:scheduling|schedule)$/i, m => `schedule ${m[1]}`],
+    [/^(.+?)\s+(?:sending|send)$/i, m => `send ${m[1]}`],
+    [/^(.+?)\s+(?:ordering|order)$/i, m => `order ${m[1]}`],
+    [/^(.+?)\s+(?:deploying|deploy)$/i, m => `deploy ${m[1]}`],
   ];
 
   for (const [pat, replacer] of sovPatterns) {
@@ -691,13 +787,123 @@ export function parseNLTask(rawInput: string): ParsedTask {
     return DAY_SHORT.findIndex(d => s.startsWith(d));
   };
   const dayRegexStr = '(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)s?';
+  // One day-name token for use in multi-day list regex
+  const dayToken   = '(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)s?';
+
+  // ── 3-MULTI: Patterns for 3+ day lists — checked BEFORE rangePat / andPat ──
+  //
+  // Pattern A: "every friday, saturday and monday" → recurring on all listed days
+  //   Trigger: starts with "every" + comma/and list of day names (any count ≥ 2)
+  //
+  // Pattern B: "only this monday, tuesday and friday" → one-time this week dates
+  //   Trigger: "only this" OR "this" + list of day names (not preceded by "every")
+  //
+  // Pattern C: bare comma-list of ≥3 days without "every" → one-time this week
+  //   Trigger: day, day[, day]+ and day  (no "every" prefix)
+  //
+  // Multi-day list format accepted:  day[, day]+ [and|&] day
+  // Examples: "friday, saturday and monday", "mon, wed, fri", "tue and thu and sat"
+
+  // Build a regex that matches a comma/and-separated list of ≥2 day names:
+  //   e.g.  "friday, saturday and monday"  OR  "mon, wed, fri"  OR  "tue and thu"
+  // We do this as a raw match then use extractDayListFromText() to parse the days.
+  const multiDayListPat = new RegExp(
+    // At least one leading day, followed by one or more ", day" or " and day" chunks
+    `(${dayToken}(?:\\s*(?:,|and|&)\\s*${dayToken})+)`,
+    'i'
+  );
+
+  // ── Pattern A: every <multi-day-list> ─────────────────────────────────────
+  const everyMultiMatch = text.match(
+    new RegExp(`\\bevery\\s+(${dayToken}(?:\\s*(?:,|and|&)\\s*${dayToken}){2,})\\b`, 'i')
+  );
+
+  // ── Pattern B: only this / this <multi-day-list> ──────────────────────────
+  // Must NOT be preceded by "every" (already caught above)
+  const thisMultiMatch = !everyMultiMatch
+    ? text.match(
+        new RegExp(`\\b(?:only\\s+)?this\\s+(${dayToken}(?:\\s*(?:,|and|&)\\s*${dayToken})+)\\b`, 'i')
+      )
+    : null;
+
+  // ── Pattern C: bare comma list of ≥3 days (no every/this prefix) ──────────
+  // Only fires when ≥3 days found AND no "every" prefix in the full match
+  const bareMultiMatch = !everyMultiMatch && !thisMultiMatch
+    ? (() => {
+        const m = text.match(multiDayListPat);
+        if (!m) return null;
+        // Reject if immediately preceded by "every" (rangePat/andPat handles those)
+        const matchStart = text.indexOf(m[0]);
+        const before = text.slice(0, matchStart).trimEnd().toLowerCase();
+        if (before.endsWith('every') || before.endsWith('daily') || before.endsWith('from')) return null;
+        // Require ≥3 days for the bare case (2-day case still falls through to andPat)
+        const days = extractDayListFromText(m[0]);
+        return days.length >= 3 ? m : null;
+      })()
+    : null;
+
+  let oneTimeDates: string[] | undefined;
+
+  if (everyMultiMatch) {
+    // Pattern A — recurring on all matched days
+    const dayList = extractDayListFromText(everyMultiMatch[1]);
+    if (dayList.length >= 2) {
+      isRecurring = true;
+      recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [...dayList].sort((a, b) => a - b) };
+      dateResult = nextWeekday(dayList[0]);
+      const labels = dayList
+        .sort((a, b) => a - b)
+        .map(di => DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1, 3));
+      // Token covers the whole "every day1, day2 and day3" span
+      const fullSpan = text.slice(
+        text.toLowerCase().indexOf('every'),
+        text.toLowerCase().indexOf('every') + 'every'.length + 1 + everyMultiMatch[1].length
+      ).trim() || `every ${everyMultiMatch[1]}`;
+      registerToken('recurrence', fullSpan, `${labels.join(', ')} (Every Week)`);
+    }
+  } else if (thisMultiMatch) {
+    // Pattern B — one-time this week
+    const dayList = extractDayListFromText(thisMultiMatch[1]);
+    if (dayList.length >= 2) {
+      const sortedDays = [...dayList].sort((a, b) => a - b);
+      const dates = sortedDays.map(di => {
+        const d = thisWeekDate(di);
+        return toYMD(d);
+      });
+      oneTimeDates = dates;
+      // date = earliest date in the list
+      dateResult = thisWeekDate(sortedDays[0]);
+      isRecurring = false;
+      const labels = sortedDays.map(di => {
+        const d = thisWeekDate(di);
+        const dayName = DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1, 3);
+        return `${dayName} ${d.getDate()}`;
+      });
+      registerToken('date', thisMultiMatch[0], `${labels.join(', ')} (This Week)`);
+    }
+  } else if (bareMultiMatch) {
+    // Pattern C — bare 3+ day list without any prefix → one-time this week
+    const dayList = extractDayListFromText(bareMultiMatch[0]);
+    if (dayList.length >= 3) {
+      const sortedDays = [...dayList].sort((a, b) => a - b);
+      const dates = sortedDays.map(di => toYMD(thisWeekDate(di)));
+      oneTimeDates = dates;
+      dateResult = thisWeekDate(sortedDays[0]);
+      isRecurring = false;
+      const labels = sortedDays.map(di => {
+        const d = thisWeekDate(di);
+        return `${DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1, 3)} ${d.getDate()}`;
+      });
+      registerToken('date', bareMultiMatch[0], `${labels.join(', ')} (This Week)`);
+    }
+  }
 
   // Check Day Range patterns FIRST so specific day spans take precedence over generic daily/everyday
   // e.g. "daily from monday to friday", "monday to friday", "mon - fri", "monday through friday", "monday till friday"
   const rangePat = new RegExp(`\\b(?:(?:daily|everyday|every)\\s+)?(?:from\\s+)?${dayRegexStr}\\s+(?:to|-|through|till|until)\\s+${dayRegexStr}\\b`, 'i');
   const andPat   = new RegExp(`\\b(?:(?:daily|everyday|every)\\s+)?(?:from\\s+)?${dayRegexStr}\\s+(?:and|&)\\s+${dayRegexStr}\\b`, 'i');
-  const rm = text.match(rangePat);
-  const am = text.match(andPat);
+  const rm = !isRecurring && !oneTimeDates ? text.match(rangePat) : null;
+  const am = !isRecurring && !oneTimeDates ? text.match(andPat) : null;
 
   if (rm) {
     const start = getDayIdx(rm[1]);
@@ -1493,6 +1699,31 @@ export function parseNLTask(rawInput: string): ParsedTask {
     }
   }
 
+  // 7. SMART PRIORITY INFERENCE
+  // If priority was not explicitly dictated (p1, p2, p3, high, etc.), infer urgency from semantic triggers
+  const hasExplicitPriority = tokens.some(t => t.type === 'priority');
+  if (!hasExplicitPriority) {
+    const urgencyContext = `${title} ${raw}`.toLowerCase();
+    if (/\b(urgent|critical|emergency|asap|deadline|blocker|fire|exam|midsem|endsem|interview|doctor|hospital|immediately)\b/i.test(urgencyContext)) {
+      priority = 'high';
+    }
+  }
+
+  // 8. CONTEXTUAL DURATION DEFAULTS
+  // If duration was not explicitly specified (e.g. "for 45m"), assign smart defaults by domain
+  if (durationMinutes == null) {
+    const durationContext = `${title} ${raw}`.toLowerCase();
+    if (/\b(gym|workout|chest|back|legs|biceps|triceps|push\s+day|pull\s+day|leg\s+day|fitness)\b/i.test(durationContext) || extractedTags.includes('gym')) {
+      durationMinutes = 60;
+    } else if (/\b(exam|exams|midsem|endsem|lab\s+exam|practical|viva)\b/i.test(durationContext)) {
+      durationMinutes = 90;
+    } else if (/\b(meeting|sync|standup|interview|call\s+with|discussion|1:1|one\s+on\s+one)\b/i.test(durationContext)) {
+      durationMinutes = 30;
+    } else if (/\b(bill|recharge|pay|call\s+(?:mom|dad|mummy|papa)|haircut|quick|medicine|pills)\b/i.test(durationContext) || extractedTags.includes('finance')) {
+      durationMinutes = 15;
+    }
+  }
+
   return {
     title,
     date: dateResult ? toYMD(dateResult) : null,
@@ -1502,6 +1733,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
     isRecurring,
     recurrenceRule,
     multiDays,
+    oneTimeDates: oneTimeDates && oneTimeDates.length > 1 ? oneTimeDates : undefined,
     tags: extractedTags,
     durationMinutes,
     isReminder,
@@ -1531,7 +1763,7 @@ export function parseNLTasks(raw: string): ParsedTask[] {
   const sanitizeAndParse = (segment: string): ParsedTask => {
     const cleanSegment = segment
       .trim()
-      .replace(/^(?:and\s+also|and\s+then|and|then|also|plus|next|after\s+that|followed\s+by|aur\s+phir|aur|phir)\s+/i, '')
+      .replace(/^(?:and\s+also|and\s+then|and|then|also|plus|next|after\s+that|followed\s+by|aur\s+phir|aur|phir|uske\s+baad)\s+/i, '')
       .trim();
     return parseNLTask(cleanSegment);
   };
@@ -1560,8 +1792,8 @@ export function parseNLTasks(raw: string): ParsedTask[] {
     }
   }
 
-  // 4. Check for compound transitional connectors: "and also", "and then", "after that", "followed by", "additionally", "plus also", "and next"
-  const transitionRegex = /\b(?:and\s+also|and\s+then|after\s+that|followed\s+by|additionally|plus\s+also|and\s+next|aur\s+phir)\b/i;
+  // 4. Check for compound transitional connectors: "and also", "and then", "after that", "followed by", "additionally", "plus also", "and next", "aur phir"
+  const transitionRegex = /\b(?:and\s+also|and\s+then|after\s+that|followed\s+by|additionally|plus\s+also|and\s+next|aur\s+phir|uske\s+baad)\b/i;
   if (transitionRegex.test(text)) {
     const parts = text.split(transitionRegex).filter(p => p.trim().length > 1);
     if (parts.length > 1) {

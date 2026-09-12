@@ -45,6 +45,8 @@ const C = {
   amberSoft:    '#25FFD60A' as HexColor,
   red:          '#FF453A' as HexColor,
   redSoft:      '#25FF453A' as HexColor,
+  capsuleBg:    '#1A172B' as HexColor,
+  capsuleBorder:'#352C52' as HexColor,
 } as const;
 
 function getDotColor(isDone: boolean, isMissed: boolean, isCancelled: boolean, isOverdue: boolean, isClass: boolean): HexColor {
@@ -88,79 +90,32 @@ export function TodayAgendaWidget({ data, width = 330, height = 280 }: TodayAgen
   const isLarge   = height >= 230;
 
   // Calculate dynamic capacity so schedule rows fit naturally without overflowing widget canvas
-  const fixedOverhead = (isCompact ? 46 : 110) + (nextClass && !isHoliday && !isCompact ? 48 : 0);
+  const fixedOverhead = isCompact ? 64 : (nextClass && !isHoliday ? 154 : 106);
   const availableRowHeight = Math.max(0, height - fixedOverhead);
-  const dynamicCapacity = Math.max(1, Math.min(8, Math.floor(availableRowHeight / 26)));
+  const dynamicCapacity = Math.max(1, Math.min(8, Math.floor(availableRowHeight / 34)));
 
-  // Intelligent item selection: Guarantee tasks are NEVER starved out by classes
-  let displayItems: typeof items = [];
+  // User Requirement: This schedule card is DEDICATED TO TASKS ONLY!
+  // Attendance is handled exclusively by the upper Spotlight section ("FLOATING NEXT CLASS SPOTLIGHT").
+  const taskItems = items.filter((i) => i.type === 'task');
+  const displayItems = taskItems.slice(0, dynamicCapacity);
 
-  if (isHoliday || classes.length === 0) {
-    // Pure Task Mode (Holiday, weekend, or no classes today):
-    // Dedicate ALL visible slots to today's tasks
-    const maxCapacity = isCompact ? 3 : dynamicCapacity;
-    const taskItems = items.filter((i) => i.type === 'task');
-    displayItems = taskItems.slice(0, maxCapacity);
-  } else if (tasks.length === 0) {
-    // Pure Class Mode (User has no tasks today)
-    const maxCapacity = isCompact ? 3 : dynamicCapacity;
-    displayItems = items.filter((i) => i.type !== 'task').slice(0, maxCapacity);
-  } else {
-    // Balanced Mode: User has BOTH classes AND tasks today!
-    // Never allow classes to eat up all slots and hide tasks.
-    const classItems = items.filter((i) => i.type === 'class' || i.type === 'lab');
-    const taskItems  = items.filter((i) => i.type === 'task');
+  const doneTasksCount  = tasks.filter((t) => t.status === 'completed').length;
+  const totalTasksCount = tasks.length;
+  const isAllTasksDone  = doneTasksCount === totalTasksCount && totalTasksCount > 0;
 
-    const totalCapacity = isCompact ? 3 : dynamicCapacity;
-
-    if (totalCapacity <= 4) {
-      // 4 slots available:
-      // Guarantee at least 2 slots for tasks so the user's tasks are always visible!
-      const pendingTasks = taskItems.filter((t) => t.status === 'pending');
-      const otherTasks = taskItems.filter((t) => t.status !== 'pending');
-      const orderedTasks = [...pendingTasks, ...otherTasks];
-      const taskQuota = Math.min(2, orderedTasks.length);
-      const classQuota = totalCapacity - taskQuota;
-
-      const chosenClasses = classItems.slice(0, classQuota);
-      const chosenTasks = orderedTasks.slice(0, taskQuota);
-
-      displayItems = [...chosenClasses, ...chosenTasks].sort((a, b) => {
-        const aPending = a.status === 'pending';
-        const bPending = b.status === 'pending';
-        if (aPending && !bPending) return -1;
-        if (!aPending && bPending) return 1;
-        return a.timeMins - b.timeMins;
-      });
-    } else {
-      // Large widget (5 to 8 slots):
-      // Evenly balance classes and tasks
-      const half = Math.floor(totalCapacity / 2);
-      const chosenClasses = classItems.slice(0, Math.min(half, classItems.length));
-      const chosenTasks = taskItems.slice(0, totalCapacity - chosenClasses.length);
-      displayItems = [...chosenClasses, ...chosenTasks].sort((a, b) => {
-        const aPending = a.status === 'pending';
-        const bPending = b.status === 'pending';
-        if (aPending && !bPending) return -1;
-        if (!aPending && bPending) return 1;
-        return a.timeMins - b.timeMins;
-      });
-    }
-  }
-
-  const hasAnyToday = (isHoliday ? 0 : classes.length) > 0 || tasks.length > 0;
-  const hasOverdue  = items.some((i) => i.timeStr?.includes('Overdue'));
-  const hasTmrw     = items.some((i) => i.timeStr?.includes('Tomorrow'));
+  const hasOverdue  = taskItems.some((i) => i.timeStr?.includes('Overdue'));
+  const hasTmrw     = taskItems.some((i) => i.timeStr?.includes('Tomorrow'));
 
   const sectionLabel = isHoliday
-    ? (tasks.length > 0 ? "TODAY'S TASKS · HOLIDAY" : 'HOLIDAY')
-    : !hasAnyToday
-    ? hasOverdue ? 'OVERDUE' : hasTmrw ? 'UPCOMING' : 'SCHEDULE'
-    : (classes.length > 0 && tasks.length > 0 ? 'TODAY · AGENDA & TASKS' : 'TODAY');
-  const counterLabel = isHoliday && totalCount === 0
+    ? (totalTasksCount > 0 ? "TODAY'S TASKS · HOLIDAY" : 'HOLIDAY')
+    : totalTasksCount === 0
+    ? hasOverdue ? 'OVERDUE TASKS' : hasTmrw ? 'UPCOMING TASKS' : "TODAY'S TASKS"
+    : "TODAY'S TASKS";
+
+  const counterLabel = isHoliday && totalTasksCount === 0
     ? 'Holiday'
-    : totalCount > 0
-    ? isAllDone ? 'All done' : `${doneCount}/${totalCount}`
+    : totalTasksCount > 0
+    ? isAllTasksDone ? 'All done ✓' : `${doneTasksCount}/${totalTasksCount}`
     : '';
 
   // ── SMART HYBRID HEADER BADGE ──────────────────────────────────────────
@@ -279,18 +234,37 @@ export function TodayAgendaWidget({ data, width = 330, height = 280 }: TodayAgen
               </FlexWidget>
               <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <FlexWidget
-                  style={{ backgroundColor: C.greenSoft, borderRadius: 9, borderWidth: 1, borderColor: C.green, paddingHorizontal: 9, paddingVertical: 4, marginRight: 5 }}
+                  style={{
+                    backgroundColor: C.greenSoft,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: C.green,
+                    paddingHorizontal: 11,
+                    paddingVertical: 5,
+                    marginRight: 6,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
                   clickAction="mark_class_present"
-                  clickActionData={{ action: 'mark_class_present', subjectId: nextClass.subjectId, subjectName: nextClass.subjectName, sessionIdx: nextClass.idx, type: nextClass.type }}
+                  clickActionData={{ action: 'mark_class_present', subjectId: nextClass.subjectId, subjectName: nextClass.subjectName, sessionIdx: nextClass.idx, type: nextClass.type, dateStr: data?.dateStr || '' }}
                 >
-                  <TextWidget text="Present" style={{ fontSize: 9, fontWeight: 'bold', color: C.green }} />
+                  <TextWidget text="✓ Present" style={{ fontSize: 10, fontWeight: 'bold', color: C.green }} />
                 </FlexWidget>
                 <FlexWidget
-                  style={{ backgroundColor: C.redSoft, borderRadius: 9, borderWidth: 1, borderColor: C.red, paddingHorizontal: 9, paddingVertical: 4 }}
+                  style={{
+                    backgroundColor: C.redSoft,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: C.red,
+                    paddingHorizontal: 11,
+                    paddingVertical: 5,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
                   clickAction="mark_class_absent"
-                  clickActionData={{ action: 'mark_class_absent', subjectId: nextClass.subjectId, subjectName: nextClass.subjectName, sessionIdx: nextClass.idx, type: nextClass.type }}
+                  clickActionData={{ action: 'mark_class_absent', subjectId: nextClass.subjectId, subjectName: nextClass.subjectName, sessionIdx: nextClass.idx, type: nextClass.type, dateStr: data?.dateStr || '' }}
                 >
-                  <TextWidget text="Absent" style={{ fontSize: 9, fontWeight: 'bold', color: C.red }} />
+                  <TextWidget text="✕ Absent" style={{ fontSize: 10, fontWeight: 'bold', color: C.red }} />
                 </FlexWidget>
               </FlexWidget>
             </FlexWidget>
@@ -332,98 +306,254 @@ export function TodayAgendaWidget({ data, width = 330, height = 280 }: TodayAgen
                 const isClass     = item.type === 'class' || item.type === 'lab';
                 const isLast      = idx === displayItems.length - 1;
                 const dot         = getDotColor(isDone, isMissed, isCancelled, isOverdue, isClass);
-                const chipFg      = getChipFg(isDone, isOverdue, isTmrw);
-                const chipBg      = getChipBg(isDone, isOverdue, isTmrw);
                 const isMuted     = isDone || isCancelled;
+
+                // Dedicated Subtitle Formatting (Pure WHITE for maximum readability)
+                let subtitleText: string | null = null;
+                let subtitleColor: HexColor = C.textPrimary;
+
+                if (isClass) {
+                  if (item.timeStr) {
+                    subtitleText = item.timeStr;
+                    subtitleColor = C.textPrimary;
+                  }
+                } else {
+                  if (item.timeStr && item.timeStr !== 'Today') {
+                    subtitleText = item.timeStr;
+                    subtitleColor = isOverdue ? C.red : (isTmrw ? C.amber : C.textPrimary);
+                  } else if (item.timeStr === 'Today') {
+                    subtitleText = 'Due Today';
+                    subtitleColor = C.accent;
+                  }
+                }
 
                 return (
                   <FlexWidget key={item.id} style={{ flexDirection: 'column', width: 'match_parent' }}>
                     <FlexWidget
-                      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 5, paddingHorizontal: 2, width: 'match_parent' }}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingVertical: 3.5,
+                        paddingHorizontal: 2,
+                        width: 'match_parent',
+                      }}
                       clickAction="OPEN_URI"
                       clickActionData={{ uri: isClass ? 'zentrack://attendance' : 'zentrack://tasks' }}
                     >
-                      <FlexWidget style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: dot, marginRight: 8 }} />
+                      {/* Status Indicator Dot */}
+                      <FlexWidget
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: 3,
+                          backgroundColor: dot,
+                          marginRight: 8,
+                        }}
+                      />
 
-                      <FlexWidget style={{ flex: 1, flexDirection: 'column', marginRight: 6 }}>
+                      {/* Title & Subtitle Info (Full remaining width, never truncated by right chips) */}
+                      <FlexWidget
+                        style={{
+                          flex: 1,
+                          flexDirection: 'column',
+                          justifyContent: 'center',
+                          marginRight: 8,
+                        }}
+                      >
                         <TextWidget
                           text={item.title}
-                          style={{ fontSize: isCompact ? 11 : 12, fontWeight: isMuted ? 'normal' : '500', color: isMuted ? C.textTertiary : C.textPrimary }}
+                          style={{
+                            fontSize: isCompact ? 11 : 12,
+                            fontWeight: isMuted ? 'normal' : '600',
+                            color: isMuted ? C.textTertiary : C.textPrimary,
+                          }}
                           maxLines={1}
                         />
-                        {item.timeStr && isClass ? (
-                          <TextWidget text={item.timeStr} style={{ fontSize: 8, color: C.textSecondary }} />
+                        {subtitleText ? (
+                          <TextWidget
+                            text={subtitleText}
+                            style={{
+                              fontSize: 9.5,
+                              fontWeight: isOverdue ? 'bold' : '600',
+                              color: subtitleColor,
+                              marginTop: 1,
+                            }}
+                            maxLines={1}
+                          />
                         ) : null}
                       </FlexWidget>
 
+                      {/* Interactive Action Control */}
                       {isClass ? (
                         isDone ? (
-                          <FlexWidget style={{ backgroundColor: C.greenSoft, borderRadius: 7, borderWidth: 1, borderColor: C.green, paddingHorizontal: 7, paddingVertical: 2 }}>
-                            <TextWidget text="Attended" style={{ fontSize: 8, fontWeight: 'bold', color: C.green }} />
+                          /* Tappable Attended Pill — 1-Tap Undo directly from widget! */
+                          <FlexWidget
+                            style={{
+                              backgroundColor: C.greenSoft,
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: C.green,
+                              paddingHorizontal: 8,
+                              paddingVertical: 3.5,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            clickAction="mark_class_undo"
+                            clickActionData={{
+                              action: 'mark_class_undo',
+                              subjectId: item.subjectId,
+                              subjectName: item.subjectName,
+                              sessionIdx: item.sessionIdx,
+                              type: item.type,
+                              dateStr: data?.dateStr || '',
+                            }}
+                          >
+                            <TextWidget text="✓ Attended" style={{ fontSize: 9, fontWeight: 'bold', color: C.green }} />
                           </FlexWidget>
                         ) : isMissed ? (
-                          <FlexWidget style={{ backgroundColor: C.redSoft, borderRadius: 7, borderWidth: 1, borderColor: C.red, paddingHorizontal: 7, paddingVertical: 2 }}>
-                            <TextWidget text="Missed" style={{ fontSize: 8, fontWeight: 'bold', color: C.red }} />
+                          /* Tappable Missed Pill — 1-Tap Undo directly from widget! */
+                          <FlexWidget
+                            style={{
+                              backgroundColor: C.redSoft,
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: C.red,
+                              paddingHorizontal: 8,
+                              paddingVertical: 3.5,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            clickAction="mark_class_undo"
+                            clickActionData={{
+                              action: 'mark_class_undo',
+                              subjectId: item.subjectId,
+                              subjectName: item.subjectName,
+                              sessionIdx: item.sessionIdx,
+                              type: item.type,
+                              dateStr: data?.dateStr || '',
+                            }}
+                          >
+                            <TextWidget text="✕ Missed" style={{ fontSize: 9, fontWeight: 'bold', color: C.red }} />
                           </FlexWidget>
                         ) : isCancelled ? (
-                          <FlexWidget style={{ backgroundColor: C.surface2, borderRadius: 7, borderWidth: 1, borderColor: C.glassBorder, paddingHorizontal: 7, paddingVertical: 2 }}>
-                            <TextWidget text="Cancelled" style={{ fontSize: 8, fontWeight: 'bold', color: C.textTertiary }} />
+                          <FlexWidget
+                            style={{
+                              backgroundColor: C.surface2,
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: C.glassBorder,
+                              paddingHorizontal: 8,
+                              paddingVertical: 3.5,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <TextWidget text="Cancelled" style={{ fontSize: 9, fontWeight: 'bold', color: C.textTertiary }} />
                           </FlexWidget>
                         ) : (
+                          /* High-Tactile Dual-Action Segmented Controller [✓ P | ✕ A] */
                           <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            {/* Present Button */}
                             <FlexWidget
-                              style={{ backgroundColor: C.greenSoft, borderRadius: 7, borderWidth: 1, borderColor: C.green, paddingHorizontal: 8, paddingVertical: 3, marginRight: 4 }}
+                              style={{
+                                backgroundColor: C.greenSoft,
+                                borderRadius: 8,
+                                borderWidth: 1,
+                                borderColor: C.green,
+                                paddingHorizontal: 8,
+                                paddingVertical: 3.5,
+                                marginRight: 5,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
                               clickAction="mark_class_present"
-                              clickActionData={{ action: 'mark_class_present', subjectId: item.subjectId, subjectName: item.subjectName, sessionIdx: item.sessionIdx, type: item.type }}
+                              clickActionData={{
+                                action: 'mark_class_present',
+                                subjectId: item.subjectId,
+                                subjectName: item.subjectName,
+                                sessionIdx: item.sessionIdx,
+                                type: item.type,
+                                dateStr: data?.dateStr || '',
+                              }}
                             >
-                              <TextWidget text="P" style={{ fontSize: 10, fontWeight: 'bold', color: C.green }} />
+                              <TextWidget text="✓ P" style={{ fontSize: 10, fontWeight: 'bold', color: C.green }} />
                             </FlexWidget>
+
+                            {/* Absent Button */}
                             <FlexWidget
-                              style={{ backgroundColor: C.redSoft, borderRadius: 7, borderWidth: 1, borderColor: C.red, paddingHorizontal: 8, paddingVertical: 3 }}
+                              style={{
+                                backgroundColor: C.redSoft,
+                                borderRadius: 8,
+                                borderWidth: 1,
+                                borderColor: C.red,
+                                paddingHorizontal: 8,
+                                paddingVertical: 3.5,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
                               clickAction="mark_class_absent"
-                              clickActionData={{ action: 'mark_class_absent', subjectId: item.subjectId, subjectName: item.subjectName, sessionIdx: item.sessionIdx, type: item.type }}
+                              clickActionData={{
+                                action: 'mark_class_absent',
+                                subjectId: item.subjectId,
+                                subjectName: item.subjectName,
+                                sessionIdx: item.sessionIdx,
+                                type: item.type,
+                                dateStr: data?.dateStr || '',
+                              }}
                             >
-                              <TextWidget text="A" style={{ fontSize: 10, fontWeight: 'bold', color: C.red }} />
+                              <TextWidget text="✕ A" style={{ fontSize: 10, fontWeight: 'bold', color: C.red }} />
                             </FlexWidget>
                           </FlexWidget>
                         )
                       ) : (
-                        <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          {item.timeStr && item.timeStr !== 'Today' ? (
-                            <FlexWidget style={{ backgroundColor: chipBg, borderRadius: 7, paddingHorizontal: 6, paddingVertical: 2, marginRight: 5 }}>
-                              <TextWidget text={item.timeStr} style={{ fontSize: isCompact ? 8 : 9, fontWeight: 'bold', color: chipFg }} />
-                            </FlexWidget>
-                          ) : null}
-                          {isDone ? (
-                            <FlexWidget
-                              style={{ backgroundColor: C.greenSoft, borderRadius: 7, borderWidth: 1, borderColor: C.green, paddingHorizontal: 7, paddingVertical: 2 }}
-                              clickAction="mark_task_undone"
-                              clickActionData={{ action: 'mark_task_undone', taskId: item.taskId || item.id }}
-                            >
-                              <TextWidget text="✓ Done" style={{ fontSize: 8, fontWeight: 'bold', color: C.green }} />
-                            </FlexWidget>
-                          ) : (
-                            <FlexWidget
-                              style={{ backgroundColor: C.accentSoft, borderRadius: 7, borderWidth: 1, borderColor: C.borderAccent, paddingHorizontal: 8, paddingVertical: 2 }}
-                              clickAction="mark_task_done"
-                              clickActionData={{ action: 'mark_task_done', taskId: item.taskId || item.id }}
-                            >
-                              <TextWidget text="Done" style={{ fontSize: 9, fontWeight: 'bold', color: C.accent }} />
-                            </FlexWidget>
-                          )}
-                        </FlexWidget>
+                        /* Task Action Button */
+                        isDone ? (
+                          <FlexWidget
+                            style={{
+                              backgroundColor: C.greenSoft,
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: C.green,
+                              paddingHorizontal: 9,
+                              paddingVertical: 3.5,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            clickAction="mark_task_undone"
+                            clickActionData={{ action: 'mark_task_undone', taskId: item.taskId || item.id }}
+                          >
+                            <TextWidget text="✓ Done" style={{ fontSize: 9, fontWeight: 'bold', color: C.green }} />
+                          </FlexWidget>
+                        ) : (
+                          <FlexWidget
+                            style={{
+                              backgroundColor: C.accentSoft,
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: C.borderAccent,
+                              paddingHorizontal: 10,
+                              paddingVertical: 4,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            clickAction="mark_task_done"
+                            clickActionData={{ action: 'mark_task_done', taskId: item.taskId || item.id }}
+                          >
+                            <TextWidget text="Done ✓" style={{ fontSize: 10, fontWeight: 'bold', color: C.accent }} />
+                          </FlexWidget>
+                        )
                       )}
                     </FlexWidget>
 
                     {!isLast ? (
-                      <FlexWidget style={{ height: 1, backgroundColor: C.divider, marginLeft: 15, marginRight: 2 }} />
+                      <FlexWidget style={{ height: 1, backgroundColor: C.divider, marginLeft: 14, marginRight: 2, marginVertical: 1 }} />
                     ) : null}
                   </FlexWidget>
                 );
               })
             ) : (
               <FlexWidget style={{ paddingVertical: 14, alignItems: 'center', width: 'match_parent' }}>
-                <TextWidget text={isHoliday ? (tasks.length === 0 ? "Holiday · No classes or tasks today" : "All today's tasks completed") : "Nothing scheduled for today"} style={{ fontSize: 11, color: C.textSecondary }} />
+                <TextWidget text={isHoliday ? (tasks.length === 0 ? "Holiday · No tasks today" : "All today's tasks completed") : (tasks.length === 0 ? "No tasks for today · Tap + Task below" : "All today's tasks completed! 🔥")} style={{ fontSize: 11, color: C.textPrimary }} />
               </FlexWidget>
             )}
           </FlexWidget>

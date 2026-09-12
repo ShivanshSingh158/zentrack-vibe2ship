@@ -56,6 +56,7 @@ export type WidgetClickActionType =
   | 'mark_task_undone'
   | 'mark_class_present'
   | 'mark_class_absent'
+  | 'mark_class_undo'
   | 'open_app'
   | 'log_workout_set'
   | 'adjust_workout_weight'

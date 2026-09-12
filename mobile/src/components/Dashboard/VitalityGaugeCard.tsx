@@ -88,7 +88,7 @@ export function VitalityGaugeCard({
     // Gym: 25%
     const gymScore = isWorkoutDone ? 25 : isRestDay ? 25 : isWorkoutInProgress ? 15 : 0;
     // Hydration: 15%
-    const waterScore = Math.min(1, waterCompleted / (waterTotal || 2500)) * 15;
+    const waterScore = Math.min(1, waterCompleted / (waterTotal || 3800)) * 15;
 
     return Math.min(100, Math.max(0, Math.round(taskScore + habitScore + gymScore + waterScore)));
   }, [agendaCompleted, agendaTotal, habitsCompleted, habitsTotal, isWorkoutDone, isRestDay, isWorkoutInProgress, waterCompleted, waterTotal]);
@@ -290,7 +290,7 @@ export function VitalityGaugeCard({
             <View
               style={[
                 styles.waterFill,
-                { width: `${Math.min(100, (waterCompleted / (waterTotal || 2500)) * 100)}%` }
+                { width: `${Math.min(100, (waterCompleted / (waterTotal || 3800)) * 100)}%` }
               ]}
             />
           </View>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { uploadFileToCloudinary } from '../../services/cloudinary';
@@ -7,7 +8,7 @@ import {
   Folder, FileText, Trash2, X, Plus, FolderPlus,
   HardDrive, ExternalLink, Sparkles, Upload, Download,
   PanelLeftClose, PanelLeftOpen, Maximize2, Minimize2, Columns, LayoutGrid,
-  Loader2, RotateCw, RotateCcw
+  Loader2, RotateCw, RotateCcw, Edit2, ZoomIn, ZoomOut, MousePointerClick
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -46,6 +47,7 @@ export const NotesModule = () => {
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string }>({ isOpen: false, id: '' });
   const [newFolderModal, setNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderParentId, setNewFolderParentId] = useState<string | null>(null);
   const [renameModal, setRenameModal] = useState<{ isOpen: boolean; node: StorageNode | null; newName: string }>({ isOpen: false, node: null, newName: '' });
 
   // Note Editor State
@@ -62,10 +64,17 @@ export const NotesModule = () => {
   const [isAiExpanded, setIsAiExpanded] = useState(false);
   const noteAiSession = useRef<any>(null);
 
-  // File Viewer State
+  // File Viewer State & Smooth Zoom / Pan Engine
   const [viewingFile, setViewingFile] = useState<StorageNode | null>(null);
   const [isIframeLoading, setIsIframeLoading] = useState(true);
   const [pdfRotation, setPdfRotation] = useState<number>(0);
+  const [pdfScale, setPdfScale] = useState<number>(1);
+  const [pdfPan, setPdfPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDraggingPan, setIsDraggingPan] = useState(false);
+  const [isCtrlHeld, setIsCtrlHeld] = useState(false);
+  const [isZoomMode, setIsZoomMode] = useState(false);
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragPanStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const fileBodyRef = useRef<HTMLDivElement>(null);
   const [containerDims, setContainerDims] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
 
@@ -73,8 +82,141 @@ export const NotesModule = () => {
     if (viewingFile) {
       setIsIframeLoading(true);
       setPdfRotation(0);
+      setPdfScale(1);
+      setPdfPan({ x: 0, y: 0 });
+      setIsDraggingPan(false);
+      setIsZoomMode(false);
     }
   }, [viewingFile?.id, viewingFile?.url]);
+
+  // Track Ctrl/Cmd key state to pass mousewheel events directly through cross-origin iframes
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Control' || e.key === 'Meta') {
+        setIsCtrlHeld(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Control' || e.key === 'Meta') {
+        setIsCtrlHeld(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // Native non-passive wheel listener: Scales strictly the document canvas and prevents Chrome tab-level zoom
+  useEffect(() => {
+    const el = fileBodyRef.current;
+    if (!el) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey || isZoomMode) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+        setPdfScale(prev => {
+          const next = Math.round(Math.min(4.0, Math.max(0.5, prev * zoomFactor)) * 100) / 100;
+          if (next === 1) {
+            setPdfPan({ x: 0, y: 0 });
+          }
+          return next;
+        });
+      } else if (pdfScale > 1) {
+        // When zoomed in, rolling scroll wheel naturally pans the document
+        e.preventDefault();
+        e.stopPropagation();
+        setPdfPan(prev => ({
+          x: prev.x - (e.shiftKey ? e.deltaY : e.deltaX),
+          y: prev.y - (e.shiftKey ? 0 : e.deltaY),
+        }));
+      }
+    };
+
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', handleWheel);
+    };
+  }, [isZoomMode, pdfScale]);
+
+  // Mouse drag-to-pan handlers (active when zoomed in or in Zoom Mode)
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0 && e.button !== 1) return;
+    if (pdfScale > 1 || isZoomMode || isCtrlHeld || e.button === 1) {
+      e.preventDefault();
+      setIsDraggingPan(true);
+      dragStartRef.current = { x: e.clientX, y: e.clientY };
+      dragPanStartRef.current = { x: pdfPan.x, y: pdfPan.y };
+    }
+  };
+
+  useEffect(() => {
+    if (!isDraggingPan) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      setPdfPan({
+        x: dragPanStartRef.current.x + dx,
+        y: dragPanStartRef.current.y + dy,
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingPan(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingPan]);
+
+  const handleDoubleClick = () => {
+    if (pdfScale !== 1 || pdfPan.x !== 0 || pdfPan.y !== 0) {
+      setPdfScale(1);
+      setPdfPan({ x: 0, y: 0 });
+    } else {
+      setPdfScale(1.5);
+    }
+  };
+
+  const getTransformStyle = () => {
+    const isRotated90or270 = pdfRotation === 90 || pdfRotation === 270;
+    const isInteracting = isDraggingPan;
+
+    if (isRotated90or270 && containerDims.width > 0 && containerDims.height > 0) {
+      return {
+        position: 'absolute' as const,
+        top: '50%',
+        left: '50%',
+        width: `${containerDims.height}px`,
+        height: `${containerDims.width}px`,
+        transform: `translate(calc(-50% + ${pdfPan.x}px), calc(-50% + ${pdfPan.y}px)) rotate(${pdfRotation}deg) scale(${pdfScale})`,
+        transformOrigin: 'center center',
+        maxWidth: 'none',
+        maxHeight: 'none',
+        transition: isInteracting ? 'none' : 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)',
+        cursor: (pdfScale > 1 || isZoomMode) ? (isDraggingPan ? 'grabbing' : 'grab') : 'default',
+      };
+    }
+
+    return {
+      width: '100%',
+      height: '100%',
+      transform: `translate(${pdfPan.x}px, ${pdfPan.y}px) ${pdfRotation !== 0 ? `rotate(${pdfRotation}deg)` : ''} scale(${pdfScale})`,
+      transformOrigin: 'center center',
+      transition: isInteracting ? 'none' : 'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)',
+      cursor: (pdfScale > 1 || isZoomMode) ? (isDraggingPan ? 'grabbing' : 'grab') : 'default',
+    };
+  };
 
   useEffect(() => {
     if (!fileBodyRef.current) return;
@@ -132,6 +274,14 @@ export const NotesModule = () => {
 
     return () => {
       if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  // Lock body scroll and enable true full-screen workspace fit
+  useEffect(() => {
+    document.body.classList.add('notes-fullscreen-active');
+    return () => {
+      document.body.classList.remove('notes-fullscreen-active');
     };
   }, []);
 
@@ -203,11 +353,12 @@ export const NotesModule = () => {
         userId: auth.currentUser!.uid,
         type: 'folder',
         name: newFolderName.trim(),
-        parentId: currentFolderId,
+        parentId: newFolderParentId || null,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
       setNewFolderName('');
+      setNewFolderParentId(null);
       setNewFolderModal(false);
       toast.success('Folder created');
     } catch (err) {
@@ -423,7 +574,7 @@ export const NotesModule = () => {
                 onClick={() => setIsSidebarOpen(prev => !prev)}
                 title={isSidebarOpen ? 'Collapse Vault (Left)' : 'Show Vault Sidebar'}
               >
-                {isSidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
+                {isSidebarOpen ? <PanelLeftClose size={13} /> : <PanelLeftOpen size={13} />}
                 <span>Vault</span>
               </button>
 
@@ -433,24 +584,30 @@ export const NotesModule = () => {
                 onClick={() => setIsFeedOpen(prev => !prev)}
                 title={isFeedOpen ? 'Collapse Feed (Left)' : 'Show Notes Feed'}
               >
-                <Columns size={14} />
+                <Columns size={13} />
                 <span>Feed</span>
               </button>
 
-              {(!isSidebarOpen || !isFeedOpen) && (
-                <button
-                  type="button"
-                  className="notes-panel-toggle-btn reset"
-                  onClick={() => {
-                    setIsSidebarOpen(true);
-                    setIsFeedOpen(true);
-                  }}
-                  title="Restore All 3 Panels"
-                >
-                  <LayoutGrid size={14} />
-                  <span>Restore View</span>
-                </button>
-              )}
+              <AnimatePresence>
+                {(!isSidebarOpen || !isFeedOpen) && (
+                  <motion.button
+                    type="button"
+                    className="notes-panel-toggle-btn reset"
+                    onClick={() => {
+                      setIsSidebarOpen(true);
+                      setIsFeedOpen(true);
+                    }}
+                    title="Restore All 3 Panels"
+                    initial={{ opacity: 0, scale: 0.92 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.92 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <LayoutGrid size={13} className="notes-restore-icon" />
+                    <span>Restore View</span>
+                  </motion.button>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 
@@ -461,8 +618,8 @@ export const NotesModule = () => {
 
         <div className="notes-header-actions">
           {/* File Upload Hidden Input */}
-          <label className="notes-action-pill-btn upload-pill">
-            <Upload size={13} color="#a599ff" />
+          <label className="notes-action-pill-btn upload-pill" title="Upload files">
+            <Upload size={13} className="notes-action-icon" />
             <span>Upload File</span>
             <input
               type="file"
@@ -478,8 +635,9 @@ export const NotesModule = () => {
             type="button"
             className="notes-action-pill-btn folder-pill"
             onClick={() => setNewFolderModal(true)}
+            title="Create new folder"
           >
-            <FolderPlus size={14} color="#fad7a1" />
+            <FolderPlus size={14} className="notes-action-icon" />
             <span>New Folder</span>
           </button>
 
@@ -488,8 +646,9 @@ export const NotesModule = () => {
             type="button"
             className="notes-primary-add-btn"
             onClick={handleCreateNote}
+            title="Create new note"
           >
-            <Plus size={15} strokeWidth={2.5} />
+            <Plus size={14} strokeWidth={2.2} className="notes-primary-icon" />
             <span>New Note</span>
           </button>
         </div>
@@ -498,53 +657,121 @@ export const NotesModule = () => {
       {/* ── 3-PANE POWER KNOWLEDGE WORKSPACE ── */}
       <div className="notes-power-workspace">
         {/* 1. LEFT SIDEBAR: Folders, Tags, Pinned, Storage Gauge */}
-        {isSidebarOpen && (
-          <NotesSidebar
-            nodes={nodes}
-            currentFolderId={currentFolderId}
-            setCurrentFolderId={setCurrentFolderId}
-            selectedTag={selectedTag}
-            setSelectedTag={setSelectedTag}
-            isPinnedFilterActive={isPinnedFilterActive}
-            setIsPinnedFilterActive={setIsPinnedFilterActive}
-            onNewFolder={() => setNewFolderModal(true)}
-            onCollapse={() => setIsSidebarOpen(false)}
-          />
-        )}
+        <AnimatePresence initial={false}>
+          {isSidebarOpen ? (
+            <motion.div
+              key="notes-sidebar-pane"
+              className="notes-sidebar-motion-pane"
+              initial={{ width: 0, opacity: 0, marginRight: 0 }}
+              animate={{ width: 220, opacity: 1, marginRight: '0.65rem' }}
+              exit={{ width: 0, opacity: 0, marginRight: 0 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              style={{ overflow: 'hidden', height: '100%', flexShrink: 0 }}
+            >
+              <NotesSidebar
+                nodes={nodes}
+                currentFolderId={currentFolderId}
+                setCurrentFolderId={setCurrentFolderId}
+                selectedTag={selectedTag}
+                setSelectedTag={setSelectedTag}
+                isPinnedFilterActive={isPinnedFilterActive}
+                setIsPinnedFilterActive={setIsPinnedFilterActive}
+                onNewFolder={() => {
+                  setNewFolderName('');
+                  setNewFolderParentId(currentFolderId);
+                  setNewFolderModal(true);
+                }}
+                onCollapse={() => setIsSidebarOpen(false)}
+              />
+            </motion.div>
+          ) : (
+            <motion.button
+              key="notes-sidebar-rail"
+              type="button"
+              className="notes-collapsed-rail-btn"
+              initial={{ width: 0, opacity: 0, marginRight: 0 }}
+              animate={{ width: 32, opacity: 1, marginRight: '0.65rem' }}
+              exit={{ width: 0, opacity: 0, marginRight: 0 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              onClick={() => setIsSidebarOpen(true)}
+              title="Expand Vault (Left Sidebar)"
+              aria-label="Expand Vault"
+            >
+              <PanelLeftOpen size={14} className="rail-icon" />
+              <span className="rail-label">VAULT</span>
+            </motion.button>
+          )}
+        </AnimatePresence>
 
         {/* 2. CENTER FEED: Craft Docs Notes Feed */}
-        {isFeedOpen && (
-          <NotesFeed
-            nodes={filteredNodes}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            sortBy={sortBy}
-            setSortBy={setSortBy}
-            isSelectMode={isSelectMode}
-            selectedIds={selectedIds}
-            setSelectedIds={setSelectedIds}
-            activeNoteId={activeNote?.id || viewingFile?.id || null}
-            onSelectNote={(note) => {
-              setActiveNote(note);
-              setViewingFile(null);
-              noteAiSession.current = null;
-              setChatHistory([]);
-              setShowAiPanel(false);
-            }}
-            onSelectFile={(file) => {
-              setViewingFile(file);
-              setActiveNote(null);
-            }}
-            onTogglePin={handleTogglePin}
-            onRename={(node) => setRenameModal({ isOpen: true, node, newName: node.name })}
-            onDelete={(id) => setDeleteConfirm({ isOpen: true, id })}
-            onCreateNote={handleCreateNote}
-            onCollapse={() => setIsFeedOpen(false)}
-          />
-        )}
+        <AnimatePresence initial={false}>
+          {isFeedOpen ? (
+            <motion.div
+              key="notes-feed-pane"
+              className="notes-feed-motion-pane"
+              initial={{ width: 0, opacity: 0, marginRight: 0 }}
+              animate={{ width: 285, opacity: 1, marginRight: '0.65rem' }}
+              exit={{ width: 0, opacity: 0, marginRight: 0 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              style={{ overflow: 'hidden', height: '100%', flexShrink: 0 }}
+            >
+              <NotesFeed
+                nodes={filteredNodes}
+                allNodes={nodes}
+                currentFolderId={currentFolderId}
+                onSelectFolder={(folderId) => setCurrentFolderId(folderId)}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                sortBy={sortBy}
+                setSortBy={setSortBy}
+                isSelectMode={isSelectMode}
+                selectedIds={selectedIds}
+                setSelectedIds={setSelectedIds}
+                activeNoteId={activeNote?.id || viewingFile?.id || null}
+                onSelectNote={(note) => {
+                  setActiveNote(note);
+                  setViewingFile(null);
+                  noteAiSession.current = null;
+                  setChatHistory([]);
+                  setShowAiPanel(false);
+                }}
+                onSelectFile={(file) => {
+                  setViewingFile(file);
+                  setActiveNote(null);
+                  setIsSidebarOpen(false);
+                }}
+                onTogglePin={handleTogglePin}
+                onRename={(node) => setRenameModal({ isOpen: true, node, newName: node.name })}
+                onDelete={(id) => setDeleteConfirm({ isOpen: true, id })}
+                onCreateNote={handleCreateNote}
+                onCollapse={() => setIsFeedOpen(false)}
+              />
+            </motion.div>
+          ) : (
+            <motion.button
+              key="notes-feed-rail"
+              type="button"
+              className="notes-collapsed-rail-btn"
+              initial={{ width: 0, opacity: 0, marginRight: 0 }}
+              animate={{ width: 32, opacity: 1, marginRight: '0.65rem' }}
+              exit={{ width: 0, opacity: 0, marginRight: 0 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              onClick={() => setIsFeedOpen(true)}
+              title="Expand Notes Feed"
+              aria-label="Expand Notes Feed"
+            >
+              <Columns size={14} className="rail-icon" />
+              <span className="rail-label">FEED</span>
+            </motion.button>
+          )}
+        </AnimatePresence>
 
         {/* 3. RIGHT / MAIN STUDIO: Markdown Editor, File Viewer, or AI Drawer */}
-        <div className="notes-studio-container">
+        <motion.div
+          className="notes-studio-container"
+          layout
+          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+        >
           {activeNote ? (
             <div className="notes-studio-split-layout">
               <div className="notes-studio-editor-main">
@@ -596,6 +823,63 @@ export const NotesModule = () => {
                   )}
                 </div>
                 <div className="studio-file-header-actions">
+                  {/* Zoom Controls */}
+                  <div className="notes-zoom-controls" title="Zoom document preview">
+                    <button
+                      type="button"
+                      className="notes-file-action-btn notes-zoom-btn"
+                      onClick={() => setPdfScale(prev => Math.max(0.5, Math.round((prev - 0.15) * 100) / 100))}
+                      title="Zoom Out (or Ctrl + Scroll Down)"
+                      aria-label="Zoom Out"
+                      disabled={pdfScale <= 0.5}
+                    >
+                      <ZoomOut size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className={`notes-file-action-btn notes-zoom-btn ${pdfScale !== 1 ? 'active-zoom' : ''}`}
+                      onClick={() => {
+                        setPdfScale(1);
+                        setPdfPan({ x: 0, y: 0 });
+                      }}
+                      title="Reset Zoom to 100%"
+                    >
+                      <span>{Math.round(pdfScale * 100)}%</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="notes-file-action-btn notes-zoom-btn"
+                      onClick={() => setPdfScale(prev => Math.min(4.0, Math.round((prev + 0.15) * 100) / 100))}
+                      title="Zoom In (or Ctrl + Scroll Up)"
+                      aria-label="Zoom In"
+                      disabled={pdfScale >= 4.0}
+                    >
+                      <ZoomIn size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      className={`notes-file-action-btn notes-zoom-mode-btn ${isZoomMode ? 'active-zoom-mode' : ''}`}
+                      onClick={() => setIsZoomMode(prev => !prev)}
+                      title={isZoomMode ? 'Mouse Zoom active (Scroll to zoom, drag to pan). Click to toggle off.' : 'Enable Direct Mouse Zoom (Scroll wheel zooms document directly)'}
+                    >
+                      <MousePointerClick size={13} />
+                      <span>{isZoomMode ? 'Mouse Zoom: ON' : 'Mouse Zoom'}</span>
+                    </button>
+                    {(pdfScale !== 1 || pdfPan.x !== 0 || pdfPan.y !== 0) && (
+                      <button
+                        type="button"
+                        className="notes-file-action-btn notes-rotate-reset-btn"
+                        onClick={() => {
+                          setPdfScale(1);
+                          setPdfPan({ x: 0, y: 0 });
+                        }}
+                        title="Reset zoom & position"
+                      >
+                        <span>Reset Zoom</span>
+                      </button>
+                    )}
+                  </div>
+
                   {/* Rotation Controls */}
                   <div className="notes-rotate-controls" title="Rotate document orientation">
                     <button
@@ -629,23 +913,23 @@ export const NotesModule = () => {
                     )}
                   </div>
 
-                  {/* Zen Focus / Collapse Both Left Panes Toggle */}
+                  {/* Zen Focus / Full Width PDF Toggle */}
                   <button
                     type="button"
-                    className="notes-file-action-btn"
+                    className={`notes-file-action-btn ${(!isSidebarOpen && !isFeedOpen) ? 'active' : ''}`}
                     onClick={() => {
                       if (isSidebarOpen || isFeedOpen) {
                         setIsSidebarOpen(false);
                         setIsFeedOpen(false);
                       } else {
-                        setIsSidebarOpen(true);
+                        setIsSidebarOpen(false);
                         setIsFeedOpen(true);
                       }
                     }}
-                    title={(!isSidebarOpen && !isFeedOpen) ? 'Show Left Panels' : 'Full Width PDF (Collapse Left Panels)'}
+                    title={(!isSidebarOpen && !isFeedOpen) ? 'Show Notes List' : 'Full Width PDF (Maximum Space)'}
                   >
                     {(!isSidebarOpen && !isFeedOpen) ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-                    <span>{(!isSidebarOpen && !isFeedOpen) ? 'Show Panels' : 'Zen Focus'}</span>
+                    <span>{(!isSidebarOpen && !isFeedOpen) ? 'Show Feed' : 'Full Width'}</span>
                   </button>
 
                   {viewingFile.url && (
@@ -658,7 +942,7 @@ export const NotesModule = () => {
                         title="Open in new tab"
                       >
                         <ExternalLink size={13} />
-                        <span>Open Link</span>
+                        <span>Open</span>
                       </a>
                       <a
                         href={viewingFile.url}
@@ -673,52 +957,62 @@ export const NotesModule = () => {
                   )}
                   <button
                     type="button"
-                    onClick={() => setViewingFile(null)}
-                    className="btn-icon"
-                    title="Close"
+                    onClick={() => {
+                      setViewingFile(null);
+                      setIsSidebarOpen(true);
+                      setIsFeedOpen(true);
+                    }}
+                    className="notes-file-action-btn close-btn"
+                    title="Close Document Viewer"
                   >
-                    <X size={15} />
+                    <X size={14} />
+                    <span>Close</span>
                   </button>
                 </div>
               </div>
 
-              <div className="notes-studio-file-body" ref={fileBodyRef} style={{ position: 'relative', overflow: 'hidden' }}>
+              <div
+                className="notes-studio-file-body"
+                ref={fileBodyRef}
+                style={{
+                  position: 'relative',
+                  overflow: 'hidden',
+                  userSelect: (pdfScale > 1 || isZoomMode) ? 'none' : 'auto',
+                }}
+                onMouseDown={handleMouseDown}
+                onDoubleClick={handleDoubleClick}
+              >
+                {/* Drag Pan Invisible Overlay to prevent iframe capturing mouse events */}
+                {isDraggingPan && (
+                  <div
+                    className="notes-pdf-drag-overlay"
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      zIndex: 100,
+                      cursor: 'grabbing',
+                    }}
+                  />
+                )}
+
                 {viewingFile.url && (viewingFile.fileType === 'pdf' || viewingFile.mimeType?.includes('pdf') || viewingFile.url?.toLowerCase().endsWith('.pdf') || viewingFile.name?.toLowerCase().endsWith('.pdf') || viewingFile.fileType === 'docx' || viewingFile.name?.toLowerCase().match(/\.(docx?|pptx?|xlsx?)$/i)) ? (
                   <>
                     {isIframeLoading && (
                       <div className="notes-preview-loading-overlay">
-                        <Loader2 size={24} className="animate-spin" color="#dba87e" />
-                        <span>Loading document preview...</span>
+                        <div className="notes-preview-loader-card">
+                          <div className="notes-preview-spinner-ring">
+                            <Loader2 size={24} className="notes-preview-spinner animate-spin" />
+                          </div>
+                          <div className="notes-preview-loader-info">
+                            <h4 className="notes-preview-loader-title">Loading document preview...</h4>
+                            <p className="notes-preview-loader-subtitle">{viewingFile.name}</p>
+                          </div>
+                        </div>
                       </div>
                     )}
                     <div
                       className="notes-rotatable-wrapper"
-                      style={
-                        (pdfRotation === 90 || pdfRotation === 270) && containerDims.width > 0 && containerDims.height > 0
-                          ? {
-                              position: 'absolute',
-                              top: '50%',
-                              left: '50%',
-                              width: `${containerDims.height}px`,
-                              height: `${containerDims.width}px`,
-                              transform: `translate(-50%, -50%) rotate(${pdfRotation}deg)`,
-                              transformOrigin: 'center center',
-                              maxWidth: 'none',
-                              maxHeight: 'none',
-                            }
-                          : pdfRotation === 180
-                          ? {
-                              width: '100%',
-                              height: '100%',
-                              transform: 'rotate(180deg)',
-                              transformOrigin: 'center center',
-                            }
-                          : {
-                              width: '100%',
-                              height: '100%',
-                              transform: 'none',
-                            }
-                      }
+                      style={getTransformStyle()}
                     >
                       <iframe
                         src={`https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(viewingFile.url)}`}
@@ -726,43 +1020,24 @@ export const NotesModule = () => {
                         className="notes-preview-iframe"
                         onLoad={() => setIsIframeLoading(false)}
                         allow="autoplay"
+                        style={{
+                          pointerEvents: (isCtrlHeld || isDraggingPan || isZoomMode || pdfScale > 1) ? 'none' : 'auto',
+                        }}
                       />
                     </div>
                   </>
                 ) : viewingFile.url && (viewingFile.fileType === 'image' || viewingFile.mimeType?.startsWith('image/') || viewingFile.url?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i) || viewingFile.name?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i)) ? (
                   <div
                     className="notes-rotatable-wrapper notes-preview-img-container"
-                    style={
-                      (pdfRotation === 90 || pdfRotation === 270) && containerDims.width > 0 && containerDims.height > 0
-                        ? {
-                            position: 'absolute',
-                            top: '50%',
-                            left: '50%',
-                            width: `${containerDims.height}px`,
-                            height: `${containerDims.width}px`,
-                            transform: `translate(-50%, -50%) rotate(${pdfRotation}deg)`,
-                            transformOrigin: 'center center',
-                            maxWidth: 'none',
-                            maxHeight: 'none',
-                          }
-                        : pdfRotation === 180
-                        ? {
-                            width: '100%',
-                            height: '100%',
-                            transform: 'rotate(180deg)',
-                            transformOrigin: 'center center',
-                          }
-                        : {
-                            width: '100%',
-                            height: '100%',
-                            transform: 'none',
-                          }
-                    }
+                    style={getTransformStyle()}
                   >
                     <img
                       src={viewingFile.url}
                       alt={viewingFile.name}
                       className="notes-preview-img"
+                      style={{
+                        pointerEvents: (isCtrlHeld || isDraggingPan || isZoomMode || pdfScale > 1) ? 'none' : 'auto',
+                      }}
                     />
                   </div>
                 ) : (
@@ -772,27 +1047,93 @@ export const NotesModule = () => {
                     <p>Document preview is not available in browser. Use the download or open link button above.</p>
                   </div>
                 )}
+
+                {/* Floating Quick Zoom HUD inside Document Canvas */}
+                <div className="notes-floating-zoom-hud">
+                  <button
+                    type="button"
+                    className="notes-hud-btn"
+                    onClick={() => setPdfScale(prev => Math.max(0.5, Math.round((prev - 0.15) * 100) / 100))}
+                    title="Zoom Out"
+                    disabled={pdfScale <= 0.5}
+                  >
+                    <ZoomOut size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`notes-hud-pill ${pdfScale !== 1 ? 'active' : ''}`}
+                    onClick={() => {
+                      setPdfScale(1);
+                      setPdfPan({ x: 0, y: 0 });
+                    }}
+                    title="Click to reset zoom to 100%"
+                  >
+                    <span>{Math.round(pdfScale * 100)}%</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="notes-hud-btn"
+                    onClick={() => setPdfScale(prev => Math.min(4.0, Math.round((prev + 0.15) * 100) / 100))}
+                    title="Zoom In"
+                    disabled={pdfScale >= 4.0}
+                  >
+                    <ZoomIn size={13} />
+                  </button>
+                  <div className="notes-hud-divider" />
+                  <button
+                    type="button"
+                    className={`notes-hud-mode-btn ${isZoomMode ? 'active' : ''}`}
+                    onClick={() => setIsZoomMode(prev => !prev)}
+                    title={isZoomMode ? 'Mouse Zoom active (Scroll to zoom, drag to pan). Click to switch to normal mode.' : 'Click to enable Mouse Wheel Zoom directly without Ctrl'}
+                  >
+                    <MousePointerClick size={12} />
+                    <span>{isZoomMode ? 'Mouse Zoom ON' : 'Scroll Zoom'}</span>
+                  </button>
+                  {(pdfScale !== 1 || pdfPan.x !== 0 || pdfPan.y !== 0) && (
+                    <button
+                      type="button"
+                      className="notes-hud-reset-btn"
+                      onClick={() => {
+                        setPdfScale(1);
+                        setPdfPan({ x: 0, y: 0 });
+                      }}
+                      title="Reset view (100% centered)"
+                    >
+                      <RotateCcw size={11} />
+                      <span>Reset</span>
+                    </button>
+                  )}
+                  {pdfScale > 1 && (
+                    <span className="notes-hud-pan-hint">🖐️ Drag to pan</span>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
             <div className="notes-studio-empty-state">
               <div className="studio-empty-icon-ring">
-                <FileText size={36} color="#a599ff" />
+                <FileText size={26} strokeWidth={1.8} />
               </div>
               <h3>Select a Document or Create a New Note</h3>
               <p>Pick a note from the feed or click "+ New Note" to start writing with Markdown and KaTeX math support.</p>
               <button
                 type="button"
-                className="notes-primary-add-btn"
+                className="notes-primary-add-btn studio-empty-create-btn"
                 onClick={handleCreateNote}
-                style={{ marginTop: '0.5rem' }}
+                title="Create a new note"
               >
-                <Plus size={14} />
+                <Plus size={14} strokeWidth={2.2} className="notes-primary-icon" />
                 <span>Create New Note</span>
               </button>
+              <div className="notes-studio-empty-features">
+                <span className="notes-empty-feature-pill">✍️ Markdown & LaTeX</span>
+                <span className="notes-empty-feature-pill">⚡ Instant Cloud Sync</span>
+                <span className="notes-empty-feature-pill">✨ S.A.R.A. AI Copilot</span>
+                <span className="notes-empty-feature-pill">📄 PDF & Media Vault</span>
+              </div>
             </div>
           )}
-        </div>
+        </motion.div>
       </div>
 
       {/* ── MODALS ── */}
@@ -801,25 +1142,80 @@ export const NotesModule = () => {
         <div className="notes-modal-backdrop" onClick={() => setNewFolderModal(false)}>
           <div className="notes-modal-card" onClick={e => e.stopPropagation()}>
             <div className="notes-modal-header">
-              <span className="notes-modal-title">Create Folder</span>
-              <button type="button" onClick={() => setNewFolderModal(false)} className="btn-icon">
-                <X size={15} />
+              <div className="notes-modal-title-group">
+                <div className="notes-modal-icon-badge">
+                  <FolderPlus size={18} />
+                </div>
+                <div>
+                  <h3 className="notes-modal-title">Create New Folder</h3>
+                  <p className="notes-modal-subtitle">Organize your notes, documents, and lecture files</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNewFolderModal(false)}
+                className="notes-modal-close-btn"
+                aria-label="Close modal"
+              >
+                <X size={16} />
               </button>
             </div>
+
             <div className="notes-modal-body">
-              <input
-                type="text"
-                className="notes-modal-input"
-                placeholder="Folder name (e.g. Algorithms, Physics...)"
-                value={newFolderName}
-                onChange={e => setNewFolderName(e.target.value)}
-                autoFocus
-                onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
-              />
+              <div className="notes-modal-field">
+                <label className="notes-modal-label">Folder Name</label>
+                <input
+                  type="text"
+                  className="notes-modal-input"
+                  placeholder="e.g. Algorithms, Semester 6, Microprocessors..."
+                  value={newFolderName}
+                  onChange={e => setNewFolderName(e.target.value)}
+                  autoFocus
+                  onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
+                />
+              </div>
+
+              <div className="notes-modal-field">
+                <label className="notes-modal-label">Location (Parent Folder)</label>
+                <select
+                  className="notes-modal-select"
+                  value={newFolderParentId || ''}
+                  onChange={e => setNewFolderParentId(e.target.value || null)}
+                >
+                  <option value="">🏠 Root Level (Vault)</option>
+                  {nodes
+                    .filter(n => n.type === 'folder')
+                    .map(f => (
+                      <option key={f.id} value={f.id}>
+                        📁 {f.name}
+                      </option>
+                    ))}
+                </select>
+                <span className="notes-modal-hint">
+                  {newFolderParentId
+                    ? `Will be created as a subfolder inside "${nodes.find(n => n.id === newFolderParentId)?.name || 'selected folder'}".`
+                    : 'This folder will appear at the root level of your Vault.'}
+                </span>
+              </div>
             </div>
+
             <div className="notes-modal-footer">
-              <button type="button" className="btn-cancel" onClick={() => setNewFolderModal(false)}>Cancel</button>
-              <button type="button" className="btn-confirm" onClick={handleCreateFolder}>Create</button>
+              <button
+                type="button"
+                className="notes-btn-cancel"
+                onClick={() => setNewFolderModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="notes-btn-confirm"
+                onClick={handleCreateFolder}
+                disabled={!newFolderName.trim()}
+              >
+                <FolderPlus size={15} />
+                <span>Create Folder</span>
+              </button>
             </div>
           </div>
         </div>
@@ -830,24 +1226,55 @@ export const NotesModule = () => {
         <div className="notes-modal-backdrop" onClick={() => setRenameModal({ isOpen: false, node: null, newName: '' })}>
           <div className="notes-modal-card" onClick={e => e.stopPropagation()}>
             <div className="notes-modal-header">
-              <span className="notes-modal-title">Rename</span>
-              <button type="button" onClick={() => setRenameModal({ isOpen: false, node: null, newName: '' })} className="btn-icon">
-                <X size={15} />
+              <div className="notes-modal-title-group">
+                <div className="notes-modal-icon-badge">
+                  <Edit2 size={18} />
+                </div>
+                <div>
+                  <h3 className="notes-modal-title">Rename {renameModal.node?.type === 'folder' ? 'Folder' : 'Document'}</h3>
+                  <p className="notes-modal-subtitle">Enter a new title for this item</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRenameModal({ isOpen: false, node: null, newName: '' })}
+                className="notes-modal-close-btn"
+                aria-label="Close modal"
+              >
+                <X size={16} />
               </button>
             </div>
+
             <div className="notes-modal-body">
-              <input
-                type="text"
-                className="notes-modal-input"
-                value={renameModal.newName}
-                onChange={e => setRenameModal(prev => ({ ...prev, newName: e.target.value }))}
-                autoFocus
-                onKeyDown={e => e.key === 'Enter' && handleRenameNode()}
-              />
+              <div className="notes-modal-field">
+                <label className="notes-modal-label">Name</label>
+                <input
+                  type="text"
+                  className="notes-modal-input"
+                  value={renameModal.newName}
+                  onChange={e => setRenameModal(prev => ({ ...prev, newName: e.target.value }))}
+                  autoFocus
+                  onKeyDown={e => e.key === 'Enter' && handleRenameNode()}
+                />
+              </div>
             </div>
+
             <div className="notes-modal-footer">
-              <button type="button" className="btn-cancel" onClick={() => setRenameModal({ isOpen: false, node: null, newName: '' })}>Cancel</button>
-              <button type="button" className="btn-confirm" onClick={handleRenameNode}>Save</button>
+              <button
+                type="button"
+                className="notes-btn-cancel"
+                onClick={() => setRenameModal({ isOpen: false, node: null, newName: '' })}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="notes-btn-confirm"
+                onClick={handleRenameNode}
+                disabled={!renameModal.newName.trim()}
+              >
+                Save Changes
+              </button>
             </div>
           </div>
         </div>

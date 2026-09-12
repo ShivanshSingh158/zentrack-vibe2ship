@@ -6,6 +6,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 import React from 'react';
+import { DeviceEventEmitter } from 'react-native';
 import { TodayAgendaWidget } from '../widgets/TodayAgendaWidget';
 import { LiveWorkoutWidget } from '../widgets/LiveWorkoutWidget';
 import { 
@@ -24,6 +25,7 @@ import { getScheduledAttendanceLogDocId } from '../screens/attendance/attendance
 import { readAcademicCache, writeAcademicCache, readWellnessCache, writeWellnessCache } from '../utils/domainCache';
 import { formatLocalDateStr } from '../utils/dateUtils';
 import { readCoreCacheMulti, writeCoreCacheMulti } from '../utils/coreCache';
+import { updateL1Cache, getBootManifestSync } from '../utils/bootManifest';
 import { awardXP } from './xpSystem';
 import { planDayIndexForDate, resolvePlanDay } from '../hooks/useGymLog';
 import { dismissActiveWorkoutNotification } from './activeWorkoutNotificationService';
@@ -171,7 +173,7 @@ export function buildTodayAgendaData({
           classSlots.push({
             ...(session && typeof session === 'object' ? session : {}),
             type: 'lab',
-            idx: classCount + i,
+            idx: i,
             time: session?.time || session?.slot || '',
             room: session?.room,
           });
@@ -182,7 +184,9 @@ export function buildTodayAgendaData({
         const isLab = slot.isLab || slot.type === 'lab';
         const sessionIdx = slot.idx ?? slotIdx;
         const log = todayLogs.find(
-          (l) => l.subjectId === subj.id && ((l as any).sessionIdx === sessionIdx || (l as any).idx === sessionIdx)
+          (l) => (l.subjectId === subj.id || (subj.name && l.subjectName === subj.name)) &&
+            (l.type === (isLab ? 'lab' : 'class') || (!l.type && !isLab)) &&
+            ((l as any).sessionIdx === sessionIdx || (l as any).idx === sessionIdx)
         );
 
         const status: 'attended' | 'missed' | 'cancelled' | 'pending' = log
@@ -202,7 +206,7 @@ export function buildTodayAgendaData({
           : isLab ? `Lab #${sessionIdx + 1}` : `Class #${sessionIdx + 1}`;
 
         classes.push({
-          id: `${subj.id}_${sessionIdx}`,
+          id: `${subj.id}_${isLab ? 'lab' : 'class'}_${sessionIdx}`,
           subjectId: subj.id,
           subjectName: subj.name,
           time: sessionLabel,
@@ -213,7 +217,7 @@ export function buildTodayAgendaData({
         });
 
         items.push({
-          id: `${subj.id}_${sessionIdx}`,
+          id: `${subj.id}_${isLab ? 'lab' : 'class'}_${sessionIdx}`,
           type: isLab ? 'lab' : 'class',
           title: subj.name,
           subtitle: slot.room ? `[${slot.room}]` : isLab ? 'Lab' : 'Class',
@@ -326,10 +330,14 @@ export function buildTodayAgendaData({
   };
 }
 
+let _memoryCachedAgendaData: TodayAgendaWidgetData | null = null;
+let _memoryCachedWorkoutData: LiveWorkoutWidgetData | null = null;
+
 /**
- * Saves widget data to AsyncStorage cache
+ * Saves widget data to AsyncStorage cache and fast in-memory L1
  */
 export async function saveCachedWidgetData(data: TodayAgendaWidgetData): Promise<void> {
+  _memoryCachedAgendaData = data;
   try {
     await AsyncStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify(data));
   } catch (e) {
@@ -338,13 +346,16 @@ export async function saveCachedWidgetData(data: TodayAgendaWidgetData): Promise
 }
 
 /**
- * Reads widget data from AsyncStorage cache
+ * Reads widget data from fast in-memory L1 or AsyncStorage cache (0ms when cached)
  */
 export async function getCachedWidgetData(): Promise<TodayAgendaWidgetData | null> {
+  if (_memoryCachedAgendaData) return _memoryCachedAgendaData;
   try {
     const raw = await AsyncStorage.getItem(WIDGET_STORAGE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    _memoryCachedAgendaData = parsed;
+    return parsed;
   } catch (e) {
     console.warn('[WidgetSync] Failed to read widget cache:', e);
     return null;
@@ -533,9 +544,10 @@ export function buildLiveWorkoutWidgetData({
 }
 
 /**
- * Saves Live Workout data to AsyncStorage cache
+ * Saves Live Workout data to AsyncStorage cache and fast in-memory L1
  */
 export async function saveCachedLiveWorkoutData(data: LiveWorkoutWidgetData): Promise<void> {
+  _memoryCachedWorkoutData = data;
   try {
     await AsyncStorage.setItem(LIVE_WORKOUT_STORAGE_KEY, JSON.stringify(data));
   } catch (e) {
@@ -544,13 +556,16 @@ export async function saveCachedLiveWorkoutData(data: LiveWorkoutWidgetData): Pr
 }
 
 /**
- * Reads Live Workout data from AsyncStorage cache
+ * Reads Live Workout data from fast in-memory L1 or AsyncStorage cache (0ms when cached)
  */
 export async function getCachedLiveWorkoutData(): Promise<LiveWorkoutWidgetData | null> {
+  if (_memoryCachedWorkoutData) return _memoryCachedWorkoutData;
   try {
     const raw = await AsyncStorage.getItem(LIVE_WORKOUT_STORAGE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    _memoryCachedWorkoutData = parsed;
+    return parsed;
   } catch (e) {
     console.warn('[WidgetSync] Failed to read live workout cache:', e);
     return null;
@@ -581,34 +596,94 @@ export async function updateLiveWorkoutWidget(data?: LiveWorkoutWidgetData | nul
 }
 
 /**
- * Handles headless background click actions from the Android Home Screen Widget
+ * Resolves authenticated user without blocking the UI.
+ * Checks memory manifest and synchronous auth first (0ms).
  */
-export async function handleWidgetClickAction(payload: WidgetClickActionPayload): Promise<void> {
+async function resolveUser(): Promise<any> {
+  let user = auth.currentUser;
+  if (user) return user;
+
+  const manifest = getBootManifestSync();
+  if (manifest?.optimisticUser) {
+    return manifest.optimisticUser;
+  }
+
+  try {
+    const raw = await AsyncStorage.getItem('@zentrack_optimistic_user');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.uid) return parsed;
+    }
+  } catch {}
+
+  if ((auth as any).authStateReady) {
+    try {
+      await Promise.race([
+        (auth as any).authStateReady(),
+        new Promise((resolve) => setTimeout(resolve, 300)),
+      ]);
+      user = auth.currentUser;
+      if (user) return user;
+    } catch {}
+  }
+
+  return null;
+}
+
+/**
+ * Handles headless background click actions from the Android Home Screen Widget
+ * Implements Instant Zero-Latency Optimistic UI Updates (<20ms) and non-blocking background cloud sync.
+ */
+export async function handleWidgetClickAction(
+  payload: WidgetClickActionPayload,
+  taskProps?: any
+): Promise<void> {
   const currentData = await getCachedWidgetData();
   const currentWorkout = await getCachedLiveWorkoutData();
-  const user = auth.currentUser;
-  const dateStr = payload.dateStr || new Date().toISOString().split('T')[0];
+  const user = await resolveUser();
+  const dateStr = (payload.dateStr && payload.dateStr.trim().length >= 10)
+    ? payload.dateStr.trim().slice(0, 10)
+    : formatLocalDateStr(new Date());
+
+  // Helper for immediate zero-latency RemoteViews repaint (0ms - 20ms)
+  const triggerInstantAgendaUpdate = (data: TodayAgendaWidgetData) => {
+    saveCachedWidgetData(data).catch(() => {});
+    if (taskProps?.renderWidget && taskProps?.widgetInfo?.widgetName === 'TodayAgenda') {
+      try {
+        taskProps.renderWidget(
+          React.createElement(TodayAgendaWidget, {
+            data,
+            width: taskProps.widgetInfo.width,
+            height: taskProps.widgetInfo.height,
+          })
+        );
+      } catch {}
+    }
+    updateTodayAgendaWidget(data).catch(() => {});
+  };
+
+  const triggerInstantWorkoutUpdate = (data: LiveWorkoutWidgetData) => {
+    saveCachedLiveWorkoutData(data).catch(() => {});
+    if (taskProps?.renderWidget && taskProps?.widgetInfo?.widgetName === 'LiveWorkout') {
+      try {
+        taskProps.renderWidget(
+          React.createElement(LiveWorkoutWidget, {
+            data,
+            width: taskProps.widgetInfo.width,
+            height: taskProps.widgetInfo.height,
+          })
+        );
+      } catch {}
+    }
+    updateLiveWorkoutWidget(data).catch(() => {});
+  };
 
   switch (payload.action) {
     case 'mark_task_done': {
       if (!payload.taskId) return;
       const taskId = payload.taskId;
-      if (user) {
-        await safeUpdate(
-          taskId,
-          COLLECTION.TASKS,
-          { status: 'completed', completedAt: new Date().toISOString() },
-          () => updateDoc(doc(db, COLLECTION.TASKS, taskId), { status: 'completed', completedAt: new Date().toISOString() })
-        ).catch(() => {});
-      }
-      try {
-        const coreCache = await readCoreCacheMulti();
-        if (coreCache.tasks) {
-          const updatedTasks = coreCache.tasks.map(t => t.id === taskId ? { ...t, status: 'completed' as const } : t);
-          await writeCoreCacheMulti({ tasks: updatedTasks });
-        }
-      } catch {}
 
+      // ── STEP 1: INSTANT OPTIMISTIC RE-RENDER (0ms - 20ms) ──────────
       if (currentData) {
         currentData.tasks = currentData.tasks.map((t) =>
           t.id === taskId ? { ...t, status: 'completed' } : t
@@ -619,31 +694,38 @@ export async function handleWidgetClickAction(payload: WidgetClickActionPayload)
             : item
         );
         currentData.doneTasks = currentData.tasks.filter((t) => t.status === 'completed').length;
-        await saveCachedWidgetData(currentData);
-        await updateTodayAgendaWidget(currentData);
+        triggerInstantAgendaUpdate(currentData);
       }
+
+      // ── STEP 2: ASYNC CLOUD & LOCAL CACHE PERSISTENCE (NON-BLOCKING) ──────
+      (async () => {
+        try {
+          const user = await resolveUser();
+          if (user) {
+            safeUpdate(
+              taskId,
+              COLLECTION.TASKS,
+              { status: 'completed', completedAt: new Date().toISOString() },
+              () => updateDoc(doc(db, COLLECTION.TASKS, taskId), { status: 'completed', completedAt: new Date().toISOString() })
+            ).catch(() => {});
+          }
+          const coreCache = await readCoreCacheMulti();
+          if (coreCache.tasks) {
+            const updatedTasks = coreCache.tasks.map(t => t.id === taskId ? { ...t, status: 'completed' as const } : t);
+            await writeCoreCacheMulti({ tasks: updatedTasks });
+          }
+        } catch (e) {
+          console.warn('[WidgetSync] Background task save failed:', e);
+        }
+      })();
       break;
     }
 
     case 'mark_task_undone': {
       if (!payload.taskId) return;
       const taskId = payload.taskId;
-      if (user) {
-        await safeUpdate(
-          taskId,
-          COLLECTION.TASKS,
-          { status: 'pending', completedAt: null },
-          () => updateDoc(doc(db, COLLECTION.TASKS, taskId), { status: 'pending', completedAt: null as any })
-        ).catch(() => {});
-      }
-      try {
-        const coreCache = await readCoreCacheMulti();
-        if (coreCache.tasks) {
-          const updatedTasks = coreCache.tasks.map(t => t.id === taskId ? { ...t, status: 'pending' as const } : t);
-          await writeCoreCacheMulti({ tasks: updatedTasks });
-        }
-      } catch {}
 
+      // ── STEP 1: INSTANT OPTIMISTIC RE-RENDER (0ms - 20ms) ──────────
       if (currentData) {
         currentData.tasks = currentData.tasks.map((t) =>
           t.id === taskId ? { ...t, status: 'pending' } : t
@@ -654,125 +736,266 @@ export async function handleWidgetClickAction(payload: WidgetClickActionPayload)
             : item
         );
         currentData.doneTasks = currentData.tasks.filter((t) => t.status === 'completed').length;
-        await saveCachedWidgetData(currentData);
-        await updateTodayAgendaWidget(currentData);
+        triggerInstantAgendaUpdate(currentData);
       }
+
+      // ── STEP 2: ASYNC CLOUD & LOCAL CACHE PERSISTENCE (NON-BLOCKING) ──────
+      (async () => {
+        try {
+          const user = await resolveUser();
+          if (user) {
+            safeUpdate(
+              taskId,
+              COLLECTION.TASKS,
+              { status: 'pending', completedAt: null },
+              () => updateDoc(doc(db, COLLECTION.TASKS, taskId), { status: 'pending', completedAt: null as any })
+            ).catch(() => {});
+          }
+          const coreCache = await readCoreCacheMulti();
+          if (coreCache.tasks) {
+            const updatedTasks = coreCache.tasks.map(t => t.id === taskId ? { ...t, status: 'pending' as const } : t);
+            await writeCoreCacheMulti({ tasks: updatedTasks });
+          }
+        } catch (e) {
+          console.warn('[WidgetSync] Background task undo failed:', e);
+        }
+      })();
       break;
     }
 
     case 'mark_class_present':
     case 'mark_class_absent': {
-      if (!payload.subjectId) return;
+      const subjectId = payload.subjectId;
+      if (!subjectId) return;
       const status = payload.action === 'mark_class_present' ? 'attended' : 'missed';
-      const sessionIdx = payload.sessionIdx ?? 0;
-      const type: 'class' | 'lab' = payload.type || 'class';
+      const sessionIdx = typeof payload.sessionIdx === 'number' ? payload.sessionIdx : 0;
+      const type: 'class' | 'lab' = payload.type === 'lab' ? 'lab' : 'class';
 
-      if (user) {
-        const deterministicId = getScheduledAttendanceLogDocId(user.uid, payload.subjectId, dateStr, type, sessionIdx);
-        const academicCache = await readAcademicCache();
-        const subject = academicCache.attendance?.find(s => s.id === payload.subjectId);
-
-        const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
-        const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
-
-        const existingLog = academicCache.attendanceLogs?.find(l =>
-          l.id === deterministicId ||
-          (
-            l.subjectId === payload.subjectId &&
-            (l.date || '').slice(0, 10) === dateStr &&
-            (l.type === type || (!l.type && type === 'class')) &&
-            (l.idx === sessionIdx || (l.idx === undefined && sessionIdx === 0))
-          )
-        );
-
-        let subjectUpdates: any = null;
-        if (subject) {
-          let newAttended: number;
-          let newTotal: number;
-          if (existingLog) {
-            const oldAction = existingLog.action;
-            const oldAtt = oldAction === 'attended' ? 1 : 0;
-            const newAtt = status === 'attended' ? 1 : 0;
-            const oldTot = oldAction === 'cancelled' ? 0 : 1;
-            const newTot = 1;
-            newAttended = Math.max(0, (subject[attendedKey] || 0) + (newAtt - oldAtt));
-            newTotal    = Math.max(0, (subject[totalKey]    || 0) + (newTot - oldTot));
-          } else {
-            newAttended = (subject[attendedKey] || 0) + (status === 'attended' ? 1 : 0);
-            newTotal    = (subject[totalKey]    || 0) + 1;
-          }
-          subjectUpdates = { [attendedKey]: newAttended, [totalKey]: newTotal };
-        }
-
-        const targetLog = {
-          id: deterministicId,
-          userId: user.uid,
-          subjectId: payload.subjectId,
-          subjectName: subject?.name || payload.subjectName || '',
-          type,
-          action: status,
-          status,
-          date: dateStr,
-          isExtra: false,
-          timestamp: Date.now(),
-          idx: sessionIdx,
-        };
-
-        // WhatsApp Pattern: write both subject counter and attendance log atomically
-        await safeWrite(
-          async () => {
-            const batch = writeBatch(db);
-            if (subject && subjectUpdates) {
-              batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id), subjectUpdates);
-            }
-            batch.set(doc(db, COLLECTION.ATTENDANCE_LOGS, deterministicId), targetLog, { merge: true });
-            await batch.commit();
-          },
-          COLLECTION.ATTENDANCE_LOGS,
-          'set',
-          targetLog,
-          deterministicId
-        ).catch(() => {});
-
-        // Synchronize local academic cache immediately so AttendanceScreen updates without waiting for network
-        const updatedLogs = [
-          targetLog,
-          ...(academicCache.attendanceLogs || []).filter(l => l.id !== deterministicId && !(l.subjectId === payload.subjectId && (l.date || '').slice(0, 10) === dateStr && l.idx === sessionIdx))
-        ];
-        const updatedSubjects = (academicCache.attendance || []).map(s =>
-          s.id === payload.subjectId && subjectUpdates ? { ...s, ...subjectUpdates } : s
-        );
-        await writeAcademicCache({
-          attendanceLogs: updatedLogs,
-          attendance: updatedSubjects,
-        }, true);
-
-        if (status === 'attended') {
-          awardXP('ATTENDANCE_LOG').catch(() => {});
-        }
-      }
-
+      // ── STEP 1: INSTANT OPTIMISTIC RE-RENDER (0ms - 20ms) ──────────
       if (currentData) {
-        // 1. Update the classes array (drives the spotlight)
         currentData.classes = currentData.classes.map((c) =>
-          c.subjectId === payload.subjectId && c.idx === sessionIdx
+          c.subjectId === payload.subjectId && c.type === type && c.idx === sessionIdx
             ? { ...c, status }
             : c
         );
         currentData.attendedClasses = currentData.classes.filter((c) => c.status === 'attended').length;
-
-        // 2. ALSO update the items array (drives the schedule row list)
         currentData.items = currentData.items.map((item) =>
-          (item.type === 'class' || item.type === 'lab') &&
+          item.type === type &&
           item.subjectId === payload.subjectId &&
           item.sessionIdx === sessionIdx
             ? { ...item, status }
             : item
         );
-
-        await saveCachedWidgetData(currentData);
-        await updateTodayAgendaWidget(currentData);
+        triggerInstantAgendaUpdate(currentData);
       }
+
+      // ── STEP 2: ASYNC CLOUD & LOCAL CACHE PERSISTENCE (NON-BLOCKING) ──────
+      (async () => {
+        try {
+          const user = await resolveUser();
+          if (!user) return;
+
+          const deterministicId = getScheduledAttendanceLogDocId(user.uid, subjectId, dateStr, type, sessionIdx);
+          const academicCache = await readAcademicCache();
+          const subject = academicCache.attendance?.find(s => s.id === payload.subjectId || (payload.subjectName && s.name === payload.subjectName));
+
+          const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
+          const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
+
+          const existingLog = academicCache.attendanceLogs?.find(l =>
+            l.id === deterministicId ||
+            (
+              (l.subjectId === payload.subjectId || (payload.subjectName && l.subjectName === payload.subjectName)) &&
+              (l.date || '').slice(0, 10) === dateStr &&
+              (l.type === type || (!l.type && type === 'class')) &&
+              (l.idx === sessionIdx || (l.idx === undefined && sessionIdx === 0))
+            )
+          );
+
+          if (existingLog && (existingLog.action === status || (existingLog.action as any) === (status === 'attended' ? 'present' : 'absent'))) {
+            return;
+          }
+
+          let subjectUpdates: any = null;
+          if (subject) {
+            let newAttended: number;
+            let newTotal: number;
+            if (existingLog) {
+              const oldAction = existingLog.action;
+              const oldAtt = oldAction === 'attended' ? 1 : 0;
+              const newAtt = status === 'attended' ? 1 : 0;
+              const oldTot = oldAction === 'cancelled' ? 0 : 1;
+              const newTot = 1;
+              newAttended = Math.max(0, (subject[attendedKey] || 0) + (newAtt - oldAtt));
+              newTotal    = Math.max(0, (subject[totalKey]    || 0) + (newTot - oldTot));
+            } else {
+              newAttended = (subject[attendedKey] || 0) + (status === 'attended' ? 1 : 0);
+              newTotal    = (subject[totalKey]    || 0) + 1;
+            }
+            subjectUpdates = { [attendedKey]: newAttended, [totalKey]: newTotal };
+          }
+
+          const targetLog = {
+            id: deterministicId,
+            userId: user.uid,
+            subjectId: subject?.id || payload.subjectId,
+            subjectName: subject?.name || payload.subjectName || '',
+            type,
+            action: status,
+            status,
+            date: dateStr,
+            isExtra: false,
+            timestamp: Date.now(),
+            idx: sessionIdx,
+          };
+
+          await safeWrite(
+            async () => {
+              const batch = writeBatch(db);
+              if (subject && subjectUpdates) {
+                batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id), subjectUpdates);
+              }
+              batch.set(doc(db, COLLECTION.ATTENDANCE_LOGS, deterministicId), targetLog, { merge: true });
+              await batch.commit();
+            },
+            COLLECTION.ATTENDANCE_LOGS,
+            'set',
+            targetLog,
+            deterministicId
+          ).catch(() => {});
+
+          const updatedLogs = [
+            targetLog,
+            ...(academicCache.attendanceLogs || []).filter(l =>
+              l.id !== deterministicId &&
+              !(
+                (l.subjectId === payload.subjectId || (payload.subjectName && l.subjectName === payload.subjectName)) &&
+                (l.date || '').slice(0, 10) === dateStr &&
+                (l.type === type || (!l.type && type === 'class')) &&
+                (l.idx === sessionIdx || (l.idx === undefined && sessionIdx === 0))
+              )
+            )
+          ];
+          const updatedSubjects = (academicCache.attendance || []).map(s =>
+            s.id === payload.subjectId && subjectUpdates ? { ...s, ...subjectUpdates } : s
+          );
+          await writeAcademicCache({
+            attendanceLogs: updatedLogs,
+            attendance: updatedSubjects,
+          }, true);
+          updateL1Cache('attendanceLogs', updatedLogs);
+          updateL1Cache('attendance', updatedSubjects);
+
+          DeviceEventEmitter.emit('attendance_logged_from_widget', {
+            log: targetLog,
+            subjectUpdates,
+            subjectId: payload.subjectId,
+            deterministicId,
+          });
+
+          if (status === 'attended') {
+            awardXP('ATTENDANCE_LOG').catch(() => {});
+          }
+        } catch (e) {
+          console.warn('[WidgetSync] Background attendance save error:', e);
+        }
+      })();
+      break;
+    }
+
+    case 'mark_class_undo': {
+      const subjectId = payload.subjectId;
+      if (!subjectId) return;
+      const sessionIdx = typeof payload.sessionIdx === 'number' ? payload.sessionIdx : 0;
+      const type: 'class' | 'lab' = payload.type === 'lab' ? 'lab' : 'class';
+
+      // ── STEP 1: INSTANT OPTIMISTIC RE-RENDER (0ms - 20ms) ──────────
+      if (currentData) {
+        currentData.classes = currentData.classes.map((c) =>
+          c.subjectId === payload.subjectId && c.type === type && c.idx === sessionIdx
+            ? { ...c, status: 'pending' as const }
+            : c
+        );
+        currentData.attendedClasses = currentData.classes.filter((c) => c.status === 'attended').length;
+        currentData.items = currentData.items.map((item) =>
+          item.type === type &&
+          item.subjectId === payload.subjectId &&
+          item.sessionIdx === sessionIdx
+            ? { ...item, status: 'pending' as const }
+            : item
+        );
+        triggerInstantAgendaUpdate(currentData);
+      }
+
+      // ── STEP 2: ASYNC CLOUD & LOCAL CACHE REVERT (NON-BLOCKING) ───────────
+      (async () => {
+        try {
+          const user = await resolveUser();
+          if (!user) return;
+
+          const deterministicId = getScheduledAttendanceLogDocId(user.uid, subjectId, dateStr, type, sessionIdx);
+          const academicCache = await readAcademicCache();
+          const subject = academicCache.attendance?.find(s => s.id === payload.subjectId || (payload.subjectName && s.name === payload.subjectName));
+
+          const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
+          const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
+
+          const existingLog = academicCache.attendanceLogs?.find(l =>
+            l.id === deterministicId ||
+            (
+              (l.subjectId === payload.subjectId || (payload.subjectName && l.subjectName === payload.subjectName)) &&
+              (l.date || '').slice(0, 10) === dateStr &&
+              (l.type === type || (!l.type && type === 'class')) &&
+              (l.idx === sessionIdx || (l.idx === undefined && sessionIdx === 0))
+            )
+          );
+
+          if (existingLog && subject) {
+            const oldAction = existingLog.action;
+            const attDelta = oldAction === 'attended' ? -1 : 0;
+            const totDelta = oldAction === 'cancelled' ? 0 : -1;
+
+            const newAttended = Math.max(0, (subject[attendedKey] || 0) + attDelta);
+            const newTotal    = Math.max(0, (subject[totalKey]    || 0) + totDelta);
+            const subjectUpdates = { [attendedKey]: newAttended, [totalKey]: newTotal };
+
+            await safeWrite(
+              async () => {
+                const batch = writeBatch(db);
+                batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id), subjectUpdates);
+                batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, existingLog.id || deterministicId));
+                await batch.commit();
+              },
+              COLLECTION.ATTENDANCE_LOGS,
+              'delete',
+              null,
+              existingLog.id || deterministicId
+            ).catch(() => {});
+
+            const updatedLogs = (academicCache.attendanceLogs || []).filter(l =>
+              l.id !== existingLog.id && l.id !== deterministicId
+            );
+            const updatedSubjects = (academicCache.attendance || []).map(s =>
+              s.id === payload.subjectId ? { ...s, ...subjectUpdates } : s
+            );
+            await writeAcademicCache({
+              attendanceLogs: updatedLogs,
+              attendance: updatedSubjects,
+            }, true);
+            updateL1Cache('attendanceLogs', updatedLogs);
+            updateL1Cache('attendance', updatedSubjects);
+
+            DeviceEventEmitter.emit('attendance_logged_from_widget', {
+              log: null,
+              subjectUpdates,
+              subjectId: payload.subjectId,
+              deterministicId,
+            });
+          }
+        } catch (e) {
+          console.warn('[WidgetSync] Background undo attendance error:', e);
+        }
+      })();
       break;
     }
 

@@ -56,11 +56,17 @@ function summarizeHabits(habits: any[] = [], logs: any[] = []) {
 }
 
 function summarizeAttendance(subjects: any[] = []) {
-  return subjects.slice(0, 15).map(s => ({
-    id: s.id, name: s.name,
-    attended: s.classesAttended, total: s.classesTotal,
-    pct: s.classesTotal > 0 ? Math.round((s.classesAttended / s.classesTotal) * 100) : 0,
-  }));
+  return subjects.slice(0, 15).map(s => {
+    // Fix #10: Include labs in attendance summary. Pure lab courses appeared as 0%.
+    const totalAtt = (s.classesAttended || 0) + (s.labsAttended || 0);
+    const totalCls = (s.classesTotal || 0) + (s.labsTotal || 0);
+    return {
+      id: s.id, name: s.name,
+      classesAttended: s.classesAttended, classesTotal: s.classesTotal,
+      labsAttended: s.labsAttended || 0, labsTotal: s.labsTotal || 0,
+      pct: totalCls > 0 ? Math.round((totalAtt / totalCls) * 100) : 0,
+    };
+  });
 }
 
 // ─── Full System Prompt Builder (fallback for complex queries) ────────────────

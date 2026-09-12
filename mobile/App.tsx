@@ -36,11 +36,15 @@ import { MobileDataProvider } from './src/contexts/MobileDataContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { navigationRef } from './src/navigation/AppNavigator';
 import { db, auth } from './src/services/firebase';
-import { doc, updateDoc, increment, addDoc, collection, getDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, increment, addDoc, setDoc, collection, getDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import { formatLocalDateStr } from './src/utils/dateUtils';
 import { COLLECTION } from './src/config/constants';
 import { awardXP } from './src/services/xpSystem';
+import { repairDuplicateAttendanceLogs } from './src/utils/attendanceRepair';
 
+/** Builds the same deterministic log ID as useAttendanceFirestore / attendanceConstants. */
+const buildAttLogId = (uid: string, subjectId: string, date: string, type: 'class' | 'lab', idx = 0) =>
+  `${uid}_${subjectId}_${date.slice(0, 10)}_${type}_${idx}`;
 
 // Expo SDK 53+ removed remote push from Expo Go, but local notifications still work.
 // expo-av is deprecated in SDK 54 but still functional until SDK 55.
@@ -105,7 +109,12 @@ function ThemedAppContainer() {
   );
 }
 
-import { initGeofencingOnBoot, checkImmediateGymProximity } from './src/services/geofenceService';
+import {
+  initGeofencingOnBoot,
+  checkImmediateGymProximity,
+  rearmGeofencesIfNeeded,
+  startForegroundGymProximityPolling,
+} from './src/services/geofenceService';
 
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({
@@ -134,6 +143,12 @@ export default function App() {
         initGeofencingOnBoot().catch((e: any) => {
           console.warn('[Boot] Geofence boot init skipped:', e?.message);
         });
+        // Run attendance duplicate-log repair once per install session.
+        // Uses its own AsyncStorage flag — no-op if already done.
+        const uid = auth.currentUser?.uid;
+        if (uid) {
+          repairDuplicateAttendanceLogs(uid).catch(() => {});
+        }
       }, 3000);
       return () => clearTimeout(timer);
     });
@@ -143,13 +158,32 @@ export default function App() {
   // Proactive Instant Geofence Check on Foreground Resume:
   // When the user toggles Location (GPS) in Quick Settings and re-opens ZenTrack
   // while already standing inside the gym, evaluate proximity immediately!
+  // Also re-arm geofences in case the OS silently de-registered them (reboot, low memory).
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active') {
+        // 1. Check proximity immediately (user may already be inside gym)
         checkImmediateGymProximity().catch(() => {});
+        // 2. Re-arm OS geofences if they were silently dropped
+        rearmGeofencesIfNeeded().catch(() => {});
       }
     });
     return () => sub.remove();
+  }, []);
+
+  // Foreground Proximity Polling:
+  // Polls every 30 seconds while the app is running to detect gym arrival/departure
+  // without relying solely on OS geofencing (which can be delayed by DOZE mode).
+  useEffect(() => {
+    // Delay start by 5s to not interfere with app boot sequence
+    let stopPolling: (() => void) | null = null;
+    const bootDelay = setTimeout(() => {
+      stopPolling = startForegroundGymProximityPolling(30000);
+    }, 5000);
+    return () => {
+      clearTimeout(bootDelay);
+      if (stopPolling) stopPolling();
+    };
   }, []);
 
 
@@ -221,7 +255,7 @@ export default function App() {
           content: {
             title: 'Workout Reminder: Gym Day',
             body: 'Snoozed 15 min. Ready to begin your workout?',
-            data: Platform.OS === 'ios' ? { type: 'gym' } : undefined,
+            data: { type: 'gym' },
             categoryIdentifier: 'gym_reminder',
             channelId: 'default',
             ...(Platform.OS === 'ios' ? { sound: 'default' } : {}),
@@ -232,30 +266,37 @@ export default function App() {
         return;
       }
 
-      // ── ACTION: "Mark Done" button on task_reminder ────────────────────────
-      // ── ACTION: "✓ Mark Done" button on task_reminder & location_task_reminder ─
+      // ── ACTION: "Mark Done" button on task_reminder & location_task_reminder ─────────────────
       if (actionIdentifier === 'mark_task_done' || actionIdentifier === 'MARK_DONE') {
-        const taskId   = data?.taskId    as string | undefined;
+        const taskId    = data?.taskId    as string | undefined;
         const taskTitle = data?.taskTitle as string | undefined;
         let success = false;
         if (taskId) {
           try {
+            // BUG-06 FIX: Guard against re-completing an already-completed task
+            // (preserves original completedAt timestamp and prevents stale notification double-fire)
+            const taskSnap = await getDoc(doc(db, COLLECTION.TASKS, taskId));
+            if (taskSnap.exists() && taskSnap.data()?.status === 'completed') {
+              // Already done — silent no-op, don't re-fire confirmation
+              return;
+            }
             await updateDoc(doc(db, COLLECTION.TASKS, taskId), {
               status: 'completed',
               completedAt: new Date().toISOString().slice(0, 10),
             });
+            // BUG-04 FIX: Award XP same as in-app task completion
+            await awardXP('TASK_COMPLETE').catch(() => {});
             success = true;
           } catch (e) {
             console.warn('[Notification] mark_task_done write failed:', e);
           }
         }
         if (success) {
-          // Silent confirmation — app stays closed
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: 'Task Completed',
-              body: taskTitle ? `"${taskTitle}" marked as complete.` : 'Task marked as complete.',
-              data: Platform.OS === 'ios' ? { taskId } : undefined,
+              title: 'Task Done',
+              body: taskTitle ? `"${taskTitle}" closed.` : 'Task marked as complete.',
+              data: { taskId },
               channelId: 'default',
             } as any,
             trigger: null,
@@ -291,9 +332,42 @@ export default function App() {
         return;
       }
 
-      // ── ACTION: "Open Tasks" button on task_reminder & location_task_reminder ─
+      // ── ACTION: "Open Task" button on task_reminder & location_task_reminder ─────
       if (actionIdentifier === 'open_tasks' || actionIdentifier === 'OPEN_TASK') {
         nav('Tasks');
+        return;
+      }
+
+      // ── ACTION: "Snooze 10m" button on task_reminder ─────────────────────────────
+      // Reschedules the same task reminder 10 minutes from now without opening the app.
+      if (actionIdentifier === 'snooze_10m') {
+        const taskId    = data?.taskId    as string | undefined;
+        const taskTitle = (data?.taskTitle ?? 'Task') as string;
+        const snoozeSeconds = 10 * 60;
+        const triggerConfig: any = Platform.OS === 'android'
+          ? {
+              type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval',
+              seconds: snoozeSeconds,
+              repeats: false,
+              channelId: 'task_alarm',
+            }
+          : {
+              type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
+              date: new Date(Date.now() + snoozeSeconds * 1000),
+            };
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: taskTitle,
+            body: 'Snoozed 10 minutes. Time to start.',
+            data: { taskId, taskTitle },
+            channelId: 'task_alarm',
+            sound: 'default',
+            vibrate: [0, 400, 200, 400, 100, 400, 100, 800],
+            priority: Notifications.AndroidNotificationPriority?.MAX ?? ('max' as any),
+            categoryIdentifier: 'task_reminder',
+          } as any,
+          trigger: triggerConfig,
+        }).catch(() => {});
         return;
       }
 
@@ -310,18 +384,18 @@ export default function App() {
           try {
             const todayDate = formatLocalDateStr();
 
-            // ── DUPLICATE GUARD ────────────────────────────────────────────────
-            // Prevent writing two logs if the user taps "Log It" twice or if
-            // they already logged via the app earlier today.
-            // Uses statically-imported getDocs/query/where (dynamic imports crash Metro).
-            const existingSnap = await getDocs(query(collection(db, COLLECTION.HABIT_LOGS), where('habitId', '==', habitId), where('date', '==', todayDate)));
+            // Duplicate guard: prevent writing two logs if tapped twice or already logged in-app
+            const existingSnap = await getDocs(query(
+              collection(db, COLLECTION.HABIT_LOGS),
+              where('habitId', '==', habitId),
+              where('date', '==', todayDate)
+            ));
             if (!existingSnap.empty) {
-              // Already logged today — show friendly info instead of duplicate write
               await Notifications.scheduleNotificationAsync({
                 content: {
-                  title: 'Already Recorded',
-                  body: 'You already completed this habit today.',
-                  data: Platform.OS === 'ios' ? { habitId } : undefined,
+                  title: 'Already Logged',
+                  body: 'This habit was already recorded today.',
+                  data: { habitId },
                   channelId: 'default',
                 } as any,
                 trigger: null,
@@ -329,29 +403,45 @@ export default function App() {
               return;
             }
 
-            // 1. Write habit log entry
+            const uid = auth.currentUser?.uid;
+            // BUG-01 FIX: Must include userId so CoreDataContext listener (which filters
+            // by userId) picks up this document — without it the app still shows unlogged
             await addDoc(collection(db, COLLECTION.HABIT_LOGS), {
               habitId,
+              userId: uid ?? null,
               date: todayDate,
               completedAt: new Date().toISOString(),
               timestamp: serverTimestamp(),
             });
-            // 2. Award XP
+            // Award base XP
             await awardXP('HABIT_LOG').catch(() => {});
-            // 3. Update streak on the habit document + build confirmation message
+            // Update streak + build confirmation message
             const habitSnap = await getDoc(doc(db, COLLECTION.HABITS, habitId));
             if (habitSnap.exists()) {
-              const habitData    = habitSnap.data();
-              const habitName    = (habitData?.name    ?? 'Habit')   as string;
-              const currentStreak = (habitData?.streak ?? 0)         as number;
-              const newStreak     = currentStreak + 1;
+              const habitData     = habitSnap.data();
+              const habitName     = (habitData?.name    ?? 'Habit')  as string;
+              const currentStreak = (habitData?.streak  ?? 0)        as number;
               const longestStreak = (habitData?.longestStreak ?? 0)  as number;
+              const newStreak     = currentStreak + 1;
+              // BUG-05/14 FIX: Use atomic increment(1) instead of read-modify-write
+              // to prevent race condition when in-app and notification both write simultaneously
               await updateDoc(doc(db, COLLECTION.HABITS, habitId), {
-                streak: newStreak,
+                streak: increment(1),
                 longestStreak: Math.max(newStreak, longestStreak),
               });
+              // BUG-08 FIX: Award streak milestone XP same as HabitsScreen in-app path
+              if (newStreak === 7 || newStreak % 7 === 0) {
+                await awardXP('HABIT_STREAK_7').catch(() => {});
+              }
+              if (newStreak === 30 || newStreak % 30 === 0) {
+                await awardXP('HABIT_STREAK_30').catch(() => {});
+              }
               confirmTitle = `${habitName} Logged`;
-              confirmBody  = newStreak >= 2
+              confirmBody  = newStreak >= 30
+                ? `${newStreak}-day streak. Exceptional consistency.`
+                : newStreak >= 7
+                ? `${newStreak}-day streak. Keep the chain going.`
+                : newStreak >= 2
                 ? `${newStreak}-day streak. Keep it up.`
                 : 'Day 1 recorded. Consistency builds momentum.';
             }
@@ -361,18 +451,16 @@ export default function App() {
           }
         }
         if (success) {
-          // Silent confirmation — app stays closed
           await Notifications.scheduleNotificationAsync({
             content: {
               title: confirmTitle,
               body: confirmBody,
-              data: Platform.OS === 'ios' ? { habitId } : undefined,
+              data: { habitId },
               channelId: 'default',
             } as any,
             trigger: null,
           }).catch(() => {});
         } else {
-          // Write failed — open app as fallback
           nav('Habits');
         }
         return;
@@ -385,9 +473,12 @@ export default function App() {
         return;
       }
 
-      // ── ACTION: "Present" button on class_reminder ─────────────────────────
-      // App stays in background (opensAppToForeground: false).
-      // Writes both attendance_subjects and attendance_logs with lab/class distinction.
+      // ── ACTION: "Present" button on class_reminder ──────────────────────────
+      // IDEMPOTENCY: Uses the same deterministic doc ID as useAttendanceFirestore.
+      // getDoc first → if already logged as 'attended': no-op.
+      //             → if logged as different action: delta-swap counters.
+      //             → if not logged: increment counters and create doc.
+      // setDoc with merge:true makes this safe to call multiple times.
       if (actionIdentifier === 'mark_present') {
         const subjectId   = data?.subjectId  as string | undefined;
         const subjectName = (data?.subject || 'Class') as string;
@@ -395,25 +486,56 @@ export default function App() {
         const logDate     = (data?.date || formatLocalDateStr()) as string;
         const uid         = auth.currentUser?.uid;
         let success = false;
-        if (subjectId) {
+        if (subjectId && uid) {
           try {
-            const attendedField = isLab ? 'labsAttended' : 'classesAttended';
-            const totalField    = isLab ? 'labsTotal'    : 'classesTotal';
-            await updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), {
-              [attendedField]: increment(1),
-              [totalField]: increment(1),
-            });
-            if (uid) {
-              await addDoc(collection(db, COLLECTION.ATTENDANCE_LOGS), {
-                userId: uid,
-                subjectId,
-                subjectName,
-                type: isLab ? 'lab' : 'class',
-                action: 'attended',
-                date: logDate,
-                isExtra: false,
-                timestamp: Date.now(),
-              });
+            const logType     = isLab ? 'lab' : 'class' as 'class' | 'lab';
+            const attendedKey = isLab ? 'labsAttended' : 'classesAttended';
+            const totalKey    = isLab ? 'labsTotal'    : 'classesTotal';
+            const logDocId    = buildAttLogId(uid, subjectId, logDate, logType, 0);
+            const logRef      = doc(db, COLLECTION.ATTENDANCE_LOGS, logDocId);
+
+            const existing = await getDoc(logRef);
+
+            if (existing.exists()) {
+              const oldAction = existing.data().action as string;
+              if (oldAction === 'attended') {
+                // Already logged as present — fire soft confirmation and bail
+                await Notifications.scheduleNotificationAsync({
+                  content: {
+                    title: 'Already Recorded',
+                    body: `${subjectName} was already marked present.`,
+                    data: { subjectId }, channelId: 'default',
+                  } as any, trigger: null,
+                }).catch(() => {});
+                return;
+              }
+              // Was logged as something else (missed/cancelled) → swap action + fix counters
+              const attDelta = 1 - (oldAction === 'attended' ? 1 : 0); // always +1 here
+              const totDelta = 0 - (oldAction === 'cancelled' ? 0 : 1) + 1; // net tot delta
+              const updates: Record<string, any> = { lastUpdated: Date.now() };
+              if (attDelta !== 0) updates[attendedKey] = increment(attDelta);
+              if (totDelta !== 0) updates[totalKey]    = increment(totDelta);
+              await Promise.all([
+                updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), updates),
+                setDoc(logRef, { action: 'attended', timestamp: Date.now() }, { merge: true }),
+              ]);
+            } else {
+              // New log → create + increment counters
+              const logPayload = {
+                userId: uid, subjectId, subjectName,
+                type: logType, action: 'attended',
+                date: logDate.slice(0, 10),
+                isExtra: false, timestamp: Date.now(), idx: 0,
+              };
+              await Promise.all([
+                updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), {
+                  [attendedKey]: increment(1),
+                  [totalKey]:    increment(1),
+                  lastUpdated:   Date.now(),
+                }),
+                setDoc(logRef, logPayload),
+              ]);
+              await awardXP('ATTENDANCE_LOG').catch(() => {});
             }
             success = true;
           } catch (e) {
@@ -423,12 +545,10 @@ export default function App() {
         if (success) {
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: 'Present Recorded',
-              body: `${subjectName} marked as attended.`,
-              data: Platform.OS === 'ios' ? { subjectId } : undefined,
-              channelId: 'default',
-            } as any,
-            trigger: null,
+              title: 'Attendance Logged',
+              body: `${subjectName} — marked as present.`,
+              data: { subjectId }, channelId: 'default',
+            } as any, trigger: null,
           }).catch(() => {});
         } else {
           nav('Attendance');
@@ -436,9 +556,8 @@ export default function App() {
         return;
       }
 
-      // ── ACTION: "Absent" / "Bunking" button on class_reminder ──────────────
-      // App stays in background (opensAppToForeground: false).
-      // Writes both attendance_subjects and attendance_logs with missed status.
+      // ── ACTION: "Absent" button on class_reminder ───────────────────────────
+      // IDEMPOTENCY: Same deterministic-ID + getDoc + delta pattern as mark_present.
       if (actionIdentifier === 'mark_absent' || actionIdentifier === 'mark_bunking') {
         const subjectId   = data?.subjectId  as string | undefined;
         const subjectName = (data?.subject || 'Class') as string;
@@ -446,23 +565,55 @@ export default function App() {
         const logDate     = (data?.date || formatLocalDateStr()) as string;
         const uid         = auth.currentUser?.uid;
         let success = false;
-        if (subjectId) {
+        if (subjectId && uid) {
           try {
-            const totalField = isLab ? 'labsTotal' : 'classesTotal';
-            await updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), {
-              [totalField]: increment(1),
-            });
-            if (uid) {
-              await addDoc(collection(db, COLLECTION.ATTENDANCE_LOGS), {
-                userId: uid,
-                subjectId,
-                subjectName,
-                type: isLab ? 'lab' : 'class',
-                action: 'missed',
-                date: logDate,
-                isExtra: false,
-                timestamp: Date.now(),
-              });
+            const logType     = isLab ? 'lab' : 'class' as 'class' | 'lab';
+            const attendedKey = isLab ? 'labsAttended' : 'classesAttended';
+            const totalKey    = isLab ? 'labsTotal'    : 'classesTotal';
+            const logDocId    = buildAttLogId(uid, subjectId, logDate, logType, 0);
+            const logRef      = doc(db, COLLECTION.ATTENDANCE_LOGS, logDocId);
+
+            const existing = await getDoc(logRef);
+
+            if (existing.exists()) {
+              const oldAction = existing.data().action as string;
+              if (oldAction === 'missed') {
+                // Already logged as absent — soft confirmation and bail
+                await Notifications.scheduleNotificationAsync({
+                  content: {
+                    title: 'Already Recorded',
+                    body: `${subjectName} was already marked absent.`,
+                    data: { subjectId }, channelId: 'default',
+                  } as any, trigger: null,
+                }).catch(() => {});
+                return;
+              }
+              // Was logged as something else (attended/cancelled) → swap
+              const attDelta = (oldAction === 'attended' ? -1 : 0); // removing attended contrib
+              const totDelta = (oldAction === 'cancelled' ? 1 : 0); // cancelled had tot=0, missed has tot=1
+              const updates: Record<string, any> = { lastUpdated: Date.now() };
+              if (attDelta !== 0) updates[attendedKey] = increment(attDelta);
+              if (totDelta !== 0) updates[totalKey]    = increment(totDelta);
+              await Promise.all([
+                updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), updates),
+                setDoc(logRef, { action: 'missed', timestamp: Date.now() }, { merge: true }),
+              ]);
+            } else {
+              // New log → create + increment total only (missed = not attended)
+              const logPayload = {
+                userId: uid, subjectId, subjectName,
+                type: logType, action: 'missed',
+                date: logDate.slice(0, 10),
+                isExtra: false, timestamp: Date.now(), idx: 0,
+              };
+              await Promise.all([
+                updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), {
+                  [totalKey]:  increment(1),
+                  lastUpdated: Date.now(),
+                }),
+                setDoc(logRef, logPayload),
+              ]);
+              await awardXP('ATTENDANCE_LOG').catch(() => {});
             }
             success = true;
           } catch (e) {
@@ -472,12 +623,10 @@ export default function App() {
         if (success) {
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: 'Absence Recorded',
-              body: `${subjectName} marked as missed.`,
-              data: Platform.OS === 'ios' ? { subjectId } : undefined,
-              channelId: 'default',
-            } as any,
-            trigger: null,
+              title: 'Absence Logged',
+              body: `${subjectName} — marked as missed. Attendance updated.`,
+              data: { subjectId }, channelId: 'default',
+            } as any, trigger: null,
           }).catch(() => {});
         } else {
           nav('Attendance');
@@ -486,8 +635,7 @@ export default function App() {
       }
 
       // ── ACTION: "Cancelled" button on class_reminder ───────────────────────
-      // App stays in background (opensAppToForeground: false).
-      // Writes attendance_logs with cancelled status (totals remain unchanged).
+      // IDEMPOTENCY: Deterministic ID + setDoc (cancelled logs don't affect counters).
       if (actionIdentifier === 'mark_cancelled') {
         const subjectId   = data?.subjectId  as string | undefined;
         const subjectName = (data?.subject || 'Class') as string;
@@ -495,20 +643,20 @@ export default function App() {
         const logDate     = (data?.date || formatLocalDateStr()) as string;
         const uid         = auth.currentUser?.uid;
         let success = false;
-        if (subjectId) {
+        if (subjectId && uid) {
           try {
-            if (uid) {
-              await addDoc(collection(db, COLLECTION.ATTENDANCE_LOGS), {
-                userId: uid,
-                subjectId,
-                subjectName,
-                type: isLab ? 'lab' : 'class',
-                action: 'cancelled',
-                date: logDate,
-                isExtra: false,
-                timestamp: Date.now(),
-              });
-            }
+            const logType  = isLab ? 'lab' : 'class' as 'class' | 'lab';
+            const logDocId = buildAttLogId(uid, subjectId, logDate, logType, 0);
+            const logRef   = doc(db, COLLECTION.ATTENDANCE_LOGS, logDocId);
+            // setDoc with merge means: if doc already exists, only update action field.
+            // If it existed as 'attended', counters don't change here (user should undo first).
+            // For a truly new cancel, no counters change — class was cancelled.
+            await setDoc(logRef, {
+              userId: uid, subjectId, subjectName,
+              type: logType, action: 'cancelled',
+              date: logDate.slice(0, 10),
+              isExtra: false, timestamp: Date.now(), idx: 0,
+            }, { merge: true });
             success = true;
           } catch (e) {
             console.warn('[Notification] mark_cancelled write failed:', e);
@@ -518,11 +666,9 @@ export default function App() {
           await Notifications.scheduleNotificationAsync({
             content: {
               title: 'Class Cancelled',
-              body: `${subjectName} recorded as cancelled today.`,
-              data: Platform.OS === 'ios' ? { subjectId } : undefined,
-              channelId: 'default',
-            } as any,
-            trigger: null,
+              body: `${subjectName} — recorded as cancelled. Totals unchanged.`,
+              data: { subjectId }, channelId: 'default',
+            } as any, trigger: null,
           }).catch(() => {});
         } else {
           nav('Attendance');

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   View, Text, SafeAreaView, TouchableOpacity, Alert, TextInput,
   Platform, KeyboardAvoidingView, ScrollView, ActivityIndicator, AppState,
-  Keyboard, DeviceEventEmitter
+  Keyboard, DeviceEventEmitter, InteractionManager
 } from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
@@ -265,6 +265,38 @@ const SetList: React.FC<SetListProps> = React.memo(({
   );
 });
 
+// ─── Pure helper: compute initial set-input state synchronously ───────────────
+// Called inside useState() initializer so the component never renders with empty
+// inputs and immediately re-renders — eliminating the double-render on mount.
+function computeInitialSetInputs(
+  exercise: any,
+  gymLogs: any[] | null | undefined,
+  date: string | undefined
+): SetInputState[] {
+  if (!exercise || !exercise.setsLog) return [];
+  const prevSession = getPreviousExerciseSession(exercise.name, gymLogs, date || todayStr());
+  const lastSessionSets = exercise.lastSessionSets || prevSession?.sets || [];
+  const lastValidPastSet = lastSessionSets.length > 0 ? lastSessionSets[lastSessionSets.length - 1] : null;
+  return exercise.setsLog.map((s: any, idx: number) => {
+    if (s.completed) {
+      return {
+        weight: (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ? String(s.weight) : '',
+        reps: (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0) ? String(s.reps) : '',
+      };
+    }
+    const lastSet = lastSessionSets[idx] || lastValidPastSet;
+    let initialWeight = (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ? String(s.weight) : '';
+    if (!initialWeight && lastSet?.weight != null && Number(lastSet.weight) > 0) {
+      initialWeight = String(lastSet.weight);
+    }
+    const defaultTargetReps = String(parseUpperTargetReps(exercise.targetReps));
+    const initialReps = (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0)
+      ? String(parseUpperTargetReps(s.reps))
+      : (lastSet?.reps ? String(parseUpperTargetReps(lastSet.reps)) : defaultTargetReps);
+    return { weight: initialWeight, reps: initialReps };
+  });
+}
+
 export default function ActiveLoggingScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeActiveLoggingStyles(colors, isDark), [colors, isDark]);
@@ -297,8 +329,10 @@ export default function ActiveLoggingScreen() {
   }, [log?.completed, log?.workoutStartTime, startWorkout]);
 
   const insets = useSafeAreaInsets();
-  // Guarantee timer always floats cleanly above bottom navigation bar
-  const timerBottomOffset = Math.max(insets.bottom + 68, 88);
+  // Nav bar height: tabs row (54px) + safe bottom inset
+  const navBarHeight = 54 + (insets.bottom > 0 ? insets.bottom : 8);
+  // Rest timer sits docked strictly and cleanly 8px above the bottom navigation bar
+  const timerBottomOffset = navBarHeight + 8;
 
   // Prevent phone screen from locking or sleeping during active workout
   useKeepAwake();
@@ -315,6 +349,9 @@ export default function ActiveLoggingScreen() {
 
   const [showSupersetPicker, setShowSupersetPicker] = useState(false);
   const [activeExIndex, setActiveExIndex] = useState(route.params?.initialIndex ?? 0);
+  // ── FIX 3: Track initialIndex consumption via ref only — no navigation.setParams() on mount.
+  // Calling navigation.setParams() during mount triggers a React Navigation router state update
+  // which causes a re-render cascade while the push animation is still in flight.
   const consumedInitialIndexRef = useRef<number | null>(route.params?.initialIndex ?? null);
 
   useEffect(() => {
@@ -323,13 +360,19 @@ export default function ActiveLoggingScreen() {
         consumedInitialIndexRef.current = route.params.initialIndex;
         setActiveExIndex(route.params.initialIndex);
       }
-      // Consume & clear initialIndex from navigation route params so it does not persist
-      // and continually reset the user back to the first exercise on re-renders, state changes, or soft navigations
-      navigation.setParams({ initialIndex: undefined } as any);
+      // NOTE: We intentionally do NOT call navigation.setParams() here.
+      // The ref above already prevents the index from being applied twice.
+      // Calling setParams during mount causes React Navigation to trigger a router
+      // state update and re-render cascade while the slide animation is in flight.
     }
-  }, [route.params?.initialIndex, navigation]);
+  }, [route.params?.initialIndex]);
 
   const [showVideo, setShowVideo] = useState(false);
+  // ── FIX 4: Lazy-mount modals — don't track 'ever shown' as the same flag as 'currently visible'.
+  // SupersetPickerModal and ActiveSwapModal are only inserted into the React tree
+  // once the user has opened them for the first time — saving initial module evaluation.
+  const [swapModalEverShown, setSwapModalEverShown] = useState(false);
+  const [supersetPickerEverShown, setSupersetPickerEverShown] = useState(false);
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [aiSwapList, setAiSwapList] = useState<any[]>([]);
   const [isAiSwapLoading, setIsAiSwapLoading] = useState(false);
@@ -342,15 +385,28 @@ export default function ActiveLoggingScreen() {
 
   const { gymLogs } = useWellnessData();
 
-  // Controlled input state per set
-  const [setInputs, setSetInputs] = useState<SetInputState[]>([]);
+  const activeExercises = useMemo(() => log?.exercises?.filter(ex => !ex.skipped) || [], [log?.exercises]);
+  const safeIdx = Math.min(activeExIndex, Math.max(0, activeExercises.length - 1));
+  const exercise = activeExercises[safeIdx];
+
+  // ── FIX 1: Lazy-initialize setInputs synchronously in the useState initializer.
+  // This eliminates the double-render that previously happened on every mount:
+  //   Frame 0: render with empty [] → Frame 1: useEffect fires setSetInputs() → re-render
+  // Now Frame 0 already has the correct inputs; no forced second render needed.
   const userEditedFieldsRef = useRef<{ [idx: number]: { weight?: boolean; reps?: boolean } }>({});
   const lastExerciseKeyRef = useRef<string>('');
   const liveInputsRef = useRef<{ [idx: number]: { weight?: string; reps?: string } }>({});
+  const [setInputs, setSetInputs] = useState<SetInputState[]>(() =>
+    computeInitialSetInputs(exercise, gymLogs, date)
+  );
 
-  const activeExercises = useMemo(() => log?.exercises?.filter(ex => !ex.skipped) || [], [log]);
-  const safeIdx = Math.min(activeExIndex, Math.max(0, activeExercises.length - 1));
-  const exercise = activeExercises[safeIdx];
+  // ── FIX 2: Defer heavy historical computation after the slide animation completes.
+  // overloadSuggestion and lastTimeData both walk the entire gymLogs history.
+  // Running them synchronously on mount blocks the JS thread during the push animation.
+  // With InteractionManager they execute only after all pending animations finish.
+  const [overloadSuggestion, setOverloadSuggestion] = useState<any | null>(null);
+  const [lastTimeData, setLastTimeData] = useState<string | null>(null);
+  const interactionsSettledRef = useRef(false);
 
   // Debounce ref for widget sync — prevents bridge calls on every rest-timer tick
   const widgetSyncDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -470,37 +526,62 @@ export default function ActiveLoggingScreen() {
     );
   }, [exercise?.supersetGroup, activeExercises, safeIdx]);
 
-  // Progressive overload suggestion
-  // Deps use exercise (stable memo ref) instead of full log — stops O(N) gymLogs scan
-  // from re-running on every set completion, note change, or timer update.
-  const overloadSuggestion = useMemo(() => {
-    if (!exercise || !gymLogs) return null;
-    const curWeight = calculateExerciseMaxWeight(exercise as any);
-    return getOverloadSuggestion(
-      exercise,
-      curWeight,
-      exercise.targetSets || 3,
-      String(exercise.targetReps || '8'),
-      gymLogs
-    );
-  }, [exercise, activeExIndex, gymLogs]);
+  // ── FIX 2 (continued): Compute overloadSuggestion + lastTimeData after interactions settle.
+  // These functions scan the full gymLogs history (O(N×M) across sessions × exercises).
+  // Deferring via InteractionManager ensures the push slide animation completes at 60fps
+  // before any heavy computation starts. The banner simply renders null until then.
+  useEffect(() => {
+    if (!exercise || !gymLogs) return;
+    interactionsSettledRef.current = false;
+    setOverloadSuggestion(null);
+    setLastTimeData(null);
 
-  // Initialize input state when exercise or set count changes
+    const task = InteractionManager.runAfterInteractions(() => {
+      interactionsSettledRef.current = true;
+      // Overload suggestion
+      const curWeight = calculateExerciseMaxWeight(exercise as any);
+      const suggestion = getOverloadSuggestion(
+        exercise,
+        curWeight,
+        exercise.targetSets || 3,
+        String(exercise.targetReps || '8'),
+        gymLogs
+      );
+      setOverloadSuggestion(suggestion);
+
+      // Last-session stats banner
+      const prevSession = getPreviousExerciseSession(exercise.name, gymLogs, date || todayStr());
+      if (prevSession && prevSession.sets.length > 0) {
+        const weightPart = prevSession.lastWeight ? `@ ${prevSession.lastWeight}kg` : '';
+        const repsPart = prevSession.avgReps ? `${prevSession.avgReps} reps` : '';
+        setLastTimeData(`Last: ${prevSession.sets.length} sets ${repsPart ? `× ${repsPart}` : ''} ${weightPart}`.trim());
+      } else {
+        setLastTimeData(null);
+      }
+    });
+
+    return () => task.cancel();
+  }, [exercise?.exerciseId, exercise?.name, activeExIndex, gymLogs, date]);
+
+  // ── FIX 1 (continued): Sync setInputs when exercise changes or setsLog mutates.
+  // This replaces the old 'initialize from scratch' useEffect with a lightweight
+  // sync that only updates inputs for changed/added sets, preserving live edits.
   useEffect(() => {
     if (!exercise || !exercise.setsLog) return;
 
     const currentExId = exercise.exerciseId || exercise.name || '';
     const key = `${currentExId}-${activeExIndex}`;
+
+    // Exercise switched → reset edit tracking & recompute from scratch
     if (key !== lastExerciseKeyRef.current) {
       lastExerciseKeyRef.current = key;
       userEditedFieldsRef.current = {};
       liveInputsRef.current = {};
+      setSetInputs(computeInitialSetInputs(exercise, gymLogs, date));
+      return;
     }
 
-    const prevSession = getPreviousExerciseSession(exercise.name, gymLogs, date || todayStr());
-    const lastSessionSets = exercise.lastSessionSets || prevSession?.sets || [];
-    const lastValidPastSet = lastSessionSets.length > 0 ? lastSessionSets[lastSessionSets.length - 1] : null;
-
+    // Same exercise: only sync completed-set values and handle adds/removes
     setSetInputs(prev => {
       return exercise.setsLog.map((s, idx) => {
         if (s.completed) {
@@ -511,31 +592,21 @@ export default function ActiveLoggingScreen() {
             reps: savedR || prev?.[idx]?.reps || '',
           };
         }
-
+        // Preserve live user edits for incomplete sets
         const edited = userEditedFieldsRef.current[idx];
-        const existingWeight = prev?.[idx]?.weight;
-        const existingReps = prev?.[idx]?.reps;
         const liveWeight = liveInputsRef.current[idx]?.weight;
         const liveReps = liveInputsRef.current[idx]?.reps;
-        const lastSet = lastSessionSets[idx] || lastValidPastSet;
-
-        let initialWeight = (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ? String(s.weight) : '';
-        if (!initialWeight && lastSet?.weight != null && Number(lastSet.weight) > 0) {
-          initialWeight = String(lastSet.weight);
+        if (edited?.weight || edited?.reps) {
+          return {
+            weight: liveWeight !== undefined ? liveWeight : (prev?.[idx]?.weight || ''),
+            reps: liveReps !== undefined ? liveReps : (prev?.[idx]?.reps || ''),
+          };
         }
-
-        const defaultTargetReps = String(parseUpperTargetReps(exercise.targetReps));
-        let initialReps = (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0)
-          ? String(parseUpperTargetReps(s.reps))
-          : (lastSet?.reps ? String(parseUpperTargetReps(lastSet.reps)) : defaultTargetReps);
-
-        return {
-          weight: edited?.weight ? (liveWeight !== undefined ? liveWeight : (existingWeight || '')) : (initialWeight || existingWeight || ''),
-          reps: edited?.reps ? (liveReps !== undefined ? liveReps : (existingReps || '')) : (initialReps || existingReps || ''),
-        };
+        // New set appended or no prior state: fall back to computed defaults
+        return prev?.[idx] || { weight: '', reps: String(parseUpperTargetReps(exercise.targetReps)) };
       });
     });
-  }, [exercise?.exerciseId, exercise?.name, activeExIndex, exercise?.setsLog, gymLogs, overloadSuggestion, date]);
+  }, [exercise?.exerciseId, exercise?.name, activeExIndex, exercise?.setsLog?.length, date]);
 
   // Load Instant Database Swaps on modal open
   useEffect(() => {
@@ -547,21 +618,6 @@ export default function ActiveLoggingScreen() {
 
   // Note: Video ID resolution is handled on-demand when user taps onVideoToggle,
   // preventing re-render stutters while typing weights & reps.
-
-  // Last-session stats banner text
-  const lastTimeData = useMemo(() => {
-    if (!log?.exercises || !gymLogs) return null;
-    const list = log.exercises.filter(ex => !ex.skipped);
-    const cur = list[Math.min(activeExIndex, Math.max(0, list.length - 1))];
-    if (!cur) return null;
-
-    const prevSession = getPreviousExerciseSession(cur.name, gymLogs, date || todayStr());
-    if (!prevSession || prevSession.sets.length === 0) return null;
-
-    const weightPart = prevSession.lastWeight ? `@ ${prevSession.lastWeight}kg` : '';
-    const repsPart = prevSession.avgReps ? `${prevSession.avgReps} reps` : '';
-    return `Last: ${prevSession.sets.length} sets ${repsPart ? `× ${repsPart}` : ''} ${weightPart}`.trim();
-  }, [log, activeExIndex, gymLogs, date]);
 
   const activeSetIndex = exercise ? exercise.setsLog.findIndex(s => !s.completed) : -1;
   const isAllComplete = activeSetIndex === -1;
@@ -697,45 +753,6 @@ export default function ActiveLoggingScreen() {
     }
   }, [exercise, activeSetIndex, setInputs, overloadSuggestion, exercises, activeExIndex, realExerciseIndex, logSetAndStartTimer]);
 
-  const handleSwipeCompleteSet = useCallback((setIdx: number) => {
-    if (!exercise) return;
-    hapticSuccess();
-
-    const currentSet = exercise.setsLog[setIdx];
-    const input = setInputs[setIdx];
-    const prevSet = setIdx > 0 ? exercise.setsLog[setIdx - 1] : null;
-    const prevInput = setIdx > 0 ? setInputs[setIdx - 1] : null;
-
-    const resolved = resolveSetWeightAndReps(
-      input,
-      currentSet,
-      prevInput,
-      prevSet,
-      overloadSuggestion,
-      exercise.targetReps
-    );
-
-    const newEx = {
-      ...exercise,
-      setsLog: exercise.setsLog.map((s, i) =>
-        i === setIdx ? { ...s, weight: resolved.weight, reps: resolved.reps, completed: true } : s
-      ),
-    };
-
-    setSetInputs(prev => prev.map((inp, i) =>
-      i === setIdx ? { weight: resolved.weight !== null ? String(resolved.weight) : '', reps: String(resolved.reps) } : inp
-    ));
-
-    const nextJumpIdx = findNextSupersetExerciseIndex(exercises, activeExIndex, exercise.supersetGroup);
-    const restSecs = nextJumpIdx !== -1 ? 30 : getRestDuration(exercise);
-
-    logSetAndStartTimer(realExerciseIndex, newEx, restSecs, exercise.name);
-
-    if (nextJumpIdx !== -1) {
-      setTimeout(() => setActiveExIndex(nextJumpIdx), 400);
-    }
-  }, [exercise, setInputs, overloadSuggestion, exercises, activeExIndex, realExerciseIndex, logSetAndStartTimer]);
-
   const handleAdjustWeight = useCallback((delta: number) => {
     if (!exercise) return;
     const targetIdx = activeSetIndex !== -1 ? activeSetIndex : exercise.setsLog.length - 1;
@@ -846,8 +863,7 @@ export default function ActiveLoggingScreen() {
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('ACTIVE_WORKOUT_ACTION', (payload: any) => {
       if (payload.action === 'DONE_SET') {
-        const targetIdx = activeSetIndex !== -1 ? activeSetIndex : 0;
-        handleSwipeCompleteSet(targetIdx);
+        handleLogSet();
       } else if (payload.action === 'ADD_WEIGHT') {
         handleAdjustWeight(payload.delta || 2.5);
       } else if (payload.action === 'NEXT_EXERCISE') {
@@ -867,7 +883,7 @@ export default function ActiveLoggingScreen() {
       sub.remove();
       finishSub.remove();
     };
-  }, [activeSetIndex, handleSwipeCompleteSet, handleAdjustWeight, handleNextExercise, clearRestTimer, setRestTimerDuration, restTimerInitial, navigation]);
+  }, [handleLogSet, handleAdjustWeight, handleNextExercise, clearRestTimer, setRestTimerDuration, restTimerInitial, navigation]);
 
   const warmupSets = useMemo(() => exercise?.setsLog.filter(s => s.isWarmup) || [], [exercise?.setsLog]);
   const hasWarmups = warmupSets.length > 0;
@@ -986,7 +1002,7 @@ export default function ActiveLoggingScreen() {
     updateExercise(realExerciseIndex, newEx);
   }, [exercise, setInputs, realExerciseIndex, updateExercise]);
 
-  // Stable unified set action dispatcher \u2014 passed to SwipeableSetRow instead of 5 inline
+  // Stable unified set action dispatcher — passed to SwipeableSetRow instead of 5 inline
   // arrow functions, so React.memo can bail out on unrelated re-renders (timer ticks, etc.).
   const handleSetAction = useCallback((idx: number, action: 'textChange' | 'blur' | 'toggle' | 'delete' | 'swipe', payload?: any) => {
     switch (action) {
@@ -994,9 +1010,9 @@ export default function ActiveLoggingScreen() {
       case 'blur':       handleBlur(idx); break;
       case 'toggle':     handleToggleSetComplete(idx); break;
       case 'delete':     handleDeleteSet(idx); break;
-      case 'swipe':      handleSwipeCompleteSet(idx); break;
+      case 'swipe':      handleToggleSetComplete(idx); break;
     }
-  }, [handleTextChange, handleBlur, handleToggleSetComplete, handleDeleteSet, handleSwipeCompleteSet]);
+  }, [handleTextChange, handleBlur, handleToggleSetComplete, handleDeleteSet]);
 
   // Loading skeleton
   if (!log || !log.exercises) {
@@ -1076,10 +1092,12 @@ export default function ActiveLoggingScreen() {
               styles={styles}
               onSwapPress={() => {
                 hapticMedium();
+                setSwapModalEverShown(true); // Lazy-mount guard: first open inserts the modal tree
                 setShowSwapModal(true);
               }}
               onSupersetPress={() => {
                 hapticMedium();
+                setSupersetPickerEverShown(true); // Lazy-mount guard
                 setShowSupersetPicker(true);
               }}
               onVideoToggle={() => {
@@ -1231,76 +1249,81 @@ export default function ActiveLoggingScreen() {
           </View>
         )}
 
-        {/* Superset Modal */}
-        <SupersetPickerModal
-          visible={showSupersetPicker}
-          exercise={exercise}
-          exercises={exercises}
-          colors={colors}
-          styles={styles}
-          onClose={() => setShowSupersetPicker(false)}
-          onRemoveSuperset={() => {
-            updateExercise(realExerciseIndex, { ...exercise, supersetGroup: undefined });
-            setShowSupersetPicker(false);
-          }}
-          onSelectPartner={(altEx) => {
-            const groupLetter = exercise.supersetGroup || altEx.supersetGroup || String.fromCharCode(65 + Math.floor(Math.random() * 26));
-            updateExercise(realExerciseIndex, { ...exercise, supersetGroup: groupLetter });
-            const partnerRealIdx = log.exercises.findIndex((e: any) => e.exerciseId === altEx.exerciseId);
-            if (partnerRealIdx !== -1) {
-              updateExercise(partnerRealIdx, { ...altEx, supersetGroup: groupLetter });
-            }
-            setShowSupersetPicker(false);
-          }}
-        />
+        {/* ── FIX 4: Lazy-mount Superset Modal — only inserted into the tree on first open.
+             Before first open: zero JS evaluation, zero layout cost, zero PanResponder init. */}
+        {supersetPickerEverShown && (
+          <SupersetPickerModal
+            visible={showSupersetPicker}
+            exercise={exercise}
+            exercises={exercises}
+            colors={colors}
+            styles={styles}
+            onClose={() => setShowSupersetPicker(false)}
+            onRemoveSuperset={() => {
+              updateExercise(realExerciseIndex, { ...exercise, supersetGroup: undefined });
+              setShowSupersetPicker(false);
+            }}
+            onSelectPartner={(altEx) => {
+              const groupLetter = exercise.supersetGroup || altEx.supersetGroup || String.fromCharCode(65 + Math.floor(Math.random() * 26));
+              updateExercise(realExerciseIndex, { ...exercise, supersetGroup: groupLetter });
+              const partnerRealIdx = log.exercises.findIndex((e: any) => e.exerciseId === altEx.exerciseId);
+              if (partnerRealIdx !== -1) {
+                updateExercise(partnerRealIdx, { ...altEx, supersetGroup: groupLetter });
+              }
+              setShowSupersetPicker(false);
+            }}
+          />
+        )}
 
-        {/* Swap Modal */}
-        <ActiveSwapModal
-          visible={showSwapModal}
-          exercise={exercise}
-          aiSwapList={aiSwapList}
-          isAiSwapLoading={isAiSwapLoading}
-          colors={colors}
-          styles={styles}
-          onClose={() => setShowSwapModal(false)}
-          onSelectSwap={async (alt) => {
-            const oldName = exercise.name;
-            hapticSuccess();
+        {/* ── FIX 4: Lazy-mount Swap Modal — same pattern. Zero mount cost until user first taps Swap. */}
+        {swapModalEverShown && (
+          <ActiveSwapModal
+            visible={showSwapModal}
+            exercise={exercise}
+            aiSwapList={aiSwapList}
+            isAiSwapLoading={isAiSwapLoading}
+            colors={colors}
+            styles={styles}
+            onClose={() => setShowSwapModal(false)}
+            onSelectSwap={async (alt) => {
+              const oldName = exercise.name;
+              hapticSuccess();
 
-            let resolvedVideoId = alt.videoId;
-            if (!resolvedVideoId) {
-              resolvedVideoId = (await autoResolveExerciseVideoId(alt.name)) || '';
-            }
+              let resolvedVideoId = alt.videoId;
+              if (!resolvedVideoId) {
+                resolvedVideoId = (await autoResolveExerciseVideoId(alt.name)) || '';
+              }
 
-            const updatedEx = {
-              ...exercise,
-              exerciseId: `swap_${Date.now()}`,
-              name: alt.name,
-              muscle: alt.muscle || exercise.muscle,
-              targetSets: alt.targetSets || 3,
-              targetReps: alt.targetReps || '8-12',
-              restTimeSecs: alt.restTimeSecs || 90,
-              videoId: resolvedVideoId,
-              setsLog: Array.from({ length: alt.targetSets || 3 }, (_, i) => ({
-                setNumber: i + 1,
-                reps: null,
-                weight: null,
-                completed: false,
-              })),
-            };
+              const updatedEx = {
+                ...exercise,
+                exerciseId: `swap_${Date.now()}`,
+                name: alt.name,
+                muscle: alt.muscle || exercise.muscle,
+                targetSets: alt.targetSets || 3,
+                targetReps: alt.targetReps || '8-12',
+                restTimeSecs: alt.restTimeSecs || 90,
+                videoId: resolvedVideoId,
+                setsLog: Array.from({ length: alt.targetSets || 3 }, (_, i) => ({
+                  setNumber: i + 1,
+                  reps: null,
+                  weight: null,
+                  completed: false,
+                })),
+              };
 
-            updateExercise(realExerciseIndex, updatedEx);
-            setShowSwapModal(false);
-            Alert.alert(
-              'Keep Swap Permanent?',
-              `Do you want to use ${alt.name} for future workouts?`,
-              [
-                { text: 'No, just for today', style: 'cancel' },
-                { text: 'Yes, update plan', onPress: () => makeSwapPermanent(oldName, alt.name, alt.videoId) }
-              ]
-            );
-          }}
-        />
+              updateExercise(realExerciseIndex, updatedEx);
+              setShowSwapModal(false);
+              Alert.alert(
+                'Keep Swap Permanent?',
+                `Do you want to use ${alt.name} for future workouts?`,
+                [
+                  { text: 'No, just for today', style: 'cancel' },
+                  { text: 'Yes, update plan', onPress: () => makeSwapPermanent(oldName, alt.name, alt.videoId) }
+                ]
+              );
+            }}
+          />
+        )}
 
       </KeyboardAvoidingView>
     </SafeAreaView>

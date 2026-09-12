@@ -41,6 +41,7 @@ export interface WellnessContextType {
   optimisticAddGymLog: (log: GymLog) => void;
   optimisticUpdateGymLog: (logId: string, partial: Partial<GymLog>) => void;
   optimisticAddWaterLog: (log: WaterLog) => void;
+  optimisticDeleteWaterLog: (logId: string) => void;
 }
 
 const DEFAULT_WELLNESS_DATA: WellnessContextType = {
@@ -57,6 +58,7 @@ const DEFAULT_WELLNESS_DATA: WellnessContextType = {
   optimisticAddGymLog: () => {},
   optimisticUpdateGymLog: () => {},
   optimisticAddWaterLog: () => {},
+  optimisticDeleteWaterLog: () => {},
 };
 
 const WellnessContext = createContext<WellnessContextType | null>(null);
@@ -459,13 +461,21 @@ export function WellnessProvider({
 
       AsyncStorage.getItem('zentrack_water_goal_ml')
         .then(savedGoal => {
-          const goal = savedGoal ? parseInt(savedGoal, 10) : 2000;
+          const goal = savedGoal ? parseInt(savedGoal, 10) : 3800;
           checkAndTriggerWaterMilestones(previousToday, newToday, goal).catch(() => {});
         })
         .catch(() => {});
 
       const next = [log, ...prev];
       writeWellnessCache({ waterLogs: next }, true); // immediate: optimistic add
+      return next;
+    });
+  };
+
+  const optimisticDeleteWaterLog = (logId: string) => {
+    setWaterLogs(prev => {
+      const next = prev.filter(l => l.id !== logId);
+      writeWellnessCache({ waterLogs: next }, true); // immediate: optimistic delete
       return next;
     });
   };
@@ -478,10 +488,10 @@ export function WellnessProvider({
   const value = useMemo(() => ({
     gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate,
     waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddGymLog, optimisticUpdateGymLog,
-    optimisticAddWaterLog
+    optimisticAddWaterLog, optimisticDeleteWaterLog
   }), [
     gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate,
-    waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddWaterLog
+    waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddWaterLog, optimisticDeleteWaterLog
   ]);
 
   return (

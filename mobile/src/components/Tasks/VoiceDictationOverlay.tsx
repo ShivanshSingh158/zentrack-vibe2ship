@@ -152,8 +152,8 @@ const visualizerStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
-    height: 44,
-    marginTop: 20,
+    height: 38,
+    marginTop: 16,
   },
   bar: {
     width: 5,
@@ -829,8 +829,8 @@ export default function VoiceDictationOverlay({
   };
 
   const glowAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: glowScale.value }],
-    opacity: state === 'recording' ? glowOpacity.value : 0.2,
+    transform: [{ scale: state === 'recording' ? glowScale.value : 1 }],
+    opacity: state === 'recording' ? glowOpacity.value : 0,
   }));
 
   if (!visible) return null;
@@ -861,7 +861,7 @@ export default function VoiceDictationOverlay({
         />
 
         {/* Top Header Bar */}
-        <View style={[styles.topHeader, { paddingTop: Platform.OS === 'ios' ? 5 : 5 }]}>
+        <View style={styles.topHeader}>
           <View style={styles.badgePill}>
             <Image
               source={require('../../../assets/images/sara-idle.png')}
@@ -963,7 +963,11 @@ export default function VoiceDictationOverlay({
                   {/* 1-Tap Quick Action Templates on Error */}
                   <View style={styles.quickTemplatesWrapper}>
                     <Text style={styles.quickTemplatesLabel}>OR PICK A QUICK TEMPLATE (0MS OFFLINE)</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickTemplatesRow}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.quickTemplatesRow}
+                    >
                       {QUICK_TEMPLATES.map((tmpl, idx) => (
                         <TouchableOpacity
                           key={idx}
@@ -1369,19 +1373,26 @@ export default function VoiceDictationOverlay({
                     {currentExample.mid}
                     <Text style={styles.highlightText}>{currentExample.highlight2}</Text>"
                   </Text>
+                  
                   <TouchableOpacity
                     style={styles.typeInsteadHint}
                     onPress={handleSwitchToManualNLP}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="create-outline" size={13} color="rgba(255,255,255,0.5)" />
+                    <Ionicons name="create-outline" size={13} color="rgba(255,255,255,0.6)" />
                     <Text style={styles.typeInsteadHintText}>Or tap here to type with instant local NLP</Text>
                   </TouchableOpacity>
+
+                  <View style={styles.cardDivider} />
 
                   {/* 1-Tap Quick Action Templates */}
                   <View style={styles.quickTemplatesWrapper}>
                     <Text style={styles.quickTemplatesLabel}>QUICK 1-TAP TEMPLATES (0MS NLP)</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickTemplatesRow}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.quickTemplatesRow}
+                    >
                       {QUICK_TEMPLATES.map((tmpl, idx) => (
                         <TouchableOpacity
                           key={idx}
@@ -1411,8 +1422,11 @@ export default function VoiceDictationOverlay({
               >
                 <Animated.View style={[styles.micGlow, glowAnimatedStyle]} />
                 <LinearGradient
-                  colors={state === 'recording' ? ['#FF453A', '#B30006'] : ['#3A3A3C', '#2C2C2E']}
-                  style={styles.micOrb}
+                  colors={state === 'recording' ? ['#FF453A', '#B30006'] : ['#2C2C2E', '#1C1C1E']}
+                  style={[
+                    styles.micOrb,
+                    state === 'recording' ? styles.micOrbActive : styles.micOrbIdle,
+                  ]}
                 >
                   <Ionicons
                     name={state === 'recording' ? 'mic' : 'mic-outline'}
@@ -1460,7 +1474,7 @@ export default function VoiceDictationOverlay({
           </View>
 
           {/* Action Footer */}
-          <View style={[styles.footer, { paddingBottom: insets.bottom + 28 }]}>
+          <View style={[styles.footer, { paddingBottom: insets.bottom + 18 }]}>
             {state === 'recording' && (
               <TouchableOpacity
                 style={styles.doneBtn}
@@ -1471,7 +1485,7 @@ export default function VoiceDictationOverlay({
                   colors={['#FF453A', '#D70015']}
                   style={styles.doneBtnGradient}
                 >
-                  <Ionicons name="checkmark" size={24} color="#FFFFFF" />
+                  <Ionicons name="checkmark" size={22} color="#FFFFFF" />
                   <Text style={styles.doneBtnText}>Done Dictating</Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -1540,10 +1554,15 @@ export default function VoiceDictationOverlay({
               <TouchableOpacity
                 style={styles.retryPill}
                 onPress={handleStartRecording}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
               >
-                <Ionicons name="mic" size={18} color="#FFFFFF" />
-                <Text style={styles.retryPillText}>Start Voice Dictation</Text>
+                <LinearGradient
+                  colors={['rgba(255, 255, 255, 0.12)', 'rgba(255, 255, 255, 0.05)']}
+                  style={styles.retryPillGradient}
+                >
+                  <Ionicons name="mic" size={19} color="#FFFFFF" />
+                  <Text style={styles.retryPillText}>Start Voice Dictation</Text>
+                </LinearGradient>
               </TouchableOpacity>
             )}
           </View>
@@ -1674,15 +1693,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 6,
-    paddingBottom: 8,
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 8 : 10,
+    paddingBottom: 10,
   },
   badgePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: 20,
     backgroundColor: 'rgba(255, 69, 58, 0.12)',
     borderWidth: 1,
@@ -1706,28 +1726,31 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    paddingHorizontal: 6,
+    paddingHorizontal: 16,
     justifyContent: 'space-between',
   },
   titleSection: {
-    marginTop: 0,
-    marginBottom: 0,
+    marginTop: 4,
+    marginBottom: 8,
     alignItems: 'center',
+    paddingHorizontal: 8,
   },
   mainTitle: {
     fontFamily: 'Inter_700Bold',
-    fontSize: 24,
+    fontSize: 25,
     color: '#FFFFFF',
     marginBottom: 4,
     textAlign: 'center',
+    letterSpacing: -0.3,
   },
   subTitle: {
     fontFamily: FONT_FAMILY.body,
-    fontSize: 12,
+    fontSize: 12.5,
     color: 'rgba(255, 255, 255, 0.55)',
     textAlign: 'center',
-    paddingHorizontal: 4,
-    lineHeight: 17,
+    paddingHorizontal: 8,
+    lineHeight: 18,
+    maxWidth: 340,
   },
   cardContainer: {
     marginTop: 6,
@@ -1738,12 +1761,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    overflow: 'hidden',
   },
   cardHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   cardHeaderText: {
     fontFamily: FONT_FAMILY.bold,
@@ -1756,6 +1780,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#FFFFFF',
     lineHeight: 23,
+    marginBottom: 8,
   },
   highlightText: {
     color: '#FF6961',
@@ -2013,42 +2038,51 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 6,
-    marginBottom: 2,
+    marginVertical: 10,
   },
   listeningContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-    paddingTop: 6,
   },
   micGlow: {
     position: 'absolute',
-    width: 74,
-    height: 74,
-    borderRadius: 37,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
     backgroundColor: '#FF453A',
-    top: -4,
-    left: -4,
+    top: -5,
+    left: -5,
   },
   micOrb: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#FF453A',
+    borderWidth: 1,
+  },
+  micOrbIdle: {
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
-    marginBottom: 0,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  micOrbActive: {
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    shadowColor: '#FF453A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 8,
   },
   statusDotRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 16,
+    marginTop: 12,
   },
   liveDot: {
     width: 7,
@@ -2072,6 +2106,7 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
   },
   footer: {
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2081,7 +2116,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     shadowColor: '#FF453A',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 6,
   },
@@ -2166,20 +2201,29 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.75)',
   },
   retryPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 24,
-    paddingVertical: 13,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    width: '100%',
+    borderRadius: 16,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.15)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  retryPillGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 15,
   },
   retryPillText: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 14,
+    fontSize: 15,
     color: '#FFFFFF',
+    letterSpacing: 0.2,
   },
   offlineTypeBtn: {
     flexDirection: 'row',
@@ -2202,42 +2246,52 @@ const styles = StyleSheet.create({
   typeInsteadHint: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    alignSelf: 'center',
     gap: 6,
-    marginTop: 10,
-    paddingVertical: 4,
+    marginTop: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.09)',
   },
   typeInsteadHintText: {
-    fontFamily: FONT_FAMILY.regular,
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.5)',
-    textDecorationLine: 'underline',
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 11.5,
+    color: 'rgba(255, 255, 255, 0.65)',
+  },
+  cardDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    marginVertical: 12,
   },
   quickTemplatesWrapper: {
-    marginTop: 12,
     width: '100%',
+    marginTop: 2,
   },
   quickTemplatesLabel: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 10,
     letterSpacing: 0.8,
     color: 'rgba(255, 255, 255, 0.4)',
-    marginBottom: 6,
+    marginBottom: 8,
     textTransform: 'uppercase',
   },
   quickTemplatesRow: {
     flexDirection: 'row',
     gap: 8,
     paddingVertical: 2,
+    paddingRight: 16,
   },
   quickTemplatePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 6,
+    paddingVertical: 7,
     paddingHorizontal: 12,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
   },

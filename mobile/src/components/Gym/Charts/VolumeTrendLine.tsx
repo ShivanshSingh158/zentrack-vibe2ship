@@ -55,7 +55,7 @@ function buildAreaPath(values: number[], width: number, height: number, maxVal: 
   return `${lineParts.join(' ')} L${lastX.toFixed(1)},${baseY.toFixed(1)} L${padX.toFixed(1)},${baseY.toFixed(1)} Z`;
 }
 
-export default function VolumeTrendLine({ thisWeek, lastWeek, height = 160 }: VolumeTrendLineProps) {
+export const VolumeTrendLine: React.FC<VolumeTrendLineProps> = React.memo(function VolumeTrendLine({ thisWeek, lastWeek, height = 160 }: VolumeTrendLineProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
@@ -208,7 +208,9 @@ export default function VolumeTrendLine({ thisWeek, lastWeek, height = 160 }: Vo
       </View>
     </View>
   );
-}
+});
+
+export default VolumeTrendLine;
 
 const makeStyles = (colors: any, isDark: boolean = true) =>
   StyleSheet.create({

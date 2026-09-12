@@ -44,7 +44,7 @@ function formatDateShort(dateStr: string): string {
   return `${months[m - 1]} ${d}`;
 }
 
-export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
+export const ConsistencyHeatmap: React.FC<ConsistencyHeatmapProps> = React.memo(function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
@@ -171,7 +171,9 @@ export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
       )}
     </View>
   );
-}
+});
+
+export default ConsistencyHeatmap;
 
 const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   container: {

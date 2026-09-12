@@ -43,7 +43,6 @@ import { KanbanView } from './KanbanView';
 import { MatrixView } from './MatrixView';
 import { TaskDateStrip } from './TaskDateStrip';
 import { ProgressRing } from './ProgressRing';
-import { NewTaskModal } from './NewTaskModal';
 import { TaskTimeLogSheet } from './TaskTimeLogSheet';
 import { TimeSpentSheet } from './TimeSpentSheet';
 import { TaskTemplatesSheet } from './TaskTemplatesSheet';
@@ -81,19 +80,49 @@ export const TodoListModule: React.FC = () => {
     if (res.leveledUp) toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
   }, [globalTodos, rawHabits, rawHabitLogs, todayStr]);
 
+  // Optimistic deletion state: instantly removes deleted tasks from UI with background sync
+  const [optimisticDeletedIds, setOptimisticDeletedIds] = useState<Set<string>>(new Set());
+
+  // Active tasks excluding any pending background deletions
+  const activeGlobalTodos = useMemo(() => {
+    if (optimisticDeletedIds.size === 0) return globalTodos;
+    return globalTodos.filter(t => !optimisticDeletedIds.has(t.id));
+  }, [globalTodos, optimisticDeletedIds]);
+
+  // Clean up optimistic IDs once Firestore snapshot confirms deletion
+  useEffect(() => {
+    if (optimisticDeletedIds.size === 0) return;
+    const currentIds = new Set(globalTodos.map(t => t.id));
+    let hasStale = false;
+    optimisticDeletedIds.forEach(id => {
+      if (!currentIds.has(id)) {
+        hasStale = true;
+      }
+    });
+    if (hasStale) {
+      setOptimisticDeletedIds(prev => {
+        const next = new Set<string>();
+        prev.forEach(id => {
+          if (currentIds.has(id)) next.add(id);
+        });
+        return next;
+      });
+    }
+  }, [globalTodos, optimisticDeletedIds]);
+
   // Filter tasks for selected date
   const todos = useMemo(() => {
-    return globalTodos.filter(t => t.date === selectedDate);
-  }, [globalTodos, selectedDate]);
+    return activeGlobalTodos.filter(t => t.date === selectedDate);
+  }, [activeGlobalTodos, selectedDate]);
 
   const inboxTasks = useMemo(() => 
-    globalTodos.filter(t => !t.date && t.status !== 'completed').sort((a, b) => (a.order || 0) - (b.order || 0)),
-    [globalTodos]
+    activeGlobalTodos.filter(t => !t.date && t.status !== 'completed').sort((a, b) => (a.order || 0) - (b.order || 0)),
+    [activeGlobalTodos]
   );
   
   const overdueTasks = useMemo(() => 
-    globalTodos.filter(t => t.date && t.date < todayStr && t.status !== 'completed').sort((a, b) => (a.order || 0) - (b.order || 0)),
-    [globalTodos, todayStr]
+    activeGlobalTodos.filter(t => t.date && t.date < todayStr && t.status !== 'completed').sort((a, b) => (a.order || 0) - (b.order || 0)),
+    [activeGlobalTodos, todayStr]
   );
 
   // Active View Mode: 'list' | 'timeline' | 'kanban' | 'matrix'
@@ -102,7 +131,6 @@ export const TodoListModule: React.FC = () => {
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
 
   // Modals & Sheets State
-  const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
   const [isInboxDrawerOpen, setIsInboxDrawerOpen] = useState(false);
   const [isTimeSpentSheetOpen, setIsTimeSpentSheetOpen] = useState(false);
   const [isTemplatesSheetOpen, setIsTemplatesSheetOpen] = useState(false);
@@ -140,11 +168,11 @@ export const TodoListModule: React.FC = () => {
   // Extract all unique tags across tasks
   const allAvailableTags = useMemo(() => {
     const set = new Set<string>();
-    globalTodos.forEach(t => {
+    activeGlobalTodos.forEach(t => {
       (t.tags || []).forEach(tag => set.add(tag));
     });
     return Array.from(set);
-  }, [globalTodos]);
+  }, [activeGlobalTodos]);
 
   // Handle Raycast-Style Fast Natural Language Quick Capture
   const handleQuickCapture = async (e: React.FormEvent) => {
@@ -296,30 +324,6 @@ export const TodoListModule: React.FC = () => {
     }
   }, []);
 
-  // Handle Create Task from NewTaskModal
-  const handleCreateTask = async (taskData: Omit<TodoItem, 'id' | 'userId'>) => {
-    if (!user) return;
-    const count = todos.filter(t => t.status !== 'completed').length;
-    const newDoc: any = {
-      userId: user.uid,
-      title: taskData.title,
-      text: taskData.title,
-      date: taskData.date || selectedDate,
-      status: 'pending',
-      priority: taskData.priority || 'medium',
-      timeSlot: taskData.timeSlot || null,
-      subtasks: taskData.subtasks || [],
-      tags: taskData.tags || [],
-      isRecurring: !!taskData.isRecurring,
-      recurrenceRule: taskData.recurrenceRule || null,
-      createdAt: Date.now(),
-      order: count,
-    };
-
-    await addDoc(collection(db, 'todos'), newDoc);
-    toast.success('Task created!');
-  };
-
   // Handle Apply Template
   const handleApplyTemplate = async (template: TaskTemplate) => {
     if (!user) return;
@@ -449,17 +453,32 @@ export const TodoListModule: React.FC = () => {
     });
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (selectedTaskIds.size === 0) return;
-    const batch = writeBatch(db);
-    selectedTaskIds.forEach(id => {
-      const ref = doc(db, 'todos', id);
-      batch.delete(ref);
-    });
-    await batch.commit();
+    const idsToDelete = Array.from(selectedTaskIds);
+    const count = idsToDelete.length;
+
+    // 1. Instantly update UI (0ms delay)
     setSelectedTaskIds(new Set());
     setIsBulkEdit(false);
-    toast.success(`Deleted ${selectedTaskIds.size} tasks.`);
+    setOptimisticDeletedIds(prev => new Set([...prev, ...idsToDelete]));
+    toast.success(`Deleted ${count} task${count === 1 ? '' : 's'}.`);
+
+    // 2. Asynchronous background deletion in Firestore
+    const batch = writeBatch(db);
+    idsToDelete.forEach(id => {
+      batch.delete(doc(db, 'todos', id));
+    });
+    batch.commit().catch(err => {
+      console.error('Background bulk delete failed:', err);
+      toast.error('Failed to delete tasks. Restoring...');
+      // Rollback
+      setOptimisticDeletedIds(prev => {
+        const next = new Set(prev);
+        idsToDelete.forEach(id => next.delete(id));
+        return next;
+      });
+    });
   };
 
   // Drag & Drop Reordering
@@ -486,24 +505,49 @@ export const TodoListModule: React.FC = () => {
     setDeleteConfirm({ isOpen: true, type: 'task', id });
   };
 
-  const confirmDelete = async () => {
-    try {
-      if (deleteConfirm.type === 'completed') {
-        const batch = writeBatch(db);
-        completedTodos.forEach(t => {
-          if (t.id) batch.delete(doc(db, 'todos', t.id));
+  const confirmDelete = () => {
+    const { type, id } = deleteConfirm;
+
+    // 1. Immediately dismiss confirmation dialog (0ms delay)
+    setDeleteConfirm({ isOpen: false, type: 'task', id: '' });
+
+    if (type === 'completed') {
+      const idsToDelete = completedTodos.map(t => t.id).filter(Boolean) as string[];
+      if (idsToDelete.length === 0) return;
+
+      // 2. Instantly remove from UI
+      setOptimisticDeletedIds(prev => new Set([...prev, ...idsToDelete]));
+      toast.success('Cleared completed tasks');
+
+      // 3. Asynchronous background deletion
+      const batch = writeBatch(db);
+      idsToDelete.forEach(taskId => {
+        batch.delete(doc(db, 'todos', taskId));
+      });
+      batch.commit().catch(err => {
+        console.error('Failed to clear completed tasks:', err);
+        toast.error('Failed to clear completed tasks. Restoring...');
+        setOptimisticDeletedIds(prev => {
+          const next = new Set(prev);
+          idsToDelete.forEach(taskId => next.delete(taskId));
+          return next;
         });
-        await batch.commit();
-        toast.success('Cleared completed tasks');
-      } else if (deleteConfirm.id) {
-        await deleteDoc(doc(db, 'todos', deleteConfirm.id));
-        toast.success('Task deleted');
-      }
-    } catch (err) {
-      console.error('Failed to delete:', err);
-      toast.error('Failed to delete task');
-    } finally {
-      setDeleteConfirm({ isOpen: false, type: 'task', id: '' });
+      });
+    } else if (id) {
+      // 2. Instantly remove from UI (0ms delay)
+      setOptimisticDeletedIds(prev => new Set([...prev, id]));
+      toast.success('Task deleted');
+
+      // 3. Asynchronous background deletion
+      deleteDoc(doc(db, 'todos', id)).catch(err => {
+        console.error('Failed to delete task:', err);
+        toast.error('Failed to delete task. Restoring...');
+        setOptimisticDeletedIds(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      });
     }
   };
 
@@ -597,7 +641,7 @@ export const TodoListModule: React.FC = () => {
           <button
             type="button"
             className="tasks-primary-add-btn"
-            onClick={() => setIsNewTaskModalOpen(true)}
+            onClick={() => window.dispatchEvent(new CustomEvent('open-new-task-modal', { detail: { date: selectedDate } }))}
           >
             <Plus size={16} strokeWidth={2.5} />
             <span>Add Task</span>
@@ -812,7 +856,7 @@ export const TodoListModule: React.FC = () => {
                 <button
                   type="button"
                   className="empty-create-btn"
-                  onClick={() => setIsNewTaskModalOpen(true)}
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-new-task-modal', { detail: { date: selectedDate } }))}
                 >
                   <Plus size={16} /> Create Task
                 </button>
@@ -892,7 +936,7 @@ export const TodoListModule: React.FC = () => {
 
         {viewMode === 'timeline' && (
           <TimelineView
-            tasks={globalTodos}
+            tasks={activeGlobalTodos}
             selectedDate={selectedDate}
             onTaskClick={setEditingTask}
           />
@@ -900,35 +944,30 @@ export const TodoListModule: React.FC = () => {
 
         {viewMode === 'kanban' && (
           <KanbanView
-            tasks={globalTodos}
+            tasks={activeGlobalTodos}
             onTaskClick={setEditingTask}
           />
         )}
 
         {viewMode === 'matrix' && (
           <MatrixView
-            tasks={globalTodos}
+            tasks={activeGlobalTodos}
             onTaskClick={setEditingTask}
           />
         )}
       </div>
 
       {/* ── MODALS & SHEETS ── */}
-      {/* 1. New Task Modal */}
-      <NewTaskModal
-        isOpen={isNewTaskModalOpen}
-        onClose={() => setIsNewTaskModalOpen(false)}
-        initialDate={selectedDate}
-        onSave={handleCreateTask}
-      />
-
-      {/* 2. Edit Task Modal */}
+      {/* 1. Edit Task Modal */}
       {editingTask && (
         <EditTodoModal
           isOpen={!!editingTask}
           onClose={() => setEditingTask(null)}
           todo={editingTask}
-          onDelete={handleDeleteTask}
+          onDelete={(id) => {
+            setEditingTask(null);
+            handleDeleteTask(id);
+          }}
           onSave={async (updated) => {
             if (updated.id) {
               await updateDoc(doc(db, 'todos', updated.id), { ...updated });
@@ -951,7 +990,7 @@ export const TodoListModule: React.FC = () => {
       <TimeSpentSheet
         isOpen={isTimeSpentSheetOpen}
         onClose={() => setIsTimeSpentSheetOpen(false)}
-        tasks={globalTodos}
+        tasks={activeGlobalTodos}
         selectedDate={selectedDate}
       />
 
@@ -967,7 +1006,7 @@ export const TodoListModule: React.FC = () => {
         isOpen={isBulkRescheduleOpen}
         onClose={() => setIsBulkRescheduleOpen(false)}
         selectedTaskIds={selectedTaskIds}
-        allTasks={globalTodos}
+        allTasks={activeGlobalTodos}
         onConfirm={handleBulkReschedule}
       />
 

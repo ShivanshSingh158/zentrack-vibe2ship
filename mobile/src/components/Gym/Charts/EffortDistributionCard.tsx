@@ -20,7 +20,7 @@ interface Props {
   weekLogs: GymDayLog[];
 }
 
-export default function EffortDistributionCard({ weekLogs }: Props) {
+export const EffortDistributionCard: React.FC<Props> = React.memo(function EffortDistributionCard({ weekLogs }: Props) {
   const { colors, isDark } = useTheme();
 
   const allCompletedSets = useMemo(() => {
@@ -155,7 +155,9 @@ export default function EffortDistributionCard({ weekLogs }: Props) {
       </View>
     </View>
   );
-}
+});
+
+export default EffortDistributionCard;
 
 const styles = StyleSheet.create({
   card: {

@@ -49,12 +49,32 @@ export const CalendarMiniMonth: React.FC<CalendarMiniMonthProps> = ({
     }
   };
 
-  // Pre-calculate days with events for micro-dot indicators
+  // Pre-calculate days with real, meaningful events for micro-dot indicators
+  // Filter out automatic repeating background templates (e.g. 6-day gym plan template) to avoid acne-like dot clutter
   const eventDatesSet = useMemo(() => {
     const s = new Set<string>();
     events.forEach(e => {
-      if (e.date) s.add(e.date);
+      // Exclude automatic gym templates that flood 6 days/week indefinitely
+      const isAutoGymTemplate = e.type === 'gym' && (!e.id?.includes('logged') && !e.title?.toLowerCase().includes('logged'));
+      if (isAutoGymTemplate) return;
+
+      // Real commitments: tasks, Google Calendar events, user custom events, exams, or logged workouts
+      const isMeaningful = e.type === 'task' || e.fromGCal || e.type === 'custom' || e.isCustom || e.id?.includes('logged');
+      if (e.date && isMeaningful) {
+        s.add(e.date);
+      }
     });
+
+    // Fallback: If user has no tasks or custom events at all, show dots for exams or non-class events
+    if (s.size === 0) {
+      events.forEach(e => {
+        const isAutoGymTemplate = e.type === 'gym' && !e.id?.includes('logged');
+        if (e.date && !isAutoGymTemplate && e.type !== 'class') {
+          s.add(e.date);
+        }
+      });
+    }
+
     return s;
   }, [events]);
 
@@ -121,7 +141,7 @@ export const CalendarMiniMonth: React.FC<CalendarMiniMonthProps> = ({
         {daysGrid.map(({ dateStr, dayNum, isCurrentMonth }) => {
           const isToday = dateStr === todayStr;
           const isSelected = dateStr === selectedDate;
-          const hasEvents = eventDatesSet.has(dateStr);
+          const hasEvents = isCurrentMonth && eventDatesSet.has(dateStr);
 
           return (
             <button
@@ -129,6 +149,7 @@ export const CalendarMiniMonth: React.FC<CalendarMiniMonthProps> = ({
               type="button"
               className={`mini-day-cell ${isCurrentMonth ? 'in-month' : 'out-month'} ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}`}
               onClick={() => onSelectDate(dateStr)}
+              title={isToday ? `Today: ${dateStr}` : dateStr}
             >
               <span className="mini-day-number">{dayNum}</span>
               {hasEvents && !isSelected && <span className="mini-day-dot" />}

@@ -10,7 +10,7 @@
  */
 import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates } from 'react-native';
+import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates, AppState, AppStateStatus } from 'react-native';
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { AttendanceSubject, AttendanceLog, Assignment, Semester, SemesterSubject } from "../MobileDataContext";
@@ -132,6 +132,75 @@ export function AcademicProvider({
     return () => sub.remove();
   }, [user?.uid]);
 
+  // ── Widget action listener: syncs live widget logs into React state immediately ──
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('attendance_logged_from_widget', (event: any) => {
+      if (event?.log) {
+        optimisticAddAttendanceLog(event.log);
+      } else if (event?.deterministicId) {
+        // Fix #5: Widget undo sends log: null with a deterministicId.
+        // Previously this branch was never taken, leaving the undone session
+        // marked as "Present" in the React UI even though the widget deleted it.
+        optimisticRemoveAttendanceLog(event.deterministicId);
+      }
+      if (event?.subjectId && event?.subjectUpdates) {
+        optimisticUpdateAttendance(event.subjectId, event.subjectUpdates);
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  // ── AppState active: refresh academic state from local cache on app resume ────
+  useEffect(() => {
+    const handleAppStateChange = async (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        try {
+          const cache = await readAcademicCache();
+          unstable_batchedUpdates(() => {
+            if (cache.attendanceLogs && cache.attendanceLogs.length > 0) {
+              setAttendanceLogs(prev => {
+                const prevMap = new Map(prev.map(l => [l.id, l]));
+                let hasChanges = false;
+                cache.attendanceLogs!.forEach(cl => {
+                  const existing = prevMap.get(cl.id);
+                  if (!existing || existing.action !== cl.action) {
+                    prevMap.set(cl.id, cl);
+                    hasChanges = true;
+                  }
+                });
+                if (!hasChanges) return prev;
+                return Array.from(prevMap.values());
+              });
+            }
+            if (cache.attendance && cache.attendance.length > 0) {
+              setAttendance(prev => {
+                const cacheMap = new Map(cache.attendance!.map(s => [s.id, s]));
+                let changed = false;
+                const merged = prev.map(p => {
+                  const c = cacheMap.get(p.id);
+                  if (c && (
+                    c.classesAttended !== p.classesAttended ||
+                    c.classesTotal !== p.classesTotal ||
+                    c.labsAttended !== p.labsAttended ||
+                    c.labsTotal !== p.labsTotal
+                  )) {
+                    changed = true;
+                    return { ...p, ...c };
+                  }
+                  return p;
+                });
+                return changed ? merged : prev;
+              });
+            }
+          });
+        } catch {}
+      }
+    };
+
+    const sub = AppState.addEventListener('change', handleAppStateChange);
+    return () => sub.remove();
+  }, []);
+
   // ── Offline-first boot: seed ALL academic collections in parallel ─────────
   useEffect(() => {
     let isCancelled = false;
@@ -187,11 +256,26 @@ export function AcademicProvider({
             const merged = prev.map(ps => {
               const fs = freshMap.get(ps.id!);
               if (!fs) return ps; // Subject only in prev: keep it (deleted elsewhere, stale)
-              // If our local counts are higher, we have an in-flight optimistic write — keep local
-              const localTotal = (ps.classesTotal || 0) + (ps.labsTotal || 0);
-              const freshTotal = (fs.classesTotal || 0) + (fs.labsTotal || 0);
-              if (localTotal > freshTotal) return ps;
-              return fs;
+              // Fix #3: Use lastUpdated timestamp for freshness instead of sum comparison.
+              // The old localSum > freshSum guard permanently locked the UI to stale higher
+              // counts, preventing overrides (which lower counts), schedule changes, and
+              // subject renames from ever syncing. Timestamp-based: if Firestore's
+              // lastUpdated is >= our local lastUpdated, the server copy is authoritative.
+              const localTs = ps.lastUpdated || 0;
+              const freshTs = fs.lastUpdated || 0;
+              if (freshTs >= localTs) return fs;
+              // Local has a newer timestamp (in-flight optimistic write) — keep local
+              // but merge non-counter fields (name, schedule, color, targetPercentage)
+              // so those changes are never dropped.
+              return {
+                ...ps,
+                name: fs.name,
+                schedule: fs.schedule,
+                color: fs.color,
+                targetPercentage: fs.targetPercentage,
+                order: fs.order,
+                schemaVersion: fs.schemaVersion,
+              };
             });
             // Add any fresh subjects not yet in prev (new subjects added elsewhere)
             fresh.forEach(fs => { if (!prev.find(ps => ps.id === fs.id)) merged.push(fs); });
@@ -209,7 +293,41 @@ export function AcademicProvider({
       snap => {
         if (snap.docs.length === 0 && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
-          const fresh = snap.docs.map(d => parseAttendanceLog(d.data(), d.id));
+          const rawFresh = snap.docs.map(d => parseAttendanceLog(d.data(), d.id));
+
+          // ── Snapshot dedup: remove duplicate docs for the same natural key ──────────
+          // If old random-ID docs coexist with new deterministic-ID docs (before repair
+          // runs), both arrive in the snapshot. Keep only one per slot — prefer the
+          // deterministic-format ID (uid_subjectId_date_type_idx) if it exists.
+          const seen = new Map<string, typeof rawFresh[0]>();
+          rawFresh.forEach(l => {
+            if (l.isExtra) { return; } // extra classes are never deduplicated
+            const subjectId = (l.subjectId || l.subjectName || '').toString().trim();
+            const date      = (l.date || '').toString().trim().slice(0, 10);
+            const type      = l.type === 'lab' ? 'lab' : 'class';
+            const idx       = typeof (l as any).idx === 'number' ? (l as any).idx : 0;
+            const key       = `${subjectId}|${date}|${type}|${idx}`;
+            const existing  = seen.get(key);
+            if (!existing) {
+              seen.set(key, l);
+            } else {
+              // Prefer the deterministic-format ID; otherwise keep newer timestamp
+              const isDet  = (id: string) => /^[^_]+_[^_]+_\d{4}-\d{2}-\d{2}_(class|lab)_\d+$/.test(id ?? '');
+              if (isDet(l.id ?? '') && !isDet(existing.id ?? '')) {
+                seen.set(key, l);
+              } else if (!isDet(l.id ?? '') && !isDet(existing.id ?? '')) {
+                // Both random — keep newer
+                if (((l as any).timestamp ?? 0) > ((existing as any).timestamp ?? 0)) {
+                  seen.set(key, l);
+                }
+              }
+              // Otherwise keep existing (already deterministic)
+            }
+          });
+          // Extra logs always pass through unchanged
+          const extraLogs = rawFresh.filter(l => l.isExtra);
+          const fresh = [...Array.from(seen.values()), ...extraLogs];
+
           setAttendanceLogs(prev => {
             if (areItemsEqual(prev, fresh)) return prev;
             // ── Merge strategy: NEVER wipe in-flight optimistic logs ────────────────────
@@ -343,7 +461,7 @@ export function AcademicProvider({
 
   const optimisticUpdateAttendance = (subjectId: string, partial: Partial<AttendanceSubject>) => {
     setAttendance(prev => {
-      const next = prev.map(s => s.id === subjectId ? { ...s, ...partial } : s);
+      const next = prev.map(s => s.id === subjectId ? { ...s, ...partial, lastUpdated: Date.now() } : s);
       writeAcademicCache({ attendance: next }, true); // immediate: optimistic update
       return next;
     });
@@ -375,7 +493,17 @@ export function AcademicProvider({
 
   const optimisticAddAttendanceLog = (log: AttendanceLog) => {
     setAttendanceLogs(prev => {
-      const next = [log, ...prev];
+      const cleanDate = (log.date || '').slice(0, 10);
+      const filtered = prev.filter(l =>
+        l.id !== log.id &&
+        !(
+          (l.subjectId === log.subjectId || (log.subjectName && l.subjectName === log.subjectName)) &&
+          (l.date || '').slice(0, 10) === cleanDate &&
+          (l.type === log.type || (!l.type && log.type === 'class')) &&
+          (l.idx === log.idx || (l.idx === undefined && (log.idx === 0 || log.idx === undefined)))
+        )
+      );
+      const next = [log, ...filtered];
       writeAcademicCache({ attendanceLogs: next }, true); // immediate: optimistic add
       return next;
     });

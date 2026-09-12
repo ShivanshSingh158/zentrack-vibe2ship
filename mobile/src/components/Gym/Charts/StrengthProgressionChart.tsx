@@ -74,7 +74,7 @@ function generateSmoothSparkline(values: number[], w: number, h: number): { line
   return { linePath, areaPath, points };
 }
 
-function SparkCard({ ex, onPress }: { ex: ExerciseSpark; onPress?: () => void }) {
+const SparkCard = React.memo(function SparkCard({ ex, onPress }: { ex: ExerciseSpark; onPress?: () => void }) {
   const { colors, isDark } = useTheme();
 
   // Normalize historical points: filter out non-existent zero weeks to avoid artificial spikes
@@ -230,9 +230,9 @@ function SparkCard({ ex, onPress }: { ex: ExerciseSpark; onPress?: () => void })
       </View>
     </TouchableOpacity>
   );
-}
+});
 
-export default function StrengthProgressionChart({ exercises, onSelectExercise }: StrengthProgressionChartProps) {
+export const StrengthProgressionChart: React.FC<StrengthProgressionChartProps> = React.memo(function StrengthProgressionChart({ exercises, onSelectExercise }: StrengthProgressionChartProps) {
   const { colors, isDark } = useTheme();
 
   if (!exercises || exercises.length === 0) return null;
@@ -262,7 +262,9 @@ export default function StrengthProgressionChart({ exercises, onSelectExercise }
       </View>
     </View>
   );
-}
+});
+
+export default StrengthProgressionChart;
 
 const localStyles = StyleSheet.create({
   container: {

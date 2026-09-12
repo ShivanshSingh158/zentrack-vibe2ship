@@ -152,15 +152,22 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
       }
 
       if (existingSubject && existingSubject.id) {
-        const payload = {
+        // SAFETY: in edit mode, only overwrite attendance counts if the user explicitly
+        // chose mid_semester calibration. 'fresh' in edit context means:
+        // "keep my existing counts, I'm only editing the name/target/schedule".
+        // Previously this would overwrite all counts with 0 when calibrationMode='fresh',
+        // silently destroying the entire semester's attendance record.
+        const payload: any = {
           name: name.trim(),
           targetPercentage: target,
-          classesAttended: cAtt,
-          classesTotal: cTot,
-          labsAttended: lAtt,
-          labsTotal: lTot,
           schedule,
         };
+        if (calibrationMode === 'mid_semester') {
+          payload.classesAttended = cAtt;
+          payload.classesTotal    = cTot;
+          payload.labsAttended    = lAtt;
+          payload.labsTotal       = lTot;
+        }
         optimisticUpdateAttendance(existingSubject.id, payload);
         updateDoc(doc(db, COLLECTION.ATTENDANCE, existingSubject.id), payload).catch(e => console.log('Subject update error:', e));
       } else {
@@ -485,6 +492,9 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
                   const m = minutes < 10 ? `0${minutes}` : minutes;
                   const timeStr = `${h}:${m} ${ampm}`;
                   updateSession(activePicker.dayIdx, activePicker.type, activePicker.idx, 'time', timeStr);
+                  // iOS inline wheel picker: always close after a time is selected.
+                  // Without this the picker stays open until the user manually dismisses it.
+                  if (Platform.OS === 'ios') setActivePicker(null);
                 }
                 if (Platform.OS === 'ios' && event.type === 'dismissed') {
                   setActivePicker(null);

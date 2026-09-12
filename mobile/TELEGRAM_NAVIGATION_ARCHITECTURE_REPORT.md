@@ -150,7 +150,7 @@ useEffect(() => {
     {
       width: Math.min(56, Math.max(36, tabWidth - 4)),
       left: (tabWidth - Math.min(56, Math.max(36, tabWidth - 4))) / 2,
-      backgroundColor: isDark ? 'rgba(165, 153, 255, 0.16)' : 'rgba(165, 153, 255, 0.20)',
+      backgroundColor: isDark ? 'rgba(194, 255, 153, 0.52)' : 'rgba(165, 153, 255, 0.20)',
       borderColor: isDark ? 'rgba(165, 153, 255, 0.28)' : 'rgba(165, 153, 255, 0.38)',
     },
     indicatorAnimatedStyle,

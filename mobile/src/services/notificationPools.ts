@@ -1,7 +1,7 @@
 /**
  * notificationPools.ts — ZenTrack Mobile
- * Clean, high-agency, professional notification copy pools.
- * Tone: Respectful, disciplined, encouraging, non-cringe, with minimal purposeful emojis.
+ * Professional, hooky, minimal-emoji notification copy.
+ * Tone: Sharp, direct, high-agency. No filler, no cringe, no slang.
  */
 
 export function getRandomMessage(messages: string[]): string {
@@ -25,133 +25,138 @@ export function shuffleArray<T>(array: T[]): T[] {
 // ── 1. Morning Briefing ───────────────────────────────────────────────────────
 
 export const MORNING_BRIEF_TITLES_STANDARD = (name?: string) => [
-  name ? `Good Morning, ${name}` : 'Good Morning',
-  name ? `Daily Briefing for ${name}` : 'Daily Briefing',
-  'Today\'s Overview',
-  name ? `Ready for Today, ${name}` : 'Ready for Today',
-  'Your Agenda for Today',
-  'Plan for the Day',
+  name ? `Morning, ${name}.` : 'Good Morning.',
+  "Today's Briefing",
+  'Your Day Starts Now',
+  name ? `${name}, here's your plan.` : "Here's your plan.",
+  'Daily Agenda Ready',
+  'Time to Get Moving',
 ];
 
 export const MORNING_BRIEF_STANDARD_POOLS = (summary: string, name?: string) => [
   name
-    ? `Good morning, ${name}. You have ${summary} on your agenda today.`
-    : `You have ${summary} on your agenda today. Tap to review your schedule.`,
-  `Here is your plan for today: ${summary}. Ready when you are.`,
+    ? `${name}, you have ${summary} lined up today. Tap to review.`
+    : `You have ${summary} lined up today. Tap to review.`,
+  `Today's agenda: ${summary}. Start whenever you're ready.`,
   name
-    ? `Today's focus, ${name}: ${summary}. Make steady progress step by step.`
-    : `Today's focus: ${summary}. Make steady progress step by step.`,
-  `Scheduled for today: ${summary}. Tap to open ZenTrack.`,
-  `Daily overview ready: ${summary} in your queue. Have a productive day.`,
-  `Your agenda is set: ${summary}. Tap to view details or begin.`,
+    ? `${name}: ${summary} on deck. Let's make today count.`
+    : `${summary} on deck today. Tap to open your schedule.`,
+  `${summary} scheduled for today. Tap for the full view.`,
+  `Your plan is set — ${summary} awaits. Tap to begin.`,
+  `Day loaded: ${summary} in your queue. Tap to dive in.`,
 ];
 
 export const MORNING_BRIEF_MISSED_GYM_TITLES = (name?: string) => [
-  name ? `Workout Check-in, ${name}` : 'Workout Check-in',
-  'Fitness Schedule',
-  name ? `Back on Track Today, ${name}` : 'Back on Track Today',
-  'Training Check-in',
+  name ? `${name}, don't skip the gym again.` : 'Workout Missed Yesterday',
+  'Back on Track Today',
+  'Training Day',
+  'Pick Up Where You Left Off',
 ];
 
 export const MORNING_BRIEF_MISSED_GYM_POOLS = (summary: string, name?: string) => [
   name
-    ? `Resume your momentum today, ${name}: ${summary} plus your scheduled workout session.`
-    : `Resume your momentum today: ${summary} plus your scheduled workout session.`,
-  `Consistency builds progress. Today\'s agenda includes ${summary} and your workout.`,
-  `Get back into your training rhythm today. Focus on ${summary} and hit the gym.`,
-  `Reset today with focus: ${summary} and your workout are on the docket.`,
+    ? `${name}: ${summary} plus a workout session today. Don't let two days slip.`
+    : `${summary} and a gym session today. Don't let two days slip.`,
+  `Consistency wins over intensity. Today: ${summary} and your workout.`,
+  `Reset the streak. Hit ${summary} and the gym before the day's out.`,
+  `Back at it: ${summary} and your training session are both on the list.`,
 ];
 
 // ── 2. Overdue Task Nudge ─────────────────────────────────────────────────────
 
 export const OVERDUE_TASK_POOLS = (countStr: string) => [
-  `You have ${countStr} uncompleted from yesterday. Tap to review or reschedule.`,
-  `Clear your backlog: ${countStr} carried over. A quick review keeps your agenda clean.`,
-  `${countStr} remaining from yesterday. Take a few minutes to check them off or adjust dates.`,
-  `Pending tasks: ${countStr} carried over. Tap to organize today\'s priorities.`,
-  `Review backlog: ${countStr} awaiting completion. Tap to update your list.`,
+  `${countStr} from yesterday, still unfinished. Quick — review or reschedule.`,
+  `Your backlog grew overnight: ${countStr} waiting. Clear it before today piles on.`,
+  `${countStr} carried over from yesterday. A two-minute review keeps things clean.`,
+  `Don't start today behind. ${countStr} pending — tap to sort it out.`,
+  `${countStr} unresolved from yesterday. Reschedule or close them now.`,
 ];
 
 // ── 3. Task Buffer Alert ──────────────────────────────────────────────────────
 
 export const TASK_BUFFER_POOLS = (title: string, bufferMin: number) => [
-  `"${title}" starts in ${bufferMin} minutes. Tap to view details or prepare.`,
-  `Upcoming task: "${title}" begins in ${bufferMin} minutes. Wrap up current work and get ready.`,
-  `In ${bufferMin} minutes: "${title}". Take a moment to prepare your workspace.`,
-  `Scheduled in ${bufferMin}m: "${title}". Tap to view task notes or start early.`,
-  `Reminder: "${title}" is set to begin in ${bufferMin} minutes.`,
+  `"${title}" kicks off in ${bufferMin} minutes. Wrap up and get ready.`,
+  `${bufferMin} minutes to "${title}". Time to shift focus.`,
+  `Coming up in ${bufferMin}m: "${title}". Tap to review before you start.`,
+  `"${title}" starts in ${bufferMin} minutes. Close what you're doing.`,
+  `${bufferMin}-minute heads-up: "${title}" is next on your schedule.`,
 ];
 
 // ── 4. T-15 Execution Warning ─────────────────────────────────────────────────
 
 export const TASK_T15_POOLS = (title: string) => [
-  `"${title}" begins in 15 minutes. Time to focus and get started.`,
-  `Starting in 15 minutes: "${title}". Tap to view task notes.`,
-  `15-minute reminder for "${title}". Get ready to dive in.`,
-  `Your next focus block is "${title}" in 15 minutes. Tap to open.`,
+  `15 minutes to "${title}". Finish up and focus.`,
+  `"${title}" starts in 15 minutes. Tap to review your notes.`,
+  `Final 15 minutes before "${title}". Clear your desk and get set.`,
+  `Your next focus block — "${title}" — begins in 15 minutes.`,
 ];
 
 // ── 5. Daily Unscheduled Task ─────────────────────────────────────────────────
 
 export const TASK_DAILY_POOLS = (title: string) => [
-  `Today\'s focus: "${title}". Tap to view details or mark as complete.`,
-  `You have "${title}" planned for today. Tap to schedule a time or complete it.`,
-  `Focus item for today: "${title}". Make steady progress today.`,
-  `Planned for today: "${title}". Tap to view or complete.`,
+  `"${title}" is on today's list. Mark it done or set a time.`,
+  `Don't let "${title}" carry over. Tap to schedule or complete.`,
+  `Today's item: "${title}". Find a slot or close it out.`,
+  `"${title}" is waiting. Tap to take action.`,
 ];
 
 // ── 6. Calendar Event ─────────────────────────────────────────────────────────
+// offsetLabel: e.g. "1 hour", "30 min", "15 min"
 
-export const CALENDAR_EVENT_POOLS = (title: string, time?: string) => [
-  `"${title}" starts in 1 hour${time ? ` (${time})` : ''}. Tap to view event details.`,
-  `Upcoming event: "${title}" at ${time || 'scheduled time'}. Prepare your notes.`,
-  `1-hour reminder for "${title}". Tap to check location and details.`,
-  `Scheduled event: "${title}" is coming up in 1 hour.`,
-];
+export const CALENDAR_EVENT_POOLS = (title: string, time?: string, offsetLabel?: string) => {
+  const when = offsetLabel ?? '1 hour';
+  const at = time ? ` (${time})` : '';
+  return [
+    `"${title}" starts in ${when}${at}. Tap to review the details.`,
+    `Upcoming: "${title}"${at} — ${when} away. Time to prepare.`,
+    `${when} until "${title}"${at}. Don't be the one who shows up late.`,
+    `Event alert: "${title}"${at} begins in ${when}. Tap to view.`,
+  ];
+};
 
 // ── 7. Habit Streak At Risk ───────────────────────────────────────────────────
 
 export const HABIT_STREAK_RISK_POOLS = (habitName: string, streakCount: number) => [
-  `Your ${streakCount}-day streak for "${habitName}" is at risk. Tap to log before midnight.`,
-  `Keep your momentum going: "${habitName}" (${streakCount} days) hasn't been recorded today.`,
-  `Protect your ${streakCount}-day streak. Take 5 seconds to log "${habitName}".`,
-  `Streak reminder: ${streakCount} days on "${habitName}". Log today\'s completion to maintain it.`,
+  `${streakCount} days of "${habitName}" — don't let tonight break the chain.`,
+  `"${habitName}" still unlogged. You have until midnight to protect your ${streakCount}-day streak.`,
+  `Your ${streakCount}-day run on "${habitName}" is on the line. Tap to log.`,
+  `Streak at risk: "${habitName}" needs a check-in before midnight.`,
 ];
 
 // ── 8. Habit Daily — Streak Tier 30+ ─────────────────────────────────────────
 
 export const HABIT_DAILY_30_POOLS = (habitName: string, streakCount: number) => [
-  `Day ${streakCount} of "${habitName}". Exceptional consistency—tap to record today.`,
-  `${streakCount}-day streak on "${habitName}". Maintain your discipline today.`,
-  `Outstanding progress: Day ${streakCount} for "${habitName}". Tap to check in.`,
-  `Long-term mastery: "${habitName}" is on Day ${streakCount}. Tap to keep the chain strong.`,
+  `Day ${streakCount}. "${habitName}" has become part of who you are. Log it.`,
+  `${streakCount}-day streak on "${habitName}". Don't make today the exception.`,
+  `"${habitName}" — Day ${streakCount}. Keep the standard you've built.`,
+  `Exceptional: ${streakCount} days straight on "${habitName}". Tap to record today.`,
 ];
 
 // ── 9. Habit Daily — Streak Tier 7+ ──────────────────────────────────────────
 
 export const HABIT_DAILY_7_POOLS = (habitName: string, streakCount: number) => [
-  `Day ${streakCount} of "${habitName}". Solid momentum—tap to record today.`,
-  `${streakCount} consecutive days for "${habitName}". Keep the chain unbroken.`,
-  `Great consistency: Day ${streakCount} of "${habitName}". Tap to log your check-in.`,
-  `Habit building: "${habitName}" reaches Day ${streakCount}. Tap to log.`,
+  `${streakCount} days in a row on "${habitName}". Don't break it today.`,
+  `"${habitName}" is building momentum — Day ${streakCount}. Tap to log.`,
+  `Solid ${streakCount}-day run. "${habitName}" is becoming automatic. Log it.`,
+  `Day ${streakCount} of "${habitName}". Small actions, compounding results.`,
 ];
 
 // ── 10. Habit Daily — Streak Tier 1+ ─────────────────────────────────────────
 
 export const HABIT_DAILY_1_POOLS = (habitName: string, streakCount: number) => [
-  `Day ${streakCount} of "${habitName}". Tap to log your progress today.`,
-  `Keep the habit alive: "${habitName}" (Day ${streakCount}) is ready to be logged.`,
-  `Building momentum: remember to complete "${habitName}" today.`,
-  `Daily check-in: log your progress on "${habitName}" for Day ${streakCount}.`,
+  `Day ${streakCount} of "${habitName}". Keep the streak alive — tap to log.`,
+  `"${habitName}" (Day ${streakCount}) is ready for today's check-in.`,
+  `Building something real: "${habitName}", Day ${streakCount}. Don't skip.`,
+  `Log "${habitName}" for Day ${streakCount}. Progress is made one day at a time.`,
 ];
 
 // ── 11. Habit Daily — Streak Tier 0 (Fresh Start) ────────────────────────────
 
 export const HABIT_DAILY_0_POOLS = (habitName: string) => [
-  `Start strong: Day 1 of "${habitName}". Tap to record your first check-in.`,
-  `New habit starting today: "${habitName}". Take the first step.`,
-  `Set the foundation: log Day 1 of "${habitName}" today.`,
-  `First check-in: start your consistency streak with "${habitName}".`,
+  `Day 1 of "${habitName}" starts now. Tap to log your first check-in.`,
+  `Every streak starts somewhere. Begin "${habitName}" today.`,
+  `"${habitName}" — your first check-in is one tap away.`,
+  `Start clean: log Day 1 of "${habitName}" and build from here.`,
 ];
 
 // ── 12. Gym Workout Reminder ──────────────────────────────────────────────────
@@ -161,165 +166,165 @@ export const GYM_WORKOUT_POOLS = (planName: string, exercisePreview?: string, to
     ? `: ${exercisePreview}${totalExercises && totalExercises > 3 ? ` +${totalExercises - 3} more` : ''}`
     : '';
   return [
-    `Scheduled for today: ${planName}${previewClause}. Tap to view your workout.`,
-    `Time to train: ${planName}${previewClause}. Stay consistent and log your sets.`,
-    `Today's session: ${planName}${previewClause}. Tap to begin tracking.`,
-    `Workout ready: ${planName}${previewClause}. Tap to review exercises.`,
+    `Today's session: ${planName}${previewClause}. Tap to view and start tracking.`,
+    `${planName} is on the schedule${previewClause}. No excuses — tap to begin.`,
+    `Time to train. ${planName}${previewClause} is waiting.`,
+    `Workout ready: ${planName}${previewClause}. Tap to log your sets.`,
   ];
 };
 
 // ── 13. Gym Rest Day ──────────────────────────────────────────────────────────
 
 export const GYM_REST_DAY_POOLS = () => [
-  'Today is a scheduled recovery day. Focus on rest, hydration, and nutrition.',
-  'Active recovery day. Allow muscles to recover for your next session.',
-  'Rest and recharge today. Quality recovery supports steady progress.',
-  'Recovery day: hydrate, stretch, and get adequate sleep.',
+  'Scheduled rest day. Recover well — your next session depends on it.',
+  'Today is recovery. Sleep, hydrate, and let the muscles rebuild.',
+  'Active rest day. A short walk or stretch counts. Don\'t overdo it.',
+  'Rest is training too. Protect today\'s recovery for tomorrow\'s performance.',
 ];
 
 // ── 14. Attendance < 75% Warning ─────────────────────────────────────────────
 
 export const ATTENDANCE_CRITICAL_POOLS = (subjName: string, pct: string, needed: number) => [
-  `${subjName} attendance is at ${pct}%. Attend the next ${needed} classes to reach 75%.`,
-  `Attendance alert: ${subjName} is currently ${pct}%. You need ${needed} consecutive classes for safety.`,
-  `${subjName} is below the 75% threshold (${pct}%). Ensure you attend today\'s session.`,
-  `Academic alert: ${subjName} at ${pct}%. ${needed} more attendances required to reach safety margin.`,
+  `${subjName}: ${pct}% attendance. You need ${needed} more classes to hit the safety mark.`,
+  `Attendance risk in ${subjName} (${pct}%). Attend the next ${needed} sessions — no exceptions.`,
+  `${subjName} is below threshold at ${pct}%. ${needed} consecutive classes will get you back to 75%.`,
+  `Warning: ${subjName} attendance is ${pct}%. Missing today costs you more to recover.`,
 ];
 
 // ── 15. Class Pre-Warning ─────────────────────────────────────────────────────
 
 export const CLASS_PRE_POOLS = (subject: string, time: string, timeStr: string, bunkStatus?: string) => [
-  `${subject} begins in ${timeStr}${time ? ` (${time})` : ''}.${bunkStatus ? ` ${bunkStatus}` : ' Tap to view class details.'}`,
-  `Upcoming class: ${subject} in ${timeStr}.${bunkStatus ? ` ${bunkStatus}` : ' Time to head over.'}`,
-  `Class reminder: ${subject} starts in ${timeStr}.${bunkStatus ? ` ${bunkStatus}` : ' Tap to check notes or room.'}`,
-  `${subject} starts in ${timeStr}.${bunkStatus ? ` ${bunkStatus}` : ' Tap to view your schedule.'}`,
+  `${subject} in ${timeStr}${time ? ` (${time})` : ''}.${bunkStatus ? ` ${bunkStatus}` : ' Tap to check notes or room.'}`,
+  `Heads-up: ${subject} starts in ${timeStr}.${bunkStatus ? ` ${bunkStatus}` : " Don't be late."}`,
+  `${timeStr} until ${subject}${time ? ` at ${time}` : ''}.${bunkStatus ? ` ${bunkStatus}` : ' Tap to review your schedule.'}`,
+  `Class alert: ${subject} — ${timeStr} away.${bunkStatus ? ` ${bunkStatus}` : ' Start making your way over.'}`,
 ];
 
 // ── 16. Post-Class Attendance Log ────────────────────────────────────────────
 
 export const POST_CLASS_LOG_POOLS = (subject: string) => [
-  `${subject} class has ended. Tap to record your attendance status.`,
-  `Update your records: mark Present, Absent, or Cancelled for ${subject}.`,
-  `Keep your attendance accurate: log your status for ${subject}.`,
-  `Class finished: tap to log attendance for ${subject}.`,
+  `${subject} is done. Log your attendance before you forget.`,
+  `Class over: mark yourself for ${subject} — present, absent, or cancelled.`,
+  `Keep your records accurate. Tap to log ${subject} attendance.`,
+  `${subject} wrapped up. Quick tap to update your attendance.`,
 ];
 
 // ── 17. Mid-Lab Checkpoint ────────────────────────────────────────────────────
 
 export const LAB_MID_POOLS = (subject: string) => [
-  `One hour completed in ${subject} lab. Tap if you need to log hourly attendance.`,
-  `Mid-session checkpoint for ${subject} lab. Tap to update your log.`,
-  `${subject} practical: first hour completed. Tap to record progress.`,
+  `One hour into ${subject} lab. Tap to log if hourly attendance is tracked.`,
+  `${subject} practical — first hour done. Mark your checkpoint if needed.`,
+  `Mid-session: ${subject} lab is halfway. Tap to update your log.`,
 ];
 
 // ── 18. Post-Lab Log ─────────────────────────────────────────────────────────
 
 export const POST_LAB_LOG_POOLS = (subject: string) => [
-  `${subject} lab completed. Tap to record your practical attendance.`,
-  `Practical session finished for ${subject}. Mark your attendance to stay up to date.`,
-  `${subject} lab has concluded. Tap to log your final status.`,
+  `${subject} lab is done. Log your practical attendance now.`,
+  `Practical session complete: mark your attendance for ${subject}.`,
+  `${subject} lab finished. Tap to update your record before you move on.`,
 ];
 
 // ── 19. Assignment 48h Warning ────────────────────────────────────────────────
 
 export const ASSIGNMENT_48H_POOLS = (title: string) => [
-  `"${title}" is due in 48 hours. Review requirements and make headway today.`,
-  `Upcoming deadline: 2 days left for "${title}". Tap to view details.`,
-  `48-hour reminder for "${title}". Plan time today to finish without rushing.`,
-  `Assignment deadline approaching: "${title}" is due in 2 days.`,
+  `"${title}" is due in 48 hours. Make real progress today, not tomorrow.`,
+  `Two days left for "${title}". Start now — review, outline, or draft.`,
+  `48-hour mark: "${title}" is due soon. Tap to check what's left.`,
+  `Deadline in 2 days: "${title}". Don't let it sneak up on you.`,
 ];
 
 // ── 20. Assignment 24h Warning ────────────────────────────────────────────────
 
 export const ASSIGNMENT_24H_POOLS = (title: string) => [
-  `"${title}" is due tomorrow. Complete your final review and submit on time.`,
-  `Final 24 hours for "${title}". Ensure your submission is ready.`,
-  `Due tomorrow: "${title}". Tap to check requirements and submit.`,
-  `Upcoming deadline tomorrow: finish and submit "${title}".`,
+  `"${title}" is due tomorrow. Final review, polish, and submit.`,
+  `24 hours left on "${title}". Submit on time — late is worse than imperfect.`,
+  `Due tomorrow: "${title}". If it's not done, it needs to be today.`,
+  `Final call: "${title}" is due in a day. Tap to wrap it up.`,
 ];
 
 // ── 21. Hydration — Titles ───────────────────────────────────────────────────
 
 export const WATER_TITLES_POOL = [
-  'Hydration Reminder',
-  'Water Check-in',
+  'Hydration Check',
+  'Drink Some Water',
   'Time to Hydrate',
-  'Daily Water Check',
-  'Stay Hydrated',
+  'Water Break',
+  'Stay Sharp — Drink Up',
 ];
 
-// ── 21. Hydration — With Progress ────────────────────────────────────────────
+// ── 22. Hydration — With Progress ────────────────────────────────────────────
 
 export const WATER_PROGRESS_POOLS = (loggedL: string, remainingL: string, goalL: string) => [
-  `${loggedL}L logged so far. ${remainingL}L remaining toward your ${goalL}L goal.`,
-  `Hydration progress: ${loggedL}L / ${goalL}L completed. Remember to drink a glass of water.`,
-  `You're at ${loggedL}L today with ${remainingL}L to reach your ${goalL}L target.`,
-  `Keep steady hydration: ${remainingL}L left to complete your ${goalL}L daily goal.`,
-  `Steady progress: ${loggedL}L recorded. Drink some water to stay on track.`,
+  `${loggedL}L in. ${remainingL}L left to hit your ${goalL}L goal — keep drinking.`,
+  `Progress: ${loggedL}L of ${goalL}L logged. One more glass keeps the streak clean.`,
+  `${remainingL}L to go for your ${goalL}L target. Grab a glass and log it.`,
+  `You're at ${loggedL}L. ${remainingL}L stands between you and your daily goal.`,
+  `Halfway or more: ${loggedL}L logged. Keep the intake steady through the day.`,
 ];
 
-// ── 22. Hydration — Zero Logged ───────────────────────────────────────────────
+// ── 23. Hydration — Zero Logged ───────────────────────────────────────────────
 
 export const WATER_EMPTY_POOLS = () => [
-  'No water logged yet today. Take a moment to drink a glass and log your intake.',
-  'Stay refreshed and focused today. Remember to drink some water.',
-  'Hydration check: log your first glass of water to track today\'s progress.',
-  'Maintain your focus and energy. Drink a glass of water to start today\'s goal.',
-  'Health reminder: take a water break and log your intake.',
+  'Nothing logged yet. Start with one glass — it takes ten seconds.',
+  'Dehydration quietly tanks your focus. Drink something and log it.',
+  'First water of the day: tap to log and start your intake goal.',
+  'Your water count is at zero. Grab a glass and check it off.',
+  'No intake recorded today. A glass of water is a two-second habit.',
 ];
 
-// ── 23. Sleep Wind-Down ───────────────────────────────────────────────────────
+// ── 24. Sleep Wind-Down ───────────────────────────────────────────────────────
 
 export const SLEEP_NIGHT_POOLS = () => [
-  'Time to wind down for the night. Good rest prepares you for a productive day tomorrow.',
-  'Prepare for sleep. Dim the screen, disconnect, and recharge for tomorrow.',
-  'End-of-day recovery: restful sleep supports your energy and mental clarity tomorrow.',
-  'Wind-down reminder: disconnect for the night and log your sleep schedule.',
+  'Time to wind down. Good sleep is the most underrated productivity tool.',
+  "Put the screen away. Your recovery starts when you close your eyes.",
+  "Dim the lights and disconnect. Tomorrow's performance is built tonight.",
+  'End-of-day reminder: rest well. Eight hours now means eight strong ones tomorrow.',
 ];
 
-// ── 24. Sleep Morning Log ─────────────────────────────────────────────────────
+// ── 25. Sleep Morning Log ─────────────────────────────────────────────────────
 
 export const SLEEP_MORNING_POOLS = () => [
-  'Good morning. Take 10 seconds to log your sleep and check your daily readiness.',
-  'Record last night\'s sleep duration to keep your recovery insights accurate.',
-  'Start the day fresh: tap to log your sleep and view today\'s schedule.',
-  'Morning check-in: how did you sleep? Tap to record your rest hours.',
+  "Log last night's sleep. Ten seconds of data, better long-term insights.",
+  'Morning. Tap to record your sleep hours and start the day with a clear head.',
+  'Track your recovery: log how many hours you slept last night.',
+  'Sleep logged means better patterns spotted. Take a second and record it.',
 ];
 
-// ── 25. Weekly Review ─────────────────────────────────────────────────────────
+// ── 26. Weekly Review ─────────────────────────────────────────────────────────
 
 export const WEEKLY_REVIEW_POOLS = () => [
-  'Your weekly summary is ready. Tap to review your accomplishments and plan ahead.',
-  'Take 5 minutes to reflect on this week\'s progress, habits, and priorities for next week.',
-  'Weekly reflection: review your completed tasks, streak continuity, and upcoming goals.',
-  'Sunday review: audit your progress and set priorities for the upcoming week.',
+  'The week is done. Five minutes of reflection changes how you start the next one.',
+  "Weekly review time. What went well, what didn't, what's next — tap to reflect.",
+  "Sunday debrief: review your week and set the tone for tomorrow's Monday.",
+  'Progress compounds when you actually track it. Tap to open your weekly review.',
 ];
 
-// ── 26. Inactivity Nudge ──────────────────────────────────────────────────────
+// ── 27. Inactivity Nudge ──────────────────────────────────────────────────────
 
 export const INACTIVITY_POOLS = (days: number) => [
-  `You haven't checked in for ${days} days. Tap to review your tasks and get back on track.`,
-  `A quick check-in can rebuild your momentum. Take 2 minutes to plan your day.`,
-  `ZenTrack is ready when you are. Review your goals and log today\'s progress.`,
-  `Check in to keep your streak and tasks organized. Tap to open ZenTrack.`,
+  `${days} days without a check-in. Your tasks and streaks are waiting — tap to catch up.`,
+  `It's been ${days} days. Momentum is easier to maintain than rebuild. Come back.`,
+  `ZenTrack hasn't heard from you in ${days} days. Two minutes to get back on track.`,
+  `${days}-day gap. Log one thing today — it's all it takes to restart the habit.`,
 ];
 
-// ── 27. Hydration Milestones ──────────────────────────────────────────────────
+// ── 28. Hydration Milestones ──────────────────────────────────────────────────
 
 export const WATER_MILESTONE_50_POOLS = (loggedL: string, targetL: string) => [
-  `Halfway there: you've reached 50% of your daily water goal (${loggedL}L / ${targetL}L).`,
-  `50% hydration achieved. Maintain steady intake through the day.`,
-  `Halfway mark reached: ${loggedL}L logged today. Keep going.`,
+  `Halfway: ${loggedL}L of ${targetL}L done. Keep the pace through the afternoon.`,
+  `50% of your water goal reached (${loggedL}L). Drink steady — don't coast.`,
+  `${loggedL}L logged — you're at the halfway mark. ${targetL}L is the target.`,
 ];
 
 export const WATER_MILESTONE_75_POOLS = (loggedL: string, targetL: string) => [
-  `75% achieved: you've logged ${loggedL}L today. Almost at your ${targetL}L target.`,
-  `Three-quarters completed (${loggedL}L). One more glass will close out today's goal.`,
-  `Steady progress: 75% of your target is complete. Keep the momentum going.`,
+  `${loggedL}L in — 75% done. One more push and you've hit your ${targetL}L target.`,
+  `Three-quarters there: ${loggedL}L of ${targetL}L logged. Finish it off.`,
+  `75% reached. ${loggedL}L down — one glass away from your daily goal.`,
 ];
 
 export const WATER_MILESTONE_100_POOLS = (loggedL: string) => [
-  `Daily goal reached: you've completed 100% of your hydration target (${loggedL}L). Excellent consistency.`,
-  `Hydration goal completed: ${loggedL}L logged today. Target achieved.`,
-  `100% hydration milestone reached. Well hydrated for the day.`,
+  `${loggedL}L — daily goal done. That's a clean win for today.`,
+  `Goal reached: ${loggedL}L logged. Stay hydrated through the evening too.`,
+  `Hydration complete: ${loggedL}L. Well done — your body will thank you.`,
 ];

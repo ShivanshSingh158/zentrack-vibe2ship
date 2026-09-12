@@ -10,7 +10,7 @@
  * Bulk batch operations (bulkComplete/bulkDelete/bulkReschedule) still use
  * writeBatch directly — they have their own online-only guard.
  */
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useMemo } from 'react';
 import {
   collection, doc, updateDoc, addDoc,
   serverTimestamp, writeBatch,
@@ -59,12 +59,16 @@ export function useTasksFirestore({
   const habitLogsRef = useRef(habitLogs);
   const todayDateStrRef = useRef(todayDateStr);
   const optimisticUpdateTaskRef = useRef(optimisticUpdateTask);
+  const optimisticDeleteTaskRef = useRef(optimisticDeleteTask);
+  const optimisticAddTaskRef = useRef(optimisticAddTask);
 
   todayTasksRef.current = todayTasks;
   habitsRef.current = habits;
   habitLogsRef.current = habitLogs;
   todayDateStrRef.current = todayDateStr;
   optimisticUpdateTaskRef.current = optimisticUpdateTask;
+  optimisticDeleteTaskRef.current = optimisticDeleteTask;
+  optimisticAddTaskRef.current = optimisticAddTask;
 
   // Helper: award PERFECT_DAY if all today's tasks done AND all positive habits logged
   const checkAndAwardPerfectDay = useCallback(async (justCompletedTaskId: string) => {
@@ -151,14 +155,14 @@ export function useTasksFirestore({
       }
 
       // Optimistic: remove from UI instantly — no waiting for Firestore round-trip (Bug 5 fix)
-      completedTasks.forEach(t => optimisticDeleteTask(t.id!));
+      completedTasks.forEach(t => optimisticDeleteTaskRef.current(t.id!));
 
       const batch = writeBatch(db);
       completedTasks.forEach(t => batch.delete(doc(db, COLLECTION.TASKS, t.id!)));
       await batch.commit();
       import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
     } catch (error) { console.error('[useTasksFirestore] clearCompleted error', error); }
-  }, [optimisticDeleteTask]);
+  }, []);
 
   const bulkComplete = useCallback(async (selectedTaskIds: Set<string>) => {
     if (selectedTaskIds.size === 0) return;
@@ -200,7 +204,7 @@ export function useTasksFirestore({
 
     // Optimistic update first — UI shifts tasks to new date instantly offline
     selectedTaskIds.forEach(id => {
-      optimisticUpdateTask(id, updates);
+      optimisticUpdateTaskRef.current(id, updates);
     });
 
     setIsBulkEdit(false);
@@ -218,7 +222,7 @@ export function useTasksFirestore({
       console.error('[useTasksFirestore] bulkReschedule error', e);
       handleSyncError(e);
     }
-  }, [optimisticUpdateTask, setIsBulkEdit, setSelectedTaskIds, setBulkRescheduleModal]);
+  }, [setIsBulkEdit, setSelectedTaskIds, setBulkRescheduleModal]);
 
   const updateTask = useCallback((
     id: string,
@@ -254,8 +258,8 @@ export function useTasksFirestore({
       order: tasksCount,
       subtasks: template.subtasks || [],
     };
-    if (optimisticAddTask) {
-      optimisticAddTask(taskObj);
+    if (optimisticAddTaskRef.current) {
+      optimisticAddTaskRef.current(taskObj);
     }
     const firestorePayload = {
       userId, title: template.title, text: template.title, status: 'pending',
@@ -272,7 +276,7 @@ export function useTasksFirestore({
       firestorePayload,
       taskId,
     );
-  }, [optimisticAddTask]);
+  }, []);
 
   const saveTimeLog = useCallback((
     taskId: string,
@@ -316,7 +320,7 @@ export function useTasksFirestore({
     })();
   }, [setTimeLogTask, checkAndAwardPerfectDay]);
 
-  return {
+  return useMemo(() => ({
     completeTask,
     clearCompletedTasks,
     bulkComplete,
@@ -326,5 +330,15 @@ export function useTasksFirestore({
     addTaskFromTemplate,
     saveTimeLog,
     skipTimeLog,
-  };
+  }), [
+    completeTask,
+    clearCompletedTasks,
+    bulkComplete,
+    bulkDelete,
+    handleBulkReschedule,
+    updateTask,
+    addTaskFromTemplate,
+    saveTimeLog,
+    skipTimeLog,
+  ]);
 }

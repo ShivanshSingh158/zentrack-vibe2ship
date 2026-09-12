@@ -26,6 +26,10 @@ export interface ConfirmConfig {
   danger?: boolean;
 }
 
+// ── Module-level session guards: avoid repeating expensive checks across tab switches ──
+let globalAttendanceMigratedUid = '';
+let globalAttendanceDeduplicatedUid = '';
+
 export function useAttendanceData() {
   const { user } = useCoreData();
   const academic = useAcademicData();
@@ -57,8 +61,9 @@ export function useAttendanceData() {
   // ── Schema Migration (Guarded & Deferred) ──────────────────────────────────
   const hasMigratedRef = useRef(false);
   useEffect(() => {
-    if (!user || subjects.length === 0 || hasMigratedRef.current) return;
+    if (!user || subjects.length === 0 || hasMigratedRef.current || globalAttendanceMigratedUid === user.uid) return;
     hasMigratedRef.current = true;
+    globalAttendanceMigratedUid = user.uid;
     InteractionManager.runAfterInteractions(() => {
       const batch = writeBatch(db);
       let needsCommit = false;
@@ -76,7 +81,10 @@ export function useAttendanceData() {
 
   // ── Automatic Attendance Deduplication & Reconciliation Routine ────────────
   // Eliminates duplicate logs created by legacy concurrent writes and recalculates
-  // exact subject counters (classesAttended/classesTotal/labsAttended/labsTotal)
+  // exact subject counters (classesAttended/classesTotal/labsAttended/labsTotal).
+  // Uses only hasDeduplicatedRef (component-scoped) instead of a module-level UID guard.
+  // The module-level guard would survive tab switches and app resumes, meaning duplicates
+  // created AFTER the first mount would never be cleaned up until force-kill + restart.
   const hasDeduplicatedRef = useRef(false);
   useEffect(() => {
     if (!user || subjects.length === 0 || !logs || logs.length === 0 || hasDeduplicatedRef.current) return;
@@ -109,42 +117,15 @@ export function useAttendanceData() {
           }
         });
 
-        // If duplicate logs exist, delete from Firestore and reconcile subject stats
-        if (foundDuplicates || duplicateLogIdsToDelete.length > 0) {
+        // If duplicate logs exist, delete ONLY the duplicate log documents.
+        // CRITICAL: Never overwrite subject aggregate counts (classesAttended/classesTotal etc.)
+        // from log counts. This would destroy mid-semester baselines where a student entered
+        // starting counts (e.g. 35 attended / 40 total) without individual past log entries.
+        if (duplicateLogIdsToDelete.length > 0) {
           const batch = writeBatch(db);
           duplicateLogIdsToDelete.forEach(id => {
             batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, id));
             academic.optimisticRemoveAttendanceLog?.(id);
-          });
-
-          // Reconcile subject counts from clean deduplicated logs
-          const cleanLogs = logs.filter(l => l.id ? !duplicateLogIdsToDelete.includes(l.id) : true);
-
-          subjects.forEach(subject => {
-            const subLogs = cleanLogs.filter(l => l.subjectId === subject.id || l.subjectName === subject.name);
-            const classLogs = subLogs.filter(l => l.type === 'class' || !l.type);
-            const labLogs   = subLogs.filter(l => l.type === 'lab');
-
-            const trueClassesAttended = classLogs.filter(l => l.action === 'attended').length;
-            const trueClassesTotal    = classLogs.filter(l => l.action !== 'cancelled').length;
-            const trueLabsAttended    = labLogs.filter(l => l.action === 'attended').length;
-            const trueLabsTotal       = labLogs.filter(l => l.action !== 'cancelled').length;
-
-            if (
-              subject.classesAttended !== trueClassesAttended ||
-              subject.classesTotal    !== trueClassesTotal ||
-              subject.labsAttended    !== trueLabsAttended ||
-              subject.labsTotal       !== trueLabsTotal
-            ) {
-              const updates = {
-                classesAttended: trueClassesAttended,
-                classesTotal: trueClassesTotal,
-                labsAttended: trueLabsAttended,
-                labsTotal: trueLabsTotal,
-              };
-              batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), updates);
-              academic.optimisticUpdateAttendance?.(subject.id!, updates);
-            }
           });
 
           await batch.commit();
@@ -195,12 +176,22 @@ export function useAttendanceData() {
     return map;
   }, [logs]);
 
+  const subjectsRef = useRef(subjects);
+  subjectsRef.current = subjects;
+
   const selectedDayOfWeek = useMemo(() => new Date(selectedDate + 'T00:00:00').getDay().toString(), [selectedDate]);
   const isSelectedHoliday = useMemo(() => holidays.includes(selectedDate), [holidays, selectedDate]);
   const today             = useMemo(() => getLocalDateString(new Date()), []);
   const weekDates         = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
 
+  // ── Stable Timetable Fingerprint ──
+  // Decouples session rendering from mutable attendance counters (attended/total)
+  const timetableFingerprint = useMemo(() => {
+    return subjects.map(s => `${s.id}:${s.name}:${JSON.stringify(s.schedule || {})}`).join('|');
+  }, [subjects]);
+
   const todayScheduledSubjects = useMemo(() => {
+    const currentSubjects = subjectsRef.current;
     const dayOfWeekNum = new Date(selectedDate + 'T00:00:00').getDay();
     const dayName = DAY_NAMES[dayOfWeekNum];
     const dayNameLower = dayName.toLowerCase();
@@ -230,8 +221,8 @@ export function useAttendanceData() {
 
     const list: Array<{ subject: AttendanceSubject; earliestTime: number }> = [];
 
-    for (let i = 0; i < subjects.length; i++) {
-      const s = subjects[i];
+    for (let i = 0; i < currentSubjects.length; i++) {
+      const s = currentSubjects[i];
       const sch =
         s.schedule?.[selectedDayOfWeek] ||
         s.schedule?.[dayOfWeekNum] ||
@@ -253,7 +244,7 @@ export function useAttendanceData() {
 
     list.sort((a, b) => a.earliestTime - b.earliestTime);
     return list.map(item => item.subject);
-  }, [subjects, selectedDayOfWeek, selectedDate]);
+  }, [timetableFingerprint, selectedDayOfWeek, selectedDate]);
 
   const warningSubjects = useMemo(() =>
     subjects.filter(s => {
@@ -270,6 +261,7 @@ export function useAttendanceData() {
     const sessions: Array<{
       id: string; subject: AttendanceSubject;
       type: 'class' | 'lab'; idx: number; timeMins: number; timeStr: string;
+      existingLogId?: string; isExtra?: boolean;
     }> = [];
 
     todayScheduledSubjects.forEach(subject => {
@@ -295,15 +287,43 @@ export function useAttendanceData() {
       }
     });
 
+    // Fix #15 (part 2): Include extra class logs for the selected date.
+    // Extra classes added via "Extra class +" were invisible in the daily list
+    // because the FlatList only rendered timetable-scheduled slots.
+    if (logs && logs.length > 0) {
+      const cleanSelDate = (selectedDate || '').slice(0, 10);
+      const extraLogs = logs.filter(l =>
+        l.isExtra &&
+        (l.date || '').slice(0, 10) === cleanSelDate
+      );
+      extraLogs.forEach((l, eIdx) => {
+        const subject = subjects.find(s => s.id === l.subjectId || s.name === l.subjectName);
+        if (subject) {
+          const isLab = l.type === 'lab';
+          sessions.push({
+            id: `${subject.id!}-extra-${isLab ? 'lab' : 'class'}-${eIdx}`,
+            subject,
+            type: isLab ? 'lab' : 'class',
+            idx: -1,          // sentinel: extra class — no timetable slot
+            existingLogId: l.id, // store log ID so renderItem can find this log directly
+            timeMins: l.timestamp ? new Date(l.timestamp).getHours() * 60 + new Date(l.timestamp).getMinutes() : 9999,
+            timeStr: `Extra ${isLab ? 'Lab' : 'Class'}`,
+            isExtra: true,
+          });
+        }
+      });
+    }
+
     return sessions.sort((a, b) => a.timeMins - b.timeMins);
-  }, [todayScheduledSubjects, selectedDayOfWeek, selectedDate, isSelectedHoliday]);
+  }, [todayScheduledSubjects, selectedDayOfWeek, selectedDate, isSelectedHoliday, logs, subjects]);
 
   const [isUnloggedOpen, setIsUnloggedOpen] = useState(false);
 
-  // ── Unlogged Past Classes & Labs (Scans past 30 days for scheduled sessions without logs) ──
-  // Pre-indexes all logged slots into a Set for instant O(1) membership checks (from ~72k ops down to ~300)
-  const unloggedSessions = useMemo(() => {
-    if (!subjects || subjects.length === 0) return [];
+  // ── Unlogged Past Classes & Labs (Optimized On-Demand Calculation) ───────────
+  // When the drawer is closed: calculates pure integer count in <0.1ms without object allocations or sorting.
+  // When the drawer is open: builds and sorts the full pending session list.
+  const { unloggedCount, unloggedSessions } = useMemo(() => {
+    if (!subjects || subjects.length === 0) return { unloggedCount: 0, unloggedSessions: [] };
 
     // Pre-index all existing non-extra logs into a Set: `${subjIdentifier}_${dateStr}_${type}_${idx}`
     const loggedSlotSet = new Set<string>();
@@ -324,6 +344,8 @@ export function useAttendanceData() {
     }
 
     const holidaySet = new Set(holidays);
+    const todayDate = new Date();
+    let count = 0;
     const list: Array<{
       id: string;
       subject: AttendanceSubject;
@@ -333,7 +355,6 @@ export function useAttendanceData() {
       timeMins: number;
       timeStr: string;
     }> = [];
-    const todayDate = new Date();
 
     // Scan past 30 days (offset 1 = yesterday back to 30 days ago)
     for (let offset = 1; offset <= 30; offset++) {
@@ -352,6 +373,18 @@ export function useAttendanceData() {
         const subject = subjects[sIdx];
         if (!subject.id) continue;
 
+        // Fix #14: Don't scan dates before the subject was created/enrolled.
+        // Without this, a student adding a new subject today would see 30 days of
+        // phantom unlogged sessions for a class they just enrolled in.
+        // Use lastUpdated as a proxy for creation date. If it's not set, we can't
+        // bound and must include all 30 days (legacy subjects without timestamps).
+        const subjectCreatedMs = subject.lastUpdated;
+        if (subjectCreatedMs) {
+          const subjectCreatedDate = new Date(subjectCreatedMs);
+          subjectCreatedDate.setHours(0, 0, 0, 0);
+          if (pastDate < subjectCreatedDate) continue;
+        }
+
         const sch =
           subject.schedule?.[dayOfWeekStr] ||
           subject.schedule?.[dayOfWeekNum] ||
@@ -365,56 +398,65 @@ export function useAttendanceData() {
 
         // Check Classes with O(1) Set lookup
         for (let i = 0; i < classCount; i++) {
-          const session = sch.classes?.[i];
           const hasLog =
             loggedSlotSet.has(`${subject.id}_${dateStr}_class_${i}`) ||
             (subject.name ? loggedSlotSet.has(`${subject.name}_${dateStr}_class_${i}`) : false);
 
           if (!hasLog) {
-            const timeStr = session?.time ? [session.time, session.room].filter(Boolean).join(' • ') : `Class #${i + 1}`;
-            list.push({
-              id: `${subject.id}-unlogged-class-${i}-${dateStr}`,
-              subject,
-              date: dateStr,
-              type: 'class',
-              idx: i,
-              timeMins: parseTimeToMinutes(session?.time),
-              timeStr,
-            });
+            count++;
+            if (isUnloggedOpen) {
+              const session = sch.classes?.[i];
+              const timeStr = session?.time ? [session.time, session.room].filter(Boolean).join(' • ') : `Class #${i + 1}`;
+              list.push({
+                id: `${subject.id}-unlogged-class-${i}-${dateStr}`,
+                subject,
+                date: dateStr,
+                type: 'class',
+                idx: i,
+                timeMins: parseTimeToMinutes(session?.time),
+                timeStr,
+              });
+            }
           }
         }
 
         // Check Labs with O(1) Set lookup
         for (let i = 0; i < labCount; i++) {
-          const session = sch.labs?.[i];
           const hasLog =
             loggedSlotSet.has(`${subject.id}_${dateStr}_lab_${i}`) ||
             (subject.name ? loggedSlotSet.has(`${subject.name}_${dateStr}_lab_${i}`) : false);
 
           if (!hasLog) {
-            const timeStr = session?.time ? [session.time, session.room].filter(Boolean).join(' • ') : `Lab #${i + 1}`;
-            list.push({
-              id: `${subject.id}-unlogged-lab-${i}-${dateStr}`,
-              subject,
-              date: dateStr,
-              type: 'lab',
-              idx: i,
-              timeMins: parseTimeToMinutes(session?.time),
-              timeStr,
-            });
+            count++;
+            if (isUnloggedOpen) {
+              const session = sch.labs?.[i];
+              const timeStr = session?.time ? [session.time, session.room].filter(Boolean).join(' • ') : `Lab #${i + 1}`;
+              list.push({
+                id: `${subject.id}-unlogged-lab-${i}-${dateStr}`,
+                subject,
+                date: dateStr,
+                type: 'lab',
+                idx: i,
+                timeMins: parseTimeToMinutes(session?.time),
+                timeStr,
+              });
+            }
           }
         }
       }
     }
 
-    // Sort: Newest date first, then earliest class/lab time
-    return list.sort((a, b) => {
-      if (a.date !== b.date) {
-        return b.date.localeCompare(a.date);
-      }
-      return a.timeMins - b.timeMins;
-    });
-  }, [subjects, holidays, logs]);
+    if (isUnloggedOpen && list.length > 0) {
+      list.sort((a, b) => {
+        if (a.date !== b.date) {
+          return b.date.localeCompare(a.date);
+        }
+        return a.timeMins - b.timeMins;
+      });
+    }
+
+    return { unloggedCount: count, unloggedSessions: list };
+  }, [subjects, holidays, logs, isUnloggedOpen]);
 
   // ── Selected Date Logs Map for instant O(1) slot resolution in renderItem ──
   const selectedDateLogsBySlot = useMemo(() => {
@@ -424,9 +466,14 @@ export function useAttendanceData() {
 
     for (let i = 0; i < logs.length; i++) {
       const l = logs[i];
-      if (l.isExtra) continue;
       if ((l.date || '').slice(0, 10) !== cleanSelDate) continue;
       const type = l.type === 'lab' ? 'lab' : 'class';
+      if (l.isExtra) {
+        // Extra class logs are keyed by their own ID so renderItem can find them
+        // directly via session.existingLogId
+        if (l.id) map.set(l.id, l);
+        continue;
+      }
       const idx = l.idx ?? 0;
       if (l.subjectId) {
         map.set(`${l.subjectId}_${type}_${idx}`, l);
@@ -457,6 +504,7 @@ export function useAttendanceData() {
     isExtraOpen, setIsExtraOpen,
     isUnloggedOpen, setIsUnloggedOpen,
     unloggedSessions,
+    unloggedCount,
     showAddModal, setShowAddModal,
     editSubject, setEditSubject,
     extraSubjectId, setExtraSubjectId,

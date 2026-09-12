@@ -46,7 +46,13 @@ import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
 import { usePlannerData } from '../contexts/domains/PlannerContext';
 
-type TimePickerTarget = 'morningBriefTime' | 'quietStart' | 'quietEnd';
+type TimePickerTarget =
+  | 'morningBriefTime'
+  | 'quietStart'
+  | 'quietEnd'
+  | 'overdueNudgeTime'
+  | 'habitStreakTime'
+  | 'defaultNotifTime';
 
 const KEY = (k: string) => `zentrack_notif_${k}`;
 
@@ -199,6 +205,22 @@ export default function NotificationsSettingsScreen() {
   const [morningBrief, setMorningBrief] = useState(true);
   const [morningBriefTime, setMorningBriefTime] = useState('07:30');
   const [taskBuffer, setTaskBuffer] = useState('60'); // minutes
+  const [defaultNotifTime, setDefaultNotifTime] = useState('09:00');
+
+  // ── Task-specific ──
+  const [overdueNudge, setOverdueNudge] = useState(true);
+  const [overdueNudgeTime, setOverdueNudgeTime] = useState('08:00');
+  const [task5MinAlert, setTask5MinAlert] = useState(true);
+
+  // ── Habits ──
+  const [habitStreakRisk, setHabitStreakRisk] = useState(true);
+  const [habitStreakTime, setHabitStreakTime] = useState('20:00');
+
+  // ── Calendar Events ──
+  const [calendarOffset, setCalendarOffset] = useState('60'); // minutes before event
+
+  // ── Weekly Review ──
+  const [weeklyReview, setWeeklyReview] = useState(true);
 
   // ── Quiet Hours ──
   const [quietHours, setQuietHours] = useState(true);
@@ -249,11 +271,19 @@ export default function NotificationsSettingsScreen() {
             'quiet_hours',
             'quiet_start',
             'quiet_end',
+            'overdue_nudge',
+            'overdue_nudge_time',
+            'task_5min_alert',
+            'habit_streak_risk',
+            'habit_streak_time',
+            'calendar_offset',
+            'weekly_review',
           ].map(KEY);
 
           const results = await AsyncStorage.multiGet([
             ...keys,
             '@zentrack_water_reminder_freq',
+            'zentrack_default_notif_time',
           ]);
           const dict = Object.fromEntries(results);
 
@@ -271,6 +301,18 @@ export default function NotificationsSettingsScreen() {
           setMorningBrief(getB('morning_brief'));
           setMorningBriefTime(getS('morning_brief_time', '07:30'));
           setTaskBuffer(getS('task_buffer', '60'));
+          setDefaultNotifTime(dict['zentrack_default_notif_time'] ?? '09:00');
+
+          setOverdueNudge(getB('overdue_nudge'));
+          setOverdueNudgeTime(getS('overdue_nudge_time', '08:00'));
+          setTask5MinAlert(getB('task_5min_alert'));
+
+          setHabitStreakRisk(getB('habit_streak_risk'));
+          setHabitStreakTime(getS('habit_streak_time', '20:00'));
+
+          setCalendarOffset(getS('calendar_offset', '60'));
+
+          setWeeklyReview(getB('weekly_review'));
 
           setQuietHours(getB('quiet_hours'));
           setQuietStart(getS('quiet_start', '23:00'));
@@ -346,6 +388,18 @@ export default function NotificationsSettingsScreen() {
       case 'quietEnd':
         setQuietEnd(hm);
         await saveString('quiet_end', hm);
+        break;
+      case 'overdueNudgeTime':
+        setOverdueNudgeTime(hm);
+        await saveString('overdue_nudge_time', hm);
+        break;
+      case 'habitStreakTime':
+        setHabitStreakTime(hm);
+        await saveString('habit_streak_time', hm);
+        break;
+      case 'defaultNotifTime':
+        setDefaultNotifTime(hm);
+        await AsyncStorage.setItem('zentrack_default_notif_time', hm);
         break;
     }
     reschedule();
@@ -435,6 +489,15 @@ export default function NotificationsSettingsScreen() {
     { label: '15 min', val: '15' },
     { label: '30 min', val: '30' },
     { label: '1 hour', val: '60' },
+    { label: '2 hours', val: '120' },
+  ];
+
+  const CALENDAR_OFFSET_OPTIONS = [
+    { label: '10 min', val: '10' },
+    { label: '15 min', val: '15' },
+    { label: '30 min', val: '30' },
+    { label: '1 hour', val: '60' },
+    { label: '2 hours', val: '120' },
   ];
 
   const WATER_OPTIONS = [
@@ -571,7 +634,221 @@ export default function NotificationsSettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ── 2. NOTIFICATION CHANNELS ── */}
+        {/* ── 2. TASK NOTIFICATIONS ── */}
+        <SectionHeader label="TASK NOTIFICATIONS" />
+        <View style={s.card}>
+          {/* Default reminder time */}
+          <View style={s.row}>
+            <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
+              <Ionicons name="time-outline" size={16} color={colors.accentPrimary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.rowTitle}>Default reminder time</Text>
+              <Text style={s.rowSub}>For tasks without a specific time slot</Text>
+            </View>
+            <TouchableOpacity
+              style={s.timeChip}
+              onPress={() => openPicker('defaultNotifTime', defaultNotifTime)}
+            >
+              <Text style={s.timeChipText}>{displayTime(defaultNotifTime)}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Hairline />
+
+          {/* Pre-task buffer */}
+          <View style={s.row}>
+            <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
+              <Ionicons name="hourglass-outline" size={16} color={colors.accentPrimary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.rowTitle}>Pre-task warning buffer</Text>
+              <Text style={s.rowSub}>Alert before a scheduled mission begins</Text>
+            </View>
+          </View>
+          <View style={s.chipRow}>
+            {BUFFER_OPTIONS.map(o => (
+              <TouchableOpacity
+                key={o.val}
+                style={[s.chip, taskBuffer === o.val && s.chipActive]}
+                onPress={async () => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setTaskBuffer(o.val);
+                  await saveString('task_buffer', o.val);
+                  reschedule();
+                }}
+              >
+                <Text style={[s.chipText, taskBuffer === o.val && s.chipTextActive]}>
+                  {o.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Hairline />
+
+          {/* 5-min alert toggle */}
+          <View style={s.row}>
+            <View
+              style={[
+                s.iconBox,
+                { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)' },
+              ]}
+            >
+              <Ionicons name="alarm-outline" size={16} color={colors.accentPrimary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.rowTitle}>5-minute start alert</Text>
+              <Text style={s.rowSub}>Fire an extra nudge 5 min before every timed task</Text>
+            </View>
+            <Switch
+              value={task5MinAlert}
+              onValueChange={v => toggle('task_5min_alert', v, setTask5MinAlert)}
+              trackColor={{ false: isDark ? '#2c2c30' : '#E2E1EA', true: colors.accentPrimary }}
+              thumbColor="#FFFFFF"
+              ios_backgroundColor={isDark ? '#2c2c30' : '#E2E1EA'}
+              style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
+            />
+          </View>
+
+          <Hairline />
+
+          {/* Overdue nudge toggle + time */}
+          <View style={s.row}>
+            <View
+              style={[
+                s.iconBox,
+                { backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)' },
+              ]}
+            >
+              <Ionicons name="warning-outline" size={16} color="#EF4444" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.rowTitle}>Overdue task nudge</Text>
+              <Text style={s.rowSub}>Morning reminder for yesterday's unfinished tasks</Text>
+            </View>
+            <Switch
+              value={overdueNudge}
+              onValueChange={v => toggle('overdue_nudge', v, setOverdueNudge)}
+              trackColor={{ false: isDark ? '#2c2c30' : '#E2E1EA', true: colors.accentPrimary }}
+              thumbColor="#FFFFFF"
+              ios_backgroundColor={isDark ? '#2c2c30' : '#E2E1EA'}
+              style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
+            />
+          </View>
+
+          {overdueNudge && (
+            <>
+              <Hairline />
+              <View style={s.row}>
+                <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
+                  <Ionicons name="time-outline" size={16} color={colors.accentPrimary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.rowTitle}>Nudge time</Text>
+                </View>
+                <TouchableOpacity
+                  style={s.timeChip}
+                  onPress={() => openPicker('overdueNudgeTime', overdueNudgeTime)}
+                >
+                  <Text style={s.timeChipText}>{displayTime(overdueNudgeTime)}</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* ── 3. HABIT NOTIFICATIONS ── */}
+        <SectionHeader label="HABIT NOTIFICATIONS" />
+        <View style={s.card}>
+          {/* Streak at risk */}
+          <View style={s.row}>
+            <View
+              style={[
+                s.iconBox,
+                { backgroundColor: isDark ? 'rgba(255,159,77,0.15)' : 'rgba(234,88,12,0.12)' },
+              ]}
+            >
+              <Ionicons name="flame-outline" size={16} color={isDark ? '#FF9F4D' : '#EA580C'} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.rowTitle}>Streak at-risk alert</Text>
+              <Text style={s.rowSub}>Warn before midnight when habits are unlogged</Text>
+            </View>
+            <Switch
+              value={habitStreakRisk}
+              onValueChange={v => toggle('habit_streak_risk', v, setHabitStreakRisk)}
+              trackColor={{ false: isDark ? '#2c2c30' : '#E2E1EA', true: colors.accentPrimary }}
+              thumbColor="#FFFFFF"
+              ios_backgroundColor={isDark ? '#2c2c30' : '#E2E1EA'}
+              style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
+            />
+          </View>
+
+          {habitStreakRisk && (
+            <>
+              <Hairline />
+              <View style={s.row}>
+                <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
+                  <Ionicons name="time-outline" size={16} color={colors.accentPrimary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.rowTitle}>Alert time</Text>
+                  <Text style={s.rowSub}>How early in the evening to warn you</Text>
+                </View>
+                <TouchableOpacity
+                  style={s.timeChip}
+                  onPress={() => openPicker('habitStreakTime', habitStreakTime)}
+                >
+                  <Text style={s.timeChipText}>{displayTime(habitStreakTime)}</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* ── 4. CALENDAR EVENTS ── */}
+        <SectionHeader label="CALENDAR EVENTS" />
+        <View style={s.card}>
+          <View style={s.row}>
+            <View
+              style={[
+                s.iconBox,
+                { backgroundColor: isDark ? 'rgba(56,189,248,0.15)' : 'rgba(2,132,199,0.12)' },
+              ]}
+            >
+              <Ionicons
+                name="calendar-outline"
+                size={16}
+                color={isDark ? '#38BDF8' : '#0284C7'}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.rowTitle}>Remind me before events</Text>
+              <Text style={s.rowSub}>How far in advance to alert for calendar events</Text>
+            </View>
+          </View>
+          <View style={s.chipRow}>
+            {CALENDAR_OFFSET_OPTIONS.map(o => (
+              <TouchableOpacity
+                key={o.val}
+                style={[s.chip, calendarOffset === o.val && s.chipActive]}
+                onPress={async () => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setCalendarOffset(o.val);
+                  await saveString('calendar_offset', o.val);
+                  reschedule();
+                }}
+              >
+                <Text style={[s.chipText, calendarOffset === o.val && s.chipTextActive]}>
+                  {o.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* ── 5. CHANNELS & MODULES ── */}
         <SectionHeader label="CHANNELS & MODULES" />
         <View style={s.card}>
           <View style={s.row}>
@@ -689,7 +966,7 @@ export default function NotificationsSettingsScreen() {
           </View>
         </View>
 
-        {/* ── 3. DAILY ROUTINE & TIMING ── */}
+        {/* ── 6. DAILY ROUTINE & TIMING ── */}
         <SectionHeader label="DAILY ROUTINE & TIMING" />
         <View style={s.card}>
           <View style={s.row}>
@@ -739,39 +1016,36 @@ export default function NotificationsSettingsScreen() {
             </>
           )}
 
-          <Hairline />
+        </View>
 
-          {/* Pre-task Buffer */}
+        {/* ── 7. WEEKLY REVIEW ── */}
+        <SectionHeader label="WEEKLY REVIEW" />
+        <View style={s.card}>
           <View style={s.row}>
-            <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
-              <Ionicons name="hourglass-outline" size={16} color={colors.accentPrimary} />
+            <View
+              style={[
+                s.iconBox,
+                { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)' },
+              ]}
+            >
+              <Ionicons name="bar-chart-outline" size={16} color={colors.accentPrimary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={s.rowTitle}>Pre-task warning buffer</Text>
-              <Text style={s.rowSub}>Alert before a scheduled mission begins</Text>
+              <Text style={s.rowTitle}>Sunday review reminder</Text>
+              <Text style={s.rowSub}>Weekly reflection prompt every Sunday at 8 PM</Text>
             </View>
-          </View>
-          <View style={s.chipRow}>
-            {BUFFER_OPTIONS.map(o => (
-              <TouchableOpacity
-                key={o.val}
-                style={[s.chip, taskBuffer === o.val && s.chipActive]}
-                onPress={async () => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setTaskBuffer(o.val);
-                  await saveString('task_buffer', o.val);
-                  reschedule();
-                }}
-              >
-                <Text style={[s.chipText, taskBuffer === o.val && s.chipTextActive]}>
-                  {o.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <Switch
+              value={weeklyReview}
+              onValueChange={v => toggle('weekly_review', v, setWeeklyReview)}
+              trackColor={{ false: isDark ? '#2c2c30' : '#E2E1EA', true: colors.accentPrimary }}
+              thumbColor="#FFFFFF"
+              ios_backgroundColor={isDark ? '#2c2c30' : '#E2E1EA'}
+              style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
+            />
           </View>
         </View>
 
-        {/* ── 4. QUIET HOURS (DO NOT DISTURB) ── */}
+        {/* ── 8. QUIET HOURS (DO NOT DISTURB) ── */}
         <SectionHeader label="QUIET HOURS (DO NOT DISTURB)" />
         <View style={s.card}>
           <View style={s.row}>
@@ -838,7 +1112,7 @@ export default function NotificationsSettingsScreen() {
           )}
         </View>
 
-        {/* ── 5. HYDRATION REMINDERS ── */}
+        {/* ── 9. HYDRATION REMINDERS ── */}
         <SectionHeader label="HYDRATION REMINDERS" />
         <View style={s.card}>
           <View style={s.row}>
@@ -882,46 +1156,70 @@ export default function NotificationsSettingsScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Scheduled Alarms Modal */}
       {activeAlarmsModalVisible && (
-        <Modal transparent animationType="slide" visible={activeAlarmsModalVisible}>
+        <Modal
+          transparent
+          animationType="slide"
+          visible={activeAlarmsModalVisible}
+          onRequestClose={() => setActiveAlarmsModalVisible(false)}
+        >
           <View style={s.pickerModalOverlay}>
             <View style={[s.pickerCard, { maxHeight: '82%', paddingHorizontal: 16 }]}>
               <View style={s.pickerHeader}>
-                <View>
+                <View style={{ flex: 1, marginRight: 10 }}>
                   <Text
                     style={{
                       fontFamily: 'Inter_700Bold',
-                      fontSize: 17,
+                      fontSize: 16,
                       color: colors.textPrimary,
                     }}
+                    numberOfLines={1}
                   >
                     Scheduled Alarms ({scheduledAlarms.length})
                   </Text>
                   <Text
                     style={{
                       fontFamily: 'Inter_400Regular',
-                      fontSize: 12,
+                      fontSize: 11.5,
                       color: colors.textSecondary,
                       marginTop: 2,
                     }}
+                    numberOfLines={1}
                   >
                     Upcoming alarms currently registered in the OS
                   </Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                   <TouchableOpacity
                     onPress={handleOpenActiveAlarms}
-                    style={{ padding: 6, marginRight: 8 }}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
                     disabled={loadingAlarms}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityLabel="Refresh scheduled alarms"
                   >
-                    <Ionicons name="refresh-outline" size={20} color={colors.accentPrimary} />
+                    <Ionicons name="refresh-outline" size={17} color={colors.accentPrimary} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => setActiveAlarmsModalVisible(false)}
-                    style={{ padding: 6 }}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityLabel="Close scheduled alarms"
                   >
-                    <Ionicons name="close" size={24} color={colors.textPrimary} />
+                    <Ionicons name="close" size={20} color={colors.textPrimary} />
                   </TouchableOpacity>
                 </View>
               </View>

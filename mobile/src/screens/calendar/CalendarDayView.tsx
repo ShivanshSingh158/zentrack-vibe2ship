@@ -7,6 +7,7 @@
  * - Auto-scrolls to current time on mount and whenever view becomes active
  * - Past events render at 40% opacity so "where you are now" is visually obvious
  * - Empty hour slot tap pre-fills the event modal with that exact time
+ * - Attendance status badges (✓/✗/🚫) shown on class & lab events
  */
 import React, { useMemo, useCallback, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
@@ -35,6 +36,15 @@ interface CalendarDayViewProps {
   gymLogs: any[];
   /** Current time in minutes since midnight for past-event fading */
   currentTimeMins?: number;
+}
+
+/** Returns a small badge label + color for a class/lab attendance status */
+function getAttendanceBadge(status: string | null | undefined, isDark: boolean): { label: string; color: string } | null {
+  if (!status) return null;
+  if (status === 'attended')  return { label: '✓ Present',    color: isDark ? '#34D399' : '#059669' };
+  if (status === 'missed')    return { label: '✗ Absent',     color: isDark ? '#F87171' : '#DC2626' };
+  if (status === 'cancelled') return { label: '🚫 Cancelled', color: isDark ? '#9CA3AF' : '#6B7280' };
+  return null;
 }
 
 export const CalendarDayView = React.memo(function CalendarDayView({
@@ -71,10 +81,7 @@ export const CalendarDayView = React.memo(function CalendarDayView({
       scrollViewRef.current.scrollTo({ y: targetY, animated });
     };
 
-    doScroll();
     requestAnimationFrame(doScroll);
-    setTimeout(doScroll, 100);
-    setTimeout(doScroll, 300);
   }, [indicatorTop, minHour, scrollViewRef]);
 
   useEffect(() => {
@@ -97,11 +104,17 @@ export const CalendarDayView = React.memo(function CalendarDayView({
           <Text style={styles.unscheduledLabel}>UNSCHEDULED</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
             {unscheduledDayEvents.map(evt => {
+              const isCancelled = evt.attendanceStatus === 'cancelled';
               const eventColor = eventColorMap[evt.type] || { bg: colors.accentPrimary, text: colors.textPrimary, border: colors.accentPrimary };
+              const badge = getAttendanceBadge(evt.attendanceStatus, isDark ?? true);
               return (
                 <TouchableOpacity
                   key={evt.id}
-                  style={[styles.unscheduledChip, { backgroundColor: isDark ? `${eventColor.border}30` : eventColor.bg, borderColor: eventColor.border }]}
+                  style={[
+                    styles.unscheduledChip,
+                    { backgroundColor: isDark ? `${eventColor.border}30` : eventColor.bg, borderColor: eventColor.border },
+                    isCancelled && { opacity: 0.5 },
+                  ]}
                   onPress={() => {
                     if (evt.type === 'gym') {
                       const log = gymLogs?.find((g: any) => g.id === evt.id);
@@ -119,7 +132,21 @@ export const CalendarDayView = React.memo(function CalendarDayView({
                   activeOpacity={0.75}
                 >
                   <View style={[styles.unscheduledDot, { backgroundColor: eventColor.border }]} />
-                  <Text style={[styles.unscheduledChipText, { color: isDark ? eventColor.border : colors.textPrimary }]} numberOfLines={1}>{evt.title}</Text>
+                  <Text
+                    style={[
+                      styles.unscheduledChipText,
+                      { color: isDark ? eventColor.border : colors.textPrimary },
+                      isCancelled && { textDecorationLine: 'line-through' },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {evt.isExtra ? '＋ ' : ''}{evt.title}
+                  </Text>
+                  {badge && (
+                    <Text style={{ fontSize: 10, color: badge.color, marginLeft: 4, fontWeight: '700' }}>
+                      {badge.label}
+                    </Text>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -178,8 +205,10 @@ export const CalendarDayView = React.memo(function CalendarDayView({
           {/* Render Absolute Events */}
           <View style={styles.eventsContainer}>
             {processedEvents.map((event) => {
+              const isCancelled = event.attendanceStatus === 'cancelled';
               const eventColor = eventColorMap[event.type] || { bg: isDark ? '#a599ff40' : 'rgba(108,92,231,0.12)', text: colors.textPrimary, border: colors.accentPrimary };
               const past = isPastEvent(event);
+              const badge = getAttendanceBadge(event.attendanceStatus, isDark ?? true);
               return (
                 <TouchableOpacity
                   key={event.id}
@@ -192,7 +221,7 @@ export const CalendarDayView = React.memo(function CalendarDayView({
                       width: event.width as any,
                       backgroundColor: isDark ? `${eventColor.border}35` : eventColor.bg,
                       borderLeftColor: eventColor.border,
-                      opacity: past ? 0.4 : 1,
+                      opacity: (past || isCancelled) ? 0.4 : 1,
                     }
                   ]}
                   onPress={() => {
@@ -211,10 +240,24 @@ export const CalendarDayView = React.memo(function CalendarDayView({
                   }}
                   activeOpacity={0.8}
                 >
-                  <Text style={[styles.eventBlockTitle, { color: isDark ? eventColor.border : colors.textPrimary }]} numberOfLines={1}>{event.title}</Text>
+                  <Text
+                    style={[
+                      styles.eventBlockTitle,
+                      { color: isDark ? eventColor.border : colors.textPrimary },
+                      isCancelled && { textDecorationLine: 'line-through' },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {event.isExtra ? '＋ ' : ''}{event.title}
+                  </Text>
                   <Text style={[styles.eventBlockLocation, { color: isDark ? eventColor.border : colors.textSecondary }]} numberOfLines={1}>
                     {format12Hour(event.startTime)} - {format12Hour(event.endTime)}{event.location ? ` • ${event.location}` : ''}
                   </Text>
+                  {badge && (
+                    <Text style={{ fontSize: 10, color: badge.color, fontWeight: '700', marginTop: 2 }}>
+                      {badge.label}
+                    </Text>
+                  )}
                 </TouchableOpacity>
               );
             })}

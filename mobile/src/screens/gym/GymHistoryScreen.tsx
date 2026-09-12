@@ -11,6 +11,7 @@ import { GymNavigationParamList } from '../../types/gym.types';
 import { springs } from '../../theme/motion';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { calculateGymStreak } from '../../utils/gymUtils';
+import { computeOrGetHotCache, generateDatasetFingerprint } from '../../utils/hotCacheStore';
 import { useTheme } from '../../contexts/ThemeContext';
 
 // Extracted Sub-Components & Styles
@@ -49,44 +50,48 @@ export default function GymHistoryScreen() {
   const heatmapData = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const dateKey = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+    const cacheKey = `history_heatmap_${dateKey}_${generateDatasetFingerprint(gymLogs)}`;
 
-    const logMap = new Map<string, any>();
-    gymLogs.forEach(log => {
-      const d = new Date(log.date);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      const logMap = new Map<string, any>();
+      gymLogs.forEach(log => {
+        const d = new Date(log.date);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-      let totalSets = 0;
-      log.exercises?.forEach(ex => {
-        totalSets += ex.setsLog?.filter((s: any) => s.completed).length || 0;
+        let totalSets = 0;
+        log.exercises?.forEach(ex => {
+          totalSets += ex.setsLog?.filter((s: any) => s.completed).length || 0;
+        });
+
+        logMap.set(key, { totalSets, log });
       });
 
-      logMap.set(key, { totalSets, log });
-    });
+      const grid: HeatmapDay[][] = [];
+      const startDay = new Date(today);
+      startDay.setDate(today.getDate() - today.getDay() - (WEEKS - 1) * 7);
 
-    const grid: HeatmapDay[][] = [];
-    const startDay = new Date(today);
-    startDay.setDate(today.getDate() - today.getDay() - (WEEKS - 1) * 7);
+      for (let w = 0; w < WEEKS; w++) {
+        const weekCol: HeatmapDay[] = [];
+        for (let d = 0; d < DAYS_PER_WEEK; d++) {
+          const currentDate = new Date(startDay);
+          currentDate.setDate(startDay.getDate() + (w * 7) + d);
 
-    for (let w = 0; w < WEEKS; w++) {
-      const weekCol: HeatmapDay[] = [];
-      for (let d = 0; d < DAYS_PER_WEEK; d++) {
-        const currentDate = new Date(startDay);
-        currentDate.setDate(startDay.getDate() + (w * 7) + d);
+          const key = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+          const data = logMap.get(key);
 
-        const key = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
-        const data = logMap.get(key);
-
-        weekCol.push({
-          date: currentDate,
-          dateStr: key,
-          isFuture: currentDate > today,
-          intensity: data ? Math.max(0.3, Math.min(1.0, data.totalSets / 20)) : 0,
-          log: data?.log || null,
-        });
+          weekCol.push({
+            date: currentDate,
+            dateStr: key,
+            isFuture: currentDate > today,
+            intensity: data ? Math.max(0.3, Math.min(1.0, data.totalSets / 20)) : 0,
+            log: data?.log || null,
+          });
+        }
+        grid.push(weekCol);
       }
-      grid.push(weekCol);
-    }
-    return grid;
+      return grid;
+    });
   }, [gymLogs]);
 
   const handleSelectDay = useCallback((dateStr: string) => {

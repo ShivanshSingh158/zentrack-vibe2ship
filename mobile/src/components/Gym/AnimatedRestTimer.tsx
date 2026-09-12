@@ -19,7 +19,7 @@ interface AnimatedRestTimerProps {
   onSkip: () => void;
 }
 
-export default function AnimatedRestTimer({
+export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(function AnimatedRestTimer({
   startTime,
   durationSecs,
   onAdd,
@@ -36,9 +36,9 @@ export default function AnimatedRestTimer({
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) =>
-        Math.abs(gestureState.dx) > 3 || Math.abs(gestureState.dy) > 3,
+        Math.abs(gestureState.dx) > 6 || Math.abs(gestureState.dy) > 6,
       onPanResponderGrant: () => {
         pan.setOffset({
           x: (pan.x as any)._value || 0,
@@ -52,14 +52,19 @@ export default function AnimatedRestTimer({
       ),
       onPanResponderRelease: () => {
         pan.flattenOffset();
-        // Guarantee timer never settles below the safe docked baseline
-        if ((pan.y as any)._value > 0) {
-          Animated.spring(pan.y, {
-            toValue: 0,
-            useNativeDriver: false,
-            bounciness: 6,
-          }).start();
-        }
+        // Always snap cleanly back to the docked baseline right above the nav bar so it sticks there
+        Animated.spring(pan, {
+          toValue: { x: 0, y: 0 },
+          useNativeDriver: false,
+          bounciness: 4,
+        }).start();
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(pan, {
+          toValue: { x: 0, y: 0 },
+          useNativeDriver: false,
+          bounciness: 4,
+        }).start();
       },
     })
   ).current;
@@ -195,4 +200,6 @@ export default function AnimatedRestTimer({
       )}
     </Animated.View>
   );
-}
+});
+
+export default AnimatedRestTimer;

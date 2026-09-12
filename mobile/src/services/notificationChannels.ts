@@ -89,6 +89,19 @@ export async function ensureNotificationChannels(): Promise<void> {
       showBadge: false,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
+    // ── Task Alarm: Distinct double-pulse so you never miss a task ──
+    await Notifications.setNotificationChannelAsync('task_alarm', {
+      name: 'Task Alarms',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 400, 200, 400, 100, 400, 100, 800],
+      lightColor: '#a599ff',
+      sound: 'default',
+      enableLights: true,
+      enableVibrate: true,
+      showBadge: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      bypassDnd: false,
+    });
   } catch (e) {
     console.warn('[NotificationChannels] Channel creation warning:', e);
   }
@@ -132,8 +145,9 @@ export async function requestNotificationPermissions(): Promise<boolean> {
       { identifier: 'snooze_15m', buttonTitle: '⏰ Snooze 15m', options: { opensAppToForeground: false } },
     ]);
     await Notifications.setNotificationCategoryAsync('task_reminder', [
-      { identifier: 'mark_task_done', buttonTitle: '✅ Mark Done', options: { opensAppToForeground: false } },
-      { identifier: 'open_tasks', buttonTitle: '📋 Open Tasks', options: { opensAppToForeground: true } },
+      { identifier: 'mark_task_done', buttonTitle: 'Mark Done', options: { opensAppToForeground: false } },
+      { identifier: 'snooze_10m', buttonTitle: 'Snooze 10m', options: { opensAppToForeground: false } },
+      { identifier: 'open_tasks', buttonTitle: 'Open Task', options: { opensAppToForeground: true } },
     ]);
     await Notifications.setNotificationCategoryAsync('location_gym_arrival', [
       { identifier: 'START_WORKOUT', buttonTitle: '🏋️ Start Workout', options: { opensAppToForeground: true } },

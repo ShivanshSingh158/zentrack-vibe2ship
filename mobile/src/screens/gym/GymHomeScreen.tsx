@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo, memo, useCallback, Suspense } from 'react';
-import { View, Text, TouchableOpacity, Platform, Alert, Animated, LayoutAnimation, ScrollView, InteractionManager, DeviceEventEmitter, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, Platform, Alert, Animated, ScrollView, InteractionManager, DeviceEventEmitter, Linking } from 'react-native';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -129,7 +129,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   }, [gymLogs, waterLogs, sleepLogs, userGymPlan]);
 
   const {
-    log, startWorkout, resumeWorkout, endWorkout, addExercise, deleteExercise,
+    log, startWorkout, resumeWorkout, endWorkout, revertWorkout, addExercise, deleteExercise,
     updateSet, saveLog, addCardio, updateCardio, deleteCardio, planDay,
     swapDayRoutine, reorderExercisesFull, triggerDeload, forceOverrideTodayPlan
   } = useGymLog(selectedDate);
@@ -465,7 +465,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     <>
       {/* Week Strip */}
       <View style={s.weekStrip}>
-        <TouchableOpacity onPress={() => { hapticLight(); LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setWeekOffset(prev => prev - 1); setSelectedDate(prev => dateStrOffset(-7, prev)); }} style={s.weekNavBtn}>
+        <TouchableOpacity onPress={() => { hapticLight(); setWeekOffset(prev => prev - 1); setSelectedDate(prev => dateStrOffset(-7, prev)); }} style={s.weekNavBtn}>
           <Ionicons name="chevron-back" size={16} color={COLORS.textTertiary} />
         </TouchableOpacity>
 
@@ -479,7 +479,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
             const dateDay = days[dateObj.getDay()];
 
             return (
-              <TouchableOpacity key={date} style={s.dayCol} onPress={() => { hapticLight(); LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSelectedDate(date); }}>
+              <TouchableOpacity key={date} style={s.dayCol} onPress={() => { hapticLight(); setSelectedDate(date); }}>
                 <Text style={[s.dayLetter, isSelected && s.dayLetterActive]}>{dateDay}</Text>
                 <View style={[s.dayPill, isSelected && s.dayPillActive]}>
                   <Text style={[s.dayNum, isSelected && s.dayNumActive]}>{dateNum}</Text>
@@ -489,7 +489,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
           })}
         </View>
 
-        <TouchableOpacity onPress={() => { hapticLight(); LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setWeekOffset(prev => prev + 1); setSelectedDate(prev => dateStrOffset(7, prev)); }} style={s.weekNavBtn}>
+        <TouchableOpacity onPress={() => { hapticLight(); setWeekOffset(prev => prev + 1); setSelectedDate(prev => dateStrOffset(7, prev)); }} style={s.weekNavBtn}>
           <Ionicons name="chevron-forward" size={16} color={COLORS.textTertiary} />
         </TouchableOpacity>
       </View>
@@ -608,6 +608,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
               onResumeWorkout={() => handleResumeWorkout()}
               onEndWorkout={endWorkout}
               resumeWorkout={resumeWorkout}
+              onRevertWorkout={revertWorkout}
             />
           </View>
 

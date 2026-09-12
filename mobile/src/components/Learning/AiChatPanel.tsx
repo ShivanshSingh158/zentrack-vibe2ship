@@ -4,11 +4,15 @@
  * Only mounted when aiChatVisible === true. Fully unmounts when closed,
  * freeing the Markdown renderer, code runner, ScrollView, and all event refs.
  */
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Keyboard, Animated, ActivityIndicator, LayoutAnimation, Alert
+  ScrollView, Keyboard, Animated as RNAnimated, ActivityIndicator, Alert
 } from 'react-native';
+import Animated, {
+  useSharedValue, useAnimatedStyle, withTiming,
+  Easing, interpolate, runOnJS,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
 import * as Clipboard from 'expo-clipboard';
@@ -28,7 +32,7 @@ interface AiChatPanelProps {
   generatingCards: boolean;
   isChatFullScreen: boolean;
   setIsChatFullScreen: (v: boolean) => void;
-  keyboardHeight: Animated.Value;
+  keyboardHeight: RNAnimated.Value;
   isKeyboardVisible: boolean;
   selectedModel: string;
   onToggleModel?: () => void;
@@ -94,11 +98,48 @@ export default function AiChatPanel({
       .replace(/(^|\n|\s)\(([a-zA-Z])\)\s*/g, (_m: string, p1: string, p2: string) => `${p1}${p2.toUpperCase()}) `);
   };
 
+  // ── Smooth fullscreen animation ──────────────────────────────────────────
+  // Use a shared value for the FS flag so the worklet never reads JS props
+  const isFS = useSharedValue(isChatFullScreen ? 1 : 0);
+  const fsProgress = useSharedValue(isChatFullScreen ? 1 : 0);
+
+  useEffect(() => {
+    if (isChatFullScreen) {
+      isFS.value = 1;
+      fsProgress.value = withTiming(1, { duration: 320, easing: Easing.out(Easing.cubic) });
+    } else {
+      fsProgress.value = withTiming(0, { duration: 260, easing: Easing.in(Easing.cubic) },
+        (done) => { if (done) { isFS.value = 0; } }
+      );
+    }
+  }, [isChatFullScreen]);
+
+  const fsContainerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(fsProgress.value, [0, 0.4, 1], [isFS.value ? 0 : 1, isFS.value ? 0.7 : 1, 1]),
+    transform: [{ translateY: isFS.value ? interpolate(fsProgress.value, [0, 1], [60, 0]) : 0 }],
+  }));
+
+  const handleClose = () => {
+    fsProgress.value = withTiming(0, {
+      duration: 260,
+      easing: Easing.in(Easing.cubic),
+    }, (finished) => {
+      if (finished) runOnJS(setIsChatFullScreen)(false);
+    });
+  };
+
   return (
-    <View style={[s.aiPanel, isChatFullScreen && {
-      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-      zIndex: 100, backgroundColor: colors.background
-    }]}>
+    <Animated.View
+      pointerEvents={isChatFullScreen ? 'auto' : 'box-none'}
+      style={[
+        s.aiPanel,
+        isChatFullScreen && {
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          zIndex: 100, backgroundColor: colors.background,
+        },
+        fsContainerStyle,
+      ]}
+    >
       {isChatFullScreen && (
         <View style={{ paddingTop: Math.max(insets.top, 20), paddingBottom: 10, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', zIndex: 110, position: 'absolute', top: 0, left: 0, right: 0 }}>
           <TouchableOpacity
@@ -124,14 +165,14 @@ export default function AiChatPanel({
             {onToggleModel && (
               <TouchableOpacity onPress={onToggleModel} style={{ marginLeft: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}>
                 <Text style={{ fontSize: 10, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
-                  {selectedModel === 'gemini-3.6-flash' ? '👑 3.6' : '⚡ 2.5'}
+                  {'⚡ 2.5'}
                 </Text>
               </TouchableOpacity>
             )}
           </View>
           <TouchableOpacity
             style={{ position: 'absolute', right: 20, top: Math.max(insets.top, 20), backgroundColor: isDark ? '#18181b' : colors.surface, width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
-            onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setIsChatFullScreen(false); }}
+            onPress={handleClose}
           >
             <Ionicons name="close" size={18} color={colors.textPrimary} />
           </TouchableOpacity>
@@ -197,7 +238,7 @@ export default function AiChatPanel({
         )}
       </ScrollView>
 
-      <Animated.View style={[s.aiInputRow, { bottom: keyboardHeight, paddingBottom: isKeyboardVisible ? 8 : Math.max(16, insets.bottom) }]}>
+      <RNAnimated.View style={[s.aiInputRow, { bottom: keyboardHeight, paddingBottom: isKeyboardVisible ? 8 : Math.max(16, insets.bottom) }]}>
         {!aiHistory.some(m => m.role === 'user') && (
           <View style={s.aiSuggestionsRow}>
             <TouchableOpacity style={s.chatgptPill} onPress={generateQuiz} activeOpacity={0.7}>
@@ -232,8 +273,8 @@ export default function AiChatPanel({
             <Ionicons name="arrow-up" size={18} color={isDark ? '#000000' : '#FFFFFF'} />
           </TouchableOpacity>
         </View>
-      </Animated.View>
-    </View>
+      </RNAnimated.View>
+    </Animated.View>
   );
 }
 

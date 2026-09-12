@@ -76,7 +76,10 @@ export const calculateStatus = (attended: number, total: number, target: number)
   let bunkInfo = '';
 
   if (bunkResult.status === 'safe') {
-    urgency  = (pct >= target - 5 && pct < target) ? 'warning' : 'safe';
+    // When bunkResult is 'safe', pct is always >= target.
+    // The previous '(pct >= target-5 && pct < target) ? warning : safe' branch was dead code:
+    // pct < target is mathematically impossible here, so urgency is always 'safe'.
+    urgency  = 'safe';
     bunkInfo = `✓ ${bunkResult.message.replace('You can safely bunk', 'Can miss').replace(' and stay above ' + target + '%', '')}`;
   } else if (bunkResult.status === 'warning') {
     urgency  = 'warning';
@@ -100,9 +103,10 @@ export const getProgressColor = (urgency: string) =>
 export function parseTimeToMinutes(timeStr: string | undefined): number {
   if (!timeStr) return 0;
   const upper   = timeStr.trim().toUpperCase();
-  const isPM    = upper.includes('PM');
-  const isAM    = upper.includes('AM');
-  const cleaned = upper.replace(/[APM\s]+$/i, '').trim();
+  const isPM    = upper.endsWith('PM') || upper.includes(' PM');
+  const isAM    = upper.endsWith('AM') || upper.includes(' AM');
+  // Strip the AM/PM suffix precisely — avoids accidentally stripping trailing 'M' from non-time tokens
+  const cleaned = upper.replace(/\s*(AM|PM)\s*$/, '').trim();
   const parts   = cleaned.split(':');
   let h         = parseInt(parts[0], 10) || 0;
   const m       = parts.length >= 2 ? (parseInt(parts[1], 10) || 0) : 0;

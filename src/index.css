@@ -8,11 +8,16 @@
 @import './styles/analytics.css';
 @import './styles/attendance.css';
 @import './styles/habits.css';
+@import './styles/goals.css';
 @import './styles/grades.css';
 @import './styles/mobile.css';
 @import './styles/agent-dashboard.css';
-@import './styles/overhaul.css';
 @import './styles/zen-theme.css';
+@import './styles/plain-theme.css';
+@import './styles/sidebar-nav.css';
+@import './styles/security-modal.css';
+@import './styles/task-modal.css';
+@import './styles/skeleton-screen.css';
 
 * {
   box-sizing: border-box;
@@ -22,6 +27,23 @@
 
 html {
   font-size: 14px;
+}
+
+/* Light Theme instant baseline — prevents dark mode flash before React hydrates */
+html.theme-light,
+html.theme-plain {
+  background-color: #f6f8fa !important;
+  color-scheme: light !important;
+}
+
+html.theme-light body,
+html.theme-plain body,
+body.theme-light,
+body.theme-plain {
+  background: #f6f8fa !important;
+  background-image: none !important;
+  color: #111827 !important;
+  color-scheme: light !important;
 }
 
 svg.lucide {
@@ -582,6 +604,48 @@ textarea:focus {
 select option {
   background: #1a1208;
   color: var(--text-primary);
+}
+
+/* ── Light Mode Form Elements ── */
+body.theme-light input[type="text"],
+body.theme-plain input[type="text"],
+body.theme-light input[type="email"],
+body.theme-plain input[type="email"],
+body.theme-light input[type="number"],
+body.theme-plain input[type="number"],
+body.theme-light input[type="date"],
+body.theme-plain input[type="date"],
+body.theme-light input[type="time"],
+body.theme-plain input[type="time"],
+body.theme-light textarea,
+body.theme-plain textarea,
+body.theme-light select,
+body.theme-plain select {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+}
+
+body.theme-light input:focus,
+body.theme-plain input:focus,
+body.theme-light select:focus,
+body.theme-plain select:focus,
+body.theme-light textarea:focus,
+body.theme-plain textarea:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
+  background: #ffffff;
+}
+
+body.theme-light ::placeholder,
+body.theme-plain ::placeholder {
+  color: #94a3b8;
+}
+
+body.theme-light select option,
+body.theme-plain select option {
+  background: #ffffff;
+  color: #0f172a;
 }
 
 .modal-actions {

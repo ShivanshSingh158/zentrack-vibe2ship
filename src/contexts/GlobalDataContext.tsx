@@ -404,9 +404,31 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setSleepLogs(combined);
       };
 
+      let mobileHabits: any[] = [];
+      let legacyHabits: any[] = [];
+      const handleHabitsMerge = () => {
+        const seen = new Set<string>();
+        const combined: any[] = [];
+        for (const item of [...mobileHabits, ...legacyHabits]) {
+          const key = item.id || `${item.habitId}_${item.date}`;
+          if (key && seen.has(key)) continue;
+          if (key) seen.add(key);
+          combined.push(item);
+        }
+        setHabitLogs(combined);
+      };
+
       const unsubs: (() => void)[] = [
         safeSnapshot(query(collection(db, 'todos'), where('userId', '==', uid)), makeHandler(setTasks), 'todos'),
-        safeSnapshot(query(collection(db, 'habit_logs'), where('userId', '==', uid), limit(365)), makeHandler(setHabitLogs), 'habit_logs'),
+        safeSnapshot(query(collection(db, 'habit_logs'), where('userId', '==', uid), limit(365)), (docs) => {
+          mobileHabits = docs;
+          handleHabitsMerge();
+          onFirstFire();
+        }, 'habit_logs'),
+        safeSnapshot(query(collection(db, 'habitLogs'), where('userId', '==', uid), limit(365)), (docs) => {
+          legacyHabits = docs;
+          handleHabitsMerge();
+        }, 'habitLogs'),
         safeSnapshot(query(collection(db, 'habits'), where('userId', '==', uid)), makeHandler(setHabits), 'habits'),
         safeSnapshot(query(collection(db, 'job_applications'), where('userId', '==', uid)), makeHandler(setJobs), 'jobs'),
         safeSnapshot(query(collection(db, 'goals'), where('userId', '==', uid)), makeHandler(setGoals), 'goals'),

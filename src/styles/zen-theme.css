@@ -340,7 +340,7 @@ h1.title, h2.title {
    NOTES MODULE — Clean editorial
    ══════════════════════════════════════════════════════════════ */
 
-[class*="notes-sidebar"],
+.notes-left-sidebar,
 [class*="note-list"] {
   background: var(--glass-3-bg) !important;
   border-color: var(--glass-3-border) !important;
@@ -648,34 +648,122 @@ h1.title, h2.title {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   NOTIFICATIONS / TOASTS
+   NOTIFICATIONS / TOASTS (Subtle, theme-adaptive, modern)
    ══════════════════════════════════════════════════════════════ */
 
-[class*="toast"],
-[class*="notification-popup"] {
-  background: var(--glass-2-bg) !important;
-  border: 1px solid var(--glass-2-border) !important;
-  box-shadow: var(--glass-2-shadow) !important;
-  color: var(--text-primary) !important;
+/* Toast container positioning */
+[data-sonner-toaster] {
+  font-family: var(--font-sans, 'Inter', -apple-system, sans-serif) !important;
+  z-index: 999999 !important;
 }
 
-[class*="toast-success"]  { border-left: 3px solid var(--zen-sage) !important; }
-[class*="toast-warning"]  { border-left: 3px solid var(--zen-amber) !important; }
-[class*="toast-error"]    { border-left: 3px solid var(--zen-rose) !important; }
-[class*="toast-info"]     { border-left: 3px solid var(--zen-copper) !important; }
+/* Base Toast & Notification Popup (Dark Mode / Zen Theme default) */
+[data-sonner-toast],
+.zen-toast,
+[class*="notification-popup"] {
+  background: rgba(20, 20, 24, 0.95) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.65), 0 4px 12px rgba(0, 0, 0, 0.35) !important;
+  color: #f4f4f5 !important;
+  font-family: var(--font-sans, 'Inter', -apple-system, sans-serif) !important;
+  font-size: 0.875rem !important;
+  line-height: 1.45 !important;
+  padding: 11px 16px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  border-left-width: 1px !important; /* CRITICAL: Prevent thick left color bar */
+}
+
+/* Toast Title & Typography */
+[data-sonner-toast] [data-title],
+.zen-toast-title {
+  font-weight: 550 !important;
+  font-size: 0.875rem !important;
+  color: #f4f4f5 !important;
+  letter-spacing: -0.01em !important;
+}
+
+[data-sonner-toast] [data-description],
+.zen-toast-desc {
+  font-size: 0.8125rem !important;
+  color: #a1a1aa !important;
+  margin-top: 2px !important;
+}
+
+/* Toast Close Button - Disabled for clean, uncluttered toast appearance */
+[data-sonner-toast] [data-close-button],
+.zen-toast-close-btn {
+  display: none !important;
+}
+
+/* Toast Icon Wrapper & Accents */
+[data-sonner-toast] [data-icon] {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin-right: 2px !important;
+  flex-shrink: 0 !important;
+}
+
+.zen-toast-icon {
+  flex-shrink: 0;
+}
+
+/* Dark mode icon colors */
+.zen-toast-icon-success,
+[data-sonner-toast][data-type="success"] [data-icon],
+.toast-success [data-icon] {
+  color: #34d399 !important;
+}
+
+.zen-toast-icon-error,
+[data-sonner-toast][data-type="error"] [data-icon],
+.toast-error [data-icon] {
+  color: #f87171 !important;
+}
+
+.zen-toast-icon-warning,
+[data-sonner-toast][data-type="warning"] [data-icon],
+.toast-warning [data-icon] {
+  color: #fbbf24 !important;
+}
+
+.zen-toast-icon-info,
+[data-sonner-toast][data-type="info"] [data-icon],
+.toast-info [data-icon] {
+  color: #a78bfa !important;
+}
 
 /* ══════════════════════════════════════════════════════════════
    TOOLTIPS & POPOVERS
    ══════════════════════════════════════════════════════════════ */
 
-[role="tooltip"],
-[class*="tooltip"]:not(.nav-tooltip) {
+body:not(.theme-light):not(.theme-plain) [role="tooltip"],
+body:not(.theme-light):not(.theme-plain) .tooltip:not(.nav-tooltip),
+body:not(.theme-light):not(.theme-plain) [class$="-tooltip"]:not(.nav-tooltip) {
   background: rgba(18, 14, 8, 0.95) !important;
   border: 1px solid rgba(210, 175, 130, 0.14) !important;
   color: var(--text-primary) !important;
   border-radius: var(--radius-md) !important;
   box-shadow: 0 8px 24px rgba(0,0,0,0.45) !important;
   font-size: 0.78rem !important;
+}
+
+/* Reset inner tooltip rows and items from inheriting container pill styles */
+[class*="tooltip"] [class*="-row"],
+[class*="tooltip"] [class*="-date"],
+[class*="tooltip"] [class*="-dot"],
+[class*="tooltip"] [class*="-label"],
+[class*="tooltip"] [class*="-val"],
+[class*="tooltip"] [class*="-item"] {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
 }
 
 /* ══════════════════════════════════════════════════════════════

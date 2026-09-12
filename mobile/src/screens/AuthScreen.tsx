@@ -2,18 +2,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Animated, Dimensions, Image, Platform,
-  DeviceEventEmitter
+  ActivityIndicator, Animated, Dimensions, Image, Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { GoogleAuthProvider, signInWithCredential, signInAnonymously } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { RADIUS, FONT_FAMILY, FONT_SIZE, SHADOW, SPACE } from '../theme/tokens';
 import { useTheme } from '../contexts/ThemeContext';
-import { updateL1Cache } from '../utils/bootManifest';
 import TermsScreen from './TermsScreen';
 
 // Web client ID from Google Cloud Console
@@ -37,16 +34,48 @@ try {
 }
 
 const GUARANTEES = [
-  { icon: 'shield-checkmark', title: '100% Local-First', desc: 'Encrypted device database' },
-  { icon: 'eye-off', title: 'Zero Telemetry', desc: 'No tracking or data sales' },
-  { icon: 'cloud-done', title: 'Seamless Sync', desc: 'Instant multi-device bridge' },
+  {
+    icon: 'shield-checkmark-outline',
+    title: '100% Local-First',
+    desc: 'Encrypted on-device SQLite & LWW cache',
+    tag: 'ENCRYPTED',
+    colorDark: '#5EDA9E',
+    colorLight: '#059669',
+    bgDark: 'rgba(94,218,158,0.12)',
+    bgLight: 'rgba(5,150,105,0.08)',
+    borderDark: 'rgba(94,218,158,0.25)',
+    borderLight: 'rgba(5,150,105,0.2)',
+  },
+  {
+    icon: 'eye-off-outline',
+    title: 'Zero Telemetry',
+    desc: 'Strict privacy with zero tracking or profiling',
+    tag: 'ZERO LOGS',
+    colorDark: '#A599FF',
+    colorLight: '#6C5CE7',
+    bgDark: 'rgba(165,153,255,0.12)',
+    bgLight: 'rgba(108,92,231,0.08)',
+    borderDark: 'rgba(165,153,255,0.25)',
+    borderLight: 'rgba(108,92,231,0.2)',
+  },
+  {
+    icon: 'cloud-done-outline',
+    title: 'Seamless Sync',
+    desc: 'Instant cross-device cloud continuity',
+    tag: 'REAL-TIME',
+    colorDark: '#38BDF8',
+    colorLight: '#0284C7',
+    bgDark: 'rgba(56,189,248,0.12)',
+    bgLight: 'rgba(2,132,199,0.08)',
+    borderDark: 'rgba(56,189,248,0.25)',
+    borderLight: 'rgba(2,132,199,0.2)',
+  },
 ];
 
 export default function AuthScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const [loading, setLoading] = useState(false);
-  const [skipLoading, setSkipLoading] = useState(false);
   const [error, setError] = useState('');
   const [showTerms, setShowTerms] = useState(false);
 
@@ -62,30 +91,10 @@ export default function AuthScreen() {
     ]).start();
   }, []);
 
-  const handleSkip = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setSkipLoading(true);
-    try {
-      await AsyncStorage.multiRemove([
-        '@zentrack_onboarding_completed',
-        'zentrack_onboarded_v2',
-        '@zentrack_onboarded_v2',
-        '@zentrack_optimistic_user',
-      ]);
-      updateL1Cache('onboarded', false);
-      DeviceEventEmitter.emit('reset_onboarding');
-      if (!auth.currentUser) {
-        await signInAnonymously(auth);
-      }
-    } catch (e) {
-      setSkipLoading(false);
-    }
-  };
-
   const handleSignIn = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!GoogleSignin) {
-      alert('Google Sign-In requires a standalone APK or Dev Client. It does not work in Expo Go. Please use "Skip for now" instead.');
+      alert('Google Sign-In requires a standalone APK or Dev Client. It does not work in Expo Go.');
       return;
     }
 
@@ -143,7 +152,7 @@ export default function AuthScreen() {
           </View>
 
           <Text style={[styles.sub, { color: colors.textSecondary }]}>
-            Sara's ready whenever you are. Connect your account to enable encrypted cross-device continuity.
+            Connect your account to enable encrypted cross-device continuity, offline persistence, and seamless sync.
           </Text>
 
           {/* Error Banner */}
@@ -154,20 +163,46 @@ export default function AuthScreen() {
             </View>
           ) : null}
 
-          {/* Subtle Security & Privacy Card */}
-          <View style={[styles.specCard, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', backgroundColor: isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.02)' }]}>
-            {GUARANTEES.map((item, index) => (
-              <View key={item.title}>
-                <View style={styles.specRow}>
-                  <Ionicons name={item.icon as any} size={14} color={colors.accentPrimary} style={{ marginRight: 10 }} />
-                  <Text style={[styles.specLabel, { color: colors.textPrimary }]}>{item.title}</Text>
-                  <Text style={[styles.specValue, { color: colors.textMuted }]}>{item.desc}</Text>
+          {/* Enhanced Security & Privacy Card */}
+          <View
+            style={[
+              styles.specCard,
+              {
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                backgroundColor: isDark ? '#111114' : '#F9F8FD',
+              },
+            ]}
+          >
+            {GUARANTEES.map((item, index) => {
+              const iconColor = isDark ? item.colorDark : item.colorLight;
+              const iconBg = isDark ? item.bgDark : item.bgLight;
+              const badgeBorder = isDark ? item.borderDark : item.borderLight;
+
+              return (
+                <View key={item.title}>
+                  <View style={styles.specRow}>
+                    <View style={[styles.specIconBox, { backgroundColor: iconBg }]}>
+                      <Ionicons name={item.icon as any} size={15} color={iconColor} />
+                    </View>
+                    <View style={styles.specTextCol}>
+                      <Text style={[styles.specLabel, { color: colors.textPrimary }]}>{item.title}</Text>
+                      <Text style={[styles.specValue, { color: colors.textSecondary }]}>{item.desc}</Text>
+                    </View>
+                    <View style={[styles.specBadge, { backgroundColor: iconBg, borderColor: badgeBorder }]}>
+                      <Text style={[styles.specBadgeText, { color: iconColor }]}>{item.tag}</Text>
+                    </View>
+                  </View>
+                  {index < GUARANTEES.length - 1 && (
+                    <View
+                      style={[
+                        styles.specDivider,
+                        { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' },
+                      ]}
+                    />
+                  )}
                 </View>
-                {index < GUARANTEES.length - 1 && (
-                  <View style={[styles.specDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} />
-                )}
-              </View>
-            ))}
+              );
+            })}
           </View>
         </View>
 
@@ -233,17 +268,6 @@ export default function AuthScreen() {
               Terms of Service & Privacy Policy
             </Text>
           </Text>
-
-          {/* Skip for now */}
-          <TouchableOpacity onPress={handleSkip} disabled={skipLoading} style={styles.skipBtn} activeOpacity={0.7}>
-            {skipLoading ? (
-              <ActivityIndicator color={colors.textMuted} size="small" />
-            ) : (
-              <Text style={[styles.skipText, { color: colors.textMuted }]}>
-                Skip for now  →
-              </Text>
-            )}
-          </TouchableOpacity>
 
         </View>
 
@@ -330,25 +354,51 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flex: 1,
   },
   specCard: {
-    borderRadius: RADIUS.lg,
+    borderRadius: 18,
     borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     width: '100%',
+    marginBottom: 4,
   },
   specRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
+  },
+  specIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  specTextCol: {
+    flex: 1,
+    marginRight: 8,
   },
   specLabel: {
-    fontFamily: FONT_FAMILY.medium,
+    fontFamily: FONT_FAMILY.bold,
     fontSize: 13,
-    flex: 1,
+    letterSpacing: 0.1,
   },
   specValue: {
     fontFamily: FONT_FAMILY.body,
-    fontSize: 11.5,
+    fontSize: 11,
+    marginTop: 1.5,
+    lineHeight: 15,
+  },
+  specBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  specBadgeText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 9,
+    letterSpacing: 0.6,
   },
   specDivider: {
     height: StyleSheet.hairlineWidth,
@@ -400,17 +450,5 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   linkText: {
     fontFamily: FONT_FAMILY.bold,
     textDecorationLine: 'underline',
-  },
-  skipBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  skipText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 13,
-    letterSpacing: 0.3,
-    opacity: 0.7,
   },
 });
