@@ -280,20 +280,24 @@ body.theme-plain .dashboard-sara-send-btn:active {
 /* ── Column 1: Your Progress Hero Card (Light Mode Refined Harmonization) ── */
 body.theme-light .card-progress,
 body.theme-plain .card-progress {
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
-  border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04) !important;
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 16px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px -2px rgba(0, 0, 0, 0.02) !important;
   color: #0f172a !important;
 }
 
 body.theme-light .card-progress-title,
 body.theme-plain .card-progress-title {
   color: #0f172a !important;
+  font-size: 0.95rem !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.015em !important;
 }
 
 body.theme-light .ring-track-circle,
 body.theme-plain .ring-track-circle {
-  stroke: #e2e8f0 !important;
+  stroke: #f1f5f9 !important;
 }
 
 body.theme-light .donut-rank-title,
@@ -334,15 +338,15 @@ body.theme-plain .quest-item:hover {
 body.theme-light .quest-checkbox,
 body.theme-plain .quest-checkbox {
   border: 1.5px solid #cbd5e1 !important;
-  background: #ffffff !important;
+  background: transparent !important;
 }
 
 body.theme-light .quest-checkbox.checked,
 body.theme-plain .quest-checkbox.checked {
-  background: #2563eb !important;
-  border-color: #2563eb !important;
+  background: #10b981 !important;
+  border-color: #10b981 !important;
   color: #ffffff !important;
-  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25) !important;
+  box-shadow: 0 1px 2px rgba(16, 185, 129, 0.2) !important;
 }
 
 body.theme-light .quest-title,
@@ -358,7 +362,9 @@ body.theme-plain .quest-item.done .quest-title {
 
 body.theme-light .quest-xp-badge,
 body.theme-plain .quest-xp-badge {
-  color: #2563eb !important;
+  color: #6366f1 !important;
+  font-weight: 600 !important;
+  font-size: 0.76rem !important;
 }
 
 body.theme-light .quest-item.done .quest-xp-badge,
@@ -368,9 +374,9 @@ body.theme-plain .quest-item.done .quest-xp-badge {
 
 body.theme-light .progress-streak-row,
 body.theme-plain .progress-streak-row {
-  background: #ffffff !important;
+  background: #f8fafc !important;
   border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
 }
 
 body.theme-light .progress-streak-row:hover,

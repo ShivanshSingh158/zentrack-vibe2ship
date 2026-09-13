@@ -75,7 +75,7 @@ const getGradientForLevel = (level: string): [string, string] => {
     case 'Vanguard':  return ['#a855f7', '#7c3aed']; // T5 Royal Violet Knight
     case 'Luminary':  return ['#f59e0b', '#d97706']; // T6 Solar Gold Sage
     case 'Legend':    return ['#ea580c', '#c2410c']; // T7 Blazing Magma Flame
-    case 'Mythic':    return ['#ec4899', '#db2777']; // T8 Mythic Rose Plasma
+    case 'Mythic':    return ['#f43f5e', '#8b5cf6']; // T8 Mythic Rose & Violet
     case 'Paragon':   return ['#64748b', '#94a3b8']; // T9 Silver Metallic Titan
     case 'Titan':     return ['#dc2626', '#991b1b']; // T10 Blood Crimson Behemoth
     case 'Ascendant': return ['#10b981', '#047857']; // T11 Jade Transcendent
@@ -1371,36 +1371,38 @@ export const LifeHomeDashboard: React.FC = () => {
                           >
                             {task.title || task.text}
                           </span>
-                          {isOverdue && (
-                            <span className="task-overdue-pill">Overdue</span>
-                          )}
-                          {task.timeSlot && (
-                            <span className="task-time-pill">{formatTimeRangeDisplay(task.timeSlot)}</span>
-                          )}
-                          {task.priority && (
-                            <span className={`upcoming-priority-tag p-${task.priority}`}>
-                              {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-                            </span>
-                          )}
-                          {!isDone && (
-                            <button
-                              type="button"
-                              className="task-timer-icon-btn"
-                              onClick={() => {
-                                const taskTitle = task.title || task.text || 'Focus Task';
-                                const durationMins = extractTaskDurationMinutes(
-                                  task.estimatedMinutes || task.durationMinutes || task.duration,
-                                  task.timeSlot,
-                                  taskTitle
-                                );
-                                startTimer(task.id, taskTitle, undefined, undefined, durationMins);
-                                toast.success(`Pomodoro Focus started: "${taskTitle}"`);
-                              }}
-                              title="Start Focus Timer"
-                            >
-                              <Timer size={13} />
-                            </button>
-                          )}
+                          <div className="task-row-badges-cluster">
+                            {isOverdue && (
+                              <span className="task-overdue-pill">Overdue</span>
+                            )}
+                            {task.timeSlot && (
+                              <span className="task-time-pill">{formatTimeRangeDisplay(task.timeSlot)}</span>
+                            )}
+                            {task.priority && (
+                              <span className={`upcoming-priority-tag p-${task.priority}`}>
+                                {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                              </span>
+                            )}
+                            {!isDone && (
+                              <button
+                                type="button"
+                                className="task-timer-icon-btn"
+                                onClick={() => {
+                                  const taskTitle = task.title || task.text || 'Focus Task';
+                                  const durationMins = extractTaskDurationMinutes(
+                                    task.estimatedMinutes || task.durationMinutes || task.duration,
+                                    task.timeSlot,
+                                    taskTitle
+                                  );
+                                  startTimer(task.id, taskTitle, undefined, undefined, durationMins);
+                                  toast.success(`Pomodoro Focus started: "${taskTitle}"`);
+                                }}
+                                title="Start Focus Timer"
+                              >
+                                <Timer size={13} />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -1469,7 +1471,7 @@ export const LifeHomeDashboard: React.FC = () => {
               <Link to="/attendance" className="card-link">Details</Link>
             </div>
             <div className="attendance-overall-sub">
-              <strong>{attendanceStats.pct}%</strong> overall · min. 75%
+              <strong className={attendanceStats.pct >= 75 ? 'safe' : 'risk'}>{attendanceStats.pct}%</strong> overall · min. 75%
             </div>
             <div className="attendance-subject-list">
               {attendanceSubjects.length === 0 ? (
@@ -1485,7 +1487,7 @@ export const LifeHomeDashboard: React.FC = () => {
                     <div key={sub.id} className="subject-bar-item">
                       <div className="subject-bar-header">
                         <span className="subject-bar-name">{sub.name}</span>
-                        <span className="subject-bar-pct">{pct}%</span>
+                        <span className={`subject-bar-pct ${isSafe ? 'safe' : 'risk'}`}>{pct}%</span>
                       </div>
                       <div className="subject-bar-track">
                         <div
