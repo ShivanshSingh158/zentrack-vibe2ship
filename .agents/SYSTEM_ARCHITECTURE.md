@@ -117,7 +117,7 @@ zentrack-vibe2ship/
 │   │   │   └── VoiceQuickCaptureWidget.tsx Floating voice-to-text quick capture (~22KB)
 │   │   ├── dashboard/
 │   │   │   ├── HomeDashboard.tsx   Main app screen: agent orchestration entry point (~50KB)
-│   │   │   ├── LifeHomeDashboard.tsx Unified life dashboard (Balanced 3-column Bento Grid: Col 1 Life Matrix & Daily Vitality, Col 2 Master Flow & Upcoming Radar, Col 3 Attendance, Habits, Active Goals & Scratchpad)
+│   │   │   ├── LifeHomeDashboard.tsx Unified life dashboard (Balanced 3-column Bento Grid: Col 1 Life Matrix & Daily Vitality, Col 2 Master Flow & Upcoming Radar, Col 3 Attendance, Habits & Vitality with dynamic Active Recall, Recent Document / Vault Preview card)
 │   │   │   ├── AgentShutter.tsx    Animated panel revealing agent fleet during missions
 │   │   │   ├── MissionReport.tsx   Structured mission report display
 │   │   │   ├── VaultOrb.tsx        Animated 3D orb visualization (~20KB)
