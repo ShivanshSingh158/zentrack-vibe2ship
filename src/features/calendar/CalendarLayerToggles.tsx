@@ -40,7 +40,7 @@ export const CalendarLayerToggles: React.FC<CalendarLayerTogglesProps> = ({
       key: 'showClasses',
       label: 'Classes & Labs',
       subtitle: 'Timetable & Semesters',
-      icon: <BookOpen size={15} strokeWidth={2.2} />,
+      icon: <BookOpen size={14} strokeWidth={2.2} />,
       colorClass: 'classes',
       count: eventCounts.classes,
     },
@@ -48,7 +48,7 @@ export const CalendarLayerToggles: React.FC<CalendarLayerTogglesProps> = ({
       key: 'showGCal',
       label: 'Google Calendar',
       subtitle: 'Synced External Events',
-      icon: <CalendarIcon size={15} strokeWidth={2.2} />,
+      icon: <CalendarIcon size={14} strokeWidth={2.2} />,
       colorClass: 'gcal',
       count: eventCounts.gcal,
     },
@@ -56,7 +56,7 @@ export const CalendarLayerToggles: React.FC<CalendarLayerTogglesProps> = ({
       key: 'showGym',
       label: 'Gym & Workouts',
       subtitle: 'PPL Splits & Training',
-      icon: <Dumbbell size={15} strokeWidth={2.2} />,
+      icon: <Dumbbell size={14} strokeWidth={2.2} />,
       colorClass: 'gym',
       count: eventCounts.gym,
     },
@@ -64,7 +64,7 @@ export const CalendarLayerToggles: React.FC<CalendarLayerTogglesProps> = ({
       key: 'showTasks',
       label: 'Priority Tasks',
       subtitle: 'Deadlines & Due Dates',
-      icon: <CheckSquare size={15} strokeWidth={2.2} />,
+      icon: <CheckSquare size={14} strokeWidth={2.2} />,
       colorClass: 'tasks',
       count: eventCounts.tasks,
     },
@@ -105,7 +105,7 @@ export const CalendarLayerToggles: React.FC<CalendarLayerTogglesProps> = ({
       <div className="layers-card-header">
         <div className="layers-header-title-wrap">
           <Layers size={13} className="layers-header-icon" />
-          <span className="layers-title">CALENDARS & LAYERS</span>
+          <span className="layers-title">Calendars</span>
         </div>
         <span className="layers-active-badge">
           {activeCount}/4 Active
@@ -117,17 +117,20 @@ export const CalendarLayerToggles: React.FC<CalendarLayerTogglesProps> = ({
         {layerItems.map(item => {
           const isActive = layers[item.key];
           return (
-            <label
+            <div
               key={item.key}
               className={`layer-toggle-row ${isActive ? 'active' : 'inactive'} ${item.colorClass}`}
-              title={`Click to ${isActive ? 'hide' : 'show'} ${item.label}`}
+              onClick={() => onToggleLayer(item.key)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === ' ' || e.key === 'Enter') {
+                  e.preventDefault();
+                  onToggleLayer(item.key);
+                }
+              }}
+              title={`Toggle ${item.label}`}
             >
-              <input
-                type="checkbox"
-                checked={isActive}
-                onChange={() => onToggleLayer(item.key)}
-                className="layer-native-checkbox"
-              />
               <div className={`layer-custom-indicator ${item.colorClass}`}>
                 {item.icon}
               </div>
@@ -138,12 +141,14 @@ export const CalendarLayerToggles: React.FC<CalendarLayerTogglesProps> = ({
               </div>
 
               <div className="layer-meta-right">
-                <span className={`layer-count-pill ${item.colorClass}`}>
+                <span className={`layer-count-pill ${item.colorClass} ${item.count === 0 ? 'zero' : ''}`}>
                   {item.count}
                 </span>
-                <div className={`layer-switch-pill ${isActive ? 'active' : ''}`} />
+                <div className={`layer-ios-switch ${isActive ? 'active' : ''} ${item.colorClass}`}>
+                  <div className="layer-ios-switch-knob" />
+                </div>
               </div>
-            </label>
+            </div>
           );
         })}
       </div>
@@ -153,26 +158,26 @@ export const CalendarLayerToggles: React.FC<CalendarLayerTogglesProps> = ({
         <div className="layers-footer-meta">
           <div className="layers-footer-stat">
             <span className="footer-stat-number">{totalEventsCount}</span>
-            <span className="footer-stat-label">Active Events</span>
+            <span className="footer-stat-label">Events Visible</span>
           </div>
           <div className="layers-footer-actions">
             <button
               type="button"
               className={`layer-quick-action-btn ${activeCount === 4 ? 'active' : ''}`}
               onClick={(e) => handleAllToggle(e, true)}
-              title="Show all calendar layers"
+              title="Show all calendars"
             >
               <Eye size={11} />
-              <span>All On</span>
+              <span>All</span>
             </button>
             <button
               type="button"
-              className="layer-quick-action-btn"
+              className={`layer-quick-action-btn ${activeCount === 0 ? 'active' : ''}`}
               onClick={(e) => handleAllToggle(e, false)}
-              title="Hide all calendar layers"
+              title="Hide all calendars"
             >
               <EyeOff size={11} />
-              <span>Hide All</span>
+              <span>None</span>
             </button>
           </div>
         </div>

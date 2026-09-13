@@ -2812,46 +2812,93 @@ body.theme-plain .layer-toggle-row.active {
 body.theme-light .layer-label,
 body.theme-plain .layer-label {
   color: #0f172a !important;
-  font-size: 0.84rem !important;
-  font-weight: 650 !important;
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
 }
 
 body.theme-light .layer-sublabel,
 body.theme-plain .layer-sublabel {
   color: #64748b !important;
-  font-size: 0.68rem !important;
-  font-weight: 500 !important;
+  font-size: 0.65rem !important;
+  font-weight: 450 !important;
 }
 
 body.theme-light .layer-count-pill,
 body.theme-plain .layer-count-pill {
   background: #f1f5f9 !important;
   color: #334155 !important;
-  font-weight: 750 !important;
-  font-size: 0.70rem !important;
-  padding: 0.14rem 0.48rem !important;
+  font-weight: 700 !important;
+  font-size: 0.68rem !important;
+  padding: 0.1rem 0.38rem !important;
   border-radius: 9999px !important;
   border: 1px solid #e2e8f0 !important;
 }
 
-body.theme-light .layer-switch-pill,
-body.theme-plain .layer-switch-pill {
+body.theme-light .layer-count-pill.zero,
+body.theme-plain .layer-count-pill.zero {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #94a3b8 !important;
+}
+
+body.theme-light .layer-custom-indicator.classes,
+body.theme-plain .layer-custom-indicator.classes {
+  background: rgba(2, 132, 199, 0.1) !important;
+  color: #0284c7 !important;
+  border-color: rgba(2, 132, 199, 0.2) !important;
+}
+
+body.theme-light .layer-custom-indicator.gcal,
+body.theme-plain .layer-custom-indicator.gcal {
+  background: rgba(5, 150, 105, 0.1) !important;
+  color: #059669 !important;
+  border-color: rgba(5, 150, 105, 0.2) !important;
+}
+
+body.theme-light .layer-custom-indicator.gym,
+body.theme-plain .layer-custom-indicator.gym {
+  background: rgba(217, 119, 6, 0.1) !important;
+  color: #d97706 !important;
+  border-color: rgba(217, 119, 6, 0.2) !important;
+}
+
+body.theme-light .layer-custom-indicator.tasks,
+body.theme-plain .layer-custom-indicator.tasks {
+  background: rgba(124, 58, 237, 0.1) !important;
+  color: #7c3aed !important;
+  border-color: rgba(124, 58, 237, 0.2) !important;
+}
+
+body.theme-light .layer-ios-switch,
+body.theme-plain .layer-ios-switch {
   background: #e2e8f0 !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06) !important;
 }
 
-body.theme-light .layer-switch-pill::after,
-body.theme-plain .layer-switch-pill::after {
-  background: #94a3b8 !important;
-}
-
-body.theme-light .layer-switch-pill.active,
-body.theme-plain .layer-switch-pill.active {
-  background: #2563eb !important;
-}
-
-body.theme-light .layer-switch-pill.active::after,
-body.theme-plain .layer-switch-pill.active::after {
+body.theme-light .layer-ios-switch-knob,
+body.theme-plain .layer-ios-switch-knob {
   background: #ffffff !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15) !important;
+}
+
+body.theme-light .layer-ios-switch.active.classes,
+body.theme-plain .layer-ios-switch.active.classes {
+  background: #0284c7 !important;
+}
+
+body.theme-light .layer-ios-switch.active.gcal,
+body.theme-plain .layer-ios-switch.active.gcal {
+  background: #059669 !important;
+}
+
+body.theme-light .layer-ios-switch.active.gym,
+body.theme-plain .layer-ios-switch.active.gym {
+  background: #d97706 !important;
+}
+
+body.theme-light .layer-ios-switch.active.tasks,
+body.theme-plain .layer-ios-switch.active.tasks {
+  background: #7c3aed !important;
 }
 
 body.theme-light .layers-footer-card,
@@ -2869,24 +2916,30 @@ body.theme-plain .footer-stat-label {
   color: #64748b !important;
 }
 
+body.theme-light .layers-footer-actions,
+body.theme-plain .layers-footer-actions {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
 body.theme-light .layer-quick-action-btn,
 body.theme-plain .layer-quick-action-btn {
-  background: #f1f5f9 !important;
-  border: 1px solid #e2e8f0 !important;
-  color: #475569 !important;
+  background: transparent !important;
+  border: none !important;
+  color: #64748b !important;
 }
 
 body.theme-light .layer-quick-action-btn:hover,
 body.theme-plain .layer-quick-action-btn:hover {
-  background: #e2e8f0 !important;
+  background: #ffffff !important;
   color: #0f172a !important;
 }
 
 body.theme-light .layer-quick-action-btn.active,
 body.theme-plain .layer-quick-action-btn.active {
-  background: #eff6ff !important;
-  border-color: #bfdbfe !important;
-  color: #2563eb !important;
+  background: #ffffff !important;
+  color: #7c3aed !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
 }
 
 /* Center Viewport & Day View */
