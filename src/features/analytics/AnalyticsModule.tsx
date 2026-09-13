@@ -2,7 +2,7 @@ import React, { useState, useMemo, lazy, Suspense } from 'react';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import {
   BarChart3, TrendingUp, TrendingDown, Dumbbell, Flame,
-  CheckCircle, Clock, Sparkles, Calendar, Zap,
+  CheckCircle, CheckCircle2, GraduationCap, Clock, Sparkles, Calendar, Zap,
   School, Activity, ShieldCheck, AlertTriangle, BatteryCharging,
   Layers, ArrowUpRight, Plus, RefreshCw, Loader2, BrainCircuit
 } from 'lucide-react';
@@ -178,17 +178,32 @@ const DeltaBadge = ({ cur, prev, unit = '', color = '' }: { cur: number; prev: n
     return <span className="analytics-delta-pill neutral">0%</span>;
   }
   const diff = cur - prev;
-  const pct = prev > 0 ? Math.round((diff / prev) * 100) : (cur > 0 ? 100 : 0);
   const up = diff >= 0;
+
+  let label = '';
+  if (prev === 0 && cur > 0) {
+    label = `+${cur}${unit ? ` ${unit}` : ''}`;
+  } else if (prev > 0) {
+    const rawPct = Math.round((diff / prev) * 100);
+    if (Math.abs(rawPct) > 150) {
+      // Clean, realistic delta representation for large jumps
+      label = `${up ? '+' : ''}${diff}${unit ? ` ${unit}` : ''}`;
+    } else {
+      label = `${up ? '+' : ''}${rawPct}%${unit ? ` ${unit}` : ''}`;
+    }
+  } else {
+    label = `${up ? '+' : ''}${diff}${unit ? ` ${unit}` : ''}`;
+  }
 
   let pillClass = up ? 'positive' : 'negative';
   if (color === 'amber') pillClass = 'amber';
   if (color === 'cyan') pillClass = 'cyan';
+  if (diff === 0) pillClass = 'neutral';
 
   return (
     <span className={`analytics-delta-pill ${pillClass}`}>
       {up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-      {up ? '+' : ''}{pct}%{unit ? ` ${unit}` : ''}
+      {label}
     </span>
   );
 };
@@ -650,13 +665,15 @@ const AnalyticsModuleInner = () => {
         <>
           {/* ── ZONE 1: HERO ZEN SCORE & 6 VITALITY KPI TILES (PERFECT 3X2 GRID) ── */}
           <div className="analytics-hero-card">
-            {/* ZenScore Concentric Progress Ring */}
+            {/* ZenScore Concentric Progress Ring & Domain Score Composition */}
             <div className="analytics-ring-box">
               <div className="analytics-ring-svg-container">
+                <div className="analytics-ring-ambient-glow" />
                 <svg width={RING_SIZE} height={RING_SIZE} style={{ transform: 'rotate(-90deg)' }}>
                   <defs>
                     <linearGradient id="zenRingGrad" x1="0" y1="0" x2="1" y2="1">
                       <stop offset="0%" stopColor="#a599ff" />
+                      <stop offset="60%" stopColor="#818cf8" />
                       <stop offset="100%" stopColor="#38bdf8" />
                     </linearGradient>
                   </defs>
@@ -684,19 +701,25 @@ const AnalyticsModuleInner = () => {
 
                 <div className="analytics-ring-inner">
                   <div className="analytics-ring-score">{stats.zenScore}</div>
-                  <div className="analytics-ring-label">ZenScore</div>
-                  <div className="analytics-ring-delta" style={{ color: stats.zenScore >= stats.prevZen ? '#5eda9e' : '#ff6961' }}>
-                    {stats.zenScore >= stats.prevZen ? `+${stats.zenScore - stats.prevZen}` : `${stats.zenScore - stats.prevZen}`} vs prev
+                  <div className="analytics-ring-label">ZENSCORE</div>
+                  <div className="analytics-ring-tier-badge">
+                    {stats.zenScore >= 80 ? 'Optimal' : stats.zenScore >= 60 ? 'Strong' : stats.zenScore >= 40 ? 'Moderate' : 'Building'}
+                  </div>
+                  <div className={`analytics-ring-delta-pill ${stats.zenScore >= stats.prevZen ? 'positive' : 'negative'}`}>
+                    {stats.zenScore >= stats.prevZen ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                    <span>{stats.zenScore >= stats.prevZen ? `+${stats.zenScore - stats.prevZen}` : `${stats.zenScore - stats.prevZen}`} vs prev</span>
                   </div>
                 </div>
               </div>
 
-              {/* Domain Weight Breakdown Meter */}
+              {/* Domain Weight Breakdown & Score Allocation */}
               <div className="analytics-domain-meter">
                 <div className="analytics-domain-meter-title">
-                  <span>Domain Breakdown</span>
-                  <span>100 pts target</span>
+                  <span>Score Composition</span>
+                  <span className="analytics-domain-target-badge">100 Pts Target</span>
                 </div>
+
+                {/* Composite Stacked Bar */}
                 <div className="analytics-domain-bars">
                   <div
                     className="analytics-domain-bar-segment"
@@ -719,19 +742,60 @@ const AnalyticsModuleInner = () => {
                     title={`Habits: ${stats.breakdown.habitScore}/20 pts`}
                   />
                 </div>
-                <div className="analytics-domain-legend">
-                  <span className="analytics-domain-pill">
-                    <span className="analytics-domain-dot" style={{ background: '#5eda9e' }} /> Tasks (25%)
-                  </span>
-                  <span className="analytics-domain-pill">
-                    <span className="analytics-domain-dot" style={{ background: '#fbbf24' }} /> Gym (30%)
-                  </span>
-                  <span className="analytics-domain-pill">
-                    <span className="analytics-domain-dot" style={{ background: '#38bdf8' }} /> Focus (25%)
-                  </span>
-                  <span className="analytics-domain-pill">
-                    <span className="analytics-domain-dot" style={{ background: '#a599ff' }} /> Habits (20%)
-                  </span>
+
+                {/* 2x2 Precision Breakdown Grid */}
+                <div className="analytics-domain-grid">
+                  <div className="analytics-domain-item">
+                    <div className="analytics-domain-item-top">
+                      <span className="analytics-domain-item-name">
+                        <span className="analytics-domain-dot" style={{ background: '#5eda9e' }} />
+                        Tasks
+                      </span>
+                      <span className="analytics-domain-item-pts">{stats.breakdown.taskScore}<span>/25</span></span>
+                    </div>
+                    <div className="analytics-domain-item-bar">
+                      <div style={{ width: `${Math.min(100, (stats.breakdown.taskScore / 25) * 100)}%`, background: '#5eda9e' }} />
+                    </div>
+                  </div>
+
+                  <div className="analytics-domain-item">
+                    <div className="analytics-domain-item-top">
+                      <span className="analytics-domain-item-name">
+                        <span className="analytics-domain-dot" style={{ background: '#fbbf24' }} />
+                        Fitness
+                      </span>
+                      <span className="analytics-domain-item-pts">{stats.breakdown.gymScore}<span>/30</span></span>
+                    </div>
+                    <div className="analytics-domain-item-bar">
+                      <div style={{ width: `${Math.min(100, (stats.breakdown.gymScore / 30) * 100)}%`, background: '#fbbf24' }} />
+                    </div>
+                  </div>
+
+                  <div className="analytics-domain-item">
+                    <div className="analytics-domain-item-top">
+                      <span className="analytics-domain-item-name">
+                        <span className="analytics-domain-dot" style={{ background: '#38bdf8' }} />
+                        Focus
+                      </span>
+                      <span className="analytics-domain-item-pts">{stats.breakdown.focusScore}<span>/25</span></span>
+                    </div>
+                    <div className="analytics-domain-item-bar">
+                      <div style={{ width: `${Math.min(100, (stats.breakdown.focusScore / 25) * 100)}%`, background: '#38bdf8' }} />
+                    </div>
+                  </div>
+
+                  <div className="analytics-domain-item">
+                    <div className="analytics-domain-item-top">
+                      <span className="analytics-domain-item-name">
+                        <span className="analytics-domain-dot" style={{ background: '#a599ff' }} />
+                        Habits
+                      </span>
+                      <span className="analytics-domain-item-pts">{stats.breakdown.habitScore}<span>/20</span></span>
+                    </div>
+                    <div className="analytics-domain-item-bar">
+                      <div style={{ width: `${Math.min(100, (stats.breakdown.habitScore / 20) * 100)}%`, background: '#a599ff' }} />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -742,8 +806,8 @@ const AnalyticsModuleInner = () => {
               <div className="analytics-stat-card card-tasks">
                 <div className="analytics-tile-header">
                   <div className="analytics-tile-title-group">
-                    <div className="analytics-stat-icon-box" style={{ background: 'rgba(94, 218, 158, 0.14)', color: '#5eda9e', borderColor: 'rgba(94, 218, 158, 0.3)' }}>
-                      <CheckCircle size={16} />
+                    <div className="analytics-stat-icon-box icon-tasks">
+                      <CheckCircle2 size={16} />
                     </div>
                     <div className="analytics-tile-label-box">
                       <span className="analytics-tile-category">Execution</span>
@@ -758,16 +822,15 @@ const AnalyticsModuleInner = () => {
                 </div>
                 <div className="analytics-stat-meter-track">
                   <div
-                    className="analytics-stat-meter-fill"
+                    className="analytics-stat-meter-fill fill-tasks"
                     style={{
-                      width: `${Math.min(100, (stats.curTasks / (stats.targetTasks || 1)) * 100)}%`,
-                      background: 'linear-gradient(90deg, #5eda9e, #38bdf8)'
+                      width: `${Math.min(100, (stats.curTasks / (stats.targetTasks || 1)) * 100)}%`
                     }}
                   />
                 </div>
                 <div className="analytics-stat-submeta">
-                  <span>Pace</span>
-                  <span>{stats.curTasks} completed this {period}</span>
+                  <span className="submeta-label">Pace</span>
+                  <span className="submeta-val">{stats.curTasks} completed this {period}</span>
                 </div>
               </div>
 
@@ -775,7 +838,7 @@ const AnalyticsModuleInner = () => {
               <div className="analytics-stat-card card-gym">
                 <div className="analytics-tile-header">
                   <div className="analytics-tile-title-group">
-                    <div className="analytics-stat-icon-box" style={{ background: 'rgba(251, 191, 36, 0.14)', color: '#fbbf24', borderColor: 'rgba(251, 191, 36, 0.3)' }}>
+                    <div className="analytics-stat-icon-box icon-gym">
                       <Dumbbell size={16} />
                     </div>
                     <div className="analytics-tile-label-box">
@@ -791,16 +854,15 @@ const AnalyticsModuleInner = () => {
                 </div>
                 <div className="analytics-stat-meter-track">
                   <div
-                    className="analytics-stat-meter-fill"
+                    className="analytics-stat-meter-fill fill-gym"
                     style={{
-                      width: `${Math.min(100, (stats.curGym / (stats.targetGym || 1)) * 100)}%`,
-                      background: 'linear-gradient(90deg, #fbbf24, #f59e0b)'
+                      width: `${Math.min(100, (stats.curGym / (stats.targetGym || 1)) * 100)}%`
                     }}
                   />
                 </div>
                 <div className="analytics-stat-submeta">
-                  <span>Cadence</span>
-                  <span>{stats.curGym} logged workouts</span>
+                  <span className="submeta-label">Cadence</span>
+                  <span className="submeta-val">{stats.curGym} logged workouts</span>
                 </div>
               </div>
 
@@ -808,7 +870,7 @@ const AnalyticsModuleInner = () => {
               <div className="analytics-stat-card card-focus">
                 <div className="analytics-tile-header">
                   <div className="analytics-tile-title-group">
-                    <div className="analytics-stat-icon-box" style={{ background: 'rgba(56, 189, 248, 0.14)', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)' }}>
+                    <div className="analytics-stat-icon-box icon-focus">
                       <Clock size={16} />
                     </div>
                     <div className="analytics-tile-label-box">
@@ -826,24 +888,23 @@ const AnalyticsModuleInner = () => {
                 </div>
                 <div className="analytics-stat-meter-track">
                   <div
-                    className="analytics-stat-meter-fill"
+                    className="analytics-stat-meter-fill fill-focus"
                     style={{
-                      width: `${Math.min(100, (stats.curFocus / (stats.targetFocus || 1)) * 100)}%`,
-                      background: 'linear-gradient(90deg, #38bdf8, #818cf8)'
+                      width: `${Math.min(100, (stats.curFocus / (stats.targetFocus || 1)) * 100)}%`
                     }}
                   />
                 </div>
                 <div className="analytics-stat-submeta">
-                  <span>Avg Flow</span>
-                  <span>{(stats.curFocus / (days || 1)).toFixed(0)}m daily average</span>
+                  <span className="submeta-label">Avg Flow</span>
+                  <span className="submeta-val">{(stats.curFocus / (days || 1)).toFixed(0)}m daily average</span>
                 </div>
               </div>
 
-              {/* Tile 4: Active Streak (Mobile Parity) */}
+              {/* Tile 4: Active Streak */}
               <div className="analytics-stat-card card-streak">
                 <div className="analytics-tile-header">
                   <div className="analytics-tile-title-group">
-                    <div className="analytics-stat-icon-box" style={{ background: 'rgba(245, 158, 11, 0.16)', color: '#f59e0b', borderColor: 'rgba(245, 158, 11, 0.35)' }}>
+                    <div className="analytics-stat-icon-box icon-streak">
                       <Flame size={16} />
                     </div>
                     <div className="analytics-tile-label-box">
@@ -851,7 +912,9 @@ const AnalyticsModuleInner = () => {
                       <span className="analytics-stat-label">Active Streak</span>
                     </div>
                   </div>
-                  <span className="analytics-delta-pill streak">🔥 Active</span>
+                  <span className={`analytics-delta-pill ${appStreak > 0 ? 'streak' : 'neutral'}`}>
+                    {appStreak > 0 ? '🔥 Active' : '⚡ Restart'}
+                  </span>
                 </div>
                 <div className="analytics-tile-value-row">
                   <span className="analytics-stat-val">{appStreak}d</span>
@@ -859,16 +922,15 @@ const AnalyticsModuleInner = () => {
                 </div>
                 <div className="analytics-stat-meter-track">
                   <div
-                    className="analytics-stat-meter-fill"
+                    className="analytics-stat-meter-fill fill-streak"
                     style={{
-                      width: `${Math.min(100, (appStreak / 30) * 100)}%`,
-                      background: 'linear-gradient(90deg, #f59e0b, #ec4899)'
+                      width: `${Math.min(100, (appStreak / Math.max(appStreak, longestStreak, 14)) * 100)}%`
                     }}
                   />
                 </div>
                 <div className="analytics-stat-submeta">
-                  <span>Protection</span>
-                  <span>Sunday Rest Immunity</span>
+                  <span className="submeta-label">Protection</span>
+                  <span className="submeta-val">Sunday Rest Immunity</span>
                 </div>
               </div>
 
@@ -876,7 +938,7 @@ const AnalyticsModuleInner = () => {
               <div className="analytics-stat-card card-habits">
                 <div className="analytics-tile-header">
                   <div className="analytics-tile-title-group">
-                    <div className="analytics-stat-icon-box" style={{ background: 'rgba(165, 153, 255, 0.14)', color: '#a599ff', borderColor: 'rgba(165, 153, 255, 0.3)' }}>
+                    <div className="analytics-stat-icon-box icon-habits">
                       <Zap size={16} />
                     </div>
                     <div className="analytics-tile-label-box">
@@ -892,16 +954,15 @@ const AnalyticsModuleInner = () => {
                 </div>
                 <div className="analytics-stat-meter-track">
                   <div
-                    className="analytics-stat-meter-fill"
+                    className="analytics-stat-meter-fill fill-habits"
                     style={{
-                      width: `${Math.min(100, (stats.curHabits / (stats.targetHabits || 1)) * 100)}%`,
-                      background: 'linear-gradient(90deg, #a599ff, #c084fc)'
+                      width: `${Math.min(100, (stats.curHabits / (stats.targetHabits || 1)) * 100)}%`
                     }}
                   />
                 </div>
                 <div className="analytics-stat-submeta">
-                  <span>Consistency</span>
-                  <span>{stats.curHabits} active check-ins</span>
+                  <span className="submeta-label">Consistency</span>
+                  <span className="submeta-val">{stats.curHabits} active check-ins</span>
                 </div>
               </div>
 
@@ -909,15 +970,8 @@ const AnalyticsModuleInner = () => {
               <div className={`analytics-stat-card card-attendance ${stats.attendancePct < 75 ? 'risk' : ''}`}>
                 <div className="analytics-tile-header">
                   <div className="analytics-tile-title-group">
-                    <div
-                      className="analytics-stat-icon-box"
-                      style={{
-                        background: stats.attendancePct >= 75 ? 'rgba(94, 218, 158, 0.14)' : 'rgba(255, 105, 97, 0.14)',
-                        color: stats.attendancePct >= 75 ? '#5eda9e' : '#ff6961',
-                        borderColor: stats.attendancePct >= 75 ? 'rgba(94, 218, 158, 0.3)' : 'rgba(255, 105, 97, 0.3)'
-                      }}
-                    >
-                      <School size={16} />
+                    <div className={`analytics-stat-icon-box ${stats.attendancePct >= 75 ? 'icon-attendance-safe' : 'icon-attendance-risk'}`}>
+                      <GraduationCap size={16} />
                     </div>
                     <div className="analytics-tile-label-box">
                       <span className="analytics-tile-category">Academic</span>
@@ -936,16 +990,18 @@ const AnalyticsModuleInner = () => {
                 </div>
                 <div className="analytics-stat-meter-track">
                   <div
-                    className="analytics-stat-meter-fill"
+                    className="analytics-stat-meter-fill fill-attendance"
                     style={{
                       width: `${Math.min(100, stats.attendancePct)}%`,
-                      background: stats.attendancePct >= 75 ? 'linear-gradient(90deg, #5eda9e, #38bdf8)' : 'linear-gradient(90deg, #ff6961, #f43f5e)'
+                      background: stats.attendancePct >= 75
+                        ? 'linear-gradient(90deg, #5eda9e, #38bdf8)'
+                        : 'linear-gradient(90deg, #ff6961, #f43f5e)'
                     }}
                   />
                 </div>
                 <div className="analytics-stat-submeta">
-                  <span>Threshold</span>
-                  <span>75% Minimum Required</span>
+                  <span className="submeta-label">Threshold</span>
+                  <span className="submeta-val">75% Minimum Required</span>
                 </div>
               </div>
             </div>
