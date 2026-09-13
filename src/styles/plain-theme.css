@@ -6158,11 +6158,13 @@ body.theme-plain .lp-topic-body {
   background: #f8fafc !important;
   border-top: 1px solid #e2e8f0 !important;
   padding: 0.65rem 0.75rem 0.85rem !important;
+  overscroll-behavior: contain !important;
 }
 
 body.theme-light .lp-subtasks-stack,
 body.theme-plain .lp-subtasks-stack {
   scrollbar-color: #cbd5e1 transparent !important;
+  overscroll-behavior: contain !important;
 }
 
 /* Lecture Row */

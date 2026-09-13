@@ -68,26 +68,28 @@ export const TopicCard: React.FC<TopicCardProps> = ({
     return extractYoutubeId(nextUncompletedSubtask.url);
   }, [nextUncompletedSubtask]);
 
-  // Ref for the inner lecture list — used for native scroll isolation
+  // Refs for expanded body & inner lecture list — isolate scrolling so whole screen never scrolls
+  const bodyRef = useRef<HTMLDivElement>(null);
   const stackRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const el = stackRef.current;
-    if (!el || !isExpanded) return;
+    const bodyEl = bodyRef.current;
+    if (!bodyEl || !isExpanded) return;
 
     const onWheel = (e: WheelEvent) => {
-      const { scrollTop, scrollHeight, clientHeight } = el;
-      const canScrollDown = scrollTop + clientHeight < scrollHeight - 1;
-      const canScrollUp = scrollTop > 0;
+      // 1. Completely stop propagation and prevent default so outer page / screen NEVER scrolls
+      e.stopPropagation();
+      e.preventDefault();
 
-      if ((e.deltaY > 0 && canScrollDown) || (e.deltaY < 0 && canScrollUp)) {
-        e.preventDefault();
-        el.scrollTop += e.deltaY;
+      // 2. Scroll the inner lecture stack directly
+      const stackEl = stackRef.current;
+      if (stackEl && Math.abs(e.deltaY) > 0) {
+        stackEl.scrollTop += e.deltaY;
       }
     };
 
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
+    bodyEl.addEventListener('wheel', onWheel, { passive: false });
+    return () => bodyEl.removeEventListener('wheel', onWheel);
   }, [isExpanded]);
 
   // Calculate remaining estimated hours
@@ -288,7 +290,11 @@ export const TopicCard: React.FC<TopicCardProps> = ({
 
       {/* ── Expandable Body: Subtasks & Lectures ── */}
       {isExpanded && (
-        <div className="lp-topic-body">
+        <div
+          ref={bodyRef}
+          className="lp-topic-body"
+          onWheel={(e) => e.stopPropagation()}
+        >
           {/* Quick Add Subtask Form */}
           {showAddForm && (
             <form className="lp-inline-add-form" onSubmit={handleAddSubmit}>
