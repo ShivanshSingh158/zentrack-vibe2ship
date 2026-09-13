@@ -1725,6 +1725,21 @@ body.theme-dark .upcoming-priority-tag.p-urgent,
   gap: 0.55rem;
   height: 100%;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.box-col-stack::-webkit-scrollbar {
+  width: 4px;
+}
+
+.box-col-stack::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+
+body.theme-dark .box-col-stack::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .card-mini {
@@ -1734,8 +1749,6 @@ body.theme-dark .upcoming-priority-tag.p-urgent,
   padding: 0.75rem 0.95rem;
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
   box-sizing: border-box;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px -2px rgba(0, 0, 0, 0.02);
   overflow: hidden;
@@ -1769,7 +1782,16 @@ body.theme-dark .card-mini-title,
   color: #ffffff;
 }
 
-/* 3A: Attendance */
+/* 3A: Attendance — Auto-sized for 1, 2, 3, 4, 5, 6, 7 subjects */
+.card-attendance {
+  flex: 0 0 auto !important;
+  min-height: auto !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: visible !important;
+}
+
 .attendance-overall-sub {
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.75rem;
@@ -1813,9 +1835,8 @@ body.theme-dark .attendance-overall-sub strong.risk {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  min-height: auto;
+  overflow: visible;
 }
 
 .subject-bar-item {
@@ -2179,27 +2200,26 @@ body.theme-dark .recall-review-btn:hover,
 
 /* ── 3B: Habits & Vitality Flex Behavior ── */
 .card-habits-vitality {
-  flex: 0 0 auto;
-  max-height: 52%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  transition: max-height 0.2s ease;
+  flex: 0 0 auto !important;
+  min-height: auto !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: visible !important;
 }
 
 .card-habits-vitality .habits-mini-list {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
+  min-height: auto;
+  overflow: visible;
 }
 
 /* ── 3C: Recent Document Card (PDF & Image Vault Preview) ── */
 .card-recent-doc {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: 100px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2243,6 +2263,7 @@ body.theme-dark .recent-doc-card-body:hover,
 .recent-doc-image-preview {
   flex: 1 1 auto;
   min-height: 48px;
+  max-height: 150px;
   position: relative;
   overflow: hidden;
   background: #0f172a;
@@ -2264,6 +2285,7 @@ body.theme-dark .recent-doc-card-body:hover,
 .recent-doc-file-preview {
   flex: 1 1 auto;
   min-height: 48px;
+  max-height: 150px;
   position: relative;
   overflow: hidden;
   background: linear-gradient(135deg, rgba(239, 68, 68, 0.04) 0%, rgba(244, 63, 94, 0.07) 100%);

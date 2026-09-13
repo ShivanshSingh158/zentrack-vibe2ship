@@ -1547,7 +1547,7 @@ export const LifeHomeDashboard: React.FC = () => {
               {attendanceSubjects.length === 0 ? (
                 <div className="mini-empty-hint">No courses enrolled yet.</div>
               ) : (
-                attendanceSubjects.slice(0, 4).map(sub => {
+                attendanceSubjects.map(sub => {
                   const attended = (sub.classesAttended || 0) + (sub.labsAttended || 0);
                   const total = (sub.classesTotal || 0) + (sub.labsTotal || 0);
                   const pct = total > 0 ? Math.round((attended / total) * 100) : 100;
