@@ -1188,46 +1188,58 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.85rem;
-  padding: 0.45rem 0.85rem;
+  padding: 0 0.85rem;
+  height: 52px;
   background: #09090c;
   border: 1px solid #1c1c24;
   border-radius: 12px;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .lp-theater-header-left {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.55rem;
   min-width: 0;
   flex: 1;
 }
 
 .lp-theater-lecture-badge {
-  font-size: 0.68rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 28px;
+  font-size: 0.7rem;
   font-weight: 700;
   color: #a1a1aa;
-  background: #14141c;
-  border: 1px solid #22222e;
-  padding: 0.2rem 0.55rem;
-  border-radius: 6px;
+  background: #0f0f14;
+  border: 1px solid #1c1c24;
+  padding: 0 0.6rem;
+  border-radius: 7px;
   flex-shrink: 0;
-  line-height: 1.2;
+  line-height: 1;
+  box-sizing: border-box;
 }
 
 .lp-theater-topic-pill {
-  font-size: 0.68rem;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  font-size: 0.7rem;
   font-weight: 700;
   color: var(--lp-accent-purple);
   background: rgba(165, 153, 255, 0.1);
   border: 1px solid rgba(165, 153, 255, 0.25);
-  padding: 0.2rem 0.6rem;
-  border-radius: 6px;
+  padding: 0 0.65rem;
+  border-radius: 7px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
   flex-shrink: 0;
+  line-height: 1;
+  box-sizing: border-box;
 }
 
 .lp-theater-titles {
@@ -1249,15 +1261,20 @@
 }
 
 .lp-theater-resuming-pill {
-  font-size: 0.68rem;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  font-size: 0.7rem;
   font-weight: 600;
   color: #f59e0b;
   background: rgba(245, 158, 11, 0.12);
   border: 1px solid rgba(245, 158, 11, 0.25);
-  padding: 0.2rem 0.55rem;
-  border-radius: 6px;
+  padding: 0 0.6rem;
+  border-radius: 7px;
   flex-shrink: 0;
   white-space: nowrap;
+  line-height: 1;
+  box-sizing: border-box;
 }
 
 .lp-theater-header-actions {
@@ -1429,11 +1446,12 @@
   justify-content: space-between;
   gap: 0.75rem;
   flex-wrap: wrap;
-  min-height: 48px;
+  height: 52px;
+  min-height: 52px;
   background: #09090c;
   border: 1px solid #1c1c24;
   border-radius: 12px;
-  padding: 0.55rem 0.95rem;
+  padding: 0 0.85rem;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
   flex-shrink: 0;
   box-sizing: border-box;
@@ -1449,20 +1467,22 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  background: #121218;
-  border: 1px solid #1f1f2a;
+  height: 32px;
+  background: #0f0f14;
+  border: 1px solid #1c1c24;
   color: #d4d4d8;
-  padding: 0.42rem 0.85rem;
+  padding: 0 0.85rem;
   border-radius: 8px;
-  font-size: 0.76rem;
+  font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
   user-select: none;
+  box-sizing: border-box;
 }
 
 .lp-nav-pill-btn:hover:not(:disabled) {
-  background: #1a1a24;
+  background: #181822;
   border-color: #2e2e3e;
   color: #ffffff;
 }
@@ -1476,19 +1496,20 @@
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
+  height: 32px;
   background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
   color: #ffffff;
   border: 1px solid #6d28d9;
-  border-bottom: 2px solid #581c87;
-  padding: 0.45rem 1.15rem;
+  padding: 0 1rem;
   border-radius: 8px;
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: 0.76rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.35);
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
   white-space: nowrap;
   user-select: none;
+  box-sizing: border-box;
 }
 
 .lp-mark-complete-btn:hover {
@@ -1520,10 +1541,13 @@
 .lp-companion-tabs {
   display: flex;
   align-items: center;
-  border-bottom: 1px solid #1a1a20;
-  background: #060608;
-  height: 42px;
+  background: #09090c;
+  border-bottom: 1px solid #1c1c24;
+  padding: 6px 10px;
+  gap: 6px;
+  height: 46px;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .lp-companion-tab {
@@ -1533,30 +1557,32 @@
   justify-content: center;
   gap: 0.45rem;
   padding: 0 0.5rem;
-  height: 100%;
+  height: 32px;
   background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
   color: #71717a;
   font-size: 0.76rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .lp-companion-tab .lp-tab-logo-icon {
   opacity: 0.65;
-  transition: opacity 0.18s ease;
+  transition: opacity 0.15s ease;
 }
 
 .lp-companion-tab .lp-tab-file-icon {
   color: #8e8e93;
-  transition: color 0.18s ease;
+  transition: color 0.15s ease;
 }
 
 .lp-companion-tab:hover:not(.active) {
   color: #d4d4d8;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
 }
 
 .lp-companion-tab:hover:not(.active) .lp-tab-file-icon {
@@ -1569,8 +1595,9 @@
 
 .lp-companion-tab.active {
   color: #ffffff;
-  border-bottom-color: var(--lp-accent-purple);
-  background: rgba(165, 153, 255, 0.05);
+  background: #14141c;
+  border: 1px solid #282836;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
 .lp-companion-tab.active .lp-tab-logo-icon {
@@ -1609,12 +1636,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.6rem 0.85rem;
-  border-bottom: 1px solid #1a1a20;
+  padding: 0 0.85rem;
+  height: 48px;
+  border-bottom: 1px solid #1c1c24;
   background: #000000;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .lp-chatgpt-header-left {
@@ -1628,13 +1657,13 @@
 .lp-chatgpt-avatar-glow {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
-  background: #09090c;
+  border-radius: 7px;
+  background: #0f0f14;
+  border: 1px solid #1c1c24;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  border: 1px solid #1a1a20;
 }
 
 .lp-chatgpt-title-meta {
@@ -1650,20 +1679,23 @@
   display: flex;
   align-items: center;
   gap: 0.45rem;
+  line-height: 1.2;
 }
 
 .lp-chatgpt-live-pill {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  height: 20px;
   font-size: 0.62rem;
   font-weight: 600;
   color: #5eda9e;
   background: rgba(94, 218, 158, 0.1);
   border: 1px solid rgba(94, 218, 158, 0.25);
-  padding: 0.08rem 0.45rem;
-  border-radius: 9999px;
-  line-height: 1.2;
+  padding: 0 0.45rem;
+  border-radius: 6px;
+  line-height: 1;
+  box-sizing: border-box;
 }
 
 .lp-live-pulse-dot {
@@ -1698,10 +1730,11 @@
 }
 
 .lp-chatgpt-model-select {
-  padding: 0.22rem 0.5rem;
-  border-radius: 7px;
+  height: 30px;
+  padding: 0 0.5rem;
+  border-radius: 8px;
   border: 1px solid #1c1c24;
-  background: #0d0d12;
+  background: #0f0f14;
   color: #d4d4d8;
   font-size: 0.68rem;
   font-weight: 600;
@@ -1725,17 +1758,19 @@
 .lp-chatgpt-hdr-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  background: #0d0d12;
+  gap: 0.35rem;
+  height: 30px;
+  background: #0f0f14;
   border: 1px solid #1c1c24;
   color: #a1a1aa;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  padding: 0.3rem 0.6rem;
-  border-radius: 7px;
+  padding: 0 0.65rem;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s ease;
   user-select: none;
+  box-sizing: border-box;
 }
 
 .lp-chatgpt-hdr-btn:hover {
@@ -1757,13 +1792,17 @@
 }
 
 .lp-hdr-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  padding: 0 0.35rem;
   background: var(--lp-accent-purple);
   color: #000000;
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   font-weight: 700;
-  padding: 0.05rem 0.35rem;
-  border-radius: 9999px;
-  line-height: 1.2;
+  border-radius: 5px;
+  line-height: 1;
 }
 
 /* ── SLIDE-OVER CHAT HISTORY DRAWER ── */
@@ -2187,9 +2226,9 @@
 .lp-chatgpt-msg-avatar {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
-  background: #09090c;
-  border: 1px solid #1a1a20;
+  border-radius: 7px;
+  background: #0f0f14;
+  border: 1px solid #1c1c24;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2213,11 +2252,11 @@
 }
 
 .lp-chatgpt-user-bubble {
-  background: linear-gradient(135deg, #1a1630 0%, #13101e 100%);
+  background: linear-gradient(135deg, #181528 0%, #12101e 100%);
   border: 1px solid rgba(165, 153, 255, 0.22);
   color: #f0f0f5;
-  padding: 0.72rem 1rem;
-  border-radius: 14px 14px 4px 14px;
+  padding: 0.65rem 0.95rem;
+  border-radius: 10px 10px 3px 10px;
   font-size: 0.91rem;
   line-height: 1.65;
   word-break: break-word;
@@ -2456,11 +2495,13 @@
 .lp-code-lang-selector {
   display: inline-flex;
   align-items: center;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  background: #0f0f14;
+  border: 1px solid #1c1c24;
+  border-radius: 7px;
   padding: 2px;
   gap: 2px;
+  height: 26px;
+  box-sizing: border-box;
   margin-left: 0.6rem;
 }
 
@@ -2468,18 +2509,20 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  height: 20px;
   background: transparent;
   border: 1px solid transparent;
   color: #94a3b8;
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 6px;
+  padding: 0 7px;
+  border-radius: 5px;
   cursor: pointer;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .lp-code-tab-btn:hover {
@@ -2532,22 +2575,24 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--lp-text-tertiary);
+  height: 24px;
+  background: #0f0f14;
+  border: 1px solid #1c1c24;
+  color: #a1a1aa;
   font-size: 0.68rem;
   font-family: inherit;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  padding: 3px 7px;
-  border-radius: 5px;
+  padding: 0 0.55rem;
+  border-radius: 6px;
   transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .lp-chatgpt-code-action-btn:hover {
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.12);
+  background: #181822;
+  border-color: #2e2e3e;
 }
 
 .lp-chatgpt-code-copy-btn {
@@ -2703,21 +2748,23 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  background: #09090c;
-  border: 1px solid #1a1a20;
+  height: 26px;
+  background: #0f0f14;
+  border: 1px solid #1c1c24;
   color: var(--lp-text-tertiary);
-  padding: 0.22rem 0.55rem;
+  padding: 0 0.55rem;
   border-radius: 6px;
   font-size: 0.68rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .lp-chatgpt-action-btn:hover {
-  background: #14141a;
+  background: #181822;
   color: var(--lp-text-primary);
-  border-color: #282834;
+  border-color: #2e2e3e;
 }
 
 /* Pulsing 3 dots loader */
@@ -2759,7 +2806,7 @@
 .lp-chatgpt-prompt-chips {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
   overflow-x: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -2773,41 +2820,45 @@
 .lp-chatgpt-chip {
   display: inline-flex;
   align-items: center;
+  height: 30px;
   background: #0f0f14;
-  border: 1px solid #22222e;
-  color: var(--lp-text-secondary);
-  padding: 0.26rem 0.7rem;
-  border-radius: 10px;
+  border: 1px solid #1c1c24;
+  color: #a1a1aa;
+  padding: 0 0.75rem;
+  border-radius: 8px;
   font-size: 0.72rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .lp-chatgpt-chip:hover {
-  background: #171722;
+  background: #181822;
   border-color: #2e2e3e;
   color: #ffffff;
+  transform: translateY(-1px);
 }
 
 .lp-chatgpt-typing-box {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  background: #0c0c10;
-  border: 1px solid #1e1e28;
-  border-radius: 16px;
-  padding: 0.35rem 0.55rem 0.35rem 0.95rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  background: #0a0a0e;
+  border: 1px solid #1c1c24;
+  border-radius: 12px;
+  padding: 0.35rem 0.5rem 0.35rem 0.85rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   outline: none !important;
+  box-sizing: border-box;
 }
 
 .lp-chatgpt-typing-box:focus-within {
   border-color: #2e2e38;
   background: #0d0d12;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
   outline: none !important;
 }
 
@@ -2848,29 +2899,30 @@
 .lp-chatgpt-send-btn {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.3);
-  border: none;
+  border-radius: 8px;
+  background: #14141c;
+  color: #52525b;
+  border: 1px solid #1c1c24;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  margin-bottom: 2px;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .lp-chatgpt-send-btn.active {
   background: #ffffff;
   color: #000000;
-  box-shadow: 0 2px 10px rgba(255, 255, 255, 0.25);
+  border-color: #ffffff;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.25);
   cursor: pointer;
 }
 
 .lp-chatgpt-send-btn.active:hover {
   background: #f4f4f5;
-  transform: scale(1.06);
+  transform: scale(1.03);
 }
 
 .lp-chatgpt-send-btn:disabled {
@@ -2907,9 +2959,9 @@
 }
 
 .lp-quiz-card {
-  background: #09090c;
-  border: 1px solid #1a1a20;
-  border-radius: 12px;
+  background: #0a0a0e;
+  border: 1px solid #1c1c24;
+  border-radius: 10px;
   padding: 0.85rem 1rem;
   display: flex;
   flex-direction: column;
@@ -2934,13 +2986,15 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  height: 22px;
   font-size: 0.68rem;
   font-weight: 700;
   color: var(--lp-accent-purple);
   background: rgba(165, 153, 255, 0.12);
   border: 1px solid rgba(165, 153, 255, 0.25);
-  padding: 0.15rem 0.5rem;
-  border-radius: 9999px;
+  padding: 0 0.5rem;
+  border-radius: 6px;
+  box-sizing: border-box;
 }
 
 .lp-quiz-status-badge {
@@ -2967,7 +3021,7 @@
   align-items: center;
   gap: 0.65rem;
   padding: 0.55rem 0.75rem;
-  border-radius: 9px;
+  border-radius: 8px;
   background: #0f0f14;
   border: 1px solid #1c1c24;
   color: #d4d4d8;
@@ -2998,7 +3052,7 @@
 .lp-quiz-option-letter {
   width: 22px;
   height: 22px;
-  border-radius: 6px;
+  border-radius: 5px;
   background: #1c1c24;
   color: #a1a1aa;
   display: flex;
@@ -3038,16 +3092,18 @@
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
+  height: 32px;
   background: var(--lp-accent-purple);
   color: #000000;
   border: none;
-  padding: 0.48rem 1rem;
-  border-radius: 9999px;
-  font-size: 0.78rem;
+  padding: 0 1rem;
+  border-radius: 8px;
+  font-size: 0.76rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 4px 14px rgba(165, 153, 255, 0.35);
+  box-sizing: border-box;
 }
 
 .lp-quiz-submit-btn:hover:not(:disabled) {
@@ -3254,26 +3310,30 @@
 .lp-notes-toolbar-group {
   display: flex;
   align-items: center;
-  gap: 0.2rem;
+  gap: 2px;
+  height: 30px;
   background: #0f0f14;
   border: 1px solid #1c1c24;
   border-radius: 8px;
   padding: 2px 4px;
+  box-sizing: border-box;
 }
 
 .lp-toolbar-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
+  height: 24px;
   background: transparent;
   border: none;
   color: #a1a1aa;
-  padding: 0.25rem 0.45rem;
+  padding: 0 0.45rem;
   border-radius: 5px;
   cursor: pointer;
   font-size: 0.7rem;
   font-weight: 600;
   transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .lp-toolbar-btn:hover {
@@ -3306,27 +3366,28 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  background: rgba(165, 153, 255, 0.15);
-  border: 1px solid rgba(165, 153, 255, 0.35);
+  height: 30px;
+  background: #0f0f14;
+  border: 1px solid #1c1c24;
   color: var(--lp-accent-purple);
-  padding: 0.25rem 0.65rem;
-  border-radius: 7px;
+  padding: 0 0.65rem;
+  border-radius: 8px;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .lp-stamp-ts-btn:hover {
-  background: var(--lp-accent-purple);
-  color: #000000;
-  border-color: var(--lp-accent-purple);
-  box-shadow: 0 2px 10px rgba(165, 153, 255, 0.35);
+  background: #181822;
+  border-color: #2e2e3e;
+  color: #ffffff;
 }
 
 .lp-stamp-ts-btn.lp-ai-notes-btn {
-  background: rgba(94, 218, 158, 0.15);
-  border-color: rgba(94, 218, 158, 0.35);
+  background: rgba(94, 218, 158, 0.12);
+  border-color: rgba(94, 218, 158, 0.28);
   color: #5eda9e;
 }
 
@@ -3334,20 +3395,21 @@
   background: #5eda9e;
   color: #000000;
   border-color: #5eda9e;
-  box-shadow: 0 2px 10px rgba(94, 218, 158, 0.35);
 }
 
 .lp-notes-icon-btn {
+  width: 30px;
+  height: 30px;
   background: #0f0f14;
   border: 1px solid #1c1c24;
-  color: var(--lp-text-tertiary);
+  color: #a1a1aa;
   cursor: pointer;
-  padding: 4px;
-  border-radius: 6px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .lp-notes-icon-btn:hover {
