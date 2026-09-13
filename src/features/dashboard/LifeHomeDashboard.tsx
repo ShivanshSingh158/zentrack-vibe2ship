@@ -1184,6 +1184,7 @@ export const LifeHomeDashboard: React.FC = () => {
         <div className="box-header-right">
           {/* Ask SARA... Search Pill */}
           <form onSubmit={handleSaraSubmit} className="box-sara-form">
+            <Sparkles size={14} className="box-sara-icon" />
             <input
               type="text"
               value={saraPrompt}
@@ -1200,12 +1201,12 @@ export const LifeHomeDashboard: React.FC = () => {
             onClick={() => window.dispatchEvent(new CustomEvent('open-sara-modal'))}
             title="Open SARA Voice & Terminal"
           >
-            <Bot size={15} />
+            <Bot size={16} />
           </button>
 
           {/* Flame Streak Pill */}
           <Link to="/habits" className="box-streak-pill" title="Daily Streak">
-            <span>🔥</span>
+            <Flame size={14} className="box-streak-flame" />
             <span>{appStreak} {appStreak === 1 ? 'Day' : 'Days'}</span>
           </Link>
 
@@ -1216,7 +1217,7 @@ export const LifeHomeDashboard: React.FC = () => {
             onClick={toggleTheme}
             title={`Switch to ${isDarkMode ? 'Light' : 'Dark'} mode`}
           >
-            {isDarkMode ? <Sun size={15} color="#f59e0b" /> : <Moon size={15} color="#6b7280" />}
+            {isDarkMode ? <Sun size={15} /> : <Moon size={15} />}
           </button>
         </div>
       </header>
