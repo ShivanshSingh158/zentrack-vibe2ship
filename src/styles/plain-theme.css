@@ -9426,4 +9426,55 @@ body.theme-plain .lp-focus-kbd {
   color: #ffffff !important;
 }
 
+/* ── Plain Theme Overrides for Dashboard Recent Document Card ── */
+body.theme-light .card-recent-doc,
+body.theme-plain .card-recent-doc {
+  background: #ffffff !important;
+  border: 1px solid #edeae6 !important;
+}
+
+body.theme-light .recent-doc-card-body,
+body.theme-plain .recent-doc-card-body {
+  background: #faf8f6 !important;
+  border: 1px solid #edeae6 !important;
+}
+
+body.theme-light .recent-doc-card-body:hover,
+body.theme-plain .recent-doc-card-body:hover {
+  background: #f2efe9 !important;
+  border-color: #dcd7ce !important;
+}
+
+body.theme-light .recent-doc-meta-row,
+body.theme-plain .recent-doc-meta-row {
+  background: #ffffff !important;
+  border-top: 1px solid #edeae6 !important;
+}
+
+body.theme-light .recent-doc-title,
+body.theme-plain .recent-doc-title {
+  color: #202020 !important;
+}
+
+body.theme-light .recent-doc-meta-right,
+body.theme-plain .recent-doc-meta-right {
+  color: #78716c !important;
+}
+
+body.theme-light .recent-doc-empty,
+body.theme-plain .recent-doc-empty {
+  background: #faf8f6 !important;
+  border-color: #edeae6 !important;
+}
+
+body.theme-light .recent-doc-empty-title,
+body.theme-plain .recent-doc-empty-title {
+  color: #202020 !important;
+}
+
+body.theme-light .recent-doc-empty-desc,
+body.theme-plain .recent-doc-empty-desc {
+  color: #78716c !important;
+}
+
 

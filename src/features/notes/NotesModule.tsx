@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
@@ -21,6 +22,7 @@ import { NotesAIPanel, type ChatMessage } from './NotesAIPanel';
 import '../../styles/notes.css';
 
 export const NotesModule = () => {
+  const location = useLocation();
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [nodes, setNodes] = useState<StorageNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -262,6 +264,33 @@ export const NotesModule = () => {
           const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as StorageNode[];
           setNodes(data);
           setIsLoading(false);
+
+          // Auto-open target document from Dashboard or external navigation
+          const targetFileId = (location.state as any)?.openFileId || localStorage.getItem('zen_open_file_id');
+          if (targetFileId) {
+            localStorage.removeItem('zen_open_file_id');
+            const targetNode = data.find(n => n.id === targetFileId);
+            if (targetNode) {
+              if (targetNode.type === 'file') {
+                setViewingFile(targetNode);
+                setActiveNote(null);
+                setIsSidebarOpen(false);
+                try {
+                  localStorage.setItem('zen_last_visited_doc', JSON.stringify({
+                    id: targetNode.id,
+                    name: targetNode.name,
+                    fileType: targetNode.fileType || (targetNode.name?.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image'),
+                    url: targetNode.url,
+                    size: targetNode.size,
+                    updatedAt: Date.now()
+                  }));
+                } catch {}
+              } else if (targetNode.type === 'note') {
+                setActiveNote(targetNode);
+                setViewingFile(null);
+              }
+            }
+          }
         }, (error) => {
           console.error('Error listening to storage:', error);
           toast.error('Failed to load storage');
@@ -739,6 +768,16 @@ export const NotesModule = () => {
                   setViewingFile(file);
                   setActiveNote(null);
                   setIsSidebarOpen(false);
+                  try {
+                    localStorage.setItem('zen_last_visited_doc', JSON.stringify({
+                      id: file.id,
+                      name: file.name,
+                      fileType: file.fileType || (file.name?.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image'),
+                      url: file.url,
+                      size: file.size,
+                      updatedAt: Date.now()
+                    }));
+                  } catch {}
                 }}
                 onTogglePin={handleTogglePin}
                 onRename={(node) => setRenameModal({ isOpen: true, node, newName: node.name })}

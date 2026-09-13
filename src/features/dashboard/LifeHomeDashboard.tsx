@@ -28,11 +28,16 @@ import {
   CheckSquare,
   Ban,
   Undo2,
-  Target
+  Target,
+  FileText,
+  FileDown,
+  Image as ImageIcon,
+  ExternalLink
 } from 'lucide-react';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { auth, db } from '../../services/firebase';
-import { doc, onSnapshot, updateDoc, addDoc, collection, deleteDoc, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, addDoc, collection, deleteDoc, setDoc, query, where } from 'firebase/firestore';
+import type { StorageNode } from '../../types';
 import { getLocalDateString, formatDisplayDate, formatTimeRangeDisplay, extractTaskDurationMinutes } from '../../utils/dateUtils';
 import { calculateAppStreak } from '../../utils/streakUtils';
 import { playPopSound } from '../../utils/sound';
@@ -136,6 +141,71 @@ export const LifeHomeDashboard: React.FC = () => {
   const [isFlashcardModalOpen, setIsFlashcardModalOpen] = useState(false);
   const [optimisticHabits, setOptimisticHabits] = useState<Record<string, boolean>>({});
   const [showNextDaySchedule, setShowNextDaySchedule] = useState(false);
+  const [storageFiles, setStorageFiles] = useState<StorageNode[]>([]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const q = query(collection(db, 'storage_nodes'), where('userId', '==', user.uid));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as StorageNode[];
+      setStorageFiles(docs.filter(d => d.type === 'file' || d.fileType === 'pdf' || d.fileType === 'image' || d.url));
+    }, (err) => {
+      console.warn('[Dashboard] storage_nodes listener:', err);
+    });
+    return () => unsub();
+  }, [user?.uid]);
+
+  const recentDocument = useMemo(() => {
+    try {
+      const saved = localStorage.getItem('zen_last_visited_doc');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && (parsed.url || parsed.id)) {
+          const matched = storageFiles.find(f => f.id === parsed.id);
+          if (matched) return matched;
+          return parsed as StorageNode;
+        }
+      }
+    } catch {}
+
+    const pdfOrImg = storageFiles
+      .filter(f => f.fileType === 'pdf' || f.fileType === 'image' || f.url?.toLowerCase().includes('.pdf') || f.name?.toLowerCase().endsWith('.pdf') || f.name?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i))
+      .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+
+    if (pdfOrImg.length > 0) return pdfOrImg[0];
+    if (storageFiles.length > 0) {
+      const sorted = [...storageFiles].sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+      return sorted[0];
+    }
+    return null;
+  }, [storageFiles]);
+
+  const handleOpenDocument = (docItem: StorageNode) => {
+    if (docItem.id) {
+      localStorage.setItem('zen_open_file_id', docItem.id);
+    }
+    navigate('/notes', { state: { openFileId: docItem.id } });
+  };
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '';
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(0)} KB`;
+    return `${(kb / 1024).toFixed(1)} MB`;
+  };
+
+  const formatTimeAgo = (ts?: number) => {
+    if (!ts) return '';
+    const diff = Date.now() - ts;
+    const mins = Math.floor(diff / 60000);
+    const hours = Math.floor(mins / 60);
+    const days = Math.floor(hours / 24);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -1545,7 +1615,7 @@ export const LifeHomeDashboard: React.FC = () => {
 
             {/* Habits List */}
             <div className="habits-mini-list">
-              {habits.slice(0, 2).map(h => {
+              {(habits.length > 2 ? habits.slice(0, 5) : habits.slice(0, 2)).map(h => {
                 const isDone = isHabitDone(h.id);
                 const habitStreak = h.streak || h.currentStreak || 1;
                 return (
@@ -1569,73 +1639,138 @@ export const LifeHomeDashboard: React.FC = () => {
                 );
               })}
 
-              {/* Active Recall Deck row */}
-              <div
-                className="recall-mini-row"
-                onClick={() => setIsFlashcardModalOpen(true)}
-                title="Review Flashcards with SM-2 Spaced Repetition"
-              >
-                <div className="recall-mini-left">
-                  <span className="recall-mini-name">Active recall deck</span>
-                  <span className="recall-mini-sub">SM-2 repetition</span>
-                </div>
-                <button
-                  type="button"
-                  className="recall-review-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsFlashcardModalOpen(true);
-                  }}
+              {/* Active Recall Deck row — hidden if habits > 2 */}
+              {habits.length <= 2 && (
+                <div
+                  className="recall-mini-row"
+                  onClick={() => setIsFlashcardModalOpen(true)}
+                  title="Review Flashcards with SM-2 Spaced Repetition"
                 >
-                  Review
-                </button>
-              </div>
+                  <div className="recall-mini-left">
+                    <span className="recall-mini-name">Active recall deck</span>
+                    <span className="recall-mini-sub">SM-2 repetition</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="recall-review-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsFlashcardModalOpen(true);
+                    }}
+                  >
+                    Review
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Box 3C: Goals & notes */}
-          <div className="card-mini card-goals-notes">
+          {/* Box 3C: Recent PDF or Image Document */}
+          <div className="card-mini card-recent-doc">
             <div className="card-mini-header">
-              <span className="card-mini-title">Goals & notes</span>
-              <Link to="/goals" className="card-link">All goals</Link>
+              <span className="card-mini-title">Recent document</span>
+              <Link to="/notes" className="card-link">Vault</Link>
             </div>
 
-            {/* Active Goals */}
-            <div className="goals-mini-list">
-              {activeGoals.length === 0 ? (
-                <div className="mini-empty-hint">Set your milestones in Goals →</div>
-              ) : (
-                activeGoals.slice(0, 2).map((goal: any) => {
-                  const progress = calculateGoalProgress(goal);
-                  return (
-                    <div key={goal.id} className="goal-bar-item" onClick={() => navigate('/goals')}>
-                      <div className="goal-bar-header">
-                        <span className="goal-bar-name">{goal.title}</span>
-                        <span className="goal-bar-pct">{progress}%</span>
-                      </div>
-                      <div className="goal-bar-track">
-                        <div
-                          className="goal-bar-fill"
-                          style={{ width: `${Math.max(5, progress)}%` }}
-                        />
-                      </div>
+            {recentDocument ? (
+              <div
+                className="recent-doc-card-body"
+                onClick={() => handleOpenDocument(recentDocument)}
+                title={`Open ${recentDocument.name} in Vault`}
+              >
+                {/* Visual Preview / Thumbnail */}
+                {(recentDocument.fileType === 'image' || recentDocument.name?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i)) && recentDocument.url ? (
+                  <div className="recent-doc-image-preview">
+                    <img
+                      src={recentDocument.url}
+                      alt={recentDocument.name}
+                      className="recent-doc-img"
+                      loading="lazy"
+                    />
+                    <div className="recent-doc-preview-hover">
+                      <span className="recent-doc-hover-badge">
+                        <ExternalLink size={11} />
+                        <span>View</span>
+                      </span>
                     </div>
-                  );
-                })
-              )}
-            </div>
+                  </div>
+                ) : (
+                  <div className="recent-doc-file-preview pdf-preview">
+                    {recentDocument.url && (recentDocument.fileType === 'pdf' || recentDocument.name?.toLowerCase().endsWith('.pdf') || recentDocument.url?.toLowerCase().includes('.pdf')) ? (
+                      <div className="recent-pdf-iframe-container">
+                        <iframe
+                          src={`${recentDocument.url.includes('?') ? recentDocument.url + '&' : recentDocument.url + '#'}toolbar=0&navpanes=0&view=Fit`}
+                          title={recentDocument.name}
+                          className="recent-pdf-mini-embed"
+                          tabIndex={-1}
+                        />
+                        <div className="recent-pdf-click-guard">
+                          <span className="recent-doc-hover-badge">
+                            <ExternalLink size={11} />
+                            <span>Open PDF</span>
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="recent-doc-file-icon-box">
+                        <FileText size={26} className="recent-doc-icon pdf" />
+                        <span className="recent-doc-hover-badge">
+                          <ExternalLink size={11} />
+                          <span>Open</span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-            {/* Quick Notes */}
-            <div className="quick-notes-wrap">
-              <div className="quick-notes-label">Quick notes</div>
-              <textarea
-                value={scratchpadText}
-                onChange={e => handleScratchpadChange(e.target.value)}
-                placeholder="Jot down a thought, idea, or link..."
-                className="quick-notes-textarea"
-                rows={2}
-              />
-            </div>
+                {/* Metadata details row */}
+                <div className="recent-doc-meta-row">
+                  <div className="recent-doc-meta-left">
+                    <div className={`recent-doc-type-badge-inline ${(recentDocument.fileType === 'image' || recentDocument.name?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i)) ? 'type-image' : 'type-pdf'}`}>
+                      {(recentDocument.fileType === 'image' || recentDocument.name?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i)) ? (
+                        <ImageIcon size={11} />
+                      ) : (
+                        <FileDown size={11} />
+                      )}
+                      <span>
+                        {(recentDocument.fileType === 'image' || recentDocument.name?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i)) ? 'Image' : 'PDF'}
+                      </span>
+                    </div>
+                    <span className="recent-doc-title" title={recentDocument.name}>
+                      {recentDocument.name}
+                    </span>
+                  </div>
+                  <div className="recent-doc-meta-right">
+                    {recentDocument.size ? (
+                      <span className="recent-doc-size">{formatFileSize(recentDocument.size)}</span>
+                    ) : null}
+                    {(recentDocument.updatedAt || recentDocument.createdAt) ? (
+                      <span className="recent-doc-time">{formatTimeAgo(recentDocument.updatedAt || recentDocument.createdAt)}</span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="recent-doc-empty" onClick={() => navigate('/notes')}>
+                <div className="recent-doc-empty-icon-wrap">
+                  <FileText size={20} />
+                </div>
+                <div className="recent-doc-empty-content">
+                  <span className="recent-doc-empty-title">No documents yet</span>
+                  <span className="recent-doc-empty-desc">Open Vault to upload your PDFs & study materials</span>
+                </div>
+                <button
+                  type="button"
+                  className="recent-doc-empty-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate('/notes');
+                  }}
+                >
+                  Open Vault
+                </button>
+              </div>
+            )}
           </div>
 
         </div>
