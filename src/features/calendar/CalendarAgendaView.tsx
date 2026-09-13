@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Clock, MapPin, Video, CheckCircle2, ChevronRight, AlertCircle, Dumbbell, BookOpen, CheckSquare, Sparkles } from 'lucide-react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
+import { Clock, MapPin, Video, CheckCircle2, ChevronRight, AlertCircle, Dumbbell, BookOpen, CheckSquare, Sparkles, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { format12Hour, getEventColors } from './calendarUtils';
 import type { MergedCalendarEvent } from './CalendarDayView';
 import { getLocalDateString } from '../../utils/dateUtils';
@@ -19,12 +19,13 @@ export const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
   onSelectEvent,
   onSelectDate,
 }) => {
-  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const colorMap = useMemo(() => getEventColors(isDark), [isDark]);
-  const todayStr = getLocalDateString();
+  const todayStr = useMemo(() => getLocalDateString(), []);
+  const [showPastEvents, setShowPastEvents] = useState(false);
 
   // Native non-passive wheel isolation for smooth mouse wheel scrolling
-  React.useEffect(() => {
+  useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
@@ -44,12 +45,27 @@ export const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  // Group events by date chronologically
+  // Effective cutoff: defaults to today (or selectedDate if user deliberately picked a past date)
+  const effectiveStartDate = useMemo(() => {
+    if (selectedDate && selectedDate < todayStr) return selectedDate;
+    return todayStr;
+  }, [selectedDate, todayStr]);
+
+  // Count past events before the active start date
+  const pastEventsCount = useMemo(() => {
+    return events.filter(e => e.date && e.date !== 'Unscheduled' && e.date < effectiveStartDate).length;
+  }, [events, effectiveStartDate]);
+
+  // Group events by date chronologically starting from Today / effectiveStartDate
   const groupedEvents = useMemo(() => {
     const map = new Map<string, MergedCalendarEvent[]>();
 
     events.forEach(evt => {
       const d = evt.date || 'Unscheduled';
+      // By default, hide events prior to the effective start date unless toggled
+      if (!showPastEvents && d !== 'Unscheduled' && d < effectiveStartDate) {
+        return;
+      }
       if (!map.has(d)) map.set(d, []);
       map.get(d)!.push(evt);
     });
@@ -86,7 +102,7 @@ export const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
         events: dayEvts,
       };
     });
-  }, [events, todayStr]);
+  }, [events, showPastEvents, effectiveStartDate, todayStr]);
 
   const getEventIcon = (type: string) => {
     switch (type) {
@@ -108,12 +124,38 @@ export const CalendarAgendaView: React.FC<CalendarAgendaViewProps> = ({
         <Sparkles size={36} color="rgba(165, 153, 255, 0.4)" />
         <h3>No Upcoming Events Scheduled</h3>
         <p>Use the + Add Event button or your AI Assistant to plan your week.</p>
+        {pastEventsCount > 0 && !showPastEvents && (
+          <button
+            type="button"
+            className="agenda-past-toggle-btn"
+            onClick={() => setShowPastEvents(true)}
+            style={{ marginTop: '1rem' }}
+          >
+            <History size={14} />
+            <span>Show {pastEventsCount} earlier event{pastEventsCount === 1 ? '' : 's'}</span>
+          </button>
+        )}
       </div>
     );
   }
 
   return (
     <div className="calendar-agenda-view-root" ref={scrollContainerRef}>
+      {pastEventsCount > 0 && (
+        <div className="agenda-past-toggle-banner">
+          <button
+            type="button"
+            className="agenda-past-toggle-btn"
+            onClick={() => setShowPastEvents(v => !v)}
+            title={showPastEvents ? 'Hide earlier events' : 'View events before today'}
+          >
+            <History size={13} />
+            <span>{showPastEvents ? 'Hide earlier events' : `Show ${pastEventsCount} earlier event${pastEventsCount === 1 ? '' : 's'}`}</span>
+            {showPastEvents ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+        </div>
+      )}
+
       {groupedEvents.map(({ dateKey, displayHeading, isToday, events: dayEvts }) => (
         <div key={dateKey} className={`agenda-date-group ${isToday ? 'today-group' : ''}`}>
           <div className="agenda-date-header" onClick={() => dateKey !== 'Unscheduled' && onSelectDate(dateKey)}>

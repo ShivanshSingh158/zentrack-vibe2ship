@@ -2104,6 +2104,50 @@ body.theme-plain .busy-block-title {
   overscroll-behavior: contain;
 }
 
+.agenda-past-toggle-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem 0 0.5rem 0;
+  flex-shrink: 0;
+}
+
+.agenda-past-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.agenda-past-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+body.theme-light .agenda-past-toggle-btn,
+body.theme-plain .agenda-past-toggle-btn {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #64748b;
+}
+
+body.theme-light .agenda-past-toggle-btn:hover,
+body.theme-plain .agenda-past-toggle-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
 .agenda-date-group {
   display: flex;
   flex-direction: column;
