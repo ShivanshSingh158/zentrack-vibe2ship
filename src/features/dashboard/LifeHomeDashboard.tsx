@@ -1699,7 +1699,7 @@ export const LifeHomeDashboard: React.FC = () => {
                     {recentDocument.url && (recentDocument.fileType === 'pdf' || recentDocument.name?.toLowerCase().endsWith('.pdf') || recentDocument.url?.toLowerCase().includes('.pdf')) ? (
                       <div className="recent-pdf-iframe-container">
                         <iframe
-                          src={`${recentDocument.url.includes('?') ? recentDocument.url + '&' : recentDocument.url + '#'}toolbar=0&navpanes=0&view=Fit`}
+                          src={`${recentDocument.url.includes('?') ? recentDocument.url + '&' : recentDocument.url + '#'}toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
                           title={recentDocument.name}
                           className="recent-pdf-mini-embed"
                           tabIndex={-1}
