@@ -7403,9 +7403,9 @@ body.theme-plain .lp-theater-icon-btn:hover {
 
 body.theme-light .lp-theater-icon-btn.active,
 body.theme-plain .lp-theater-icon-btn.active {
-  background: #ede9fe !important;
-  border-color: #7c3aed !important;
-  color: #6d28d9 !important;
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
 }
 
 body.theme-light .lp-theater-icon-btn.close:hover,
@@ -7446,19 +7446,19 @@ body.theme-plain .lp-nav-pill-btn:hover:not(:disabled) {
 
 body.theme-light .lp-mark-complete-btn,
 body.theme-plain .lp-mark-complete-btn {
-  background: #7c3aed !important;
+  background: #0f172a !important;
   color: #ffffff !important;
-  border: 1px solid transparent !important;
+  border: 1px solid #0f172a !important;
   border-radius: 8px !important;
   font-weight: 600 !important;
-  box-shadow: 0 1px 2px rgba(124, 58, 237, 0.2) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
   transition: all 0.12s ease !important;
 }
 
 body.theme-light .lp-mark-complete-btn:hover,
 body.theme-plain .lp-mark-complete-btn:hover {
-  background: #6d28d9 !important;
-  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3) !important;
+  background: #1e293b !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1) !important;
 }
 
 body.theme-light .lp-mark-complete-btn.completed,
@@ -7474,7 +7474,7 @@ body.theme-light .lp-theater-resizer:hover,
 body.theme-plain .lp-theater-resizer:hover,
 body.theme-light .lp-theater-resizer.active,
 body.theme-plain .lp-theater-resizer.active {
-  background: rgba(124, 58, 237, 0.08) !important;
+  background: rgba(0, 0, 0, 0.04) !important;
 }
 
 body.theme-light .lp-resizer-handle,
@@ -7486,8 +7486,8 @@ body.theme-light .lp-theater-resizer:hover .lp-resizer-handle,
 body.theme-plain .lp-theater-resizer:hover .lp-resizer-handle,
 body.theme-light .lp-theater-resizer.active .lp-resizer-handle,
 body.theme-plain .lp-theater-resizer.active .lp-resizer-handle {
-  background: #7c3aed !important;
-  box-shadow: 0 0 10px rgba(124, 58, 237, 0.5) !important;
+  background: #0f172a !important;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.2) !important;
 }
 
 /* Companion Column & Tabs */
@@ -7518,10 +7518,11 @@ body.theme-plain .lp-companion-tab:hover:not(.active) {
 
 body.theme-light .lp-companion-tab.active,
 body.theme-plain .lp-companion-tab.active {
-  color: #7c3aed !important;
-  font-weight: 700 !important;
-  border-bottom-color: #7c3aed !important;
+  color: #0f172a !important;
+  font-weight: 600 !important;
+  border: 1px solid #e2e8f0 !important;
   background: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
 }
 
 body.theme-light .lp-companion-tab .lp-tab-file-icon,
@@ -7531,7 +7532,7 @@ body.theme-plain .lp-companion-tab .lp-tab-file-icon {
 
 body.theme-light .lp-companion-tab.active .lp-tab-file-icon,
 body.theme-plain .lp-companion-tab.active .lp-tab-file-icon {
-  color: #7c3aed !important;
+  color: #0f172a !important;
 }
 
 body.theme-light .lp-companion-tab-content,
@@ -7546,7 +7547,7 @@ body.theme-light .lp-chatgpt-avatar-logo,
 body.theme-plain .lp-chatgpt-avatar-logo,
 body.theme-light .lp-chatgpt-welcome-logo,
 body.theme-plain .lp-chatgpt-welcome-logo {
-  filter: brightness(0) saturate(100%) invert(27%) sepia(91%) saturate(2352%) hue-rotate(253deg) brightness(97%) contrast(96%) !important;
+  filter: brightness(0) opacity(0.85) !important;
 }
 
 /* ZEN-GPT Header */
@@ -7563,8 +7564,8 @@ body.theme-plain .lp-chatgpt-header {
 
 body.theme-light .lp-chatgpt-avatar-glow,
 body.theme-plain .lp-chatgpt-avatar-glow {
-  background: #ede9fe !important;
-  border: 1px solid #ddd6fe !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
 }
 
 body.theme-light .lp-chatgpt-name,
@@ -7626,9 +7627,9 @@ body.theme-plain .lp-chatgpt-hdr-btn:hover {
 
 body.theme-light .lp-chatgpt-hdr-btn.active,
 body.theme-plain .lp-chatgpt-hdr-btn.active {
-  background: #ede9fe !important;
-  border-color: #7c3aed !important;
-  color: #6d28d9 !important;
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
 }
 
 body.theme-light .lp-chatgpt-hdr-btn.danger:hover,
@@ -7640,7 +7641,7 @@ body.theme-plain .lp-chatgpt-hdr-btn.danger:hover {
 
 body.theme-light .lp-hdr-badge,
 body.theme-plain .lp-hdr-badge {
-  background: #7c3aed !important;
+  background: #0f172a !important;
   color: #ffffff !important;
 }
 
@@ -7648,19 +7649,19 @@ body.theme-plain .lp-hdr-badge {
 body.theme-light .lp-chatgpt-messages,
 body.theme-plain .lp-chatgpt-messages {
   background: #f8fafc !important;
-  scrollbar-color: rgba(124, 58, 237, 0.25) transparent !important;
+  scrollbar-color: rgba(148, 163, 184, 0.25) transparent !important;
 }
 
 body.theme-light .lp-chatgpt-messages::-webkit-scrollbar-thumb,
 body.theme-plain .lp-chatgpt-messages::-webkit-scrollbar-thumb {
-  background: rgba(124, 58, 237, 0.2) !important;
+  background: rgba(148, 163, 184, 0.2) !important;
 }
 
 body.theme-light .lp-chatgpt-welcome-icon,
 body.theme-plain .lp-chatgpt-welcome-icon {
   background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 4px 18px rgba(124, 58, 237, 0.08) !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04) !important;
 }
 
 body.theme-light .lp-chatgpt-welcome-title,
@@ -7684,8 +7685,8 @@ body.theme-plain .lp-chatgpt-starter-card {
 body.theme-light .lp-chatgpt-starter-card:hover,
 body.theme-plain .lp-chatgpt-starter-card:hover {
   background: #ffffff !important;
-  border-color: #c4b5fd !important;
-  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.12) !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
   transform: translateY(-1px) !important;
 }
 
@@ -7708,10 +7709,10 @@ body.theme-plain .lp-chatgpt-msg-avatar {
 
 body.theme-light .lp-chatgpt-user-bubble,
 body.theme-plain .lp-chatgpt-user-bubble {
-  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%) !important;
+  background: #0f172a !important;
   border: none !important;
   color: #ffffff !important;
-  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
 }
 
 body.theme-light .lp-chatgpt-model-content,
@@ -7727,9 +7728,9 @@ body.theme-plain .lp-chatgpt-strong {
 
 body.theme-light .lp-chatgpt-inline-code,
 body.theme-plain .lp-chatgpt-inline-code {
-  background: #ede9fe !important;
-  border: 1px solid #ddd6fe !important;
-  color: #6d28d9 !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
 }
 
 body.theme-light .lp-chatgpt-action-btn,
@@ -7769,14 +7770,14 @@ body.theme-plain .lp-chatgpt-chip:hover {
 body.theme-light .lp-chatgpt-typing-box,
 body.theme-plain .lp-chatgpt-typing-box {
   background: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
 }
 
 body.theme-light .lp-chatgpt-typing-box:focus-within,
 body.theme-plain .lp-chatgpt-typing-box:focus-within {
-  border-color: #7c3aed !important;
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+  border-color: #94a3b8 !important;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06) !important;
   background: #ffffff !important;
 }
 
@@ -7880,8 +7881,8 @@ body.theme-plain .lp-history-card:hover {
 
 body.theme-light .lp-history-card.active,
 body.theme-plain .lp-history-card.active {
-  background: #f5f3ff !important;
-  border-color: #7c3aed !important;
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
 }
 
 body.theme-light .lp-history-lecture-badge,
@@ -7901,8 +7902,8 @@ body.theme-plain .lp-history-card-footer {
 
 body.theme-light .lp-history-active-tag,
 body.theme-plain .lp-history-active-tag {
-  background: #ede9fe !important;
-  color: #7c3aed !important;
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
 }
 
 body.theme-light .lp-history-drawer-footer,
@@ -7921,7 +7922,7 @@ body.theme-plain .lp-history-bottom-new-btn {
 body.theme-light .lp-history-bottom-new-btn:hover,
 body.theme-plain .lp-history-bottom-new-btn:hover {
   background: #f1f5f9 !important;
-  border-color: #7c3aed !important;
+  border-color: #cbd5e1 !important;
 }
 
 /* Interactive Quiz in Light Mode */
@@ -7953,9 +7954,9 @@ body.theme-plain .lp-quiz-option-btn:hover {
 
 body.theme-light .lp-quiz-option-btn.selected,
 body.theme-plain .lp-quiz-option-btn.selected {
-  background: #f5f3ff !important;
-  border-color: #7c3aed !important;
-  color: #6d28d9 !important;
+  background: #f1f5f9 !important;
+  border-color: #0f172a !important;
+  color: #0f172a !important;
 }
 
 body.theme-light .lp-quiz-option-letter,
@@ -7966,15 +7967,15 @@ body.theme-plain .lp-quiz-option-letter {
 
 body.theme-light .lp-quiz-option-btn.selected .lp-quiz-option-letter,
 body.theme-plain .lp-quiz-option-btn.selected .lp-quiz-option-letter {
-  background: #7c3aed !important;
+  background: #0f172a !important;
   color: #ffffff !important;
 }
 
 body.theme-light .lp-quiz-submit-btn,
 body.theme-plain .lp-quiz-submit-btn {
-  background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%) !important;
+  background: #0f172a !important;
   color: #ffffff !important;
-  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12) !important;
 }
 
 /* Lecture Notes Pane in Light Mode */
@@ -8013,12 +8014,12 @@ body.theme-plain .lp-toolbar-btn:hover {
 
 body.theme-light .lp-toolbar-btn.math,
 body.theme-plain .lp-toolbar-btn.math {
-  color: #7c3aed !important;
+  color: #0f172a !important;
 }
 
 body.theme-light .lp-toolbar-btn.math:hover,
 body.theme-plain .lp-toolbar-btn.math:hover {
-  background: #ede9fe !important;
+  background: #f1f5f9 !important;
 }
 
 body.theme-light .lp-toolbar-divider,
@@ -8043,15 +8044,15 @@ body.theme-plain .lp-stamp-ts-btn.lp-ai-notes-btn:hover {
 
 body.theme-light .lp-stamp-ts-btn,
 body.theme-plain .lp-stamp-ts-btn {
-  background: #f5f3ff !important;
-  border: 1px solid #ddd6fe !important;
-  color: #7c3aed !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #334155 !important;
 }
 
 body.theme-light .lp-stamp-ts-btn:hover,
 body.theme-plain .lp-stamp-ts-btn:hover {
-  background: #7c3aed !important;
-  border-color: #7c3aed !important;
+  background: #0f172a !important;
+  border-color: #0f172a !important;
   color: #ffffff !important;
 }
 
@@ -8077,7 +8078,7 @@ body.theme-plain .lp-notes-body-wrap {
 body.theme-light .lp-notes-rich-editor,
 body.theme-plain .lp-notes-rich-editor {
   color: #1e293b !important;
-  caret-color: #7c3aed !important;
+  caret-color: #0f172a !important;
 }
 
 body.theme-light .lp-notes-rich-editor:empty:before,
@@ -8119,16 +8120,16 @@ body.theme-plain .lp-notes-rich-editor hr {
 
 body.theme-light .lp-inline-ts-pill,
 body.theme-plain .lp-inline-ts-pill {
-  background: #ede9fe !important;
-  border: 1px solid #ddd6fe !important;
-  color: #6d28d9 !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
 }
 
 body.theme-light .lp-inline-ts-pill:hover,
 body.theme-plain .lp-inline-ts-pill:hover {
-  background: #7c3aed !important;
-  color: #ffffff !important;
-  border-color: #7c3aed !important;
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
 }
 
 body.theme-light .lp-math-pill,
@@ -8378,12 +8379,12 @@ body.theme-plain .confirm-dialog-btn-cancel:hover {
 }
 
 .confirm-dialog-btn-confirm.primary {
-  background: #7c3aed !important;
-  box-shadow: 0 1px 2px rgba(124, 58, 237, 0.25) !important;
+  background: #0f172a !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12) !important;
 }
 
 .confirm-dialog-btn-confirm.primary:hover {
-  background: #6d28d9 !important;
+  background: #1e293b !important;
 }
 
 .confirm-dialog-btn-confirm:active,
@@ -8446,8 +8447,8 @@ body.theme-plain .lp-chatgpt-model-content li {
 /* Blockquotes */
 body.theme-light .lp-chatgpt-model-content blockquote,
 body.theme-plain .lp-chatgpt-model-content blockquote {
-  border-left: 3px solid #7c3aed !important;
-  background: rgba(124, 58, 237, 0.05) !important;
+  border-left: 3px solid #cbd5e1 !important;
+  background: #f8fafc !important;
   color: #334155 !important;
 }
 
@@ -8488,11 +8489,11 @@ body.theme-plain .lp-chatgpt-strong {
 /* ── User bubble in light mode — modernized radius ── */
 body.theme-light .lp-chatgpt-user-bubble,
 body.theme-plain .lp-chatgpt-user-bubble {
-  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%) !important;
-  border: none !important;
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
   color: #ffffff !important;
-  border-radius: 14px 14px 4px 14px !important;
-  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25) !important;
+  border-radius: 10px 10px 3px 10px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
 }
 
 /* ── Chips — modernized (no pill, proper radius) ── */
@@ -8515,9 +8516,9 @@ body.theme-plain .lp-chatgpt-chip:hover {
 body.theme-light .lp-chatgpt-typing-box,
 body.theme-plain .lp-chatgpt-typing-box {
   background: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
-  border-radius: 16px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
 }
 
 /* ── Starter cards — cleaner in light mode ── */
@@ -8811,8 +8812,8 @@ body.theme-plain .lp-companion-tab.active {
   color: #0f172a !important;
   font-weight: 600 !important;
   background: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
 }
 
 /* 4. ZEN-GPT Header */
@@ -8829,8 +8830,8 @@ body.theme-plain .lp-chatgpt-avatar-glow {
   width: 28px !important;
   height: 28px !important;
   border-radius: 7px !important;
-  background: #ede9fe !important;
-  border: 1px solid #ddd6fe !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
 }
 
 body.theme-light .lp-chatgpt-live-pill,
@@ -8879,8 +8880,8 @@ body.theme-plain .lp-chatgpt-msg-avatar {
   width: 28px !important;
   height: 28px !important;
   border-radius: 7px !important;
-  background: #ede9fe !important;
-  border: 1px solid #ddd6fe !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
 }
 
 body.theme-light .lp-chatgpt-user-bubble,
@@ -8939,8 +8940,8 @@ body.theme-plain .lp-code-tab-btn {
 body.theme-light .lp-code-tab-btn.active,
 body.theme-plain .lp-code-tab-btn.active {
   background: #ffffff !important;
-  color: #2563eb !important;
-  border-color: #93c5fd !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
 }
 
@@ -8986,9 +8987,16 @@ body.theme-plain .lp-chatgpt-typing-box {
   min-height: 44px !important;
   border-radius: 12px !important;
   background: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
+  border: 1px solid #e2e8f0 !important;
   padding: 0.35rem 0.5rem 0.35rem 0.85rem !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+body.theme-light .lp-chatgpt-typing-box:focus-within,
+body.theme-plain .lp-chatgpt-typing-box:focus-within {
+  border-color: #94a3b8 !important;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06) !important;
+  background: #ffffff !important;
 }
 
 body.theme-light .lp-chatgpt-send-btn,
@@ -9003,10 +9011,10 @@ body.theme-plain .lp-chatgpt-send-btn {
 
 body.theme-light .lp-chatgpt-send-btn.active,
 body.theme-plain .lp-chatgpt-send-btn.active {
-  background: #7c3aed !important;
+  background: #0f172a !important;
   color: #ffffff !important;
-  border: 1px solid #7c3aed !important;
-  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.35) !important;
+  border: 1px solid #0f172a !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12) !important;
 }
 
 /* 8. Interactive Quiz Cards & Options */

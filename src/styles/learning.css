@@ -1605,7 +1605,7 @@
 }
 
 .lp-companion-tab.active .lp-tab-file-icon {
-  color: var(--lp-accent-purple);
+  color: #ffffff;
 }
 
 .lp-companion-tab-content {
@@ -1780,8 +1780,8 @@
 }
 
 .lp-chatgpt-hdr-btn.active {
-  background: rgba(165, 153, 255, 0.15);
-  border-color: var(--lp-accent-purple);
+  background: #1c1c24;
+  border-color: #282834;
   color: #ffffff;
 }
 
@@ -1797,8 +1797,8 @@
   justify-content: center;
   height: 18px;
   padding: 0 0.35rem;
-  background: var(--lp-accent-purple);
-  color: #000000;
+  background: #272732;
+  color: #ffffff;
   font-size: 0.62rem;
   font-weight: 700;
   border-radius: 5px;
@@ -1970,8 +1970,8 @@
 }
 
 .lp-history-card.active {
-  border-color: var(--lp-accent-purple);
-  background: rgba(165, 153, 255, 0.08);
+  border-color: #3b3b4d;
+  background: #14141c;
 }
 
 .lp-history-card-top {
@@ -2082,7 +2082,7 @@
 
 .lp-history-bottom-new-btn:hover {
   background: #1c1c28;
-  border-color: var(--lp-accent-purple);
+  border-color: #3b3b4d;
 }
 
 /* ── MESSAGES STREAM ── */
@@ -2252,8 +2252,8 @@
 }
 
 .lp-chatgpt-user-bubble {
-  background: linear-gradient(135deg, #181528 0%, #12101e 100%);
-  border: 1px solid rgba(165, 153, 255, 0.22);
+  background: #14141c;
+  border: 1px solid #22222e;
   color: #f0f0f5;
   padding: 0.65rem 0.95rem;
   border-radius: 10px 10px 3px 10px;
@@ -2366,8 +2366,8 @@
 .lp-chatgpt-model-content blockquote {
   margin: 0.8em 0;
   padding: 0.6em 1em;
-  border-left: 3px solid rgba(165, 153, 255, 0.5);
-  background: rgba(165, 153, 255, 0.06);
+  border-left: 3px solid #323242;
+  background: #0f0f14;
   border-radius: 0 6px 6px 0;
   color: #c8c8d8;
   font-style: italic;
@@ -2418,10 +2418,10 @@
   box-sizing: border-box;
 }
 
-/* Inline code — clean pill style */
+/* Inline code — clean neutral iOS style */
 .lp-chatgpt-inline-code {
-  background: rgba(165, 153, 255, 0.12);
-  color: #c9a9ff;
+  background: #14141c;
+  color: #e2e2e9;
   padding: 0.17em 0.42em;
   border-radius: 5px;
   font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, ui-monospace, monospace;
@@ -2431,7 +2431,7 @@
   overflow-wrap: anywhere;
   white-space: normal;
   display: inline;
-  border: 1px solid rgba(165, 153, 255, 0.18);
+  border: 1px solid #242432;
   letter-spacing: 0.01em;
 }
 
@@ -2989,9 +2989,9 @@
   height: 22px;
   font-size: 0.68rem;
   font-weight: 700;
-  color: var(--lp-accent-purple);
-  background: rgba(165, 153, 255, 0.12);
-  border: 1px solid rgba(165, 153, 255, 0.25);
+  color: #ffffff;
+  background: #1c1c24;
+  border: 1px solid #282834;
   padding: 0 0.5rem;
   border-radius: 6px;
   box-sizing: border-box;
@@ -3043,10 +3043,10 @@
 }
 
 .lp-quiz-option-btn.selected {
-  background: rgba(165, 153, 255, 0.14);
-  border-color: var(--lp-accent-purple);
+  background: #1c1c24;
+  border-color: #38384a;
   color: #ffffff;
-  box-shadow: 0 0 12px rgba(165, 153, 255, 0.2);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
 }
 
 .lp-quiz-option-letter {
@@ -3065,7 +3065,7 @@
 }
 
 .lp-quiz-option-btn.selected .lp-quiz-option-letter {
-  background: var(--lp-accent-purple);
+  background: #ffffff;
   color: #000000;
 }
 
@@ -3076,7 +3076,7 @@
 }
 
 .lp-quiz-check-indicator {
-  color: var(--lp-accent-purple);
+  color: #ffffff;
   flex-shrink: 0;
 }
 
@@ -3093,7 +3093,7 @@
   align-items: center;
   gap: 0.45rem;
   height: 32px;
-  background: var(--lp-accent-purple);
+  background: #ffffff;
   color: #000000;
   border: none;
   padding: 0 1rem;
@@ -3102,14 +3102,14 @@
   font-weight: 700;
   cursor: pointer;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 14px rgba(165, 153, 255, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   box-sizing: border-box;
 }
 
 .lp-quiz-submit-btn:hover:not(:disabled) {
-  background: #b8adff;
-  transform: translateY(-1px) scale(1.02);
-  box-shadow: 0 6px 18px rgba(165, 153, 255, 0.5);
+  background: #e4e4e7;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .lp-quiz-submit-btn:disabled {
@@ -3185,9 +3185,9 @@
 }
 
 .lp-transcript-chip-btn.active {
-  background: var(--lp-accent-purple-glow);
-  border-color: var(--lp-accent-purple);
-  color: var(--lp-accent-purple);
+  background: #1c1c24;
+  border-color: #38384a;
+  color: #ffffff;
 }
 
 .lp-transcript-icon-btn {
@@ -3217,7 +3217,7 @@
   overscroll-behavior: contain;
   /* Custom sleek scrollbar */
   scrollbar-width: thin;
-  scrollbar-color: rgba(165, 153, 255, 0.3) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .lp-transcript-cue-row {
@@ -3235,14 +3235,14 @@
 }
 
 .lp-transcript-cue-row.active-cue {
-  background: rgba(165, 153, 255, 0.08);
-  border-left: 3px solid var(--lp-accent-purple);
+  background: #14141c;
+  border-left: 3px solid #64748b;
 }
 
 .lp-cue-timestamp {
   font-size: 0.7rem;
   font-weight: 700;
-  color: var(--lp-accent-purple);
+  color: #94a3b8;
   flex-shrink: 0;
   font-family: monospace;
 }

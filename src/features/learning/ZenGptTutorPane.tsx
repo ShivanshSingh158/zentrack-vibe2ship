@@ -694,7 +694,7 @@ ${originalValue}`;
                 <span className="dot green" />
               </div>
               <div className="lp-code-modal-title">
-                <Code2 size={15} color="#a599ff" />
+                <Code2 size={15} color="currentColor" />
                 <span>{activeLang === 'cpp' ? 'C++' : (language ? language.toUpperCase() : 'Code')} • Code Viewer</span>
                 {!isCpp && (
                   <div className="lp-code-lang-selector" style={{ marginLeft: '1rem' }}>
@@ -1106,7 +1106,7 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
           <div className="lp-history-drawer-panel" onClick={(e) => e.stopPropagation()}>
             <div className="lp-history-drawer-header">
               <div className="lp-history-drawer-title">
-                <History size={15} color="#a599ff" />
+                <History size={15} color="currentColor" />
                 <span>Lecture Chat History</span>
               </div>
               <button
