@@ -180,53 +180,106 @@ body.theme-plain .settings-nav-sidebar {
   gap: 0.25rem;
 }
 
+/* ── Sidebar Nav Item Buttons (Decoupled from global nav-tab) ── */
+.settings-sidebar-tab,
 .settings-nav-tab-btn {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  padding: 0.65rem 0.85rem;
+  padding: 0.62rem 0.85rem;
   border-radius: 10px;
   border: 1px solid transparent;
-  background: none;
+  background: transparent;
   color: #94a3b8;
   font-size: 0.84rem;
   font-weight: 500;
   cursor: pointer;
   text-align: left;
   transition: all 0.15s ease;
+  user-select: none;
 }
 
+.settings-sidebar-tab svg,
+.settings-nav-tab-btn svg {
+  color: #64748b;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+
+.settings-sidebar-tab:hover,
 .settings-nav-tab-btn:hover {
   color: #f8fafc;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
 }
 
+.settings-sidebar-tab:hover svg,
+.settings-nav-tab-btn:hover svg {
+  color: #94a3b8;
+}
+
+/* Light Theme Inactive Tabs */
+body.theme-light .settings-sidebar-tab,
+body.theme-plain .settings-sidebar-tab,
 body.theme-light .settings-nav-tab-btn,
 body.theme-plain .settings-nav-tab-btn {
   color: #64748b;
+  background: transparent;
 }
 
+body.theme-light .settings-sidebar-tab svg,
+body.theme-plain .settings-sidebar-tab svg,
+body.theme-light .settings-nav-tab-btn svg,
+body.theme-plain .settings-nav-tab-btn svg {
+  color: #94a3b8;
+}
+
+body.theme-light .settings-sidebar-tab:hover,
+body.theme-plain .settings-sidebar-tab:hover,
 body.theme-light .settings-nav-tab-btn:hover,
 body.theme-plain .settings-nav-tab-btn:hover {
   color: #0f172a;
   background: #f1f5f9;
 }
 
-/* Active Tab Highlight (Clean Azure / Sky Blue, Zero Purple) */
+body.theme-light .settings-sidebar-tab:hover svg,
+body.theme-plain .settings-sidebar-tab:hover svg,
+body.theme-light .settings-nav-tab-btn:hover svg,
+body.theme-plain .settings-nav-tab-btn:hover svg {
+  color: #475569;
+}
+
+/* Active Tab Highlight — Clean Azure / Soft Slate-Blue (Zero Purple, Zero Rogue Red) */
+.settings-sidebar-tab.active,
 .settings-nav-tab-btn.active {
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.12);
-  border-color: rgba(56, 189, 248, 0.25);
+  color: #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.1) !important;
+  border-color: rgba(56, 189, 248, 0.22) !important;
   font-weight: 600;
 }
 
+.settings-sidebar-tab.active svg,
+.settings-nav-tab-btn.active svg {
+  color: #38bdf8 !important;
+}
+
+/* Light Theme Active Tab — Crisp Slate Blue, Clean & Subtle */
+body.theme-light .settings-sidebar-tab.active,
+body.theme-plain .settings-sidebar-tab.active,
 body.theme-light .settings-nav-tab-btn.active,
 body.theme-plain .settings-nav-tab-btn.active {
-  color: #2563eb;
-  background: #eff6ff;
-  border-color: #bfdbfe;
+  color: #1d4ed8 !important;
+  background: #eff6ff !important;
+  border-color: #dbeafe !important;
   font-weight: 600;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.05);
+}
+
+body.theme-light .settings-sidebar-tab.active svg,
+body.theme-plain .settings-sidebar-tab.active svg,
+body.theme-light .settings-nav-tab-btn.active svg,
+body.theme-plain .settings-nav-tab-btn.active svg {
+  color: #2563eb !important;
 }
 
 /* Sidebar Bottom Action (Quick Log Out) */
@@ -240,15 +293,16 @@ body.theme-plain .settings-nav-footer {
   border-top: 1px solid #e2e8f0;
 }
 
+.settings-sidebar-logout-btn,
 .settings-nav-logout-btn {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  padding: 0.6rem 0.85rem;
+  padding: 0.58rem 0.85rem;
   border-radius: 10px;
   border: 1px solid transparent;
-  background: none;
+  background: transparent;
   color: #f87171;
   font-size: 0.83rem;
   font-weight: 600;
@@ -256,15 +310,28 @@ body.theme-plain .settings-nav-footer {
   transition: all 0.15s ease;
 }
 
+.settings-sidebar-logout-btn:hover,
 .settings-nav-logout-btn:hover {
   background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.2);
 }
 
+body.theme-light .settings-sidebar-logout-btn,
+body.theme-plain .settings-sidebar-logout-btn,
+body.theme-light .settings-nav-logout-btn,
+body.theme-plain .settings-nav-logout-btn {
+  color: #dc2626;
+  background: transparent;
+}
+
+body.theme-light .settings-sidebar-logout-btn:hover,
+body.theme-plain .settings-sidebar-logout-btn:hover,
 body.theme-light .settings-nav-logout-btn:hover,
 body.theme-plain .settings-nav-logout-btn:hover {
   background: #fef2f2;
-  color: #dc2626;
+  color: #b91c1c;
+  border-color: #fecaca;
 }
 
 /* ── Right Content Pane ── */
@@ -472,22 +539,60 @@ body.theme-plain .settings-profile-name {
 }
 
 .settings-badge-pro {
-  padding: 0.15rem 0.5rem;
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.55rem;
+  border-radius: 9999px;
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  background: rgba(56, 189, 248, 0.15);
+  letter-spacing: 0.04em;
+  background: rgba(56, 189, 248, 0.12);
   color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.3);
+  border: 1px solid rgba(56, 189, 248, 0.28);
 }
 
 body.theme-light .settings-badge-pro,
 body.theme-plain .settings-badge-pro {
   background: #eff6ff;
   color: #2563eb;
-  border: 1px solid #bfdbfe;
+  border: 1px solid #dbeafe;
+}
+
+/* Inline Edit Name Button */
+.settings-edit-name-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.18rem 0.52rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.settings-edit-name-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+body.theme-light .settings-edit-name-btn,
+body.theme-plain .settings-edit-name-btn {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+body.theme-light .settings-edit-name-btn:hover,
+body.theme-plain .settings-edit-name-btn:hover {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 .settings-profile-email {
@@ -536,41 +641,150 @@ body.theme-plain .settings-uid-copy-btn:hover {
   color: #0f172a;
 }
 
-/* ── Log Out Action Box ── */
+/* ── Active Session Metadata Grid ── */
+.settings-meta-cell {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 0.65rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+body.theme-light .settings-meta-cell,
+body.theme-plain .settings-meta-cell {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.settings-meta-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  margin-bottom: 0.2rem;
+}
+
+body.theme-light .settings-meta-label,
+body.theme-plain .settings-meta-label {
+  color: #64748b;
+}
+
+.settings-meta-val {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+body.theme-light .settings-meta-val,
+body.theme-plain .settings-meta-val {
+  color: #0f172a;
+}
+
+.settings-meta-val.safe {
+  color: #10b981;
+}
+
+body.theme-light .settings-meta-val.safe,
+body.theme-plain .settings-meta-val.safe {
+  color: #059669;
+}
+
+/* ── Settings Sub-Row / Divider Row ── */
+.settings-divider-row {
+  margin-top: 0.95rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+body.theme-light .settings-divider-row,
+body.theme-plain .settings-divider-row {
+  border-top: 1px solid #f1f5f9;
+}
+
+/* ── Density Selection Cards (Appearance Tab) ── */
+.settings-density-choice {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.settings-density-choice:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+body.theme-light .settings-density-choice,
+body.theme-plain .settings-density-choice {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+body.theme-light .settings-density-choice:hover,
+body.theme-plain .settings-density-choice:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.settings-density-choice.active {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+}
+
+body.theme-light .settings-density-choice.active,
+body.theme-plain .settings-density-choice.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+/* ── Log Out Action Box — Subtle & Clean (No Screaming Red Banner) ── */
 .settings-logout-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  background: rgba(239, 68, 68, 0.05);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  gap: 1.25rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
   padding: 1.15rem 1.25rem;
+  box-sizing: border-box;
 }
 
 body.theme-light .settings-logout-card,
 body.theme-plain .settings-logout-card {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 
 .settings-logout-info h4 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   font-weight: 600;
-  color: #f87171;
+  color: #f1f5f9;
 }
 
 body.theme-light .settings-logout-info h4,
 body.theme-plain .settings-logout-info h4 {
-  color: #dc2626;
+  color: #0f172a;
 }
 
 .settings-logout-info p {
-  margin: 0.2rem 0 0 0;
+  margin: 0.25rem 0 0 0;
   font-size: 0.78rem;
   color: #94a3b8;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 body.theme-light .settings-logout-info p,
@@ -579,18 +793,19 @@ body.theme-plain .settings-logout-info p {
 }
 
 .settings-logout-action-btn {
-  padding: 0.6rem 1.1rem;
+  padding: 0.55rem 1rem;
   border-radius: 10px;
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.08);
   color: #f87171;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.45rem;
   white-space: nowrap;
+  flex-shrink: 0;
   transition: all 0.15s ease;
 }
 
@@ -598,13 +813,13 @@ body.theme-plain .settings-logout-info p {
   background: #ef4444;
   color: #ffffff;
   border-color: #ef4444;
-  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 body.theme-light .settings-logout-action-btn,
 body.theme-plain .settings-logout-action-btn {
-  background: #ffffff;
-  border: 1px solid #fca5a5;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
   color: #dc2626;
 }
 
@@ -613,6 +828,7 @@ body.theme-plain .settings-logout-action-btn:hover {
   background: #dc2626;
   color: #ffffff;
   border-color: #dc2626;
+  box-shadow: 0 3px 10px rgba(220, 38, 38, 0.25);
 }
 
 /* ── Tab 2: Appearance & Themes ── */

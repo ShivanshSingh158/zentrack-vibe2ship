@@ -4,10 +4,11 @@ import {
   X, User, Palette, Bot, Link2, Bell, ShieldCheck, 
   LogOut, Copy, Check, CheckCircle, RefreshCw, Trash2, 
   Save, Phone, ExternalLink, Sun, Moon, Sparkles, 
-  Download, AlertTriangle, Key, Sliders, Volume2, ShieldAlert
+  Download, AlertTriangle, Key, Sliders, Volume2, ShieldAlert,
+  Edit2, Mail
 } from 'lucide-react';
 import { auth, db } from '../../services/firebase';
-import { signOut } from 'firebase/auth';
+import { signOut, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { collection, query, where, getDocs, writeBatch, updateDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { useNavigate } from 'react-router-dom';
@@ -49,6 +50,88 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
   const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab);
   const [copiedUid, setCopiedUid] = useState(false);
   const [logoutConfirmStep, setLogoutConfirmStep] = useState(false);
+
+  // ── User Profile Edit Name State ─────────────────────────────────────────
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(() => currentUser?.displayName || '');
+  const [isSavingName, setIsSavingName] = useState(false);
+
+  // ── Appearance & Density State ───────────────────────────────────────────
+  const [density, setDensity] = useState<'comfortable' | 'compact'>(() => {
+    return (localStorage.getItem('zen_density') as 'comfortable' | 'compact') || 'comfortable';
+  });
+  const [reducedMotion, setReducedMotion] = useState(() => {
+    return localStorage.getItem('zen_reduced_motion') === 'true';
+  });
+
+  const handleToggleDensity = (val: 'comfortable' | 'compact') => {
+    setDensity(val);
+    localStorage.setItem('zen_density', val);
+    if (val === 'compact') {
+      document.body.classList.add('density-compact');
+    } else {
+      document.body.classList.remove('density-compact');
+    }
+    toast.success(`Density updated to ${val}`);
+  };
+
+  const handleToggleReducedMotion = (val: boolean) => {
+    setReducedMotion(val);
+    localStorage.setItem('zen_reduced_motion', val ? 'true' : 'false');
+    if (val) {
+      document.documentElement.classList.add('reduced-motion');
+    } else {
+      document.documentElement.classList.remove('reduced-motion');
+    }
+    toast.success(val ? 'Reduced motion enabled' : 'Smooth animations restored');
+  };
+
+  const handleSaveDisplayName = async () => {
+    if (!nameInput.trim() || !currentUser?.uid) return;
+    setIsSavingName(true);
+    try {
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, { displayName: nameInput.trim() });
+      }
+      await setDoc(doc(db, 'user_profiles', currentUser.uid), {
+        displayName: nameInput.trim(),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      setIsEditingName(false);
+      toast.success('Display name saved successfully');
+    } catch (err: any) {
+      console.error('Failed to update name:', err);
+      toast.error('Failed to update display name');
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const handleSendPasswordReset = async () => {
+    if (!currentUser?.email) return;
+    try {
+      await sendPasswordResetEmail(auth, currentUser.email);
+      toast.success(`Password reset email sent to ${currentUser.email}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to send password reset');
+    }
+  };
+
+  const handleSendTestNotification = () => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+      toast.error('Please enable desktop alerts first');
+      return;
+    }
+    try {
+      new Notification('ZenTrack Fleet Alert', {
+        body: 'Your notification pipeline is connected and active.',
+        icon: '/pwa-192x192.png'
+      });
+      toast.success('Test notification sent to your desktop');
+    } catch {
+      toast.info('Test notification dispatched');
+    }
+  };
 
   // ── AI & Autonomy Settings State ──────────────────────────────────────────
   const [agentLevel, setAgentLevel] = useState<number>(userPreferences?.defaultPermissionLevel || 1);
@@ -345,7 +428,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
             <div className="settings-nav-group">
               <button
                 type="button"
-                className={`settings-nav-tab-btn ${activeTab === 'account' ? 'active' : ''}`}
+                className={`settings-sidebar-tab ${activeTab === 'account' ? 'active' : ''}`}
                 onClick={() => setActiveTab('account')}
               >
                 <User size={16} />
@@ -354,16 +437,16 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
 
               <button
                 type="button"
-                className={`settings-nav-tab-btn ${activeTab === 'appearance' ? 'active' : ''}`}
+                className={`settings-sidebar-tab ${activeTab === 'appearance' ? 'active' : ''}`}
                 onClick={() => setActiveTab('appearance')}
               >
                 <Palette size={16} />
-                <span>Appearance</span>
+                <span>Appearance & Themes</span>
               </button>
 
               <button
                 type="button"
-                className={`settings-nav-tab-btn ${activeTab === 'ai' ? 'active' : ''}`}
+                className={`settings-sidebar-tab ${activeTab === 'ai' ? 'active' : ''}`}
                 onClick={() => setActiveTab('ai')}
               >
                 <Bot size={16} />
@@ -372,7 +455,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
 
               <button
                 type="button"
-                className={`settings-nav-tab-btn ${activeTab === 'integrations' ? 'active' : ''}`}
+                className={`settings-sidebar-tab ${activeTab === 'integrations' ? 'active' : ''}`}
                 onClick={() => setActiveTab('integrations')}
               >
                 <Link2 size={16} />
@@ -381,7 +464,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
 
               <button
                 type="button"
-                className={`settings-nav-tab-btn ${activeTab === 'notifications' ? 'active' : ''}`}
+                className={`settings-sidebar-tab ${activeTab === 'notifications' ? 'active' : ''}`}
                 onClick={() => setActiveTab('notifications')}
               >
                 <Bell size={16} />
@@ -390,7 +473,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
 
               <button
                 type="button"
-                className={`settings-nav-tab-btn ${activeTab === 'data' ? 'active' : ''}`}
+                className={`settings-sidebar-tab ${activeTab === 'data' ? 'active' : ''}`}
                 onClick={() => setActiveTab('data')}
               >
                 <ShieldCheck size={16} />
@@ -402,7 +485,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
             <div className="settings-nav-footer">
               <button
                 type="button"
-                className="settings-nav-logout-btn"
+                className="settings-sidebar-logout-btn"
                 onClick={handleTriggerLogout}
                 title="Log out of ZenTrack"
               >
@@ -441,10 +524,65 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
 
                     <div className="settings-profile-info">
                       <div className="settings-profile-name-row">
-                        <span className="settings-profile-name">{displayName}</span>
-                        <span className="settings-badge-pro">Fleet Olympus Pro</span>
+                        {!isEditingName ? (
+                          <>
+                            <span className="settings-profile-name">{displayName}</span>
+                            <button
+                              type="button"
+                              className="settings-edit-name-btn"
+                              onClick={() => {
+                                setNameInput(displayName);
+                                setIsEditingName(true);
+                              }}
+                              title="Edit Display Name"
+                            >
+                              <Edit2 size={12} />
+                              <span>Edit</span>
+                            </button>
+                            <span className="settings-badge-pro">Fleet Olympus Pro</span>
+                          </>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', width: '100%', flexWrap: 'wrap' }}>
+                            <input
+                              type="text"
+                              value={nameInput}
+                              onChange={(e) => setNameInput(e.target.value)}
+                              className="security-input"
+                              style={{ maxWidth: '220px', padding: '0.35rem 0.65rem' }}
+                              placeholder="Your full name"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              className="security-btn security-btn-primary"
+                              style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem' }}
+                              onClick={handleSaveDisplayName}
+                              disabled={isSavingName}
+                            >
+                              {isSavingName ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                              <span>Save</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="security-btn"
+                              style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                              onClick={() => setIsEditingName(false)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <div className="settings-profile-email">{currentUser?.email || 'No email associated'}</div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
+                        <span className="settings-profile-email">{currentUser?.email || 'No email associated'}</span>
+                        {currentUser?.email && (
+                          <span className={`settings-status-pill ${currentUser?.emailVerified ? 'connected' : 'disconnected'}`}>
+                            {currentUser?.emailVerified ? '● Verified' : '○ Unverified'}
+                          </span>
+                        )}
+                      </div>
+
                       <div className="settings-profile-uid-row">
                         <span>UID: {currentUser?.uid ? `${currentUser.uid.slice(0, 14)}...` : 'Unknown'}</span>
                         <button 
@@ -469,15 +607,49 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
                       Authenticated via Google Identity Services & Firebase Auth. End-to-end token validation is active across all Vercel edge endpoints.
                     </p>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.65rem', marginTop: '0.65rem' }}>
-                      <div style={{ padding: '0.65rem', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted, #94a3b8)', textTransform: 'uppercase' }}>Client Version</div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600, marginTop: '2px' }}>v1.2.0 (Progressive Web App)</div>
+                      <div className="settings-meta-cell">
+                        <div className="settings-meta-label">Client Version</div>
+                        <div className="settings-meta-val">v1.2.0 (Progressive Web App)</div>
                       </div>
-                      <div style={{ padding: '0.65rem', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted, #94a3b8)', textTransform: 'uppercase' }}>Cloud Fleet Sync</div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600, marginTop: '2px', color: '#10b981' }}>● Active & Connected</div>
+                      <div className="settings-meta-cell">
+                        <div className="settings-meta-label">Cloud Fleet Sync</div>
+                        <div className="settings-meta-val safe">● Active & Connected</div>
+                      </div>
+                      <div className="settings-meta-cell">
+                        <div className="settings-meta-label">Account Created</div>
+                        <div className="settings-meta-val">
+                          {currentUser?.metadata?.creationTime 
+                            ? new Date(currentUser.metadata.creationTime).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) 
+                            : 'Active'}
+                        </div>
+                      </div>
+                      <div className="settings-meta-cell">
+                        <div className="settings-meta-label">Last Active Session</div>
+                        <div className="settings-meta-val">
+                          {currentUser?.metadata?.lastSignInTime 
+                            ? new Date(currentUser.metadata.lastSignInTime).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) 
+                            : 'Active Session'}
+                        </div>
                       </div>
                     </div>
+
+                    {currentUser?.email && (
+                      <div className="settings-divider-row">
+                        <div>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>Password & Account Security</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #94a3b8)', marginTop: '2px' }}>Receive a secure reset link to update your credentials</div>
+                        </div>
+                        <button
+                          type="button"
+                          className="security-btn"
+                          onClick={handleSendPasswordReset}
+                          style={{ padding: '0.45rem 0.85rem', fontSize: '0.78rem' }}
+                        >
+                          <Mail size={13} />
+                          <span>Reset Password</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Prominent Log Out Action */}
@@ -554,24 +726,51 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
                     </div>
                   </div>
 
-                  {/* UI Specifications */}
+                  {/* UI Density Selector */}
                   <div className="security-card-box">
                     <h4 className="security-section-title">
-                      <Sparkles size={16} /> Display & Ergonomics
+                      <Sliders size={16} /> Information Density
                     </h4>
                     <p className="security-section-desc">
-                      Optimized for both high-DPI desktop screens and ultra-smooth 60fps hardware-accelerated animations.
+                      Choose between comfortable standard spacing or compact density for higher data density on screen.
                     </p>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.65rem' }}>
-                      <div style={{ padding: '0.65rem', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted, #94a3b8)', textTransform: 'uppercase' }}>Typography</div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600, marginTop: '2px' }}>SF Pro / Inter Variable</div>
+                      <div 
+                        className={`settings-density-choice ${density === 'comfortable' ? 'active' : ''}`}
+                        onClick={() => handleToggleDensity('comfortable')}
+                      >
+                        <div style={{ fontWeight: 600, fontSize: '0.84rem' }}>Comfortable (Default)</div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted, #94a3b8)', marginTop: '2px' }}>Balanced padding and breathable typography</div>
                       </div>
-                      <div style={{ padding: '0.65rem', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted, #94a3b8)', textTransform: 'uppercase' }}>Motion Physics</div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600, marginTop: '2px', color: '#10b981' }}>Fluid GPU Springs</div>
+                      <div 
+                        className={`settings-density-choice ${density === 'compact' ? 'active' : ''}`}
+                        onClick={() => handleToggleDensity('compact')}
+                      >
+                        <div style={{ fontWeight: 600, fontSize: '0.84rem' }}>Compact Mode</div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted, #94a3b8)', marginTop: '2px' }}>Tighter lists, more content in view</div>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Motion Physics */}
+                  <div className="security-toggle-card">
+                    <div className="security-toggle-text">
+                      <div className="security-toggle-title">Reduced Motion Physics</div>
+                      <div className="security-toggle-desc">
+                        Minimize animated transitions and spring physics for a simpler, instantaneous interface experience.
+                      </div>
+                    </div>
+                    <label className="security-switch-label">
+                      <input 
+                        type="checkbox" 
+                        checked={reducedMotion} 
+                        onChange={(e) => handleToggleReducedMotion(e.target.checked)}
+                        className="security-switch-input" 
+                      />
+                      <span className="security-switch-track">
+                        <span className="security-switch-thumb" />
+                      </span>
+                    </label>
                   </div>
                 </div>
               )}
@@ -859,7 +1058,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
                     </div>
 
                     {/* Test SMS Delivery Button */}
-                    <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div className="settings-divider-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
                       <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '0.25rem' }}>Dispatch Verification Test SMS</div>
                       <div style={{ fontSize: '0.76rem', color: 'var(--text-muted, #94a3b8)', marginBottom: '0.65rem' }}>
                         Send a test SMS to confirm your device is receiving high-priority task alerts.
@@ -891,17 +1090,26 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
                     <p className="security-section-desc">
                       Receive instant heads-up alerts for Pomodoro timer sessions, urgent deadlines, and morning agenda summaries.
                     </p>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                       <span className={`settings-status-pill ${browserNotifPermission === 'granted' ? 'connected' : 'disconnected'}`}>
                         {browserNotifPermission === 'granted' ? '● Notifications Enabled' : '○ Permission Not Granted'}
                       </span>
-                      {browserNotifPermission !== 'granted' && (
+                      {browserNotifPermission !== 'granted' ? (
                         <button
                           type="button"
                           className="security-btn security-btn-primary"
                           onClick={handleRequestNotifPermission}
                         >
                           Enable Desktop Alerts
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="security-btn"
+                          onClick={handleSendTestNotification}
+                        >
+                          <Bell size={13} />
+                          <span>Send Test Alert</span>
                         </button>
                       )}
                     </div>

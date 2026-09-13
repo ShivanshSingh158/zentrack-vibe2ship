@@ -437,6 +437,16 @@ function App() {
     return () => window.removeEventListener('zen-theme-toggle', handleThemeToggle);
   }, []);
 
+  // ── Density & Reduced Motion Initialization ──
+  useEffect(() => {
+    if (localStorage.getItem('zen_density') === 'compact') {
+      document.body.classList.add('density-compact');
+    }
+    if (localStorage.getItem('zen_reduced_motion') === 'true') {
+      document.documentElement.classList.add('reduced-motion');
+    }
+  }, []);
+
   const togglePlainTheme = () => {
     setIsPlainTheme(prev => {
       const next = !prev;

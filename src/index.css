@@ -1727,3 +1727,30 @@ body.ai-panel-open #youtube-floating-pip {
   opacity: 1;
 }
 
+/* ── Information Density: Compact Mode ── */
+body.density-compact {
+  font-size: 13px;
+}
+body.density-compact .task-item,
+body.density-compact .todo-item-row,
+body.density-compact .habit-row,
+body.density-compact .goal-card-item {
+  padding-top: 0.45rem !important;
+  padding-bottom: 0.45rem !important;
+  min-height: unset !important;
+}
+body.density-compact .task-title,
+body.density-compact .habit-name {
+  font-size: 0.86rem !important;
+}
+
+/* ── Reduced Motion Physics ── */
+html.reduced-motion *,
+html.reduced-motion *::before,
+html.reduced-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
