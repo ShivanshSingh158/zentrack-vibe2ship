@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ChevronDown, ChevronUp, Play, Check, Clock, Pin, Plus, Trash2,
+  ChevronDown, Play, Check, Clock, Pin, Plus, Trash2,
   Calendar, Edit3, MoreVertical, Sparkles, BookOpen, ExternalLink, X,
   GraduationCap, Layers, ArrowRight, Star
 } from 'lucide-react';
@@ -269,7 +270,13 @@ export const TopicCard: React.FC<TopicCardProps> = ({
               onClick={onToggleExpand}
             >
               <span>{isExpanded ? 'Hide' : `${totalCount} lectures`}</span>
-              {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              <motion.span
+                animate={{ rotate: isExpanded ? 180 : 0 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                style={{ display: 'inline-flex', alignItems: 'center' }}
+              >
+                <ChevronDown size={13} />
+              </motion.span>
             </button>
 
             <button
@@ -289,12 +296,34 @@ export const TopicCard: React.FC<TopicCardProps> = ({
       </div>
 
       {/* ── Expandable Body: Subtasks & Lectures ── */}
-      {isExpanded && (
-        <div
-          ref={bodyRef}
-          className="lp-topic-body"
-          onWheel={(e) => e.stopPropagation()}
-        >
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            key="topic-drawer-content"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{
+              height: 'auto',
+              opacity: 1,
+              transition: {
+                height: { duration: 0.32, ease: [0.16, 1, 0.3, 1] },
+                opacity: { duration: 0.22, delay: 0.04 },
+              },
+            }}
+            exit={{
+              height: 0,
+              opacity: 0,
+              transition: {
+                height: { duration: 0.25, ease: [0.16, 1, 0.3, 1] },
+                opacity: { duration: 0.16 },
+              },
+            }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div
+              ref={bodyRef}
+              className="lp-topic-body"
+              onWheel={(e) => e.stopPropagation()}
+            >
           {/* Quick Add Subtask Form */}
           {showAddForm && (
             <form className="lp-inline-add-form" onSubmit={handleAddSubmit}>
@@ -498,7 +527,9 @@ export const TopicCard: React.FC<TopicCardProps> = ({
             </div>
           )}
         </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
