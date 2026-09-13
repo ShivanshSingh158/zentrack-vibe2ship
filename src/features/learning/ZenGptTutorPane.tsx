@@ -1045,59 +1045,41 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
 
   return (
     <div className="lp-chatgpt-wrapper">
-      {/* ── Top ChatGPT Header ── */}
-      <div className="lp-chatgpt-header">
-        <div className="lp-chatgpt-header-left">
-          <div className="lp-chatgpt-avatar-glow">
-            <img src="/logo_white.png" alt="ZEN-GPT" className="lp-chatgpt-avatar-logo" style={{ width: 17, height: 17, objectFit: 'contain' }} />
-          </div>
-          <div className="lp-chatgpt-title-meta">
-            <div className="lp-chatgpt-name">
-              ZEN-GPT
-              <span className="lp-chatgpt-live-pill">
-                <span className="lp-live-pulse-dot" />
-                AI Tutor
-              </span>
-            </div>
-            <div className="lp-chatgpt-topic-tag" title={lectureTitle}>📚 {lectureTitle}</div>
-          </div>
-        </div>
-
-        <div className="lp-chatgpt-header-right-actions">
-          <button
-            type="button"
-            className={`lp-chatgpt-hdr-btn ${showHistory ? 'active' : ''}`}
-            onClick={() => setShowHistory(prev => !prev)}
-            title="View saved chat history for this lecture"
-          >
-            <History size={13} />
-            <span>History</span>
-            {thisLectureSessions.length > 0 && (
-              <span className="lp-hdr-badge">{thisLectureSessions.length}</span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            className="lp-chatgpt-hdr-btn"
-            onClick={handleNewChat}
-            title="Start a new chat session"
-          >
-            <Plus size={13} />
-            <span>New</span>
-          </button>
-
-          {messages.length > 0 && (
-            <button
-              type="button"
-              className="lp-chatgpt-hdr-btn danger"
-              onClick={handleClearChat}
-              title="Clear current messages"
-            >
-              <Trash2 size={13} />
-            </button>
+      {/* ── Floating Top Actions (Transparent Ghost Buttons for Maximum Viewing Area) ── */}
+      <div className="lp-chatgpt-floating-actions">
+        <button
+          type="button"
+          className={`lp-chatgpt-hdr-btn ${showHistory ? 'active' : ''}`}
+          onClick={() => setShowHistory(prev => !prev)}
+          title="View saved chat history for this lecture"
+        >
+          <History size={13} />
+          <span>History</span>
+          {thisLectureSessions.length > 0 && (
+            <span className="lp-hdr-badge">{thisLectureSessions.length}</span>
           )}
-        </div>
+        </button>
+
+        <button
+          type="button"
+          className="lp-chatgpt-hdr-btn"
+          onClick={handleNewChat}
+          title="Start a new chat session"
+        >
+          <Plus size={13} />
+          <span>New</span>
+        </button>
+
+        {messages.length > 0 && (
+          <button
+            type="button"
+            className="lp-chatgpt-hdr-btn danger"
+            onClick={handleClearChat}
+            title="Clear current messages"
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
       </div>
 
       {/* ── Slide-Over Chat History Drawer ── */}

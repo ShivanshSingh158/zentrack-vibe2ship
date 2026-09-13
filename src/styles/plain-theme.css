@@ -7611,44 +7611,69 @@ body.theme-plain .lp-chatgpt-model-select option {
   color: #0f172a !important;
 }
 
+body.theme-light .lp-chatgpt-floating-actions,
+body.theme-plain .lp-chatgpt-floating-actions {
+  background: transparent !important;
+  border: none !important;
+}
+
 body.theme-light .lp-chatgpt-hdr-btn,
 body.theme-plain .lp-chatgpt-hdr-btn {
-  background: #f8fafc !important;
-  border: 1px solid #e2e8f0 !important;
-  color: #475569 !important;
+  height: 28px !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: #64748b !important;
+  padding: 0 0.55rem !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
 }
 
 body.theme-light .lp-chatgpt-hdr-btn:hover,
 body.theme-plain .lp-chatgpt-hdr-btn:hover {
-  background: #f1f5f9 !important;
-  border-color: #cbd5e1 !important;
+  background: rgba(0, 0, 0, 0.05) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
   color: #0f172a !important;
 }
 
 body.theme-light .lp-chatgpt-hdr-btn.active,
 body.theme-plain .lp-chatgpt-hdr-btn.active {
-  background: #f1f5f9 !important;
-  border-color: #cbd5e1 !important;
+  background: rgba(0, 0, 0, 0.07) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
   color: #0f172a !important;
+}
+
+body.theme-light .lp-chatgpt-hdr-btn.danger,
+body.theme-plain .lp-chatgpt-hdr-btn.danger {
+  color: #94a3b8 !important;
 }
 
 body.theme-light .lp-chatgpt-hdr-btn.danger:hover,
 body.theme-plain .lp-chatgpt-hdr-btn.danger:hover {
-  background: #fee2e2 !important;
-  border-color: #fca5a5 !important;
+  background: rgba(239, 68, 68, 0.08) !important;
+  border-color: rgba(239, 68, 68, 0.2) !important;
   color: #dc2626 !important;
 }
 
 body.theme-light .lp-hdr-badge,
 body.theme-plain .lp-hdr-badge {
-  background: #0f172a !important;
-  color: #ffffff !important;
+  background: rgba(15, 23, 42, 0.08) !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  color: #0f172a !important;
+  border-radius: 9999px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  padding: 0 0.35rem !important;
+  font-size: 0.62rem !important;
+  font-weight: 700 !important;
 }
 
 /* Chat Messages & Welcome State in Light Mode */
 body.theme-light .lp-chatgpt-messages,
 body.theme-plain .lp-chatgpt-messages {
   background: #f8fafc !important;
+  padding: 2.2rem 1.1rem 1rem 1.1rem !important;
   scrollbar-color: rgba(148, 163, 184, 0.25) transparent !important;
 }
 
@@ -8816,13 +8841,16 @@ body.theme-plain .lp-companion-tab.active {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
 }
 
-/* 4. ZEN-GPT Header */
+/* 4. ZEN-GPT Header & Floating Actions */
+body.theme-light .lp-chatgpt-floating-actions,
+body.theme-plain .lp-chatgpt-floating-actions {
+  background: transparent !important;
+}
+
 body.theme-light .lp-chatgpt-header,
 body.theme-plain .lp-chatgpt-header {
-  height: 48px !important;
-  padding: 0 0.85rem !important;
-  background: #ffffff !important;
-  border-bottom: 1px solid #e2e8f0 !important;
+  background: transparent !important;
+  border: none !important;
 }
 
 body.theme-light .lp-chatgpt-avatar-glow,
@@ -8845,22 +8873,22 @@ body.theme-plain .lp-chatgpt-live-pill {
 
 body.theme-light .lp-chatgpt-hdr-btn,
 body.theme-plain .lp-chatgpt-hdr-btn {
-  height: 30px !important;
-  border-radius: 8px !important;
-  background: #f8fafc !important;
-  border: 1px solid #e2e8f0 !important;
-  color: #475569 !important;
-  padding: 0 0.65rem !important;
+  height: 28px !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: #64748b !important;
+  padding: 0 0.55rem !important;
   font-size: 0.72rem !important;
   font-weight: 600 !important;
 }
 
 body.theme-light .lp-chatgpt-model-select,
 body.theme-plain .lp-chatgpt-model-select {
-  height: 30px !important;
-  border-radius: 8px !important;
-  background: #f8fafc !important;
-  border: 1px solid #e2e8f0 !important;
+  height: 28px !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
   padding: 0 0.5rem !important;
   font-size: 0.68rem !important;
   font-weight: 600 !important;
@@ -8868,8 +8896,9 @@ body.theme-plain .lp-chatgpt-model-select {
 
 body.theme-light .lp-hdr-badge,
 body.theme-plain .lp-hdr-badge {
-  height: 18px !important;
-  border-radius: 5px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  border-radius: 9999px !important;
   padding: 0 0.35rem !important;
   font-size: 0.62rem !important;
 }
