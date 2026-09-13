@@ -1490,6 +1490,99 @@ body.theme-plain .task-progress-card .progress-ring-text {
   font-feature-settings: 'tnum' 1 !important;
 }
 
+/* ── Task Row Badges & Pills (Subtle, Premium, Non-Cartoonish) ── */
+body.theme-light .task-overdue-pill,
+body.theme-plain .task-overdue-pill {
+  font-size: 0.67rem !important;
+  font-weight: 550 !important;
+  line-height: 1 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(225, 29, 72, 0.06) !important;
+  color: #e11d48 !important;
+  border: 1px solid rgba(225, 29, 72, 0.16) !important;
+  padding: 0.16rem 0.46rem !important;
+  border-radius: 5px !important;
+  letter-spacing: 0.01em !important;
+}
+
+body.theme-light .task-time-pill,
+body.theme-plain .task-time-pill {
+  font-size: 0.67rem !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #475569 !important;
+  background: rgba(15, 23, 42, 0.04) !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  padding: 0.16rem 0.46rem !important;
+  border-radius: 5px !important;
+  letter-spacing: 0.01em !important;
+}
+
+body.theme-light .upcoming-priority-tag,
+body.theme-plain .upcoming-priority-tag,
+body.theme-light .task-p-badge,
+body.theme-plain .task-p-badge {
+  font-size: 0.67rem !important;
+  font-weight: 550 !important;
+  line-height: 1 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0.16rem 0.46rem !important;
+  border-radius: 5px !important;
+  letter-spacing: 0.01em !important;
+}
+
+body.theme-light .upcoming-priority-tag.p-high,
+body.theme-plain .upcoming-priority-tag.p-high,
+body.theme-light .upcoming-priority-tag.p-urgent,
+body.theme-plain .upcoming-priority-tag.p-urgent,
+body.theme-light .task-p-badge.p-high,
+body.theme-plain .task-p-badge.p-high {
+  color: #e11d48 !important;
+  background: rgba(225, 29, 72, 0.06) !important;
+  border: 1px solid rgba(225, 29, 72, 0.16) !important;
+}
+
+body.theme-light .upcoming-priority-tag.p-medium,
+body.theme-plain .upcoming-priority-tag.p-medium,
+body.theme-light .task-p-badge.p-medium,
+body.theme-plain .task-p-badge.p-medium {
+  color: #b45309 !important;
+  background: rgba(217, 119, 6, 0.06) !important;
+  border: 1px solid rgba(217, 119, 6, 0.16) !important;
+}
+
+body.theme-light .upcoming-priority-tag.p-low,
+body.theme-plain .upcoming-priority-tag.p-low,
+body.theme-light .task-p-badge.p-low,
+body.theme-plain .task-p-badge.p-low {
+  color: #0d9488 !important;
+  background: rgba(13, 148, 136, 0.06) !important;
+  border: 1px solid rgba(13, 148, 136, 0.16) !important;
+}
+
+body.theme-light .task-timer-icon-btn,
+body.theme-plain .task-timer-icon-btn {
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 4px !important;
+  color: #94a3b8 !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+body.theme-light .task-timer-icon-btn:hover,
+body.theme-plain .task-timer-icon-btn:hover {
+  color: #0f172a !important;
+  background: rgba(15, 23, 42, 0.05) !important;
+}
+
 /* ── Filter Toolbar & Search Strip ── */
 body.theme-light .tasks-filter-toolbar,
 body.theme-plain .tasks-filter-toolbar {

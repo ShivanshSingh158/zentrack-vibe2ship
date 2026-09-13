@@ -1148,21 +1148,26 @@ body.theme-dark .class-undo-btn:hover {
 
 /* ── OVERDUE BADGE & INBOX STYLES IN TASKS ── */
 .task-overdue-pill {
-  font-size: 0.65rem;
-  font-weight: 600;
-  line-height: 1.2;
-  background: rgba(244, 63, 94, 0.08);
+  font-size: 0.67rem;
+  font-weight: 550;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(225, 29, 72, 0.06);
   color: #e11d48;
-  border: 1px solid rgba(244, 63, 94, 0.22);
-  padding: 0.12rem 0.48rem;
-  border-radius: 9999px;
+  border: 1px solid rgba(225, 29, 72, 0.16);
+  padding: 0.16rem 0.46rem;
+  border-radius: 5px;
   flex-shrink: 0;
+  letter-spacing: 0.01em;
 }
 
-body.theme-dark .task-overdue-pill {
-  background: rgba(251, 113, 133, 0.12);
-  color: #fda4af;
-  border-color: rgba(251, 113, 133, 0.25);
+body.theme-dark .task-overdue-pill,
+.theme-dark .task-overdue-pill {
+  background: rgba(244, 63, 94, 0.1);
+  color: #fb7185;
+  border-color: rgba(244, 63, 94, 0.22);
 }
 
 .task-schedule-today-btn {
@@ -1379,86 +1384,105 @@ body.theme-dark .task-row-today.done .task-row-title {
 }
 
 .task-time-pill {
-  font-size: 0.66rem;
+  font-size: 0.67rem;
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: #475569;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  padding: 0.12rem 0.48rem;
-  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  padding: 0.16rem 0.46rem;
+  border-radius: 5px;
   flex-shrink: 0;
+  letter-spacing: 0.01em;
 }
 
 body.theme-dark .task-time-pill,
 .theme-dark .task-time-pill {
-  color: #cbd5e1;
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.09);
 }
 
 .task-p-badge {
-  font-size: 0.66rem;
-  font-weight: 600;
-  line-height: 1.2;
-  padding: 0.12rem 0.48rem;
-  border-radius: 9999px;
+  font-size: 0.67rem;
+  font-weight: 550;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.16rem 0.46rem;
+  border-radius: 5px;
   border: 1px solid transparent;
   flex-shrink: 0;
+  letter-spacing: 0.01em;
 }
 
 .task-p-badge.p-high,
 .task-p-badge.p-urgent {
-  background: rgba(244, 63, 94, 0.08);
-  border-color: rgba(244, 63, 94, 0.2);
+  background: rgba(225, 29, 72, 0.06);
+  border-color: rgba(225, 29, 72, 0.16);
   color: #e11d48;
 }
 
 body.theme-dark .task-p-badge.p-high,
 body.theme-dark .task-p-badge.p-urgent {
-  background: rgba(251, 113, 133, 0.12);
-  border-color: rgba(251, 113, 133, 0.25);
-  color: #fda4af;
+  background: rgba(244, 63, 94, 0.1);
+  border-color: rgba(244, 63, 94, 0.22);
+  color: #fb7185;
 }
 
 .task-p-badge.p-medium {
-  background: rgba(245, 158, 11, 0.08);
-  border-color: rgba(245, 158, 11, 0.2);
+  background: rgba(217, 119, 6, 0.06);
+  border-color: rgba(217, 119, 6, 0.16);
   color: #b45309;
 }
 
 body.theme-dark .task-p-badge.p-medium {
-  background: rgba(251, 191, 36, 0.12);
-  border-color: rgba(251, 191, 36, 0.25);
-  color: #fde68a;
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.22);
+  color: #fbbf24;
 }
 
 .task-p-badge.p-low {
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.2);
-  color: #059669;
+  background: rgba(13, 148, 136, 0.06);
+  border-color: rgba(13, 148, 136, 0.16);
+  color: #0d9488;
 }
 
 body.theme-dark .task-p-badge.p-low {
-  background: rgba(52, 211, 153, 0.12);
-  border-color: rgba(52, 211, 153, 0.25);
-  color: #a7f3d0;
+  background: rgba(45, 212, 191, 0.1);
+  border-color: rgba(45, 212, 191, 0.22);
+  color: #2dd4bf;
 }
 
 .task-timer-icon-btn {
+  width: 20px;
+  height: 20px;
   background: transparent;
   border: none;
-  color: #9ca3af;
+  color: #94a3b8;
   cursor: pointer;
-  padding: 2px;
-  display: flex;
+  padding: 0;
+  display: inline-flex;
   align-items: center;
-  transition: color 0.15s ease;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.15s ease;
   flex-shrink: 0;
 }
 
 .task-timer-icon-btn:hover {
-  color: #a599ff;
+  color: #0f172a;
+  background: rgba(15, 23, 42, 0.05);
+}
+
+body.theme-dark .task-timer-icon-btn:hover,
+.theme-dark .task-timer-icon-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .tasks-inline-trigger-btn {
@@ -1639,45 +1663,49 @@ body.theme-dark .upcoming-item-title,
 
 .upcoming-priority-tag {
   font-family: var(--font-sans, 'Inter', sans-serif);
-  font-size: 0.66rem;
-  font-weight: 600;
-  padding: 0.12rem 0.48rem;
-  border-radius: 9999px;
+  font-size: 0.67rem;
+  font-weight: 550;
+  padding: 0.16rem 0.46rem;
+  border-radius: 5px;
   border: 1px solid transparent;
   flex-shrink: 0;
-  line-height: 1.2;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.01em;
 }
 
 .upcoming-priority-tag.p-low {
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.2);
-  color: #059669;
+  background: rgba(13, 148, 136, 0.06);
+  border-color: rgba(13, 148, 136, 0.16);
+  color: #0d9488;
 }
 
 body.theme-dark .upcoming-priority-tag.p-low,
 .theme-dark .upcoming-priority-tag.p-low {
-  background: rgba(52, 211, 153, 0.12);
-  border-color: rgba(52, 211, 153, 0.25);
-  color: #a7f3d0;
+  background: rgba(45, 212, 191, 0.1);
+  border-color: rgba(45, 212, 191, 0.22);
+  color: #2dd4bf;
 }
 
 .upcoming-priority-tag.p-medium {
-  background: rgba(245, 158, 11, 0.08);
-  border-color: rgba(245, 158, 11, 0.2);
+  background: rgba(217, 119, 6, 0.06);
+  border-color: rgba(217, 119, 6, 0.16);
   color: #b45309;
 }
 
 body.theme-dark .upcoming-priority-tag.p-medium,
 .theme-dark .upcoming-priority-tag.p-medium {
-  background: rgba(251, 191, 36, 0.12);
-  border-color: rgba(251, 191, 36, 0.25);
-  color: #fde68a;
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.22);
+  color: #fbbf24;
 }
 
 .upcoming-priority-tag.p-high,
 .upcoming-priority-tag.p-urgent {
-  background: rgba(244, 63, 94, 0.08);
-  border-color: rgba(244, 63, 94, 0.2);
+  background: rgba(225, 29, 72, 0.06);
+  border-color: rgba(225, 29, 72, 0.16);
   color: #e11d48;
 }
 
@@ -1685,9 +1713,9 @@ body.theme-dark .upcoming-priority-tag.p-high,
 .theme-dark .upcoming-priority-tag.p-high,
 body.theme-dark .upcoming-priority-tag.p-urgent,
 .theme-dark .upcoming-priority-tag.p-urgent {
-  background: rgba(251, 113, 133, 0.12);
-  border-color: rgba(251, 113, 133, 0.25);
-  color: #fda4af;
+  background: rgba(244, 63, 94, 0.1);
+  border-color: rgba(244, 63, 94, 0.22);
+  color: #fb7185;
 }
 
 /* ── COLUMN 3: STACK OF 3 BOXES ── */
@@ -4531,45 +4559,27 @@ body.theme-light .upcoming-task-title {
   color: #202020;
 }
 
-.upcoming-priority-tag {
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 0.12rem 0.4rem;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.upcoming-priority-tag.p-high,
-.upcoming-priority-tag.p-urgent {
-  color: #f43f5e;
-  background: rgba(244, 63, 94, 0.12);
-}
-
-.upcoming-priority-tag.p-medium {
-  color: #f59e0b;
-  background: rgba(245, 158, 11, 0.12);
-}
-
-.upcoming-priority-tag.p-low {
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.12);
-}
-
 body.theme-light .upcoming-priority-tag.p-high,
-body.theme-light .upcoming-priority-tag.p-urgent {
-  color: #c3392c;
-  background: #fde8e7;
+body.theme-light .upcoming-priority-tag.p-urgent,
+body.theme-plain .upcoming-priority-tag.p-high,
+body.theme-plain .upcoming-priority-tag.p-urgent {
+  color: #e11d48 !important;
+  background: rgba(225, 29, 72, 0.06) !important;
+  border: 1px solid rgba(225, 29, 72, 0.16) !important;
 }
 
-body.theme-light .upcoming-priority-tag.p-medium {
-  color: #b45309;
-  background: #fef3c7;
+body.theme-light .upcoming-priority-tag.p-medium,
+body.theme-plain .upcoming-priority-tag.p-medium {
+  color: #b45309 !important;
+  background: rgba(217, 119, 6, 0.06) !important;
+  border: 1px solid rgba(217, 119, 6, 0.16) !important;
 }
 
-body.theme-light .upcoming-priority-tag.p-low {
-  color: #047857;
-  background: #d1fae5;
+body.theme-light .upcoming-priority-tag.p-low,
+body.theme-plain .upcoming-priority-tag.p-low {
+  color: #0d9488 !important;
+  background: rgba(13, 148, 136, 0.06) !important;
+  border: 1px solid rgba(13, 148, 136, 0.16) !important;
 }
 
 /* Goals & Quick Scratchpad Card */
