@@ -43,7 +43,6 @@ import { KanbanView } from './KanbanView';
 import { MatrixView } from './MatrixView';
 import { TaskDateStrip } from './TaskDateStrip';
 import { ProgressRing } from './ProgressRing';
-import { TaskTimeLogSheet } from './TaskTimeLogSheet';
 import { TimeSpentSheet } from './TimeSpentSheet';
 import { TaskTemplatesSheet } from './TaskTemplatesSheet';
 import { BulkRescheduleSheet } from './BulkRescheduleSheet';
@@ -136,8 +135,6 @@ export const TodoListModule: React.FC = () => {
   const [isTemplatesSheetOpen, setIsTemplatesSheetOpen] = useState(false);
   const [isBulkRescheduleOpen, setIsBulkRescheduleOpen] = useState(false);
 
-  // Task Completion Time Log prompt state
-  const [justCompletedTask, setJustCompletedTask] = useState<TodoItem | null>(null);
 
   // List View Specific State
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -297,8 +294,6 @@ export const TodoListModule: React.FC = () => {
         // PERFECT_DAY check
         await checkPerfectDayAfterTask(todo.id!);
       });
-      // Trigger time log sheet
-      setJustCompletedTask(todo);
     }
 
     try {
@@ -312,17 +307,6 @@ export const TodoListModule: React.FC = () => {
     }
   }, []);
 
-  const handleSaveTimeLog = useCallback(async (taskId: string, actualMinutes: number, actualStartTime: string) => {
-    try {
-      await updateDoc(doc(db, 'todos', taskId), {
-        actualMinutes,
-        actualStartTime,
-      });
-      toast.success(`Logged ${actualMinutes}m for completed task`);
-    } catch (e) {
-      console.error('Failed to log actual time:', e);
-    }
-  }, []);
 
   // Handle Apply Template
   const handleApplyTemplate = async (template: TaskTemplate) => {
@@ -367,7 +351,6 @@ export const TodoListModule: React.FC = () => {
       });
       if (allDone && task.status !== 'completed') {
         playPopSound();
-        setJustCompletedTask(task);
         awardXP('TASK_COMPLETE').then((res) => {
           if (res.bonus) {
             toast.success(`All subtasks finished! +${res.added} XP ⚡ Dopamine Bonus! 🎉`);
@@ -978,13 +961,6 @@ export const TodoListModule: React.FC = () => {
         />
       )}
 
-      {/* 3. Task Completion Time Log Sheet */}
-      <TaskTimeLogSheet
-        isOpen={!!justCompletedTask}
-        task={justCompletedTask}
-        onClose={() => setJustCompletedTask(null)}
-        onSave={handleSaveTimeLog}
-      />
 
       {/* 4. Time Spent Analytics Sheet */}
       <TimeSpentSheet
