@@ -487,8 +487,9 @@
   letter-spacing: -0.01em;
 }
 
-.progress-count-text strong {
-  color: #ffffff;
+.progress-count-text strong,
+.progress-count-val {
+  color: inherit;
   font-weight: 700;
 }
 
@@ -518,7 +519,7 @@
 }
 
 .next-time-highlight {
-  color: #ffffff;
+  color: #38bdf8;
   font-weight: 600;
 }
 
@@ -527,6 +528,110 @@
   font-size: 0.8rem;
   font-weight: 500;
   color: #ffffff;
+}
+
+/* ── Progress Card Light Theme Visibility Fixes ── */
+body.theme-light .task-progress-card,
+body.theme-plain .task-progress-card,
+html.theme-light .task-progress-card,
+html.theme-plain .task-progress-card,
+.theme-light .task-progress-card,
+.theme-plain .task-progress-card {
+  --task-progress-track: #e2e8f0;
+  --task-progress-stroke: #2563eb;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+body.theme-light .task-progress-card .progress-title,
+body.theme-plain .task-progress-card .progress-title,
+html.theme-light .task-progress-card .progress-title,
+html.theme-plain .task-progress-card .progress-title,
+.theme-light .task-progress-card .progress-title,
+.theme-plain .task-progress-card .progress-title {
+  color: #0f172a !important;
+}
+
+body.theme-light .task-progress-card .progress-count-text,
+body.theme-plain .task-progress-card .progress-count-text,
+html.theme-light .task-progress-card .progress-count-text,
+html.theme-plain .task-progress-card .progress-count-text,
+.theme-light .task-progress-card .progress-count-text,
+.theme-plain .task-progress-card .progress-count-text {
+  color: #0f172a !important;
+}
+
+body.theme-light .task-progress-card .progress-count-text strong,
+body.theme-plain .task-progress-card .progress-count-text strong,
+html.theme-light .task-progress-card .progress-count-text strong,
+html.theme-plain .task-progress-card .progress-count-text strong,
+.theme-light .task-progress-card .progress-count-text strong,
+.theme-plain .task-progress-card .progress-count-text strong,
+body.theme-light .task-progress-card .progress-count-val,
+body.theme-plain .task-progress-card .progress-count-val,
+html.theme-light .task-progress-card .progress-count-val,
+html.theme-plain .task-progress-card .progress-count-val,
+.theme-light .task-progress-card .progress-count-val,
+.theme-plain .task-progress-card .progress-count-val {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+body.theme-light .task-progress-card .progress-sub,
+body.theme-plain .task-progress-card .progress-sub,
+html.theme-light .task-progress-card .progress-sub,
+html.theme-plain .task-progress-card .progress-sub,
+.theme-light .task-progress-card .progress-sub,
+.theme-plain .task-progress-card .progress-sub {
+  color: #64748b !important;
+}
+
+body.theme-light .task-progress-card .next-time-highlight,
+body.theme-plain .task-progress-card .next-time-highlight,
+html.theme-light .task-progress-card .next-time-highlight,
+html.theme-plain .task-progress-card .next-time-highlight,
+.theme-light .task-progress-card .next-time-highlight,
+.theme-plain .task-progress-card .next-time-highlight {
+  color: #2563eb !important;
+  font-weight: 600 !important;
+}
+
+body.theme-light .task-progress-card .all-done-sub,
+body.theme-plain .task-progress-card .all-done-sub,
+html.theme-light .task-progress-card .all-done-sub,
+html.theme-plain .task-progress-card .all-done-sub,
+.theme-light .task-progress-card .all-done-sub,
+.theme-plain .task-progress-card .all-done-sub {
+  color: #059669 !important;
+}
+
+body.theme-light .task-progress-card .progress-ring-track,
+body.theme-plain .task-progress-card .progress-ring-track,
+html.theme-light .task-progress-card .progress-ring-track,
+html.theme-plain .task-progress-card .progress-ring-track,
+.theme-light .task-progress-card .progress-ring-track,
+.theme-plain .task-progress-card .progress-ring-track {
+  stroke: #e2e8f0 !important;
+}
+
+body.theme-light .task-progress-card .progress-ring-fill,
+body.theme-plain .task-progress-card .progress-ring-fill,
+html.theme-light .task-progress-card .progress-ring-fill,
+html.theme-plain .task-progress-card .progress-ring-fill,
+.theme-light .task-progress-card .progress-ring-fill,
+.theme-plain .task-progress-card .progress-ring-fill {
+  stroke: var(--task-progress-stroke, #2563eb) !important;
+}
+
+body.theme-light .task-progress-card .progress-ring-text,
+body.theme-plain .task-progress-card .progress-ring-text,
+html.theme-light .task-progress-card .progress-ring-text,
+html.theme-plain .task-progress-card .progress-ring-text,
+.theme-light .task-progress-card .progress-ring-text,
+.theme-plain .task-progress-card .progress-ring-text {
+  color: #0f172a !important;
+  font-weight: 700 !important;
 }
 
 

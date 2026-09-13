@@ -59,7 +59,7 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({ tasks, selectedDate 
           {/* Animated Fill */}
           <circle
             className="progress-ring-fill"
-            stroke={percentage === 100 ? '#5eda9e' : 'var(--task-progress-stroke, #ffffff)'}
+            stroke={percentage === 100 ? '#10b981' : 'var(--task-progress-stroke, #38bdf8)'}
             fill="transparent"
             strokeWidth={strokeWidth}
             strokeDasharray={circumference}
@@ -81,7 +81,7 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({ tasks, selectedDate 
       <div className="progress-info">
         <div className="progress-headline">
           <span className="progress-count-text">
-            <strong>{doneCount}</strong> of <strong>{totalCount}</strong> done today
+            <strong className="progress-count-val">{doneCount}</strong> of <strong className="progress-count-val">{totalCount}</strong> done today
           </span>
           {percentage === 100 && (
             <span className="all-done-badge">

@@ -1429,33 +1429,63 @@ body.theme-plain .strip-jump-btn:active {
 }
 
 /* Right side Progress Card */
+body.theme-light .task-progress-card,
+body.theme-plain .task-progress-card {
+  --task-progress-track: #e2e8f0 !important;
+  --task-progress-stroke: #2563eb !important;
+}
+
 body.theme-light .task-progress-card .progress-title,
 body.theme-plain .task-progress-card .progress-title {
-  color: #111827 !important;
-  font-weight: 500 !important;
-  font-size: 0.8rem !important;
+  color: #0f172a !important;
+  font-weight: 600 !important;
+  font-size: 0.82rem !important;
 }
 
 body.theme-light .task-progress-card .progress-sub,
 body.theme-plain .task-progress-card .progress-sub {
   color: #64748b !important;
-  font-size: 0.73rem !important;
+  font-size: 0.74rem !important;
 }
 
 body.theme-light .task-progress-card .progress-count-text,
 body.theme-plain .task-progress-card .progress-count-text {
-  color: #111827 !important;
+  color: #0f172a !important;
   font-feature-settings: 'tnum' 1 !important;
+}
+
+body.theme-light .task-progress-card .progress-count-text strong,
+body.theme-plain .task-progress-card .progress-count-text strong,
+body.theme-light .task-progress-card .progress-count-val,
+body.theme-plain .task-progress-card .progress-count-val {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+body.theme-light .task-progress-card .next-time-highlight,
+body.theme-plain .task-progress-card .next-time-highlight {
+  color: #2563eb !important;
+  font-weight: 600 !important;
+}
+
+body.theme-light .task-progress-card .all-done-sub,
+body.theme-plain .task-progress-card .all-done-sub {
+  color: #059669 !important;
 }
 
 body.theme-light .task-progress-card .progress-ring-track,
 body.theme-plain .task-progress-card .progress-ring-track {
-  stroke: #e5e7eb !important;
+  stroke: #e2e8f0 !important;
+}
+
+body.theme-light .task-progress-card .progress-ring-fill,
+body.theme-plain .task-progress-card .progress-ring-fill {
+  stroke: var(--task-progress-stroke, #2563eb) !important;
 }
 
 body.theme-light .task-progress-card .progress-ring-text,
 body.theme-plain .task-progress-card .progress-ring-text {
-  color: #111827 !important;
+  color: #0f172a !important;
   font-weight: 700 !important;
   font-feature-settings: 'tnum' 1 !important;
 }
