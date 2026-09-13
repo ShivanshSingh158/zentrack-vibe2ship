@@ -240,53 +240,45 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
         onClick={e => e.stopPropagation()}
         onWheel={e => e.stopPropagation()}
       >
-        {/* Floating Focus Mode Bar (Always Accessible Exit in Focus Mode) */}
+        {/* Floating Focus Mode Bar (Speed, Exit Focus, Close - docked top-right) */}
         {focusMode && (
           <div className="lp-theater-focus-exit-bar">
-            <div className="lp-theater-focus-info">
-              <span className="lp-theater-focus-badge">#{idx + 1} of {total}</span>
-              <span className="lp-theater-focus-topic" title={topicName}>{topicName}</span>
-              <span className="lp-theater-focus-title" title={playing.title}>{playing.title}</span>
+            {/* Playback speed */}
+            <div className="lp-speed-selector">
+              <Gauge size={12} className="lp-speed-gauge-icon" />
+              {SPEEDS.map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`lp-speed-pill ${speed === s ? 'active' : ''}`}
+                  onClick={() => handleSpeedChange(s)}
+                >
+                  {s}x
+                </button>
+              ))}
             </div>
 
-            <div className="lp-theater-focus-actions">
-              {/* Playback speed */}
-              <div className="lp-speed-selector">
-                <Gauge size={12} className="lp-speed-gauge-icon" />
-                {SPEEDS.map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`lp-speed-pill ${speed === s ? 'active' : ''}`}
-                    onClick={() => handleSpeedChange(s)}
-                  >
-                    {s}x
-                  </button>
-                ))}
-              </div>
+            {/* Exit Focus Mode Button */}
+            <button
+              type="button"
+              className="lp-focus-exit-btn"
+              onClick={() => setFocusMode(false)}
+              title="Exit Focus Mode (Esc)"
+            >
+              <Minimize2 size={13} />
+              <span>Exit Focus</span>
+              <kbd className="lp-focus-kbd">Esc</kbd>
+            </button>
 
-              {/* Exit Focus Mode Button */}
-              <button
-                type="button"
-                className="lp-focus-exit-btn"
-                onClick={() => setFocusMode(false)}
-                title="Exit Focus Mode (Esc)"
-              >
-                <Minimize2 size={13} />
-                <span>Exit Focus</span>
-                <kbd className="lp-focus-kbd">Esc</kbd>
-              </button>
-
-              {/* Close Theater Button */}
-              <button
-                type="button"
-                className="lp-theater-icon-btn close"
-                onClick={onClose}
-                title="Close Theater"
-              >
-                <X size={15} />
-              </button>
-            </div>
+            {/* Close Theater Button */}
+            <button
+              type="button"
+              className="lp-theater-icon-btn close"
+              onClick={onClose}
+              title="Close Theater"
+            >
+              <X size={15} />
+            </button>
           </div>
         )}
 
