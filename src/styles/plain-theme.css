@@ -2757,44 +2757,136 @@ body.theme-plain .calendar-layers-card {
   border: 1px solid #e2e8f0 !important;
   border-radius: 14px !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
-  padding: 0.75rem 0.85rem !important;
+  padding: 0.85rem 0.95rem !important;
+  flex: 1 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+}
+
+body.theme-light .layers-card-header,
+body.theme-plain .layers-card-header {
+  border-bottom: 1px solid #f1f5f9 !important;
+  padding-bottom: 0.45rem !important;
 }
 
 body.theme-light .layers-title,
 body.theme-plain .layers-title {
-  color: #475569 !important;
-  font-size: 0.72rem !important;
+  color: #64748b !important;
+  font-size: 0.70rem !important;
   font-weight: 700 !important;
   letter-spacing: 0.06em !important;
 }
 
+body.theme-light .layers-active-badge,
+body.theme-plain .layers-active-badge {
+  background: #eff6ff !important;
+  color: #2563eb !important;
+  border: 1px solid #bfdbfe !important;
+}
+
 body.theme-light .layer-toggle-row,
 body.theme-plain .layer-toggle-row {
-  border-radius: 8px !important;
-  transition: background 0.15s ease !important;
+  border-radius: 11px !important;
+  padding: 0.65rem 0.75rem !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 body.theme-light .layer-toggle-row:hover,
 body.theme-plain .layer-toggle-row:hover {
-  background: #f8fafc !important;
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  transform: translateY(-1px) !important;
+}
+
+body.theme-light .layer-toggle-row.active,
+body.theme-plain .layer-toggle-row.active {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
 }
 
 body.theme-light .layer-label,
 body.theme-plain .layer-label {
   color: #0f172a !important;
-  font-size: 0.82rem !important;
-  font-weight: 600 !important;
+  font-size: 0.84rem !important;
+  font-weight: 650 !important;
+}
+
+body.theme-light .layer-sublabel,
+body.theme-plain .layer-sublabel {
+  color: #64748b !important;
+  font-size: 0.68rem !important;
+  font-weight: 500 !important;
 }
 
 body.theme-light .layer-count-pill,
 body.theme-plain .layer-count-pill {
   background: #f1f5f9 !important;
-  color: #475569 !important;
-  font-weight: 650 !important;
-  font-size: 0.72rem !important;
-  padding: 2px 7px !important;
-  border-radius: 10px !important;
+  color: #334155 !important;
+  font-weight: 750 !important;
+  font-size: 0.70rem !important;
+  padding: 0.14rem 0.48rem !important;
+  border-radius: 9999px !important;
   border: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light .layer-switch-pill,
+body.theme-plain .layer-switch-pill {
+  background: #e2e8f0 !important;
+}
+
+body.theme-light .layer-switch-pill::after,
+body.theme-plain .layer-switch-pill::after {
+  background: #94a3b8 !important;
+}
+
+body.theme-light .layer-switch-pill.active,
+body.theme-plain .layer-switch-pill.active {
+  background: #2563eb !important;
+}
+
+body.theme-light .layer-switch-pill.active::after,
+body.theme-plain .layer-switch-pill.active::after {
+  background: #ffffff !important;
+}
+
+body.theme-light .layers-footer-card,
+body.theme-plain .layers-footer-card {
+  border-top: 1px solid #f1f5f9 !important;
+}
+
+body.theme-light .footer-stat-number,
+body.theme-plain .footer-stat-number {
+  color: #0f172a !important;
+}
+
+body.theme-light .footer-stat-label,
+body.theme-plain .footer-stat-label {
+  color: #64748b !important;
+}
+
+body.theme-light .layer-quick-action-btn,
+body.theme-plain .layer-quick-action-btn {
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+}
+
+body.theme-light .layer-quick-action-btn:hover,
+body.theme-plain .layer-quick-action-btn:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+body.theme-light .layer-quick-action-btn.active,
+body.theme-plain .layer-quick-action-btn.active {
+  background: #eff6ff !important;
+  border-color: #bfdbfe !important;
+  color: #2563eb !important;
 }
 
 /* Center Viewport & Day View */
@@ -5297,7 +5389,8 @@ body.notes-fullscreen-active .page-enter {
 
 /* Full screen fit for Life Dashboard (/home) without page scroll & reclaimed top/bottom padding */
 .app-layout-sidebar:has(.life-dashboard-root),
-body:has(.life-dashboard-root) .app-layout-sidebar {
+body:has(.life-dashboard-root) .app-layout-sidebar,
+body:has(.calendar-module-root) .app-layout-sidebar {
   height: 100vh !important;
   max-height: 100vh !important;
   overflow: hidden !important;
@@ -5306,8 +5399,12 @@ body:has(.life-dashboard-root) .app-layout-sidebar {
 body.theme-light .app-layout-sidebar .main-content:has(.life-dashboard-root),
 body.theme-plain .app-layout-sidebar .main-content:has(.life-dashboard-root),
 .app-layout-sidebar:has(.life-dashboard-root) .main-content,
-.app-layout-sidebar .main-content:has(.life-dashboard-root) {
-  padding: 0.35rem 1.5rem 0.55rem 1.5rem !important;
+.app-layout-sidebar .main-content:has(.life-dashboard-root),
+body.theme-light .app-layout-sidebar .main-content:has(.calendar-module-root),
+body.theme-plain .app-layout-sidebar .main-content:has(.calendar-module-root),
+.app-layout-sidebar:has(.calendar-module-root) .main-content,
+.app-layout-sidebar .main-content:has(.calendar-module-root) {
+  padding: 0.5rem 1.5rem 0.5rem 1.5rem !important;
   height: 100vh !important;
   max-height: 100vh !important;
   overflow: hidden !important;
@@ -5316,7 +5413,8 @@ body.theme-plain .app-layout-sidebar .main-content:has(.life-dashboard-root),
   box-sizing: border-box !important;
 }
 
-.page-enter:has(.life-dashboard-root) {
+.page-enter:has(.life-dashboard-root),
+.page-enter:has(.calendar-module-root) {
   height: 100% !important;
   max-height: 100% !important;
   min-height: 0 !important;

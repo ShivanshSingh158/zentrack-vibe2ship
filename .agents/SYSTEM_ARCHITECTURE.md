@@ -129,6 +129,7 @@ zentrack-vibe2ship/
 │   │   ├── calendar/
 │   │   │   ├── CalendarModule.tsx  Calendar with Google Calendar + task overlay (~51KB)
 │   │   │   ├── CalendarMiniMonth.tsx Mini-month date picker with smart event indicator dots & squircle cells
+│   │   │   ├── CalendarLayerToggles.tsx Calendars & layers sidebar toggle panel with expanded squircle bars, subtitles & radar overview
 │   │   │   ├── AiFreeSlotModal.tsx Algorithmic deterministic free time slot finder & focus window scheduler
 │   │   │   └── EventPopover.tsx    Event detail popover
 │   │   ├── notes/

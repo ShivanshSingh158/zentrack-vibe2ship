@@ -63,6 +63,15 @@ export const CalendarModule: React.FC = () => {
     setLayers(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const handleToggleAllLayers = (show: boolean) => {
+    setLayers({
+      showClasses: show,
+      showGCal: show,
+      showGym: show,
+      showTasks: show,
+    });
+  };
+
   // Modals & Inspector
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -475,6 +484,7 @@ export const CalendarModule: React.FC = () => {
           <CalendarLayerToggles
             layers={layers}
             onToggleLayer={handleToggleLayer}
+            onToggleAll={handleToggleAllLayers}
             eventCounts={layerCounts}
           />
         </aside>

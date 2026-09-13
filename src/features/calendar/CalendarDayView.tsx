@@ -286,7 +286,7 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
       <div className="calendar-day-timeline-scroll" ref={scrollContainerRef}>
         <div
           className="calendar-day-grid"
-          style={{ minHeight: `${(maxHour - minHour + 1) * HOUR_HEIGHT + 30}px` }}
+          style={{ minHeight: `${(maxHour - minHour + 1) * HOUR_HEIGHT + 80}px` }}
         >
           {/* Hourly Slots */}
           {dynamicHours.map(hour => {
