@@ -127,6 +127,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
   const todayTotalCount = todayTasks.length;
 
+  const inboxBadgeCount = useMemo(() => {
+    if (todayPendingCount > 0) return todayPendingCount;
+    return pendingInboxCount;
+  }, [todayPendingCount, pendingInboxCount]);
+
   useEffect(() => {
     if (!isUserMenuOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
@@ -478,9 +483,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             </span>
             {!isCollapsed && <span>Dashboard</span>}
           </div>
-          {!isCollapsed && todayPendingCount > 0 && (
-            <span className="todoist-badge">{todayPendingCount}</span>
-          )}
         </NavLink>
 
         {/* 2. Inbox */}
@@ -495,8 +497,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             </span>
             {!isCollapsed && <span>Inbox</span>}
           </div>
-          {!isCollapsed && pendingInboxCount > 0 && (
-            <span className="todoist-badge">{pendingInboxCount}</span>
+          {!isCollapsed && inboxBadgeCount > 0 && (
+            <span className="todoist-badge">{inboxBadgeCount}</span>
           )}
         </NavLink>
 
