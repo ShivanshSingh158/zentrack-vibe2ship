@@ -2729,6 +2729,20 @@ body.theme-plain .mini-day-cell.selected .mini-day-number {
   font-weight: 700 !important;
 }
 
+body.theme-light .mini-day-cell.today.selected,
+body.theme-plain .mini-day-cell.today.selected {
+  background: #2563eb !important;
+  border: 1.5px solid #1d4ed8 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 0 0 1.5px rgba(37, 99, 235, 0.35), 0 2px 8px rgba(37, 99, 235, 0.28) !important;
+}
+
+body.theme-light .mini-day-cell.today.selected .mini-day-number,
+body.theme-plain .mini-day-cell.today.selected .mini-day-number {
+  color: #ffffff !important;
+  font-weight: 750 !important;
+}
+
 body.theme-light .mini-day-dot,
 body.theme-plain .mini-day-dot {
   background: #2563eb !important;
