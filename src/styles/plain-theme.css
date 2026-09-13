@@ -8390,3 +8390,260 @@ body.theme-plain .confirm-dialog-btn-cancel:hover {
 .confirm-dialog-btn-cancel:active {
   transform: scale(0.98) !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ZEN-GPT RESPONSE AREA — LIGHT MODE COMPREHENSIVE FIX
+   Full coverage: paragraphs, lists, headings, blockquotes, tables,
+   inline code, strong, and all structural elements.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Model response body — all child text dark in light mode ── */
+body.theme-light .lp-chatgpt-model-content,
+body.theme-plain .lp-chatgpt-model-content {
+  color: #1a1a2e !important;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
+
+/* Paragraphs */
+body.theme-light .lp-chatgpt-model-content p,
+body.theme-plain .lp-chatgpt-model-content p {
+  color: #1e293b !important;
+  line-height: 1.78 !important;
+}
+
+/* Headings */
+body.theme-light .lp-chatgpt-model-content h1,
+body.theme-plain .lp-chatgpt-model-content h1,
+body.theme-light .lp-chatgpt-model-content h2,
+body.theme-plain .lp-chatgpt-model-content h2 {
+  color: #0f172a !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light .lp-chatgpt-model-content h3,
+body.theme-plain .lp-chatgpt-model-content h3 {
+  color: #1e293b !important;
+}
+
+body.theme-light .lp-chatgpt-model-content h4,
+body.theme-plain .lp-chatgpt-model-content h4 {
+  color: #334155 !important;
+}
+
+body.theme-light .lp-chatgpt-model-content h5,
+body.theme-plain .lp-chatgpt-model-content h5,
+body.theme-light .lp-chatgpt-model-content h6,
+body.theme-plain .lp-chatgpt-model-content h6 {
+  color: #475569 !important;
+}
+
+/* List items */
+body.theme-light .lp-chatgpt-model-content li,
+body.theme-plain .lp-chatgpt-model-content li {
+  color: #1e293b !important;
+}
+
+/* Blockquotes */
+body.theme-light .lp-chatgpt-model-content blockquote,
+body.theme-plain .lp-chatgpt-model-content blockquote {
+  border-left: 3px solid #7c3aed !important;
+  background: rgba(124, 58, 237, 0.05) !important;
+  color: #334155 !important;
+}
+
+/* Horizontal rules */
+body.theme-light .lp-chatgpt-model-content hr,
+body.theme-plain .lp-chatgpt-model-content hr {
+  border-top: 1px solid #e2e8f0 !important;
+}
+
+/* Tables */
+body.theme-light .lp-chatgpt-model-content th,
+body.theme-plain .lp-chatgpt-model-content th {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+body.theme-light .lp-chatgpt-model-content td,
+body.theme-plain .lp-chatgpt-model-content td {
+  color: #1e293b !important;
+  border: 1px solid #e8ecf0 !important;
+}
+
+body.theme-light .lp-chatgpt-model-content tr:nth-child(even) td,
+body.theme-plain .lp-chatgpt-model-content tr:nth-child(even) td {
+  background: #f8fafc !important;
+}
+
+/* Strong (bold) */
+body.theme-light .lp-chatgpt-model-content strong,
+body.theme-plain .lp-chatgpt-model-content strong,
+body.theme-light .lp-chatgpt-strong,
+body.theme-plain .lp-chatgpt-strong {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+/* ── User bubble in light mode — modernized radius ── */
+body.theme-light .lp-chatgpt-user-bubble,
+body.theme-plain .lp-chatgpt-user-bubble {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%) !important;
+  border: none !important;
+  color: #ffffff !important;
+  border-radius: 14px 14px 4px 14px !important;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.25) !important;
+}
+
+/* ── Chips — modernized (no pill, proper radius) ── */
+body.theme-light .lp-chatgpt-chip,
+body.theme-plain .lp-chatgpt-chip {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+  border-radius: 10px !important;
+}
+
+body.theme-light .lp-chatgpt-chip:hover,
+body.theme-plain .lp-chatgpt-chip:hover {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+/* ── Typing box — modernized radius ── */
+body.theme-light .lp-chatgpt-typing-box,
+body.theme-plain .lp-chatgpt-typing-box {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* ── Starter cards — cleaner in light mode ── */
+body.theme-light .lp-chatgpt-starter-card,
+body.theme-plain .lp-chatgpt-starter-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* ── Code container — light ── */
+body.theme-light .lp-chatgpt-code-container,
+body.theme-plain .lp-chatgpt-code-container {
+  background: #f8f9fb !important;
+  border: 1px solid #dde1ea !important;
+  border-radius: 10px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+}
+
+body.theme-light .lp-chatgpt-code-header,
+body.theme-plain .lp-chatgpt-code-header {
+  background: #f1f3f8 !important;
+  border-bottom: 1px solid #dde1ea !important;
+}
+
+body.theme-light .lp-chatgpt-code-lang,
+body.theme-plain .lp-chatgpt-code-lang {
+  color: #64748b !important;
+}
+
+body.theme-light .lp-chatgpt-code-action-btn,
+body.theme-plain .lp-chatgpt-code-action-btn {
+  color: #64748b !important;
+}
+
+body.theme-light .lp-chatgpt-code-action-btn:hover,
+body.theme-plain .lp-chatgpt-code-action-btn:hover {
+  background: rgba(0, 0, 0, 0.06) !important;
+  color: #0f172a !important;
+  border-color: #d1d5db !important;
+}
+
+/* Code block itself stays dark (VS Code theme) — keep dark background for readability */
+body.theme-light .lp-chatgpt-code-pre,
+body.theme-plain .lp-chatgpt-code-pre {
+  background: #1e1e2e !important;
+  color: #d4d4d4 !important;
+}
+
+/* Code lang selector tabs in light */
+body.theme-light .lp-code-lang-selector,
+body.theme-plain .lp-code-lang-selector {
+  background: rgba(0, 0, 0, 0.07) !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+body.theme-light .lp-code-tab-btn,
+body.theme-plain .lp-code-tab-btn {
+  color: #475569 !important;
+}
+
+body.theme-light .lp-code-tab-btn:hover,
+body.theme-plain .lp-code-tab-btn:hover {
+  color: #0f172a !important;
+  background: rgba(0, 0, 0, 0.08) !important;
+}
+
+body.theme-light .lp-code-tab-btn.active,
+body.theme-plain .lp-code-tab-btn.active {
+  background: #dde9ff !important;
+  color: #2563eb !important;
+  border-color: rgba(37, 99, 235, 0.3) !important;
+}
+
+body.theme-light .lp-code-tab-btn.lp-code-cpp-btn,
+body.theme-plain .lp-code-tab-btn.lp-code-cpp-btn {
+  color: #dc2626 !important;
+}
+
+body.theme-light .lp-code-tab-btn.lp-code-cpp-btn.active,
+body.theme-plain .lp-code-tab-btn.lp-code-cpp-btn.active {
+  background: rgba(220, 38, 38, 0.1) !important;
+  color: #dc2626 !important;
+  border-color: rgba(220, 38, 38, 0.3) !important;
+}
+
+/* Quiz intro/trailing text in light mode */
+body.theme-light .lp-quiz-intro-text,
+body.theme-plain .lp-quiz-intro-text,
+body.theme-light .lp-quiz-trailing-text,
+body.theme-plain .lp-quiz-trailing-text {
+  color: #334155 !important;
+}
+
+body.theme-light .lp-quiz-intro-text p,
+body.theme-plain .lp-quiz-intro-text p {
+  color: #334155 !important;
+}
+
+body.theme-light .lp-quiz-num-badge,
+body.theme-plain .lp-quiz-num-badge {
+  color: #475569 !important;
+  background: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+}
+
+body.theme-light .lp-quiz-status-badge,
+body.theme-plain .lp-quiz-status-badge {
+  color: #64748b !important;
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+body.theme-light .lp-quiz-progress-text,
+body.theme-plain .lp-quiz-progress-text {
+  color: #475569 !important;
+}
+
+body.theme-light .lp-quiz-option-text,
+body.theme-plain .lp-quiz-option-text {
+  color: #1e293b !important;
+}
+
+body.theme-light .lp-quiz-option-text p,
+body.theme-plain .lp-quiz-option-text p {
+  color: inherit !important;
+}
+
