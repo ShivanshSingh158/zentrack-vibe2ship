@@ -50,3 +50,6 @@ setup-vercel-env.ps1
 .env*
 .vercel
 .repowise/
+
+.vercel
+.env*

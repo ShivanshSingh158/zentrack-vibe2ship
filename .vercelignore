@@ -12,6 +12,9 @@ backend/
 .git/
 .agents/
 
+# Build output
+dist/
+
 # Logs & temp
 *.log
 scratch/
