@@ -24,54 +24,6 @@ interface TopicCardProps {
   index?: number;
 }
 
-const THEME_PALETTES = [
-  {
-    name: 'emerald',
-    accent: '#5eda9e',
-    badgeBg: 'rgba(94, 218, 158, 0.12)',
-    badgeText: '#5eda9e',
-    glow: 'rgba(94, 218, 158, 0.18)',
-    border: 'rgba(94, 218, 158, 0.25)',
-    grad: 'linear-gradient(90deg, #5eda9e, #38bdf8)',
-  },
-  {
-    name: 'purple',
-    accent: '#a599ff',
-    badgeBg: 'rgba(165, 153, 255, 0.12)',
-    badgeText: '#a599ff',
-    glow: 'rgba(165, 153, 255, 0.18)',
-    border: 'rgba(165, 153, 255, 0.25)',
-    grad: 'linear-gradient(90deg, #a599ff, #f43f5e)',
-  },
-  {
-    name: 'cyan',
-    accent: '#38bdf8',
-    badgeBg: 'rgba(56, 189, 248, 0.12)',
-    badgeText: '#38bdf8',
-    glow: 'rgba(56, 189, 248, 0.18)',
-    border: 'rgba(56, 189, 248, 0.25)',
-    grad: 'linear-gradient(90deg, #38bdf8, #818cf8)',
-  },
-  {
-    name: 'amber',
-    accent: '#f59e0b',
-    badgeBg: 'rgba(245, 158, 11, 0.12)',
-    badgeText: '#f59e0b',
-    glow: 'rgba(245, 158, 11, 0.18)',
-    border: 'rgba(245, 158, 11, 0.25)',
-    grad: 'linear-gradient(90deg, #f59e0b, #ef4444)',
-  },
-  {
-    name: 'rose',
-    accent: '#f43f5e',
-    badgeBg: 'rgba(244, 63, 94, 0.12)',
-    badgeText: '#f43f5e',
-    glow: 'rgba(244, 63, 94, 0.18)',
-    border: 'rgba(244, 63, 94, 0.25)',
-    grad: 'linear-gradient(90deg, #f43f5e, #a855f7)',
-  },
-];
-
 export const TopicCard: React.FC<TopicCardProps> = ({
   topic,
   isExpanded,
@@ -105,11 +57,6 @@ export const TopicCard: React.FC<TopicCardProps> = ({
   const completedCount = subTasks.filter(s => s.isCompleted).length;
   const totalCount = subTasks.length;
   const progressPct = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
-
-  // Theme palette based on index
-  const theme = useMemo(() => {
-    return THEME_PALETTES[index % THEME_PALETTES.length];
-  }, [index]);
 
   // Next uncompleted lecture
   const nextUncompletedSubtask = useMemo(() => {
@@ -205,12 +152,6 @@ export const TopicCard: React.FC<TopicCardProps> = ({
   return (
     <div
       className={`lp-topic-card ${isGrid ? 'lp-grid-card' : 'lp-list-card'} ${isExpanded ? 'expanded' : ''}`}
-      style={{
-        ['--lp-accent-color' as any]: theme.accent,
-        ['--lp-accent-glow' as any]: theme.glow,
-        ['--lp-accent-border' as any]: theme.border,
-        ['--lp-accent-grad' as any]: theme.grad,
-      }}
     >
       {/* ── Topic Card Header ── */}
       <div className="lp-topic-card-header">
@@ -277,7 +218,7 @@ export const TopicCard: React.FC<TopicCardProps> = ({
 
         {/* Course Progress & Metadata Row */}
         <div className="lp-card-meta-line" onClick={onToggleExpand}>
-          <span className="lp-meta-pct" style={{ color: theme.accent }}>
+          <span className="lp-meta-pct">
             {Math.round(progressPct)}% completed
           </span>
           <span className="lp-meta-separator">·</span>
@@ -292,8 +233,8 @@ export const TopicCard: React.FC<TopicCardProps> = ({
         {/* Subtle Progress Bar */}
         <div className="lp-card-progress-track" onClick={onToggleExpand}>
           <div
-            className="lp-card-progress-bar"
-            style={{ width: `${progressPct}%`, background: theme.accent }}
+            className={`lp-card-progress-bar ${progressPct === 100 ? 'completed' : ''}`}
+            style={{ width: `${progressPct}%` }}
           />
         </div>
 
@@ -301,8 +242,7 @@ export const TopicCard: React.FC<TopicCardProps> = ({
         <div className="lp-card-footer-actions">
           <button
             type="button"
-            className="lp-card-resume-btn"
-            style={{ background: theme.accent }}
+            className={`lp-card-resume-btn ${progressPct === 0 ? 'start' : progressPct === 100 ? 'review' : 'resume'}`}
             onClick={(e) => {
               e.stopPropagation();
               if (nextUncompletedSubtask) {

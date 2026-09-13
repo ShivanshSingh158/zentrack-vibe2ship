@@ -5662,101 +5662,81 @@ body.theme-plain .learning-action-pill-btn:active {
   transform: scale(0.98) !important;
 }
 
-body.theme-light .learning-action-pill-btn.ai-curriculum-pill,
-body.theme-plain .learning-action-pill-btn.ai-curriculum-pill {
-  color: #047857 !important;
-}
-
-body.theme-light .learning-action-pill-btn.roadmaps-pill,
-body.theme-plain .learning-action-pill-btn.roadmaps-pill {
-  color: #0284c7 !important;
-}
-
-body.theme-light .learning-action-pill-btn.playlist-pill,
-body.theme-plain .learning-action-pill-btn.playlist-pill {
-  color: #7c3aed !important;
-}
-
-body.theme-light .learning-action-pill-btn.active-filter,
-body.theme-plain .learning-action-pill-btn.active-filter {
-  background: #ede9fe !important;
-  border-color: #c4b5fd !important;
-  color: #7c3aed !important;
-}
-
 /* Primary "+ New Course" Button */
 body.theme-light .learning-primary-add-btn,
 body.theme-plain .learning-primary-add-btn {
-  background: #7c3aed !important;
-  border: 1px solid transparent !important;
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
   color: #ffffff !important;
   border-radius: 8px !important;
   font-weight: 600 !important;
-  font-size: 0.8rem !important;
-  padding: 0.45rem 1.15rem !important;
-  box-shadow: 0 1px 2px rgba(124, 58, 237, 0.2) !important;
+  font-size: 0.78rem !important;
+  padding: 0.42rem 1rem !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18) !important;
   cursor: pointer !important;
-  transition: all 0.12s ease !important;
+  transition: all 0.15s ease !important;
 }
 
 body.theme-light .learning-primary-add-btn:hover,
 body.theme-plain .learning-primary-add-btn:hover {
-  background: #6d28d9 !important;
-  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3) !important;
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.25) !important;
 }
 
 body.theme-light .learning-primary-add-btn:active,
 body.theme-plain .learning-primary-add-btn:active {
-  background: #5b21b6 !important;
+  background: #0f172a !important;
   transform: scale(0.98) !important;
 }
 
 /* ── 3. Resume Learning Hero Spotlight Banner ── */
 body.theme-light .resume-hero-banner,
 body.theme-plain .resume-hero-banner {
-  background: linear-gradient(135deg, #ffffff 0%, #faf5ff 55%, #f0fdf4 100%) !important;
-  border: 1px solid #ddd6fe !important;
-  border-radius: 18px !important;
-  box-shadow: 
-    0 1px 3px rgba(0, 0, 0, 0.04),
-    0 6px 20px -2px rgba(124, 58, 237, 0.08),
-    inset 0 1px 0 #ffffff !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 14px -2px rgba(0, 0, 0, 0.04) !important;
 }
 
 body.theme-light .resume-hero-glow-backdrop,
 body.theme-plain .resume-hero-glow-backdrop {
-  background: radial-gradient(circle, rgba(124, 58, 237, 0.08) 0%, transparent 70%) !important;
+  display: none !important;
 }
 
 body.theme-light .resume-play-orb,
 body.theme-plain .resume-play-orb {
-  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%) !important;
+  background: #0f172a !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2) !important;
 }
 
 body.theme-light .resume-play-orb:hover,
 body.theme-plain .resume-play-orb:hover {
-  background: linear-gradient(135deg, #9061f9 0%, #804ff7 100%) !important;
-  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.5) !important;
-  transform: scale(1.05) !important;
+  background: #1e293b !important;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.28) !important;
+  transform: scale(1.04) !important;
 }
 
 /* Badges on Hero */
 body.theme-light .resume-tag-badge.topic-name,
 body.theme-plain .resume-tag-badge.topic-name {
-  background: #ede9fe !important;
-  color: #6d28d9 !important;
-  border: 1px solid #ddd6fe !important;
-  font-weight: 700 !important;
+  background: #f1f5f9 !important;
+  color: #334155 !important;
+  border: 1px solid #e2e8f0 !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
 }
 
 body.theme-light .resume-tag-badge.progress-badge,
 body.theme-plain .resume-tag-badge.progress-badge {
-  background: #f1f5f9 !important;
-  color: #475569 !important;
+  background: #f8fafc !important;
+  color: #64748b !important;
   border: 1px solid #e2e8f0 !important;
-  font-weight: 600 !important;
+  font-weight: 550 !important;
+  border-radius: 6px !important;
 }
 
 body.theme-light .resume-tag-badge.pinned-badge,
@@ -5764,32 +5744,33 @@ body.theme-plain .resume-tag-badge.pinned-badge {
   background: #fef3c7 !important;
   color: #b45309 !important;
   border: 1px solid #fde68a !important;
-  font-weight: 700 !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
 }
 
 /* CRITICAL: Lecture Title in Resume Banner (Deep Slate #0f172a, NEVER WHITE ON LIGHT) */
 body.theme-light .resume-lecture-title,
 body.theme-plain .resume-lecture-title {
   color: #0f172a !important;
-  font-weight: 750 !important;
-  font-size: 1.08rem !important;
+  font-weight: 700 !important;
+  font-size: 1.05rem !important;
   letter-spacing: -0.015em !important;
 }
 
 body.theme-light .resume-meta-chip,
 body.theme-plain .resume-meta-chip {
   color: #64748b !important;
-  font-weight: 550 !important;
+  font-weight: 500 !important;
 }
 
 body.theme-light .resume-meta-chip.video-chip,
 body.theme-plain .resume-meta-chip.video-chip {
-  color: #dc2626 !important;
-  background: #fee2e2 !important;
-  border: 1px solid #fca5a5 !important;
+  color: #475569 !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
   padding: 0.12rem 0.45rem !important;
   border-radius: 6px !important;
-  font-weight: 650 !important;
+  font-weight: 550 !important;
 }
 
 /* Hero Right: Schedule & Resume Buttons */
@@ -5798,11 +5779,11 @@ body.theme-plain .resume-schedule-btn {
   background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
   color: #334155 !important;
-  font-weight: 600 !important;
+  font-weight: 550 !important;
   font-size: 0.78rem !important;
   border-radius: 8px !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
-  padding: 0.48rem 0.95rem !important;
+  padding: 0.45rem 0.95rem !important;
   transition: all 0.12s ease !important;
 }
 
@@ -5815,27 +5796,28 @@ body.theme-plain .resume-schedule-btn:hover {
 
 body.theme-light .resume-primary-cta-btn,
 body.theme-plain .resume-primary-cta-btn {
-  background: #10b981 !important;
-  border: 1px solid transparent !important;
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
   color: #ffffff !important;
   font-weight: 600 !important;
-  font-size: 0.82rem !important;
+  font-size: 0.8rem !important;
   border-radius: 8px !important;
-  padding: 0.5rem 1.15rem !important;
-  box-shadow: 0 1px 2px rgba(16, 185, 129, 0.25) !important;
+  padding: 0.45rem 1.15rem !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2) !important;
   cursor: pointer !important;
-  transition: all 0.12s ease !important;
+  transition: all 0.15s ease !important;
 }
 
 body.theme-light .resume-primary-cta-btn:hover,
 body.theme-plain .resume-primary-cta-btn:hover {
-  background: #059669 !important;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.35) !important;
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.25) !important;
 }
 
 body.theme-light .resume-primary-cta-btn:active,
 body.theme-plain .resume-primary-cta-btn:active {
-  background: #047857 !important;
+  background: #0f172a !important;
   transform: scale(0.98) !important;
 }
 
@@ -5974,7 +5956,7 @@ body.theme-plain .learning-view-btn:hover {
 body.theme-light .learning-view-btn.active,
 body.theme-plain .learning-view-btn.active {
   background: #ffffff !important;
-  color: #7c3aed !important;
+  color: #0f172a !important;
   font-weight: 600 !important;
   border: 1px solid #e2e8f0 !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
@@ -6022,16 +6004,16 @@ body.theme-plain .lp-topic-hero-title {
 
 body.theme-light .lp-topic-hero-title:hover,
 body.theme-plain .lp-topic-hero-title:hover {
-  color: #7c3aed !important;
+  color: #334155 !important;
 }
 
 body.theme-light .lp-topic-title-input,
 body.theme-plain .lp-topic-title-input {
   background: #ffffff !important;
-  border: 1.5px solid #7c3aed !important;
+  border: 1.5px solid #0f172a !important;
   border-radius: 8px !important;
   color: #0f172a !important;
-  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15) !important;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.1) !important;
 }
 
 /* Card Header Action Buttons (Edit / Delete) */
@@ -6066,6 +6048,12 @@ body.theme-plain .lp-card-meta-line {
   font-weight: 600 !important;
 }
 
+body.theme-light .lp-meta-pct,
+body.theme-plain .lp-meta-pct {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
 body.theme-light .lp-meta-count,
 body.theme-plain .lp-meta-count {
   color: #334155 !important;
@@ -6086,23 +6074,41 @@ body.theme-light .lp-card-progress-track,
 body.theme-plain .lp-card-progress-track {
   background: #e2e8f0 !important;
   border-radius: 9999px !important;
+  height: 4px !important;
+}
+
+body.theme-light .lp-card-progress-bar,
+body.theme-plain .lp-card-progress-bar {
+  background: #0f172a !important;
+  border-radius: 9999px !important;
+}
+
+body.theme-light .lp-card-progress-bar.completed,
+body.theme-plain .lp-card-progress-bar.completed {
+  background: #10b981 !important;
 }
 
 /* Card Footer Action Buttons */
 body.theme-light .lp-card-resume-btn,
 body.theme-plain .lp-card-resume-btn {
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
   color: #ffffff !important;
-  font-weight: 700 !important;
+  font-weight: 600 !important;
+  font-size: 0.76rem !important;
   border-radius: 8px !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
+  padding: 0.4rem 0.95rem !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15) !important;
+  cursor: pointer !important;
   transition: all 0.15s ease !important;
 }
 
 body.theme-light .lp-card-resume-btn:hover,
 body.theme-plain .lp-card-resume-btn:hover {
-  filter: brightness(1.08) !important;
+  background: #1e293b !important;
+  border-color: #1e293b !important;
   transform: translateY(-1px) !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18) !important;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.22) !important;
 }
 
 body.theme-light .lp-card-expand-toggle-btn,
@@ -6112,6 +6118,7 @@ body.theme-plain .lp-card-expand-toggle-btn {
   color: #475569 !important;
   font-weight: 600 !important;
   border-radius: 8px !important;
+  padding: 0.4rem 0.75rem !important;
   transition: all 0.15s ease !important;
 }
 
@@ -6129,6 +6136,11 @@ body.theme-plain .lp-add-lecture-icon-btn {
   border: 1px solid #e2e8f0 !important;
   color: #475569 !important;
   border-radius: 8px !important;
+  width: 32px !important;
+  height: 32px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   transition: all 0.15s ease !important;
 }
 

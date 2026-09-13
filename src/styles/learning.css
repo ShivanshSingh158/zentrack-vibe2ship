@@ -89,10 +89,10 @@
   border: 1px solid #1c1c20;
   color: #d1d1d6;
   padding: 0.42rem 0.85rem;
-  border-radius: 12px;
+  border-radius: 8px;
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: 550;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
@@ -105,43 +105,26 @@
   transform: translateY(-1px);
 }
 
-.learning-action-pill-btn.ai-curriculum-pill {
-  color: #5eda9e;
-}
-
-.learning-action-pill-btn.roadmaps-pill {
-  color: #89dceb;
-}
-
-.learning-action-pill-btn.playlist-pill {
-  color: #a599ff;
-}
-
-.learning-action-pill-btn.active-filter {
-  background: rgba(165, 153, 255, 0.14);
-  border-color: rgba(165, 153, 255, 0.45);
-  color: #a599ff;
-}
-
 .learning-primary-add-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  background: #a599ff;
+  background: #ffffff;
   color: #000000;
-  border: none;
-  padding: 0.44rem 1rem;
-  border-radius: 12px;
+  border: 1px solid #ffffff;
+  padding: 0.42rem 1rem;
+  border-radius: 8px;
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
 
 .learning-primary-add-btn:hover {
-  background: #b8afff;
+  background: #e4e4e7;
+  border-color: #e4e4e7;
   transform: translateY(-1px);
 }
 
@@ -152,8 +135,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 1.25rem;
-  background: linear-gradient(135deg, rgba(165, 153, 255, 0.08) 0%, rgba(94, 218, 158, 0.04) 100%);
-  border: 1px solid rgba(165, 153, 255, 0.22);
+  background: #141416;
+  border: 1px solid #1c1c20;
   border-radius: 16px;
   padding: 1.15rem 1.35rem;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
@@ -161,13 +144,7 @@
 }
 
 .resume-hero-glow-backdrop {
-  position: absolute;
-  top: -40px;
-  right: -40px;
-  width: 160px;
-  height: 160px;
-  background: radial-gradient(circle, rgba(165, 153, 255, 0.15) 0%, transparent 70%);
-  pointer-events: none;
+  display: none;
 }
 
 .resume-hero-left {
@@ -179,23 +156,23 @@
 }
 
 .resume-play-orb {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  background: #a599ff;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #000000;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(165, 153, 255, 0.35);
+  box-shadow: 0 2px 10px rgba(255, 255, 255, 0.15);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .resume-play-orb:hover {
-  transform: scale(1.06);
-  background: #b8afff;
-  box-shadow: 0 6px 20px rgba(165, 153, 255, 0.5);
+  transform: scale(1.05);
+  background: #e4e4e7;
 }
 
 .resume-hero-info {
@@ -225,16 +202,16 @@
 }
 
 .resume-tag-badge.topic-name {
-  background: rgba(165, 153, 255, 0.15);
-  color: #a599ff;
-  border: 1px solid rgba(165, 153, 255, 0.25);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e4e4e7;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .resume-tag-badge.progress-badge {
-  background: rgba(255, 255, 255, 0.06);
-  color: #d1d1d6;
+  background: rgba(255, 255, 255, 0.04);
+  color: #a1a1aa;
 }
 
 .resume-tag-badge.pinned-badge {
@@ -270,7 +247,11 @@
 }
 
 .resume-meta-chip.video-chip {
-  color: #ff6961;
+  color: #a1a1aa;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.1rem 0.45rem;
+  border-radius: 6px;
 }
 
 .resume-hero-right {
@@ -287,11 +268,11 @@
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #d1d1d6;
-  padding: 0.55rem 0.95rem;
-  border-radius: 10px;
+  padding: 0.48rem 0.95rem;
+  border-radius: 8px;
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: 550;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -305,23 +286,23 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  background: #5eda9e;
-  border: none;
+  background: #ffffff;
+  border: 1px solid #ffffff;
   color: #000000;
-  padding: 0.55rem 1.15rem;
-  border-radius: 10px;
+  padding: 0.48rem 1.15rem;
+  border-radius: 8px;
   font-family: var(--font-sans, 'Inter', sans-serif);
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-size: 0.8rem;
+  font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(94, 218, 158, 0.3);
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.15);
   transition: all 0.15s ease;
 }
 
 .resume-primary-cta-btn:hover {
-  background: #7ae8b3;
+  background: #e4e4e7;
+  border-color: #e4e4e7;
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(94, 218, 158, 0.45);
 }
 
 /* ── 3. STRUCTURED SEARCH & FILTER ROW ── */
@@ -340,7 +321,7 @@
   gap: 3px;
   background: #141416;
   border: 1px solid #1c1c20;
-  border-radius: 12px;
+  border-radius: 10px;
   padding: 3px;
   flex-shrink: 0;
 }
@@ -350,13 +331,13 @@
   align-items: center;
   gap: 0.35rem;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: #8e8e93;
-  padding: 0.38rem 0.75rem;
-  border-radius: 9px;
+  padding: 0.36rem 0.72rem;
+  border-radius: 7px;
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.76rem;
-  font-weight: 600;
+  font-weight: 550;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -366,22 +347,22 @@
 }
 
 .learning-filter-tab.active {
-  background: rgba(165, 153, 255, 0.15);
-  color: #a599ff;
-  border: 1px solid rgba(165, 153, 255, 0.25);
-  font-weight: 700;
+  background: #27272a;
+  color: #ffffff;
+  border-color: #3f3f46;
+  font-weight: 600;
 }
 
 .learning-filter-tab .tab-count {
   font-size: 0.68rem;
-  background: rgba(255, 255, 255, 0.06);
-  color: #8e8e93;
+  background: rgba(255, 255, 255, 0.08);
+  color: #a1a1aa;
   padding: 0.05rem 0.35rem;
   border-radius: 4px;
 }
 
 .learning-filter-tab.active .tab-count {
-  background: rgba(165, 153, 255, 0.25);
+  background: rgba(255, 255, 255, 0.2);
   color: #ffffff;
 }
 
@@ -471,9 +452,10 @@
 }
 
 .learning-view-btn.active {
-  background: #a599ff;
-  color: #000000;
-  font-weight: 800;
+  background: #27272a;
+  color: #ffffff;
+  border: 1px solid #3f3f46;
+  font-weight: 600;
 }
 
 /* ── TOPICS CONTAINER ── */
@@ -647,7 +629,12 @@
 .lp-card-progress-bar {
   height: 100%;
   border-radius: 9999px;
+  background: #ffffff;
   transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.lp-card-progress-bar.completed {
+  background: #10b981;
 }
 
 /* Clean Action Footer (Resume + Add) */
@@ -668,16 +655,18 @@
   border-radius: 8px;
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.76rem;
-  font-weight: 700;
+  font-weight: 600;
   color: #000000;
-  border: none;
+  background: #ffffff;
+  border: 1px solid #ffffff;
   cursor: pointer;
   transition: all 0.15s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 .lp-card-resume-btn:hover {
-  filter: brightness(1.12);
+  background: #e4e4e7;
+  border-color: #e4e4e7;
   transform: translateY(-1px);
 }
 

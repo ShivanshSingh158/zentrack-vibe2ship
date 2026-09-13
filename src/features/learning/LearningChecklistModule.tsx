@@ -564,31 +564,31 @@ export function LearningChecklistModule() {
         <div className="learning-header-actions">
           <button
             type="button"
-            className="learning-action-pill-btn ai-curriculum-pill"
+            className="learning-action-pill-btn"
             onClick={() => setShowCurriculumBuilder(true)}
             title="AI Multi-Module Curriculum Generator"
           >
-            <Sparkles size={14} color="#5eda9e" />
+            <Sparkles size={14} />
             <span>AI Curriculum</span>
           </button>
 
           <button
             type="button"
-            className="learning-action-pill-btn roadmaps-pill"
+            className="learning-action-pill-btn"
             onClick={() => setShowRoadmapsModal(true)}
             title="Predefined Engineering Roadmaps"
           >
-            <BookOpen size={14} color="#38bdf8" />
+            <BookOpen size={14} />
             <span>Roadmaps</span>
           </button>
 
           <button
             type="button"
-            className="learning-action-pill-btn playlist-pill"
+            className="learning-action-pill-btn"
             onClick={() => setShowPlaylistModal(true)}
             title="Import YouTube Playlist"
           >
-            <LinkIcon size={14} color="#a599ff" />
+            <LinkIcon size={14} />
             <span>Import Playlist</span>
           </button>
 
