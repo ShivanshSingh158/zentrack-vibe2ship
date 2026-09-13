@@ -49,7 +49,7 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({ tasks, selectedDate 
           {/* Background track */}
           <circle
             className="progress-ring-track"
-            stroke="rgba(255, 255, 255, 0.08)"
+            stroke="var(--task-progress-track, rgba(255, 255, 255, 0.08))"
             fill="transparent"
             strokeWidth={strokeWidth}
             r={radius}
@@ -59,7 +59,7 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({ tasks, selectedDate 
           {/* Animated Fill */}
           <circle
             className="progress-ring-fill"
-            stroke={percentage === 100 ? '#5eda9e' : '#a599ff'}
+            stroke={percentage === 100 ? '#5eda9e' : 'var(--task-progress-stroke, #ffffff)'}
             fill="transparent"
             strokeWidth={strokeWidth}
             strokeDasharray={circumference}

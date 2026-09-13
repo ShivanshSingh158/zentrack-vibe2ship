@@ -196,11 +196,6 @@ export const TodoCard = React.memo(({
                     <span
                       key={tag}
                       className="submeta-tag-chip"
-                      style={{
-                        color: tagColor(tag),
-                        backgroundColor: `${tagColor(tag)}15`,
-                        borderColor: `${tagColor(tag)}30`,
-                      }}
                     >
                       #{tag}
                     </span>

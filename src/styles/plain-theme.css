@@ -1202,44 +1202,45 @@ body.theme-plain .segmented-view-btn:hover {
 body.theme-light .segmented-view-btn.active,
 body.theme-plain .segmented-view-btn.active {
   background: #ffffff !important;
-  color: #a599ff !important;
+  color: #0f172a !important;
   font-weight: 600 !important;
-  border: 1px solid rgba(165, 153, 255, 0.3) !important;
-  box-shadow: 0 1px 3px rgba(165, 153, 255, 0.15) !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
 }
 
 body.theme-light .segmented-view-btn.active:hover,
 body.theme-plain .segmented-view-btn.active:hover {
-  color: #7c6fe6 !important;
+  color: #0f172a !important;
   background: #ffffff !important;
-  border-color: rgba(165, 153, 255, 0.5) !important;
+  border-color: #cbd5e1 !important;
 }
 
 /* Primary + Add Task Button */
 body.theme-light .tasks-primary-add-btn,
 body.theme-plain .tasks-primary-add-btn {
-  background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 55%, #6d28d9 100%) !important;
-  border: 1px solid transparent !important;
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
   color: #ffffff !important;
   border-radius: 8px !important;
   font-weight: 600 !important;
   font-size: 0.8rem !important;
-  padding: 0.45rem 1.15rem !important;
-  box-shadow: 0 1px 3px rgba(124, 58, 237, 0.3), 0 2px 6px rgba(124, 58, 237, 0.2) !important;
+  padding: 0.42rem 1.15rem !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15) !important;
   cursor: pointer !important;
   transition: all 0.12s ease !important;
 }
 
 body.theme-light .tasks-primary-add-btn:hover,
 body.theme-plain .tasks-primary-add-btn:hover {
-  background: linear-gradient(180deg, #9065f7 0%, #8343f5 55%, #762ae0 100%) !important;
+  background: #1e293b !important;
+  border-color: #1e293b !important;
   color: #ffffff !important;
-  box-shadow: 0 3px 10px rgba(124, 58, 237, 0.35) !important;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.2) !important;
 }
 
 body.theme-light .tasks-primary-add-btn:active,
 body.theme-plain .tasks-primary-add-btn:active {
-  background: #5b21b6 !important;
+  background: #020617 !important;
   transform: scale(0.98) !important;
 }
 
@@ -1324,17 +1325,24 @@ body.theme-plain .date-pill:hover {
 
 body.theme-light .date-pill.selected,
 body.theme-plain .date-pill.selected {
-  background: #faf5ff !important;
-  border: 1px solid #ddd6fe !important;
-  box-shadow: 0 1px 3px rgba(124, 58, 237, 0.12) !important;
+  background: #0f172a !important;
+  border: 1px solid #0f172a !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15) !important;
 }
 
 body.theme-light .date-pill.selected .date-pill-num,
 body.theme-plain .date-pill.selected .date-pill-num,
 body.theme-light .date-pill.selected .date-pill-day,
 body.theme-plain .date-pill.selected .date-pill-day {
-  color: #7c3aed !important;
+  color: #ffffff !important;
   font-weight: 700 !important;
+}
+
+body.theme-light .date-pill.selected .date-pill-dot.active,
+body.theme-plain .date-pill.selected .date-pill-dot.active,
+body.theme-light .date-pill.selected .date-pill-dot.completed,
+body.theme-plain .date-pill.selected .date-pill-dot.completed {
+  background: #ffffff !important;
 }
 
 /* Date Strip Jump Button */
@@ -1758,57 +1766,71 @@ body.theme-plain .todo-submeta-row {
 
 body.theme-light .submeta-time-text,
 body.theme-plain .submeta-time-text {
-  color: #7c3aed !important;
-  font-weight: 600 !important;
+  color: #64748b !important;
+  font-weight: 500 !important;
+  font-size: 0.74rem !important;
 }
 
 body.theme-light .submeta-date-text,
 body.theme-plain .submeta-date-text {
   color: #64748b !important;
-  font-weight: 500 !important;
+  font-weight: 450 !important;
+  font-size: 0.74rem !important;
 }
 
 body.theme-light .submeta-duration-chip,
 body.theme-plain .submeta-duration-chip {
-  color: #d97706 !important;
-  background: #fef3c7 !important;
-  border: 1px solid #fde68a !important;
-  font-weight: 600 !important;
-  border-radius: 4px !important;
-  padding: 0.05rem 0.4rem !important;
+  color: #475569 !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  font-weight: 500 !important;
+  border-radius: 5px !important;
+  padding: 0.08rem 0.4rem !important;
+  font-size: 0.7rem !important;
 }
 
 body.theme-light .submeta-subtasks-chip,
 body.theme-plain .submeta-subtasks-chip {
-  color: #0284c7 !important;
-  background: #e0f2fe !important;
-  border: 1px solid #bae6fd !important;
-  font-weight: 600 !important;
-  border-radius: 4px !important;
-  padding: 0.05rem 0.4rem !important;
+  color: #475569 !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  font-weight: 500 !important;
+  border-radius: 5px !important;
+  padding: 0.08rem 0.4rem !important;
+  font-size: 0.7rem !important;
+}
+
+body.theme-light .submeta-tag-chip,
+body.theme-plain .submeta-tag-chip {
+  color: #475569 !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  font-weight: 500 !important;
+  border-radius: 5px !important;
+  padding: 0.08rem 0.4rem !important;
+  font-size: 0.7rem !important;
 }
 
 /* Action Buttons on Task Row in Light Mode */
 body.theme-light .todo-focus-play-btn,
 body.theme-plain .todo-focus-play-btn {
-  height: 28px !important;
-  min-height: 28px !important;
-  padding: 0 10px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 8px !important;
   border-radius: 6px !important;
-  background: #f5f3ff !important;
-  border: 1px solid #ddd6fe !important;
-  color: #7c3aed !important;
-  font-weight: 650 !important;
-  box-shadow: 0 1px 2px rgba(124, 58, 237, 0.06) !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #334155 !important;
+  font-weight: 550 !important;
+  box-shadow: none !important;
   transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 body.theme-light .todo-focus-play-btn:hover,
 body.theme-plain .todo-focus-play-btn:hover {
-  background: #ede9fe !important;
-  color: #6d28d9 !important;
-  border-color: #c4b5fd !important;
-  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.15) !important;
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
   transform: translateY(-1px) !important;
 }
 
@@ -1819,14 +1841,14 @@ body.theme-plain .todo-focus-play-btn:active {
 
 body.theme-light .todo-action-icon-btn,
 body.theme-plain .todo-action-icon-btn {
-  width: 28px !important;
-  height: 28px !important;
-  min-width: 28px !important;
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 26px !important;
   border-radius: 6px !important;
   background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
   color: #64748b !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+  box-shadow: none !important;
   transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
