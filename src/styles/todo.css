@@ -916,7 +916,7 @@ html.theme-plain .task-progress-card .progress-ring-text,
   flex-direction: column;
   background: transparent;
   border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 0;
   position: relative;
   transition: background 0.15s ease;
@@ -924,8 +924,20 @@ html.theme-plain .task-progress-card .progress-ring-text,
   width: 100%;
 }
 
-.todo-card-row:last-child {
-  border-bottom: none;
+.tasks-cards-stack > *:last-child .todo-card-row {
+  border-bottom: none !important;
+}
+
+body.theme-dark .todo-card-row,
+.theme-dark .todo-card-row,
+body:not(.theme-light):not(.theme-plain) .todo-card-row {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+body.theme-dark .tasks-cards-stack > *:last-child .todo-card-row,
+.theme-dark .tasks-cards-stack > *:last-child .todo-card-row,
+body:not(.theme-light):not(.theme-plain) .tasks-cards-stack > *:last-child .todo-card-row {
+  border-bottom: none !important;
 }
 
 .todo-card-row:hover {

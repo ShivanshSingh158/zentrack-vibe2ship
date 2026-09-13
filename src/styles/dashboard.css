@@ -1429,8 +1429,12 @@ body.theme-dark .tasks-empty-check,
 
 body.theme-dark .task-row-today,
 .theme-dark .task-row-today {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
   background: transparent;
+}
+
+.task-row-today:last-child {
+  border-bottom: none !important;
 }
 
 .task-row-today:hover {

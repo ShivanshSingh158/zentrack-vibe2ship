@@ -1893,6 +1893,11 @@ body.theme-plain .todo-card-row {
   transition: background 0.15s ease !important;
 }
 
+body.theme-light .tasks-cards-stack > *:last-child .todo-card-row,
+body.theme-plain .tasks-cards-stack > *:last-child .todo-card-row {
+  border-bottom: none !important;
+}
+
 body.theme-light .todo-card-row:hover,
 body.theme-plain .todo-card-row:hover {
   background: #f8fafc !important;
