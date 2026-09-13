@@ -1118,7 +1118,8 @@ body.theme-light .tasks-hero-title,
 body.theme-plain .tasks-hero-title {
   color: #111827 !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, 'Inter' !important;
-  font-weight: 750 !important;
+  font-size: 1.75rem !important;
+  font-weight: 700 !important;
   letter-spacing: -0.025em !important;
 }
 
@@ -1126,20 +1127,23 @@ body.theme-light .tasks-date-subtitle,
 body.theme-plain .tasks-date-subtitle {
   color: #64748b !important;
   font-weight: 500 !important;
-  font-size: 0.82rem !important;
+  font-size: 0.8rem !important;
 }
 
 /* Header Action Pill Buttons (Inbox, Analytics) */
 body.theme-light .tasks-action-pill-btn,
 body.theme-plain .tasks-action-pill-btn {
+  height: 34px !important;
+  box-sizing: border-box !important;
   background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
   color: #334155 !important;
-  font-weight: 600 !important;
+  font-weight: 500 !important;
   font-size: 0.78rem !important;
   border-radius: 8px !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
-  padding: 0.42rem 0.85rem !important;
+  padding: 0 0.85rem !important;
+  gap: 0.4rem !important;
   transition: all 0.12s ease !important;
   cursor: pointer !important;
 }
@@ -1186,11 +1190,12 @@ body.theme-plain .segmented-view-btn {
   color: #475569 !important;
   background: transparent !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, 'Inter' !important;
-  font-size: 0.78rem !important;
-  font-weight: 600 !important;
+  font-size: 0.76rem !important;
+  font-weight: 500 !important;
   letter-spacing: -0.01em !important;
   border-radius: 6px !important;
-  padding: 0 0.75rem !important;
+  padding: 0 0.7rem !important;
+  gap: 0.35rem !important;
   border: 1px solid transparent !important;
   cursor: pointer !important;
   transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
@@ -1231,8 +1236,9 @@ body.theme-plain .tasks-primary-add-btn {
   box-sizing: border-box !important;
   border-radius: 8px !important;
   font-weight: 600 !important;
-  font-size: 0.8rem !important;
-  padding: 0 1rem !important;
+  font-size: 0.78rem !important;
+  padding: 0 0.95rem !important;
+  gap: 0.4rem !important;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15) !important;
   cursor: pointer !important;
   transition: all 0.12s ease !important;
@@ -1283,12 +1289,32 @@ body.theme-plain .tasks-icon-overflow-btn:active {
 
 /* ── Top Controls Row: 7-Day Date Strip & Progress Card ── */
 body.theme-light .task-date-strip-container,
-body.theme-plain .task-date-strip-container,
+body.theme-plain .task-date-strip-container {
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 14px !important;
+  min-height: 56px !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+  padding: 0.45rem 0.75rem !important;
+  gap: 0.45rem !important;
+  box-shadow: 
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    0 4px 14px -2px rgba(0, 0, 0, 0.05),
+    0 12px 24px -4px rgba(0, 0, 0, 0.02) !important;
+  backdrop-filter: none !important;
+}
+
 body.theme-light .task-progress-card,
 body.theme-plain .task-progress-card {
   background: #ffffff !important;
   border: 1px solid #e5e7eb !important;
   border-radius: 14px !important;
+  min-height: 56px !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+  padding: 0.65rem 1rem !important;
+  gap: 1rem !important;
   box-shadow: 
     0 1px 3px rgba(0, 0, 0, 0.04),
     0 4px 14px -2px rgba(0, 0, 0, 0.05),
@@ -1299,7 +1325,10 @@ body.theme-plain .task-progress-card {
 body.theme-light .strip-arrow-btn,
 body.theme-plain .strip-arrow-btn {
   color: #64748b !important;
-  border-radius: 8px !important;
+  width: 28px !important;
+  height: 28px !important;
+  box-sizing: border-box !important;
+  border-radius: 7px !important;
   transition: all 0.12s ease !important;
 }
 
@@ -1312,7 +1341,8 @@ body.theme-plain .strip-arrow-btn:hover {
 body.theme-light .date-pill,
 body.theme-plain .date-pill {
   color: #64748b !important;
-  border-radius: 12px !important;
+  border-radius: 8px !important;
+  padding: 0.35rem 0.65rem !important;
   transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
@@ -1321,14 +1351,16 @@ body.theme-plain .date-pill .date-pill-day {
   color: #64748b !important;
   font-weight: 600 !important;
   font-size: 0.68rem !important;
-  letter-spacing: 0.02em !important;
+  letter-spacing: 0.03em !important;
+  text-transform: uppercase !important;
 }
 
 body.theme-light .date-pill .date-pill-num,
 body.theme-plain .date-pill .date-pill-num {
   color: #0f172a !important;
-  font-weight: 750 !important;
-  font-size: 1.15rem !important;
+  font-weight: 650 !important;
+  font-size: 0.95rem !important;
+  margin-top: 2px !important;
   font-feature-settings: 'tnum' 1 !important;
 }
 
@@ -1362,14 +1394,19 @@ body.theme-plain .date-pill.selected .date-pill-dot.completed {
 /* Date Strip Jump Button */
 body.theme-light .strip-jump-btn,
 body.theme-plain .strip-jump-btn {
+  height: 28px !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.3rem !important;
   background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
   color: #111827 !important;
-  font-weight: 600 !important;
-  font-size: 0.76rem !important;
-  border-radius: 8px !important;
+  font-weight: 500 !important;
+  font-size: 0.72rem !important;
+  border-radius: 7px !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
-  padding: 0.38rem 0.75rem !important;
+  padding: 0 0.65rem !important;
   cursor: pointer !important;
   transition: all 0.12s ease !important;
 }
@@ -1389,14 +1426,14 @@ body.theme-plain .strip-jump-btn:active {
 body.theme-light .task-progress-card .progress-title,
 body.theme-plain .task-progress-card .progress-title {
   color: #111827 !important;
-  font-weight: 650 !important;
-  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  font-size: 0.8rem !important;
 }
 
 body.theme-light .task-progress-card .progress-sub,
 body.theme-plain .task-progress-card .progress-sub {
   color: #64748b !important;
-  font-size: 0.8rem !important;
+  font-size: 0.73rem !important;
 }
 
 body.theme-light .task-progress-card .progress-count-text,
@@ -1413,7 +1450,7 @@ body.theme-plain .task-progress-card .progress-ring-track {
 body.theme-light .task-progress-card .progress-ring-text,
 body.theme-plain .task-progress-card .progress-ring-text {
   color: #111827 !important;
-  font-weight: 750 !important;
+  font-weight: 700 !important;
   font-feature-settings: 'tnum' 1 !important;
 }
 
@@ -1440,11 +1477,12 @@ body.theme-plain .filter-pill-btn {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
+  gap: 0.35rem !important;
   background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
   color: #475569 !important;
-  font-weight: 550 !important;
-  font-size: 0.76rem !important;
+  font-weight: 500 !important;
+  font-size: 0.74rem !important;
   border-radius: 8px !important;
   padding: 0 0.65rem !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
@@ -1519,10 +1557,10 @@ body.theme-plain .tasks-tag-filter-select {
   background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
   color: #334155 !important;
-  font-weight: 550 !important;
-  font-size: 0.76rem !important;
+  font-weight: 500 !important;
+  font-size: 0.74rem !important;
   border-radius: 8px !important;
-  padding: 0 0.65rem !important;
+  padding: 0 0.6rem !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
   cursor: pointer !important;
   outline: none !important;
@@ -1576,7 +1614,8 @@ body.theme-light .tasks-search-input,
 body.theme-plain .tasks-search-input {
   color: #0f172a !important;
   font-weight: 500 !important;
-  font-size: 0.84rem !important;
+  font-size: 0.8rem !important;
+  height: 100% !important;
 }
 
 body.theme-light .tasks-search-input::placeholder,
@@ -1593,11 +1632,12 @@ body.theme-plain .toolbar-sort-btn {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
+  gap: 0.35rem !important;
   background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
   color: #334155 !important;
-  font-weight: 600 !important;
-  font-size: 0.76rem !important;
+  font-weight: 500 !important;
+  font-size: 0.74rem !important;
   border-radius: 8px !important;
   padding: 0 0.65rem !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
@@ -1631,9 +1671,9 @@ body.theme-plain .toolbar-count-badge {
   justify-content: center !important;
   background: #f1f5f9 !important;
   border: 1px solid #e2e8f0 !important;
-  color: #475569 !important;
-  font-weight: 600 !important;
-  font-size: 0.74rem !important;
+  color: #8e8e93 !important;
+  font-weight: 500 !important;
+  font-size: 0.72rem !important;
   border-radius: 8px !important;
   padding: 0 0.65rem !important;
   font-feature-settings: 'tnum' 1 !important;
@@ -1744,9 +1784,9 @@ body.theme-plain .todo-card-row.completed-row {
 body.theme-light .todo-title-text,
 body.theme-plain .todo-title-text {
   color: #0f172a !important;
-  font-weight: 550 !important;
-  font-size: 0.92rem !important;
-  letter-spacing: -0.015em !important;
+  font-weight: 500 !important;
+  font-size: 0.93rem !important;
+  letter-spacing: -0.01em !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, 'Inter' !important;
 }
 
@@ -1811,8 +1851,8 @@ body.theme-plain .todo-submeta-row {
 body.theme-light .submeta-time-text,
 body.theme-plain .submeta-time-text {
   color: #64748b !important;
-  font-weight: 500 !important;
-  font-size: 0.74rem !important;
+  font-weight: 400 !important;
+  font-size: 0.76rem !important;
 }
 
 body.theme-light .submeta-date-text,
@@ -1869,7 +1909,8 @@ body.theme-plain .todo-focus-play-btn {
   background: #f1f5f9 !important;
   border: 1px solid #e2e8f0 !important;
   color: #334155 !important;
-  font-weight: 550 !important;
+  font-size: 0.72rem !important;
+  font-weight: 500 !important;
   box-shadow: none !important;
   transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
@@ -2055,7 +2096,7 @@ body.theme-plain .timeline-top-bar {
 body.theme-light .timeline-top-title,
 body.theme-plain .timeline-top-title {
   color: #0f172a !important;
-  font-weight: 700 !important;
+  font-weight: 600 !important;
 }
 
 body.theme-light .timeline-scroll-area,
@@ -2082,7 +2123,7 @@ body.theme-plain .timeline-event-block {
 body.theme-light .event-block-title,
 body.theme-plain .event-block-title {
   color: #0f172a !important;
-  font-weight: 650 !important;
+  font-weight: 600 !important;
 }
 
 body.theme-light .event-block-time,
@@ -2096,15 +2137,15 @@ body.theme-light .kanban-column,
 body.theme-plain .kanban-column {
   background: #f8fafc !important;
   border: 1px solid #e2e8f0 !important;
-  border-radius: 14px !important;
+  border-radius: 16px !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03) !important;
 }
 
 body.theme-light .kanban-col-title,
 body.theme-plain .kanban-col-title {
   color: #0f172a !important;
-  font-weight: 650 !important;
-  font-size: 0.84rem !important;
+  font-weight: 700 !important;
+  font-size: 0.88rem !important;
 }
 
 body.theme-light .kanban-card,
@@ -2125,7 +2166,7 @@ body.theme-plain .kanban-card:hover {
 body.theme-light .kanban-card-title,
 body.theme-plain .kanban-card-title {
   color: #0f172a !important;
-  font-weight: 600 !important;
+  font-weight: 500 !important;
 }
 
 body.theme-light .kanban-footer-chip,
@@ -2160,14 +2201,14 @@ body.theme-light .matrix-quadrant,
 body.theme-plain .matrix-quadrant {
   background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
-  border-radius: 14px !important;
+  border-radius: 16px !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
 }
 
 body.theme-light .matrix-quadrant-sub,
 body.theme-plain .matrix-quadrant-sub {
   color: #64748b !important;
-  font-size: 0.74rem !important;
+  font-size: 0.7rem !important;
 }
 
 body.theme-light .matrix-task-item,
@@ -2188,7 +2229,7 @@ body.theme-plain .matrix-task-item:hover {
 body.theme-light .matrix-task-title,
 body.theme-plain .matrix-task-title {
   color: #0f172a !important;
-  font-weight: 600 !important;
+  font-weight: 500 !important;
 }
 
 body.theme-light .matrix-task-date,
@@ -2238,14 +2279,41 @@ body.theme-plain .start-chip:hover {
   color: #0f172a !important;
 }
 
-body.theme-light .duration-chip.active,
-body.theme-plain .duration-chip.active,
+body.theme-light .duration-chip.active-green,
+body.theme-plain .duration-chip.active-green {
+  background: #ecfdf5 !important;
+  border-color: #10b981 !important;
+  color: #059669 !important;
+  font-weight: 600 !important;
+}
+
 body.theme-light .start-chip.active,
 body.theme-plain .start-chip.active {
   background: #f5f3ff !important;
-  border-color: #c084fc !important;
-  color: #7c3aed !important;
-  font-weight: 700 !important;
+  border-color: #a78bfa !important;
+  color: #6d28d9 !important;
+  font-weight: 600 !important;
+}
+
+body.theme-light .time-log-skip-btn,
+body.theme-plain .time-log-skip-btn {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #64748b !important;
+}
+
+body.theme-light .time-log-skip-btn:hover,
+body.theme-plain .time-log-skip-btn:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+body.theme-light .time-log-custom-input,
+body.theme-plain .time-log-custom-input {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
 }
 
 /* ── Inbox & Overdue Drawer in Light Mode ── */

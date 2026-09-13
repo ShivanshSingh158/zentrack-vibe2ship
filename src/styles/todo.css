@@ -386,13 +386,15 @@
 }
 
 .strip-jump-btn {
+  height: 28px;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #d1d1d6;
-  padding: 0.32rem 0.65rem;
+  padding: 0 0.65rem;
   border-radius: 7px;
   font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif);
   font-size: 0.72rem;
@@ -4377,7 +4379,6 @@ body.theme-light .fast-capture-input {
 body.theme-light .filter-pill-btn.active {
   background: #0f172a;
   border-color: #0f172a;
-  border-bottom: 2px solid #020617;
   color: #ffffff;
 }
 
