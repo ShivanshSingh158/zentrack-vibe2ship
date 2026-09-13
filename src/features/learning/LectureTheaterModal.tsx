@@ -209,7 +209,7 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
   return createPortal(
     <div
       className={`lp-theater-overlay ${focusMode ? 'focus-mode' : ''}`}
-      onClick={() => !focusMode && onMinimize()}
+      onClick={(e) => !focusMode && e.target === e.currentTarget && onMinimize()}
     >
       {/* Top Playlist Progress Rail */}
       <div className="lp-theater-progress-rail">

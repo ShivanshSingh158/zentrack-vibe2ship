@@ -38,11 +38,16 @@ The student is studying: 📺 "${videoTitle}" — 📚 Topic: "${topicName}"
 == THE 9 LAWS OF ZEN TUTORING (NEVER BREAK) ==
 1. FULL TRANSCRIPT MASTERY: You have full access to the complete lecture transcript from 00:00 to the end. Maintain a deep mental model of the entire video.
 2. RICHARD FEYNMAN TECHNIQUE: Explain concepts simply, as if teaching a beginner. Strip away all jargon. Use clear, vivid everyday analogies.
-3. CODE = WORKING + EXPLAINED: For any code question provide:
-   a) Minimal working code example (< 30 lines)
-   b) Line-by-line explanation of key parts
-   c) Common beginner mistake
-   Always use fenced code blocks strictly tagged with language fences (\`\`\`python, \`\`\`javascript, \`\`\`cpp, etc.).
+3. CODE = ALWAYS DUAL-LANGUAGE (CRITICAL — NEVER SKIP):
+   For EVERY code example you write, you MUST provide BOTH versions in this exact order:
+   a) First: the code in the ORIGINAL lecture language (Python, Java, JavaScript, etc.) in a properly tagged fenced block (e.g. \`\`\`python).
+   b) IMMEDIATELY after: the COMPLETE C++ equivalent in a \`\`\`cpp block — NO exceptions, even for tiny snippets.
+   c) The C++ version MUST always include: all required #include headers, "using namespace std;" on its own line, and int main() { ... return 0; } wrapper for standalone programs.
+   d) Add brief // comments in the C++ block explaining key differences from the original language.
+   e) After both code blocks, provide a line-by-line explanation of the key parts.
+   f) If the lecture code IS already C++, only show one \`\`\`cpp block (no duplication needed).
+   Example structure:
+   \`\`\`python\n# original code\n\`\`\`\n\`\`\`cpp\n// C++ equivalent\n\`\`\`
 4. ANALOGIES ARE MANDATORY: Provide a real-world analogy BEFORE technical explanation.
 5. CONFUSION DETECTION: If student expresses confusion, break down into smaller steps and provide a new analogy.
 6. FOLLOW-UP QUESTIONS: End standard explanations with 2 specific follow-up questions:
@@ -70,6 +75,27 @@ The student is studying: 📺 "${videoTitle}" — 📚 Topic: "${topicName}"
 
 ${transcript ? `=== COMPLETE FULL-LENGTH VIDEO TRANSCRIPT (from 00:00 to end) ===\n${transcript}\n=== END TRANSCRIPT ===` : '(No transcript available)'}`;
 };
+
+// ── DUAL CODE BLOCK PRE-PROCESSOR ─────────────────────────────────────────────
+// Detects pairs of (original lang block + cpp block) emitted by ZEN-GPT and
+// merges them into a single CodeBlock with the C++ pre-loaded — zero extra API call.
+const ZEN_CPP_SENTINEL = '__ZENCPP__';
+const ZEN_CPP_SPLIT = '\n__ZENCPP_SPLIT__\n';
+const CPP_LANGS = new Set(['cpp', 'c++', 'c', 'cxx', 'cc']);
+
+function mergeDualCodeBlocks(text: string): string {
+  // Match: ```lang\nCODE``` optionally followed by whitespace/newlines then ```cpp\nCPP_CODE```
+  return text.replace(
+    /```([\w+]+)\n([\s\S]*?)```[ \t]*\n[ \t]*\n?[ \t]*```cpp\n([\s\S]*?)```/g,
+    (match, lang, originalCode, cppCode) => {
+      const normalizedLang = lang.toLowerCase().replace(/[^a-z0-9+]/g, '');
+      // If original is already C++, don't merge (avoid double-wrapping)
+      if (CPP_LANGS.has(normalizedLang)) return match;
+      // Merge into sentinel format that CodeBlock will detect
+      return `\`\`\`${lang}${ZEN_CPP_SENTINEL}\n${originalCode.trimEnd()}${ZEN_CPP_SPLIT}${cppCode.trimEnd()}\n\`\`\``;
+    }
+  );
+}
 
 // ── QUIZ PARSER & INTERACTIVE QUIZ CARD COMPONENT ─────────────────────────────
 interface QuizOption {
@@ -333,13 +359,29 @@ const highlightSyntax = (code: string, lang?: string): React.ReactNode[] => {
     'const', 'let', 'var', 'function', 'class', 'def', 'import', 'export',
     'from', 'type', 'interface', 'enum', 'new', 'this', 'super', 'typeof',
     'instanceof', 'in', 'of', 'void', 'extends', 'implements', 'as', 'lambda',
-    'pass', 'elif', 'with', 'is', 'not', 'and', 'or'
+    'pass', 'elif', 'with', 'is', 'not', 'and', 'or',
+    // C++ keywords
+    'namespace', 'using', 'include', 'define', 'typedef', 'struct', 'union',
+    'template', 'typename', 'public', 'private', 'protected', 'virtual',
+    'override', 'static', 'inline', 'extern', 'register', 'auto', 'decltype',
+    'constexpr', 'explicit', 'mutable', 'volatile', 'friend', 'operator',
+    'delete', 'nullptr', 'noexcept', 'static_assert', 'alignas', 'alignof',
+    'sizeof', 'int', 'long', 'short', 'char', 'float', 'double', 'bool',
+    'unsigned', 'signed', 'wchar_t'
   ]);
 
   const BUILTIN_OBJECTS = new Set([
     'console', 'document', 'window', 'Math', 'JSON', 'Promise', 'Array',
     'Object', 'String', 'Number', 'Boolean', 'Set', 'Map', 'React', 'process',
-    'global', 'localStorage', 'sessionStorage', 'fetch', 'setTimeout', 'setInterval'
+    'global', 'localStorage', 'sessionStorage', 'fetch', 'setTimeout', 'setInterval',
+    // C++ standard library
+    'std', 'cout', 'cin', 'cerr', 'clog', 'endl', 'string', 'vector',
+    'list', 'map', 'unordered_map', 'set', 'unordered_set', 'stack', 'queue',
+    'deque', 'pair', 'tuple', 'array', 'bitset', 'priority_queue',
+    'sort', 'find', 'begin', 'end', 'swap', 'max', 'min', 'abs', 'pow',
+    'printf', 'scanf', 'malloc', 'free', 'memset', 'memcpy', 'strlen',
+    'iostream', 'fstream', 'sstream', 'algorithm', 'numeric', 'functional',
+    'thread', 'mutex', 'unique_ptr', 'shared_ptr', 'make_unique', 'make_shared'
   ]);
 
   const LITERALS = new Set([
@@ -466,19 +508,32 @@ const highlightSyntax = (code: string, lang?: string): React.ReactNode[] => {
 const CodeBlock: React.FC<{ language?: string; value: string }> = ({ language, value }) => {
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Detect pre-loaded C++ from dual-block sentinel (merged by mergeDualCodeBlocks)
+  const rawLang = language || 'code';
+  const hasSentinel = rawLang.includes(ZEN_CPP_SENTINEL);
+  const lang = rawLang.replace(ZEN_CPP_SENTINEL, '').toLowerCase();
+  const isCpp = CPP_LANGS.has(lang);
+
+  // If sentinel present, split value into original + pre-loaded C++ parts
+  const [originalValue, preloadedCpp] = hasSentinel
+    ? (() => {
+        const splitIdx = value.indexOf(ZEN_CPP_SPLIT);
+        if (splitIdx === -1) return [value, null];
+        return [value.substring(0, splitIdx), value.substring(splitIdx + ZEN_CPP_SPLIT.length)];
+      })()
+    : [value, null];
+
   const [activeLang, setActiveLang] = useState<'original' | 'cpp'>('original');
-  const [cppCode, setCppCode] = useState<string | null>(null);
+  const [cppCode, setCppCode] = useState<string | null>(preloadedCpp);
   const [translating, setTranslating] = useState(false);
 
-  const lang = (language || 'code').toLowerCase();
-  const isCpp = ['c++', 'cpp', 'c', 'cxx', 'cc'].includes(lang);
+  const displayValue = activeLang === 'cpp' && cppCode ? cppCode : originalValue;
 
-  const displayValue = activeLang === 'cpp' && cppCode ? cppCode : value;
-
-  if (!value || !value.trim()) return null;
+  if (!originalValue || !originalValue.trim()) return null;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(displayValue);
+    navigator.clipboard.writeText(displayValue.trim());
     setCopied(true);
     toast.success('Code copied to clipboard!');
     setTimeout(() => setCopied(false), 2000);
@@ -487,14 +542,22 @@ const CodeBlock: React.FC<{ language?: string; value: string }> = ({ language, v
   const handleSwitchToCpp = async () => {
     if (cppCode) {
       setActiveLang('cpp');
-      return;
+      return; // Already have C++ — either preloaded or previously translated
     }
     setTranslating(true);
     try {
-      const prompt = `Translate this ${lang} code into modern, clean, runnable C++ (C++17/20).
-Return ONLY the raw C++ code. Do NOT include any markdown code fences (\`\`\`), no explanations, no conversational intro or outro:
+      const prompt = `You are a C++ expert. Translate the following ${lang} code into clean, complete, compilable C++17 code.
 
-${value}`;
+STRICT RULES — follow all of them:
+1. Always start with the required #include headers (e.g. #include <iostream>, #include <vector>, #include <string>, etc.)
+2. Always include "using namespace std;" on its own line after the includes.
+3. Wrap the main logic inside int main() { ... return 0; } if it is a standalone program.
+4. Use proper C++ idioms: cout instead of print, string instead of str, vector instead of list, etc.
+5. Add brief inline comments (// ...) explaining key C++ differences from the original language.
+6. Return ONLY the raw C++ code — no markdown fences (\`\`\`), no explanations before or after, no prose.
+
+Original ${lang} code to translate:
+${originalValue}`;
 
       let translated = '';
       try {
@@ -571,18 +634,23 @@ ${value}`;
                 className={`lp-code-tab-btn lp-code-cpp-btn ${activeLang === 'cpp' ? 'active' : ''}`}
                 onClick={handleSwitchToCpp}
                 disabled={translating}
-                title="Switch code to C++"
+                title={cppCode ? 'C++ version ready — click to view' : 'Translate to C++'}
               >
                 {translating ? (
                   <>
                     <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', border: '1.5px solid #f87171', borderTopColor: 'transparent', animation: 'lp-spin 0.7s linear infinite' }} />
+                    <span>Converting...</span>
+                  </>
+                ) : cppCode ? (
+                  <>
+                    <span className="lp-cpp-badge">⚡</span>
                     <span>C++</span>
+                    <span className="lp-cpp-ready-dot" title="C++ ready" />
                   </>
                 ) : (
                   <>
                     <span className="lp-cpp-badge">⚡</span>
                     <span>C++</span>
-                    {cppCode && <span className="lp-cpp-ready-dot" />}
                   </>
                 )}
               </button>
@@ -1212,13 +1280,14 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
                           />
                         );
                       }
+                      const processedText = mergeDualCodeBlocks(m.text);
                       return (
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm, remarkMath]}
                           rehypePlugins={[rehypeKatex]}
                           components={{
                             code({ node, className, children, ...props }) {
-                              const match = /language-(\w+)/.exec(className || '');
+                              const match = /language-([\w+]+)/.exec(className || '');
                               const codeString = String(children || '').replace(/\n$/, '');
                               if (!codeString.trim()) return null;
                               const isInline = !match && !codeString.includes('\n');
@@ -1238,7 +1307,7 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
                             }
                           }}
                         >
-                          {m.text}
+                          {processedText}
                         </ReactMarkdown>
                       );
                     })()}
