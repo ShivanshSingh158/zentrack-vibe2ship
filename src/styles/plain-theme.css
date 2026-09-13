@@ -9113,4 +9113,51 @@ body.theme-plain .lp-notes-icon-btn {
   border: 1px solid #e2e8f0 !important;
 }
 
+/* 10. Theater Focus Mode Floating Bar */
+body.theme-light .lp-theater-focus-exit-bar,
+body.theme-plain .lp-theater-focus-exit-bar {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15) !important;
+}
+
+body.theme-light .lp-theater-focus-badge,
+body.theme-plain .lp-theater-focus-badge {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+}
+
+body.theme-light .lp-theater-focus-topic,
+body.theme-plain .lp-theater-focus-topic {
+  background: rgba(99, 102, 241, 0.1) !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+  color: #6366f1 !important;
+}
+
+body.theme-light .lp-theater-focus-title,
+body.theme-plain .lp-theater-focus-title {
+  color: #0f172a !important;
+}
+
+body.theme-light .lp-focus-exit-btn,
+body.theme-plain .lp-focus-exit-btn {
+  background: #0f172a !important;
+  color: #ffffff !important;
+  border-color: #0f172a !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25) !important;
+}
+
+body.theme-light .lp-focus-exit-btn:hover,
+body.theme-plain .lp-focus-exit-btn:hover {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+}
+
+body.theme-light .lp-focus-kbd,
+body.theme-plain .lp-focus-kbd {
+  background: rgba(255, 255, 255, 0.22) !important;
+  color: #ffffff !important;
+}
+
 
