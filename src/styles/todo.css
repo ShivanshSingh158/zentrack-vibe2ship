@@ -5,7 +5,7 @@
 .tasks-module-root {
   display: flex;
   flex-direction: column;
-  gap: 0.95rem;
+  gap: 0.75rem;
   width: 100%;
   max-width: 100%;
   margin: 0;
@@ -67,8 +67,10 @@
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #f2f2f7;
-  padding: 0.42rem 0.85rem;
-  border-radius: 9px;
+  height: 34px;
+  padding: 0 0.85rem;
+  box-sizing: border-box;
+  border-radius: 8px;
   font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif);
   font-size: 0.78rem;
   font-weight: 500;
@@ -113,8 +115,10 @@
   background: #ffffff;
   color: #000000;
   border: none;
-  padding: 0.42rem 0.95rem;
-  border-radius: 9px;
+  height: 34px;
+  padding: 0 0.95rem;
+  box-sizing: border-box;
+  border-radius: 8px;
   font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif);
   font-size: 0.78rem;
   font-weight: 600;
@@ -134,8 +138,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
+  box-sizing: border-box;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -238,13 +243,14 @@
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  background: #121215;
+  background: #141416;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 0.45rem 0.75rem;
   height: 100%;
+  min-height: 56px;
   box-sizing: border-box;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
@@ -413,13 +419,14 @@
   display: flex;
   align-items: center;
   gap: 1rem;
-  background: #121215;
+  background: #141416;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 0.65rem 1rem;
   height: 100%;
+  min-height: 56px;
   box-sizing: border-box;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
@@ -735,10 +742,12 @@
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 7px;
-  padding: 0.32rem 0.65rem;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 0.65rem;
   flex: 1;
   min-width: 140px;
   transition: all 0.15s ease;
@@ -786,11 +795,11 @@
   flex-direction: column;
   gap: 0;
   width: 100%;
-  background: #121215;
+  background: #141416;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
@@ -1013,8 +1022,8 @@
 }
 
 .todo-focus-play-btn {
-  height: 26px;
-  min-height: 26px;
+  height: 28px;
+  min-height: 28px;
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -1023,8 +1032,8 @@
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.09);
   color: #d1d1d6;
-  padding: 0 8px;
-  border-radius: 6px;
+  padding: 0 9px;
+  border-radius: 7px;
   font-family: var(--font-sans, 'Inter', -apple-system, sans-serif);
   font-size: 0.72rem;
   font-weight: 500;
@@ -1048,11 +1057,11 @@
 }
 
 .todo-action-icon-btn {
-  width: 26px;
-  height: 26px;
-  min-width: 26px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
   box-sizing: border-box;
-  border-radius: 6px;
+  border-radius: 7px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   display: inline-flex;
@@ -3972,9 +3981,11 @@ body.theme-light,
 .tasks-view-segmented-bar {
   display: inline-flex;
   align-items: center;
+  height: 34px;
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 9px;
+  border-radius: 8px;
   padding: 2.5px;
   gap: 2px;
 }
@@ -3982,9 +3993,11 @@ body.theme-light,
 .segmented-view-btn {
   display: inline-flex;
   align-items: center;
+  height: 27px;
+  box-sizing: border-box;
   gap: 0.35rem;
-  padding: 0.32rem 0.7rem;
-  border-radius: 7px;
+  padding: 0 0.7rem;
+  border-radius: 6px;
   border: 1px solid transparent;
   background: transparent;
   color: #8e8e93;
@@ -4071,16 +4084,17 @@ body.theme-light,
 .tasks-filter-toolbar {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  margin-bottom: 0.85rem;
+  gap: 0.5rem;
+  margin-bottom: 0;
   width: 100%;
   box-sizing: border-box;
-  background: #121215;
+  background: #141416;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 0.4rem 0.65rem;
+  border-radius: 14px;
+  padding: 0.35rem 0.65rem;
+  min-height: 44px;
   flex-wrap: nowrap;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
@@ -4095,12 +4109,15 @@ body.theme-light,
 .filter-pill-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35rem;
-  background: rgba(255, 255, 255, 0.04);
+  height: 32px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #8e8e93;
-  padding: 0.32rem 0.65rem;
-  border-radius: 7px;
+  padding: 0 0.65rem;
+  border-radius: 8px;
   font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif);
   font-size: 0.74rem;
   font-weight: 500;
@@ -4117,7 +4134,7 @@ body.theme-light,
 
 .filter-pill-btn.active {
   background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.2);
   color: #ffffff;
   font-weight: 600;
   box-shadow: none;
@@ -4127,7 +4144,7 @@ body.theme-light,
 .filter-pill-btn.p2.active,
 .filter-pill-btn.p3.active {
   background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.2);
   color: #ffffff;
 }
 
@@ -4142,11 +4159,15 @@ body.theme-light,
 .priority-dot.p3 { background: #3b82f6; }
 
 .tasks-tag-filter-select {
-  background: rgba(255, 255, 255, 0.04);
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #d1d1d6;
-  padding: 0.32rem 0.6rem;
-  border-radius: 7px;
+  padding: 0 0.6rem;
+  border-radius: 8px;
   font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif);
   font-size: 0.74rem;
   font-weight: 500;
@@ -4167,23 +4188,26 @@ body.theme-light,
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 7px;
-  padding: 0.32rem 0.65rem;
+  height: 32px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 0 0.65rem;
   flex: 1;
   min-width: 140px;
   transition: all 0.15s ease;
 }
 
 .tasks-search-wrap:focus-within {
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.06);
 }
 
 .tasks-search-input {
   flex: 1;
+  height: 100%;
   background: transparent;
   border: none;
   color: #ffffff;
@@ -4223,12 +4247,15 @@ body.theme-light,
 .toolbar-sort-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35rem;
-  background: rgba(255, 255, 255, 0.04);
+  height: 32px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #8e8e93;
-  padding: 0.32rem 0.6rem;
-  border-radius: 7px;
+  padding: 0 0.65rem;
+  border-radius: 8px;
   font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif);
   font-size: 0.74rem;
   font-weight: 500;
@@ -4244,14 +4271,19 @@ body.theme-light,
 }
 
 .toolbar-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  box-sizing: border-box;
   font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif);
   font-size: 0.72rem;
   font-weight: 500;
   color: #8e8e93;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 0.32rem 0.6rem;
-  border-radius: 7px;
+  padding: 0 0.65rem;
+  border-radius: 8px;
   white-space: nowrap;
 }
 
