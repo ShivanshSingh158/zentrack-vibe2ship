@@ -609,13 +609,16 @@ body:not(.theme-light):not(.theme-plain) .todoist-sidebar-footer {
 body.theme-dark .todoist-badge,
 body:not(.theme-light):not(.theme-plain) .todoist-badge {
   color: #8e8e93 !important;
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: transparent !important;
+  font-size: 12px !important;
 }
 
 body.theme-dark .todoist-nav-item.active .todoist-badge,
 body:not(.theme-light):not(.theme-plain) .todoist-nav-item.active .todoist-badge {
   color: #a599ff !important;
-  background: rgba(165, 153, 255, 0.22) !important;
+  background: transparent !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
 }
 
 /* SARA AI in Dark Mode */
