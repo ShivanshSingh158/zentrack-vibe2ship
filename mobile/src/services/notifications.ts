@@ -1700,9 +1700,13 @@ export async function runNotificationDiagnostic(): Promise<string> {
     }
 
     // 4. Cancel existing
+    // IMPORTANT: After cancelling, clear the fingerprint cache so the next
+    // BackgroundNotificationWatcher run performs a full reschedule instead of
+    // hitting the stale cache and skipping (which was leaving the user with 0 alarms).
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
-      lines.push(`${ok} cancelAllScheduledNotificationsAsync: OK`);
+      clearScheduleCache();
+      lines.push(`${ok} cancelAllScheduledNotificationsAsync: OK (cache cleared)`);
     } catch (e: any) {
       lines.push(`${fail} cancelAllScheduledNotificationsAsync: ${e?.message}`);
     }
@@ -1772,7 +1776,8 @@ export async function runNotificationDiagnostic(): Promise<string> {
     const modTasks = await AsyncStorage.getItem('zentrack_notif_mod_tasks');
     const modGym = await AsyncStorage.getItem('zentrack_notif_mod_gym');
     lines.push(`ℹ️ Prefs: waterFreq="${freq ?? '0'}", modTasks="${modTasks ?? 'true'}", modGym="${modGym ?? 'true'}"`);
-    lines.push(`ℹ️ Last Schedule Status: count=${_lastScheduledCount}, error="${_lastScheduleError ?? 'none'}"`);
+    lines.push(`ℹ️ Last Schedule: ${_lastScheduledCount} alarm(s) set, error="${_lastScheduleError ?? 'none'}"`);
+    lines.push(`ℹ️ Cache cleared — next app tick will force full reschedule.`);
 
     // 9. Summary
     lines.push('');
