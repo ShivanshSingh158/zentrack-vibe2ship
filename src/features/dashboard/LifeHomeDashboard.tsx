@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Timer,
   BookOpen,
+  FlaskConical,
   RotateCcw,
   Settings,
   X,
@@ -38,7 +39,7 @@ import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { auth, db } from '../../services/firebase';
 import { doc, onSnapshot, updateDoc, addDoc, collection, deleteDoc, setDoc, query, where } from 'firebase/firestore';
 import type { StorageNode } from '../../types';
-import { getLocalDateString, formatDisplayDate, formatTimeRangeDisplay, extractTaskDurationMinutes } from '../../utils/dateUtils';
+import { getLocalDateString, formatDisplayDate, formatTimeRangeDisplay, extractTaskDurationMinutes, parseNLTask } from '../../utils/dateUtils';
 import { calculateAppStreak } from '../../utils/streakUtils';
 import { playPopSound } from '../../utils/sound';
 import { toast } from 'sonner';
@@ -147,7 +148,16 @@ export const LifeHomeDashboard: React.FC = () => {
     if (!user?.uid) return;
     const q = query(collection(db, 'storage_nodes'), where('userId', '==', user.uid));
     const unsub = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as StorageNode[];
+      const docs = snapshot.docs.map(d => {
+        const raw = d.data();
+        let rawUrl = raw.url;
+        if (rawUrl && typeof rawUrl === 'object') {
+          rawUrl = (rawUrl as any).url || (rawUrl as any).secure_url || '';
+        } else if (rawUrl === '[object Object]') {
+          rawUrl = '';
+        }
+        return { id: d.id, ...raw, url: rawUrl } as StorageNode;
+      });
       setStorageFiles(docs.filter(d => d.type === 'file' || d.fileType === 'pdf' || d.fileType === 'image' || d.url));
     }, (err) => {
       console.warn('[Dashboard] storage_nodes listener:', err);
@@ -169,7 +179,11 @@ export const LifeHomeDashboard: React.FC = () => {
     } catch {}
 
     const pdfOrImg = storageFiles
-      .filter(f => f.fileType === 'pdf' || f.fileType === 'image' || f.url?.toLowerCase().includes('.pdf') || f.name?.toLowerCase().endsWith('.pdf') || f.name?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i))
+      .filter(f => {
+        const u = typeof f.url === 'string' ? f.url.toLowerCase() : '';
+        const name = f.name?.toLowerCase() || '';
+        return f.fileType === 'pdf' || f.fileType === 'image' || u.includes('.pdf') || name.endsWith('.pdf') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(name);
+      })
       .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
 
     if (pdfOrImg.length > 0) return pdfOrImg[0];
@@ -1034,50 +1048,105 @@ export const LifeHomeDashboard: React.FC = () => {
     return `${dayName}, ${dayNum} ${monthName} · ${timeStr} IST`;
   }, [timeStr]);
 
-  // 3-6 Real Quests dynamically compiled from user's live data (Hydration, Classes, Tasks, Habits, Focus)
+  // Real Quests dynamically compiled from user's live data:
+  // 1. Time-sorted Classes/Labs & Tasks (Chronological from morning to evening, with Class/Lab pills)
+  // 2. Instead of XP, show scheduled time from when to when on tasks and classes
+  // 3. Active habits follow active tasks and classes
+  // 4. Any task or class completed, absent, or cancelled goes to the very last
   const quests = useMemo(() => {
-    const list: Array<{
+    type QuestItem = {
       id: string;
       title: string;
+      badge?: string;
+      badgeType?: 'class' | 'lab';
+      status?: 'attended' | 'missed' | 'cancelled';
+      timeDisplay?: string;
+      timeMinutes: number;
       xp: number;
       isDone: boolean;
-      type: 'task' | 'class' | 'habit' | 'water';
+      type: 'task' | 'class' | 'habit';
       action: () => void;
-    }> = [];
+    };
 
-    // 1. Real Hydration Quest (tied to actual user water target)
-    list.push({
-      id: 'quest-water',
-      title: `Drink Water (${(waterAmount / 1000).toFixed(1)} / ${(waterTarget / 1000).toFixed(1)} L)`,
-      xp: 38,
-      isDone: waterAmount >= waterTarget,
-      type: 'water',
-      action: () => logWater(250),
-    });
+    const parseItemTimeMinutes = (timeStr?: string | null): number => {
+      if (!timeStr) return 9999;
+      const startPart = timeStr.split(/[-–]/)[0]?.trim();
+      const mins = parseTimeToMinutes(startPart);
+      return mins === 999 ? 9999 : mins;
+    };
 
-    // 2. Real Classes Quest (today's class or preview of upcoming lecture / review notes)
+    const formatWhenToWhen = (timeStr?: string | null, isLab = false, estimatedDurationMins?: number): string => {
+      if (!timeStr) return '';
+      const clean = timeStr.trim();
+      if (!clean || !/\d/.test(clean)) return '';
+
+      // If already a range (e.g. "09:00 - 10:00", "9 AM to 10 AM", "09:00–10:00")
+      if (/[-–—]|(?:\s+to\s+)/i.test(clean)) {
+        return formatTimeRangeDisplay(clean);
+      }
+
+      // Single time: e.g. "10:00 AM", "09:00", "14:30"
+      const startMins = parseTimeToMinutes(clean);
+      if (startMins === 999) return clean;
+
+      const defaultDuration = estimatedDurationMins || (isLab ? 120 : 60);
+      const endMins = (startMins + defaultDuration) % (24 * 60);
+
+      const formatMins = (mins: number) => {
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const hour12 = h % 12 || 12;
+        if (m === 0) return `${hour12}:00 ${ampm}`;
+        return `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
+      };
+
+      return `${formatMins(startMins)} – ${formatMins(endMins)}`;
+    };
+
+    const scheduledQuests: QuestItem[] = [];
+
+    // 1. Classes & Labs (with Class / Lab pill badge)
     if (todayClasses.length > 0) {
       todayClasses.forEach(cls => {
-        list.push({
+        let mins = cls.timeMins !== undefined && cls.timeMins !== 999 ? cls.timeMins : parseItemTimeMinutes(cls.time);
+        if (mins === 999) mins = 9999;
+
+        const isAtt = !!cls.isAttended;
+        const isMis = !!cls.isMissed;
+        const isCan = !!cls.isCancelled;
+        const isLogged = isAtt || isMis || isCan;
+        const timeRangeStr = formatWhenToWhen(cls.time, cls.type === 'lab');
+
+        scheduledQuests.push({
           id: `quest-class-${cls.id}`,
           title: `Attend ${cls.title}`,
+          badge: cls.type === 'lab' ? 'Lab' : 'Class',
+          badgeType: cls.type === 'lab' ? 'lab' : 'class',
+          status: isMis ? 'missed' : isCan ? 'cancelled' : isAtt ? 'attended' : undefined,
+          timeDisplay: timeRangeStr,
+          timeMinutes: mins,
           xp: 35,
-          isDone: !!cls.isAttended,
+          isDone: isLogged,
           type: 'class',
           action: () => {
-            if (!cls.isAttended) {
+            if (!isLogged) {
               handleLogAttendance(cls.subject, cls.type, 'attended', cls.idx);
             } else if (cls.logId) {
-              handleUndoAttendance(cls.logId, cls.subject, cls.action || 'attended', cls.type);
+              handleUndoAttendance(cls.logId, cls.subject, cls.action || (isMis ? 'missed' : isCan ? 'cancelled' : 'attended'), cls.type);
             }
           },
         });
       });
     } else if (nextUpcomingClassesInfo.classes.length > 0) {
       const topNext = nextUpcomingClassesInfo.classes[0];
-      list.push({
+      scheduledQuests.push({
         id: `quest-class-prep`,
         title: `Prep for ${topNext.title} (${nextUpcomingClassesInfo.dayName})`,
+        badge: topNext.type === 'lab' ? 'Lab' : 'Class',
+        badgeType: topNext.type === 'lab' ? 'lab' : 'class',
+        timeDisplay: formatWhenToWhen(topNext.time, topNext.type === 'lab'),
+        timeMinutes: parseItemTimeMinutes(topNext.time),
         xp: 30,
         isDone: false,
         type: 'class',
@@ -1085,9 +1154,13 @@ export const LifeHomeDashboard: React.FC = () => {
       });
     } else if ((attendanceSubjects || []).length > 0) {
       const topSubj = attendanceSubjects[0];
-      list.push({
+      scheduledQuests.push({
         id: `quest-academic-notes`,
         title: `Review ${topSubj.name} notes`,
+        badge: 'Class',
+        badgeType: 'class',
+        timeDisplay: '',
+        timeMinutes: 9999,
         xp: 30,
         isDone: false,
         type: 'class',
@@ -1095,12 +1168,19 @@ export const LifeHomeDashboard: React.FC = () => {
       });
     }
 
-    // 3. Real Today's Tasks Quests (today's tasks, overdue tasks, or inbox tasks)
+    // 2. Real Today's Tasks
     const actionableTasks = todayTasks.length > 0 ? todayTasks : inboxTasks;
-    actionableTasks.slice(0, 3).forEach(t => {
-      list.push({
+    actionableTasks.forEach(t => {
+      const parsedTime = parseNLTask(t.title || t.text || '').timeSlot;
+      const rawTime = t.timeSlot || (t as any).time || parsedTime;
+      const mins = parseItemTimeMinutes(rawTime);
+      const timeRangeStr = formatWhenToWhen(rawTime, false, t.estimatedMinutes);
+
+      scheduledQuests.push({
         id: `quest-task-${t.id}`,
         title: t.title || t.text || 'Daily Task',
+        timeDisplay: timeRangeStr,
+        timeMinutes: mins,
         xp: 50,
         isDone: t.status === 'completed',
         type: 'task',
@@ -1108,12 +1188,14 @@ export const LifeHomeDashboard: React.FC = () => {
       });
     });
 
-    // 4. Real User Habits Quests (from user's real habits)
-    (habits || []).slice(0, 3).forEach(h => {
+    // 3. Real User Habits Quests
+    const habitQuests: QuestItem[] = [];
+    (habits || []).forEach(h => {
       const done = isHabitDone(h.id);
-      list.push({
+      habitQuests.push({
         id: `quest-habit-${h.id}`,
         title: h.name || h.title || 'Daily Habit',
+        timeMinutes: 99999,
         xp: 40,
         isDone: done,
         type: 'habit',
@@ -1121,32 +1203,26 @@ export const LifeHomeDashboard: React.FC = () => {
       });
     });
 
-    // 5. Pomodoro Focus Block Quest
-    if (list.length < 5) {
-      const focusDone = (pomodoroSessions || []).some(s => {
-        const sDate = s.date || (s.startTime ? getLocalDateString(new Date(s.startTime)) : '');
-        return sDate === todayStr;
-      }) || doneTasks.length > 0;
+    // ── Sorting Rules ──
+    // 1. Active scheduled items (classes, labs, timed tasks morning-to-evening, untimed next)
+    const activeScheduled = scheduledQuests
+      .filter(q => !q.isDone)
+      .sort((a, b) => a.timeMinutes - b.timeMinutes);
 
-      list.push({
-        id: 'quest-focus',
-        title: 'Finish 25m focus block',
-        xp: 25,
-        isDone: focusDone,
-        type: 'task',
-        action: () => {
-          const t = pendingTasks[0] || inboxTasks[0];
-          startTimer(t?.id || 'focus-block', t?.title || 'Deep Work Focus', undefined, undefined, 25);
-          toast.success('Pomodoro Focus started: 25m');
-        },
-      });
-    }
+    // 2. Active habits
+    const activeHabits = habitQuests.filter(q => !q.isDone);
 
-    return list;
+    // 3. Completed, absent, or cancelled items strictly sink to the very end ("gone to the last")
+    const completedScheduled = scheduledQuests
+      .filter(q => q.isDone)
+      .sort((a, b) => a.timeMinutes - b.timeMinutes);
+    const completedHabits = habitQuests.filter(q => q.isDone);
+
+    return [...activeScheduled, ...activeHabits, ...completedScheduled, ...completedHabits];
   }, [
-    waterAmount, waterTarget, todayClasses, nextUpcomingClassesInfo, attendanceSubjects,
+    todayClasses, nextUpcomingClassesInfo, attendanceSubjects,
     todayTasks, inboxTasks, habits, habitLogs, optimisticHabits,
-    pomodoroSessions, doneTasks, pendingTasks, todayStr, navigate
+    todayStr, navigate
   ]);
 
   // Group upcoming tasks by relative day (Tomorrow, In 2 days, etc.)
@@ -1280,17 +1356,38 @@ export const LifeHomeDashboard: React.FC = () => {
                 {quests.map(q => (
                   <div
                     key={q.id}
-                    className={`quest-item ${q.isDone ? 'done' : ''}`}
+                    className={`quest-item ${q.isDone ? 'done' : ''} ${q.status || ''}`}
                     onClick={q.action}
                     title="Click to advance or toggle quest"
                   >
                     <div className="quest-left">
-                      <div className={`quest-checkbox ${q.isDone ? 'checked' : ''}`}>
-                        {q.isDone && <Check size={11} strokeWidth={3.2} />}
+                      <div className={`quest-checkbox ${q.isDone ? 'checked' : ''} ${q.status || ''}`}>
+                        {q.status === 'missed' ? (
+                          <X size={10} strokeWidth={3} />
+                        ) : q.status === 'cancelled' ? (
+                          <Ban size={10} strokeWidth={2.5} />
+                        ) : q.isDone ? (
+                          <Check size={11} strokeWidth={3.2} />
+                        ) : null}
                       </div>
                       <span className="quest-title">{q.title}</span>
+                      {q.badge && (
+                        <span className={`quest-pill ${q.badgeType}`}>
+                          {q.badge}
+                        </span>
+                      )}
+                      {q.status === 'missed' && (
+                        <span className="quest-status-chip missed">Absent</span>
+                      )}
+                      {q.status === 'cancelled' && (
+                        <span className="quest-status-chip cancelled">Cancelled</span>
+                      )}
                     </div>
-                    <span className="quest-xp-badge">+{q.xp} XP</span>
+                    {q.timeDisplay ? (
+                      <span className="quest-time-badge">{q.timeDisplay}</span>
+                    ) : q.type === 'habit' ? (
+                      <span className="quest-xp-badge">+{q.xp} XP</span>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -1339,16 +1436,20 @@ export const LifeHomeDashboard: React.FC = () => {
                         className={`center-class-row ${cls.isAttended ? 'attended' : cls.isMissed ? 'missed' : cls.isCancelled ? 'cancelled' : ''}`}
                       >
                         <div className="center-class-left">
-                          <GraduationCap
-                            size={15}
-                            className={`class-icon ${cls.isAttended ? 'text-green' : cls.isMissed ? 'text-red' : 'text-cyan'}`}
-                          />
+                          <div className={`center-class-icon-badge ${cls.type}`}>
+                            {cls.type === 'lab' ? (
+                              <FlaskConical size={15} strokeWidth={2.2} />
+                            ) : (
+                              <BookOpen size={15} strokeWidth={2.2} />
+                            )}
+                          </div>
                           <div className="center-class-info">
                             <div className="center-class-title-line">
                               <span className="center-class-name">{cls.title}</span>
                               <span className={`center-class-tag ${cls.type}`}>{cls.type.toUpperCase()}</span>
                             </div>
                             <div className="center-class-meta">
+                              <Clock size={11} strokeWidth={2.2} className="center-class-clock-icon" />
                               <span className="center-class-time">{cls.time}</span>
                               {cls.room && <span className="center-class-room">• {cls.room}</span>}
                             </div>
@@ -1378,7 +1479,7 @@ export const LifeHomeDashboard: React.FC = () => {
                                 onClick={() => handleLogAttendance(cls.subject, cls.type, 'attended', cls.idx)}
                                 title="Mark Present (+30 XP)"
                               >
-                                <Check size={11} strokeWidth={3} />
+                                <Check size={11} strokeWidth={2.8} />
                                 <span>Present</span>
                               </button>
                               <button
@@ -1387,6 +1488,7 @@ export const LifeHomeDashboard: React.FC = () => {
                                 onClick={() => handleLogAttendance(cls.subject, cls.type, 'missed', cls.idx)}
                                 title="Mark Absent"
                               >
+                                <X size={11} strokeWidth={2.8} />
                                 <span>Absent</span>
                               </button>
                               <button
@@ -1395,7 +1497,7 @@ export const LifeHomeDashboard: React.FC = () => {
                                 onClick={() => handleLogAttendance(cls.subject, cls.type, 'cancelled', cls.idx)}
                                 title="Mark Cancelled"
                               >
-                                <Ban size={11} />
+                                <Ban size={12} strokeWidth={2.2} />
                               </button>
                             </div>
                           )}
@@ -1447,7 +1549,10 @@ export const LifeHomeDashboard: React.FC = () => {
                               <span className="task-overdue-pill">Overdue</span>
                             )}
                             {task.timeSlot && (
-                              <span className="task-time-pill">{formatTimeRangeDisplay(task.timeSlot)}</span>
+                              <span className="task-time-pill">
+                                <Clock size={10} strokeWidth={2.2} />
+                                <span>{formatTimeRangeDisplay(task.timeSlot)}</span>
+                              </span>
                             )}
                             {task.priority && (
                               <span className={`upcoming-priority-tag p-${task.priority}`}>
@@ -1470,7 +1575,7 @@ export const LifeHomeDashboard: React.FC = () => {
                                 }}
                                 title="Start Focus Timer"
                               >
-                                <Timer size={13} />
+                                <Timer size={12} strokeWidth={2.2} />
                               </button>
                             )}
                           </div>

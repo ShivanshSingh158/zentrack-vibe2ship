@@ -34,8 +34,10 @@ import { playPopSound } from '../../utils/sound';
 import { usePomodoroContext } from '../../contexts/PomodoroContext';
 import { DragDropContext, Droppable } from '@hello-pangea/dnd';
 import { awardXP } from '../../services/xpSystem';
-import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
+import { getLocalDateString, formatDisplayDate, parseNLTask, cleanTaskTitle, toYMD, parseLocalDate, extractTaskDurationMinutes } from '../../utils/dateUtils';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { RecurringDeleteDialog } from './RecurringDeleteDialog';
+import { useRecurringSpawn } from './useRecurringSpawn';
 import { EditTodoModal } from './EditTodoModal';
 import { TodoCard, CompletedTodoItem } from './TodoCard';
 import { TimelineView } from './TimelineView';
@@ -53,6 +55,9 @@ export const TodoListModule: React.FC = () => {
   const user = auth.currentUser;
   const todayStr = useMemo(() => getLocalDateString(new Date()), []);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+
+  // Cross-device recurring task spawner: auto-creates today's occurrence for active daily habits/tasks
+  useRecurringSpawn(globalTodos, user?.uid);
 
   // PERFECT_DAY: fires once per day when all today's tasks + all habits are done
   const checkPerfectDayAfterTask = useCallback(async (justCompletedId: string) => {
@@ -155,6 +160,12 @@ export const TodoListModule: React.FC = () => {
     parentId?: string;
   }>({ isOpen: false, type: 'task', id: '' });
 
+  // Recurring Delete Dialog
+  const [recurringDeleteTarget, setRecurringDeleteTarget] = useState<{
+    task: TodoItem;
+    futureCount: number;
+  } | null>(null);
+
   const { startTimer } = usePomodoroContext();
 
   // Filter states
@@ -171,53 +182,136 @@ export const TodoListModule: React.FC = () => {
     return Array.from(set);
   }, [activeGlobalTodos]);
 
-  // Handle Raycast-Style Fast Natural Language Quick Capture
+  // Handle Raycast-Style Fast Natural Language Quick Capture with Full NLP
   const handleQuickCapture = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickInput.trim() || !user) return;
 
-    let text = quickInput.trim();
-    let priority: 'low' | 'medium' | 'high' = 'medium';
-    let timeSlot: string | null = null;
-    const tags: string[] = [];
-
-    // Parse priority (!p1, !p2, !p3 or p1, p2, p3)
-    if (/\b(?:!|p)1\b/i.test(text)) {
-      priority = 'high';
-      text = text.replace(/\b(?:!|p)1\b/gi, '').trim();
-    } else if (/\b(?:!|p)2\b/i.test(text)) {
-      priority = 'medium';
-      text = text.replace(/\b(?:!|p)2\b/gi, '').trim();
-    } else if (/\b(?:!|p)3\b/i.test(text)) {
-      priority = 'low';
-      text = text.replace(/\b(?:!|p)3\b/gi, '').trim();
-    }
-
-    // Parse tags (#tag)
-    const tagMatches = text.match(/#([a-zA-Z0-9_-]+)/g);
-    if (tagMatches) {
-      tagMatches.forEach(t => tags.push(t.replace('#', '')));
-      text = text.replace(/#([a-zA-Z0-9_-]+)/g, '').trim();
-    }
-
-    // Parse time (e.g. at 4pm, 14:30, 4:30pm)
-    const timeMatch = text.match(/\b(?:at\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b/i);
-    if (timeMatch && (timeMatch[0].toLowerCase().includes('am') || timeMatch[0].toLowerCase().includes('pm') || timeMatch[0].includes(':'))) {
-      timeSlot = timeMatch[1].trim();
-      text = text.replace(timeMatch[0], '').trim();
-    }
-
+    const parsed = parseNLTask(quickInput);
+    const finalTitle = cleanTaskTitle(parsed.title || quickInput.trim());
     const count = todos.filter(t => t.status !== 'completed').length;
+    const fullTimeSlot = parsed.timeSlot
+      ? (parsed.endTimeSlot && !parsed.timeSlot.includes('-') ? `${parsed.timeSlot} - ${parsed.endTimeSlot}` : parsed.timeSlot)
+      : null;
+    const resolvedDuration = parsed.durationMinutes
+      || (fullTimeSlot ? extractTaskDurationMinutes(null, fullTimeSlot, finalTitle) : null);
+
+    // 1. Multi-day one-time dates (e.g. "submit report on monday and wednesday")
+    if (parsed.oneTimeDates && parsed.oneTimeDates.length > 1) {
+      const batch = writeBatch(db);
+      for (const d of parsed.oneTimeDates) {
+        const docRef = doc(collection(db, 'todos'));
+        batch.set(docRef, {
+          userId: user.uid,
+          title: finalTitle,
+          text: finalTitle,
+          date: d,
+          status: 'pending',
+          priority: parsed.priority || 'medium',
+          timeSlot: fullTimeSlot,
+          estimatedMinutes: resolvedDuration,
+          subtasks: (parsed.subtasks || []).map((s, idx) => ({ id: `st-${Date.now()}-${idx}`, title: s, completed: false, status: 'pending' })),
+          tags: parsed.tags || [],
+          isRecurring: false,
+          createdAt: Date.now(),
+          order: count,
+        });
+      }
+      try {
+        await batch.commit();
+        playPopSound();
+        toast.success(`Created ${parsed.oneTimeDates.length} tasks across scheduled days ⚡`);
+        setQuickInput('');
+      } catch (err) {
+        console.error(err);
+        toast.error('Failed to create multi-day tasks');
+      }
+      return;
+    }
+
+    // 2. Recurring tasks (e.g. "go for run daily at 7am")
+    if (parsed.isRecurring && parsed.recurrenceRule) {
+      const rule = parsed.recurrenceRule;
+      const sourceId = `rec_${Date.now()}`;
+      const baseDateStr = parsed.date || selectedDate || getLocalDateString();
+      let curr = parseLocalDate(baseDateStr);
+      const end = rule.endDate
+        ? parseLocalDate(rule.endDate)
+        : new Date(curr.getTime() + 60 * 24 * 60 * 60 * 1000); // 60 days window
+
+      if (rule.type === 'weekly' && rule.daysOfWeek && rule.daysOfWeek.length > 0) {
+        while (!rule.daysOfWeek.includes(curr.getDay())) {
+          curr.setDate(curr.getDate() + 1);
+        }
+      }
+
+      const batch = writeBatch(db);
+      let instancesCount = 0;
+      const MAX_INSTANCES = 60;
+
+      while (curr <= end && instancesCount < MAX_INSTANCES) {
+        const docRef = doc(collection(db, 'todos'));
+        const dateStr = toYMD(curr);
+        batch.set(docRef, {
+          userId: user.uid,
+          title: finalTitle,
+          text: finalTitle,
+          date: dateStr,
+          status: 'pending',
+          priority: parsed.priority || 'medium',
+          timeSlot: fullTimeSlot,
+          estimatedMinutes: resolvedDuration,
+          subtasks: (parsed.subtasks || []).map((s, idx) => ({ id: `st-${Date.now()}-${idx}`, title: s, completed: false, status: 'pending' })),
+          tags: parsed.tags || [],
+          isRecurring: true,
+          recurrenceRule: rule,
+          recurringSourceId: sourceId,
+          createdAt: Date.now(),
+          order: count,
+        });
+        instancesCount++;
+
+        if (rule.type === 'daily' || rule.type === 'custom') {
+          curr.setDate(curr.getDate() + (rule.interval || 1));
+        } else if (rule.type === 'weekly') {
+          if (rule.daysOfWeek && rule.daysOfWeek.length > 0) {
+            do {
+              curr.setDate(curr.getDate() + 1);
+            } while (curr <= end && !rule.daysOfWeek.includes(curr.getDay()));
+          } else {
+            curr.setDate(curr.getDate() + 7 * (rule.interval || 1));
+          }
+        } else if (rule.type === 'monthly') {
+          curr.setMonth(curr.getMonth() + (rule.interval || 1));
+        } else {
+          break;
+        }
+      }
+
+      try {
+        await batch.commit();
+        playPopSound();
+        toast.success(`Created recurring task: "${finalTitle}" (${instancesCount} instances) ⚡`);
+        setQuickInput('');
+      } catch (err) {
+        console.error(err);
+        toast.error('Failed to create recurring tasks');
+      }
+      return;
+    }
+
+    // 3. Standard task
     const newDoc: any = {
       userId: user.uid,
-      title: text || quickInput.trim(),
-      text: text || quickInput.trim(),
-      date: selectedDate,
+      title: finalTitle,
+      text: finalTitle,
+      date: parsed.date || selectedDate,
       status: 'pending',
-      priority,
-      timeSlot,
-      subtasks: [],
-      tags,
+      priority: parsed.priority || 'medium',
+      timeSlot: fullTimeSlot,
+      estimatedMinutes: resolvedDuration,
+      subtasks: (parsed.subtasks || []).map((s, idx) => ({ id: `st-${Date.now()}-${idx}`, title: s, completed: false, status: 'pending' })),
+      tags: parsed.tags || [],
       isRecurring: false,
       createdAt: Date.now(),
       order: count,
@@ -226,7 +320,7 @@ export const TodoListModule: React.FC = () => {
     try {
       await addDoc(collection(db, 'todos'), newDoc);
       playPopSound();
-      toast.success(`Task added: "${newDoc.title}" ⚡`);
+      toast.success(`Task added: "${finalTitle}" ⚡`);
       setQuickInput('');
     } catch (err) {
       console.error(err);
@@ -484,9 +578,92 @@ export const TodoListModule: React.FC = () => {
     }
   };
 
-  const handleDeleteTask = (id: string) => {
-    setDeleteConfirm({ isOpen: true, type: 'task', id });
-  };
+  // Helper to find all matching tasks in a recurring series
+  const getMatchingRecurringTasks = useCallback((task: TodoItem) => {
+    return globalTodos.filter(t => {
+      const inSameGroup = task.recurringSourceId
+        ? t.recurringSourceId === task.recurringSourceId
+        : (t.title?.toLowerCase().trim() === task.title?.toLowerCase().trim() && (t.isRecurring || task.isRecurring));
+      // Same group and future/same date (or all if either has no date)
+      const isFutureOrSame = !task.date || !t.date || t.date >= task.date;
+      return inSameGroup && isFutureOrSame;
+    });
+  }, [globalTodos]);
+
+  const handleDeleteTask = useCallback((id: string) => {
+    const task = globalTodos.find(t => t.id === id);
+    if (!task) return;
+
+    const matching = getMatchingRecurringTasks(task);
+    const isRecurring = Boolean(
+      task.isRecurring ||
+      task.recurringSourceId ||
+      (task.recurrenceRule && task.recurrenceRule.type !== 'once') ||
+      matching.length > 1
+    );
+
+    // If it's a recurring task with multiple occurrences, ask the user!
+    if (isRecurring && matching.length > 1) {
+      setRecurringDeleteTarget({ task, futureCount: matching.length });
+    } else {
+      setDeleteConfirm({ isOpen: true, type: 'task', id });
+    }
+  }, [globalTodos, getMatchingRecurringTasks]);
+
+  const handleDeleteOnlyThis = useCallback(async () => {
+    if (!recurringDeleteTarget?.task?.id) return;
+    const { task } = recurringDeleteTarget;
+    const id = task.id!;
+    setRecurringDeleteTarget(null);
+
+    // 1. Instantly remove from UI (0ms delay)
+    setOptimisticDeletedIds(prev => new Set([...prev, id]));
+    toast.success('Deleted task occurrence');
+
+    // 2. Asynchronous background deletion
+    try {
+      await deleteDoc(doc(db, 'todos', id));
+    } catch (err) {
+      console.error('Failed to delete single recurring task:', err);
+      toast.error('Failed to delete task. Restoring...');
+      setOptimisticDeletedIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }, [recurringDeleteTarget]);
+
+  const handleDeleteAllFuture = useCallback(async () => {
+    if (!recurringDeleteTarget?.task) return;
+    const { task } = recurringDeleteTarget;
+    const matching = getMatchingRecurringTasks(task);
+    const idsToDelete = matching.map(t => t.id).filter(Boolean) as string[];
+    setRecurringDeleteTarget(null);
+
+    if (idsToDelete.length === 0) return;
+
+    // 1. Instantly remove all from UI (0ms delay)
+    setOptimisticDeletedIds(prev => new Set([...prev, ...idsToDelete]));
+    toast.success(`Deleted ${idsToDelete.length} recurring occurrences`);
+
+    // 2. Asynchronous background batch deletion
+    try {
+      const batch = writeBatch(db);
+      idsToDelete.forEach(id => {
+        batch.delete(doc(db, 'todos', id));
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error('Failed to batch delete recurring tasks:', err);
+      toast.error('Failed to delete recurring tasks. Restoring...');
+      setOptimisticDeletedIds(prev => {
+        const next = new Set(prev);
+        idsToDelete.forEach(id => next.delete(id));
+        return next;
+      });
+    }
+  }, [recurringDeleteTarget, getMatchingRecurringTasks]);
 
   const confirmDelete = () => {
     const { type, id } = deleteConfirm;
@@ -1010,7 +1187,17 @@ export const TodoListModule: React.FC = () => {
         }}
       />
 
-      {/* 8. Confirm Delete Dialog */}
+      {/* 8. Recurring Delete Dialog */}
+      <RecurringDeleteDialog
+        isOpen={!!recurringDeleteTarget}
+        onClose={() => setRecurringDeleteTarget(null)}
+        task={recurringDeleteTarget?.task || null}
+        futureCount={recurringDeleteTarget?.futureCount || 1}
+        onDeleteOnlyThis={handleDeleteOnlyThis}
+        onDeleteAll={handleDeleteAllFuture}
+      />
+
+      {/* 9. Confirm Delete Dialog */}
       <ConfirmDialog
         open={deleteConfirm.isOpen}
         isOpen={deleteConfirm.isOpen}

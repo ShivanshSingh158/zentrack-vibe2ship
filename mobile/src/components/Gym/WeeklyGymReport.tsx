@@ -421,20 +421,23 @@ export const WeeklyGymReport = React.memo(function WeeklyGymReport({ gymLogs, we
   // ── Daily Volume Bar Chart Data (Mon–Sun) ──────────────────────────────────
   const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   const dailyVolume = useMemo(() => {
-    return weekDates.map(date => {
-      const log = weekLogs.find(l => l.date === date);
-      if (!log) return 0;
-      return (log.exercises ?? []).reduce((sum: number, ex: any) => {
-        if (ex.skipped) return sum;
-        return (
-          sum +
-          (ex.setsLog ?? [])
-            .filter((s: any) => s.completed)
-            .reduce((s2: number, s: any) => s2 + (s.weight ?? 0) * (s.reps ?? 0), 0)
-        );
-      }, 0);
+    const cacheKey = `weekly_cur_daily_vol_${weekAnchorDate}_${generateDatasetFingerprint(weekLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      return weekDates.map(date => {
+        const log = weekLogs.find(l => l.date === date);
+        if (!log) return 0;
+        return (log.exercises ?? []).reduce((sum: number, ex: any) => {
+          if (ex.skipped) return sum;
+          return (
+            sum +
+            (ex.setsLog ?? [])
+              .filter((s: any) => s.completed)
+              .reduce((s2: number, s: any) => s2 + (s.weight ?? 0) * (s.reps ?? 0), 0)
+          );
+        }, 0);
+      });
     });
-  }, [weekLogs, weekDates]);
+  }, [weekLogs, weekDates, weekAnchorDate]);
 
   const maxDailyVol = useMemo(() => Math.max(1, ...dailyVolume), [dailyVolume]);
 
@@ -578,15 +581,21 @@ export const WeeklyGymReport = React.memo(function WeeklyGymReport({ gymLogs, we
   }, [gymLogs, weekAnchorDate]);
 
   // ── Heatmap data (90 days of volume) ─────────────────────────────────────
+  // FIX 2: Wrapped in computeOrGetHotCache — previously the only heavy memo
+  // NOT protected by the hot cache. Every Firestore snapshot (which replaces
+  // gymLogs by reference) caused a full re-scan of all 90+ historical sessions.
   const heatmapData = useMemo(() => {
-    return gymLogs.map(log => {
-      const vol = (log.exercises ?? []).reduce((sum: number, ex: any) => {
-        if (ex.skipped) return sum;
-        return sum + (ex.setsLog ?? [])
-          .filter((s: any) => s.completed)
-          .reduce((s2: number, s: any) => s2 + (Number(s.weight) || 0) * (Number(s.reps) || 0), 0);
-      }, 0);
-      return { date: log.date, volume: vol };
+    const cacheKey = `weekly_report_heatmap_${generateDatasetFingerprint(gymLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      return gymLogs.map(log => {
+        const vol = (log.exercises ?? []).reduce((sum: number, ex: any) => {
+          if (ex.skipped) return sum;
+          return sum + (ex.setsLog ?? [])
+            .filter((s: any) => s.completed)
+            .reduce((s2: number, s: any) => s2 + (Number(s.weight) || 0) * (Number(s.reps) || 0), 0);
+        }, 0);
+        return { date: log.date, volume: vol };
+      });
     });
   }, [gymLogs]);
 
@@ -607,17 +616,20 @@ export const WeeklyGymReport = React.memo(function WeeklyGymReport({ gymLogs, we
 
   // ── Last week daily volume for trend overlay ──────────────────────────────
   const prevDailyVolume = useMemo(() => {
-    return prevDates.map(date => {
-      const log = prevLogs.find(l => l.date === date);
-      if (!log) return 0;
-      return (log.exercises ?? []).reduce((sum: number, ex: any) => {
-        if (ex.skipped) return sum;
-        return sum + (ex.setsLog ?? [])
-          .filter((s: any) => s.completed)
-          .reduce((s2: number, s: any) => s2 + (Number(s.weight) || 0) * (Number(s.reps) || 0), 0);
-      }, 0);
+    const cacheKey = `weekly_prev_daily_vol_${weekAnchorDate}_${generateDatasetFingerprint(prevLogs)}`;
+    return computeOrGetHotCache(cacheKey, () => {
+      return prevDates.map(date => {
+        const log = prevLogs.find(l => l.date === date);
+        if (!log) return 0;
+        return (log.exercises ?? []).reduce((sum: number, ex: any) => {
+          if (ex.skipped) return sum;
+          return sum + (ex.setsLog ?? [])
+            .filter((s: any) => s.completed)
+            .reduce((s2: number, s: any) => s2 + (Number(s.weight) || 0) * (Number(s.reps) || 0), 0);
+        }, 0);
+      });
     });
-  }, [prevLogs, prevDates]);
+  }, [prevLogs, prevDates, weekAnchorDate]);
 
   // ── GYM-GPT Weekly Intelligence Hook & State ──────────────────────────────
   const [aiAnalysis, setAiAnalysis] = useState<WeeklyGymAnalysis | null>(null);

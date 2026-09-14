@@ -1541,7 +1541,17 @@ Four targeted performance fixes to eliminate lag when switching away from the we
   - `activeLoggingStyles.ts` already calculates `paddingTop: (RNStatusBar.currentHeight || 40) + 8` on Android. By removing the second top safe-area inset from `react-native-safe-area-context`, the extra 40px+ empty black gap above the header (`Exercise X of Y`) on Android is completely eliminated, restoring the clean, tight native spacing.
 - **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
 
+---
 
+### 2026-09-14 — ActiveLoggingScreen: Online Set-Log Flicker Fix
 
+- **FIXED** `mobile/src/hooks/useGymLog.ts`:
+  - **Root cause**: When online, Firestore echoes the write back as a snapshot within ~200–500ms. The `recentLocalWrite` guard window was only 2000ms but the optimistic update path (via `unstable_batchedUpdates` → `optimisticUpdateGymLog`) also triggers a `gymLogs` change, which re-runs the large `useEffect` at line 127. On the second or third Firestore echo (e.g. server timestamp resolution), the guard window had already expired, causing `setLog()` to re-run and re-apply Firestore data — visually flickering the completed set row.
+- **FIXED** `mobile/src/contexts/domains/WellnessContext.tsx` **(PRIMARY FIX)**:
+  - **Root cause**: Firestore fires `onSnapshot` **twice** per write when online — first with `hasPendingWrites: true` (local echo, immediate), then with `hasPendingWrites: false` (server-confirmed, ~500ms). Both updates changed `gymLogs` state → re-ran `useGymLog`'s big `useEffect` → called `setLog()` with Firestore data → **flickered the completed set row**.
+  - **Fix**: Added `if (snap.metadata.hasPendingWrites) return;` at the top of the `gymLogs` snapshot handler. This blocks echo #1 entirely. Since we already applied the optimistic update via `optimisticUpdateGymLog`, the UI never sees a stale state.
+- **FIXED** `mobile/src/hooks/useGymLog.ts` **(SECONDARY GUARD)**:
+  - Added `firestoreIsStale` guard: compares total completed-set count between local state and Firestore. If Firestore has *fewer* completed sets than local, the snapshot is definitively stale and skipped — covers echo #2 (server-confirmed) for high-latency connections where the 5s grace window might not be enough.
+  - Extended `recentLocalWrite` grace window from 2000ms → 5000ms as a belt-and-suspenders fallback.
 
 

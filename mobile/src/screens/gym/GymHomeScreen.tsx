@@ -25,7 +25,11 @@ import { GymExerciseOptionsSheet } from '../../components/Gym/GymExerciseOptions
 import { useGymAiPlanManager } from '../../hooks/useGymAiPlanManager';
 import GymExerciseDraggableRow from '../../components/Gym/GymExerciseDraggableRow';
 import GymWorkoutBanner from '../../components/Gym/GymWorkoutBanner';
-import WeeklyGymReport from '../../components/Gym/WeeklyGymReport';
+// ─── Weekly Report: Lazy-loaded — only shown on rest days (e.g. Sunday).
+// Avoids parsing the 1,264-line component + all chart sub-imports on cold boot
+// for the ~6 non-rest days per week where it's never rendered.
+const WeeklyGymReport = React.lazy(() => import('../../components/Gym/WeeklyGymReport'));
+import WeeklyReportSkeleton from '../../components/Gym/WeeklyReportSkeleton';
 import { useGymPlanPreCache } from '../../hooks/useGymPlanPreCache';
 import GymHomeSkeleton from '../../components/Gym/GymHomeSkeleton';
 import {
@@ -96,6 +100,25 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
       });
       return () => handle.cancel();
     }, [pillAnim, refreshGeofenceStatus])
+  );
+
+  // ── FIX 1: Deferred WeeklyGymReport mount on rest days ───────────────────
+  // On Sunday/rest days, rendering WeeklyGymReport synchronously blocks the JS
+  // thread for 100–500ms because its 9 useMemos (heatmap, strength sparklines,
+  // muscle stats, etc.) all execute in the same frame as GymHomeScreen mount.
+  // Strategy: start with false, flip to true after the entry animation completes.
+  // The skeleton renders instantly; analytics hydrate ~100ms later.
+  const [weeklyReportReady, setWeeklyReportReady] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      // Reset on every focus so navigating away and back re-shows skeleton
+      // briefly (prevents showing stale data while new gymLogs are loading).
+      setWeeklyReportReady(false);
+      const handle = InteractionManager.runAfterInteractions(() => {
+        setWeeklyReportReady(true);
+      });
+      return () => handle.cancel();
+    }, [])
   );
 
   const { gymLogs, gymLogsReady, waterLogs, sleepLogs, applyMasterTemplate, userGymPlan, updateMasterPlan, updateFullMasterPlan } = useWellnessData();
@@ -574,7 +597,17 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
       )}
 
       {planDay?.isRest ? (
-        <WeeklyGymReport gymLogs={gymLogs} weekAnchorDate={selectedDate} userGymPlan={userGymPlan} />
+        weeklyReportReady ? (
+          // ── FIX 1 + FIX 3: WeeklyGymReport is now lazy-loaded AND deferred.
+          // Suspense fallback shows if the lazy chunk hasn't downloaded yet (first open).
+          // weeklyReportReady gate ensures the component only mounts AFTER the screen
+          // entry animation completes, giving the JS thread time to breathe.
+          <Suspense fallback={<WeeklyReportSkeleton />}>
+            <WeeklyGymReport gymLogs={gymLogs} weekAnchorDate={selectedDate} userGymPlan={userGymPlan} />
+          </Suspense>
+        ) : (
+          <WeeklyReportSkeleton />
+        )
       ) : (
         <>
           {selectedDate === todayStr() && (() => {
@@ -1026,7 +1059,10 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
                     </TouchableOpacity>
                   </View>
                   <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-                    <WeeklyGymReport gymLogs={gymLogs} weekAnchorDate={selectedDate} userGymPlan={userGymPlan} />
+                    {/* Wrap in Suspense for the lazy import chunk */}
+                    <Suspense fallback={<WeeklyReportSkeleton />}>
+                      <WeeklyGymReport gymLogs={gymLogs} weekAnchorDate={selectedDate} userGymPlan={userGymPlan} />
+                    </Suspense>
                   </ScrollView>
                 </SafeAreaView>
               </Modal>

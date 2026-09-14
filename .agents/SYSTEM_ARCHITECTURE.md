@@ -521,6 +521,7 @@ User clicks "Connect Google" → signInWithGoogle() in googleCalendar.ts
 | `agent-stop-conversation-command` | Idle timer (30s), user action | `VoiceContext.tsx` | `{}` |
 | `show-mission-report` | User explicit action only | `HomeDashboard.tsx` | `{ report: MissionReport }` |
 | `gym-log-updated` | `gym.executor.ts` | `GymModule.tsx` | `{}` |
+| `gym_workout_completed` | `useGymLog.ts` (`endWorkout`) | ALL `useGymLog` instances | `{ date: string, duration: number }` |
 | `open-new-task-modal` | `LeftSidebar.tsx`, `TodoListModule.tsx`, 'q' hotkey | `App.tsx` | `{ date?: string }` |
 | `zen-task-created` | `App.tsx` | Global subscribers | `{ title: string, ... }` |
 
@@ -597,6 +598,12 @@ User clicks "Connect Google" → signInWithGoogle() in googleCalendar.ts
 | App-wide constants | `src/config/constants.ts` |
 
 ## 12. Changelog
+
+### 2026-09-13 — Cloudinary Storage URL & Image Viewer Fix
+- **FIXED** `src/features/notes/NotesModule.tsx` — Fixed broken image preview where `uploadFileToCloudinary` returned an object `{ url, size }` and was saved directly as `url: secureUrl` in Firestore, causing `<img src={viewingFile.url}>` to evaluate to `[object Object]` and 404 with browser broken-image icon.
+- **ADDED** Auto-healing for existing Firestore `storage_nodes` documents with object URLs on load, extracting `url` string and updating Firestore in the background.
+- **ADDED** Loading spinner overlay, error fallback card with direct link/retry button, and resilient MIME/extension type detection for all image formats.
+- **UPDATED** `src/features/dashboard/LifeHomeDashboard.tsx` — Normalized `f.url` handling to prevent crashes or misses on object URLs in the recent document preview card.
 
 ### 2026-09-11 — Notification Settings Overhaul
 - **ADDED** 7 new configurable notification controls to `mobile/src/screens/NotificationsSettingsScreen.tsx`:

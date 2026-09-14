@@ -396,6 +396,11 @@ export default function ActiveLoggingScreen() {
   const userEditedFieldsRef = useRef<{ [idx: number]: { weight?: boolean; reps?: boolean } }>({});
   const lastExerciseKeyRef = useRef<string>('');
   const liveInputsRef = useRef<{ [idx: number]: { weight?: string; reps?: string } }>({});
+  // ── FIX 4: Track the previous setsLog length to detect actual add/remove events.
+  // handleLogSet already patches setInputs directly when completing a set, so the
+  // setsLog sync useEffect must not re-run setSetInputs() just because `completed`
+  // flags changed — the count hasn't changed and the data is already correct.
+  const prevSetsLengthRef = useRef<number>(-1);
   const [setInputs, setSetInputs] = useState<SetInputState[]>(() =>
     computeInitialSetInputs(exercise, gymLogs, date)
   );
@@ -571,17 +576,28 @@ export default function ActiveLoggingScreen() {
 
     const currentExId = exercise.exerciseId || exercise.name || '';
     const key = `${currentExId}-${activeExIndex}`;
+    const currentLen = exercise.setsLog.length;
 
     // Exercise switched → reset edit tracking & recompute from scratch
     if (key !== lastExerciseKeyRef.current) {
       lastExerciseKeyRef.current = key;
+      prevSetsLengthRef.current = currentLen;
       userEditedFieldsRef.current = {};
       liveInputsRef.current = {};
       setSetInputs(computeInitialSetInputs(exercise, gymLogs, date));
       return;
     }
 
-    // Same exercise: only sync completed-set values and handle adds/removes
+    // ── FIX 4: Skip the sync when set count hasn't changed (same exercise).
+    // This fires when `completed` flags change but no set was added/removed.
+    // handleLogSet() already called setSetInputs() directly for the logged set,
+    // so re-running the full map here is redundant and causes an extra render.
+    if (currentLen === prevSetsLengthRef.current) {
+      return;
+    }
+    prevSetsLengthRef.current = currentLen;
+
+    // Same exercise, set count changed (add/remove): only sync completed-set values
     setSetInputs(prev => {
       return exercise.setsLog.map((s, idx) => {
         if (s.completed) {

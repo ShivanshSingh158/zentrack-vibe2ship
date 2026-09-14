@@ -8,7 +8,7 @@ import { onSnapshot, doc, setDoc, collection, addDoc, writeBatch } from 'firebas
 import { auth, db } from './services/firebase';
 import { runModelHealthCheck } from './services/gemini/core';
 import { NewTaskModal } from './features/tasks/NewTaskModal';
-import { getLocalDateString, toYMD, parseLocalDate } from './utils/dateUtils';
+import { getLocalDateString, toYMD, parseLocalDate, extractTaskDurationMinutes } from './utils/dateUtils';
 import { playPopSound } from './utils/sound';
 import Lenis from 'lenis';
 
@@ -538,6 +538,9 @@ function App() {
   const handleGlobalCreateTask = async (taskData: any) => {
     if (!user) return;
     try {
+      const finalEstimatedMinutes = taskData.estimatedMinutes
+        || (taskData.timeSlot ? extractTaskDurationMinutes(null, taskData.timeSlot, taskData.title) : null);
+
       // 1. Multi-day one-time dates (e.g. "only this monday, wednesday and friday")
       if (taskData.oneTimeDates && taskData.oneTimeDates.length > 1) {
         const batch = writeBatch(db);
@@ -551,7 +554,7 @@ function App() {
             status: 'pending',
             priority: taskData.priority || 'medium',
             timeSlot: taskData.timeSlot || null,
-            estimatedMinutes: taskData.estimatedMinutes || null,
+            estimatedMinutes: finalEstimatedMinutes || null,
             subtasks: taskData.subtasks || [],
             tags: taskData.tags || [],
             isRecurring: false,
@@ -598,7 +601,7 @@ function App() {
             status: 'pending',
             priority: taskData.priority || 'medium',
             timeSlot: taskData.timeSlot || null,
-            estimatedMinutes: taskData.estimatedMinutes || null,
+            estimatedMinutes: finalEstimatedMinutes || null,
             subtasks: taskData.subtasks || [],
             tags: taskData.tags || [],
             isRecurring: true,
@@ -642,7 +645,7 @@ function App() {
         status: 'pending',
         priority: taskData.priority || 'medium',
         timeSlot: taskData.timeSlot || null,
-        estimatedMinutes: taskData.estimatedMinutes || null,
+        estimatedMinutes: finalEstimatedMinutes || null,
         subtasks: taskData.subtasks || [],
         tags: taskData.tags || [],
         isRecurring: false,

@@ -9,7 +9,8 @@ import {
   Folder, FileText, Trash2, X, Plus, FolderPlus,
   HardDrive, ExternalLink, Sparkles, Upload, Download,
   PanelLeftClose, PanelLeftOpen, Maximize2, Minimize2, Columns, LayoutGrid,
-  Loader2, RotateCw, RotateCcw, Edit2, ZoomIn, ZoomOut, MousePointerClick
+  Loader2, RotateCw, RotateCcw, Edit2, ZoomIn, ZoomOut, MousePointerClick,
+  Image as ImageIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -69,6 +70,8 @@ export const NotesModule = () => {
   // File Viewer State & Smooth Zoom / Pan Engine
   const [viewingFile, setViewingFile] = useState<StorageNode | null>(null);
   const [isIframeLoading, setIsIframeLoading] = useState(true);
+  const [isImageLoading, setIsImageLoading] = useState(true);
+  const [imageError, setImageError] = useState(false);
   const [pdfRotation, setPdfRotation] = useState<number>(0);
   const [pdfScale, setPdfScale] = useState<number>(1);
   const [pdfPan, setPdfPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -83,6 +86,8 @@ export const NotesModule = () => {
   useEffect(() => {
     if (viewingFile) {
       setIsIframeLoading(true);
+      setIsImageLoading(true);
+      setImageError(false);
       setPdfRotation(0);
       setPdfScale(1);
       setPdfPan({ x: 0, y: 0 });
@@ -90,6 +95,39 @@ export const NotesModule = () => {
       setIsZoomMode(false);
     }
   }, [viewingFile?.id, viewingFile?.url]);
+
+  const activeViewingFileUrl = useMemo(() => {
+    if (!viewingFile?.url) return '';
+    if (typeof viewingFile.url === 'string') {
+      return viewingFile.url === '[object Object]' ? '' : viewingFile.url;
+    }
+    if (typeof viewingFile.url === 'object') {
+      return (viewingFile.url as any).url || (viewingFile.url as any).secure_url || '';
+    }
+    return '';
+  }, [viewingFile?.url]);
+
+  const isPdfOrOfficeDoc = useMemo(() => {
+    if (!viewingFile) return false;
+    const name = viewingFile.name?.toLowerCase() || '';
+    const url = activeViewingFileUrl.toLowerCase();
+    return viewingFile.fileType === 'pdf' ||
+      viewingFile.mimeType?.includes('pdf') ||
+      url.endsWith('.pdf') ||
+      name.endsWith('.pdf') ||
+      viewingFile.fileType === 'docx' ||
+      /\.(docx?|pptx?|xlsx?)$/i.test(name);
+  }, [viewingFile, activeViewingFileUrl]);
+
+  const isImageDoc = useMemo(() => {
+    if (!viewingFile) return false;
+    const name = viewingFile.name?.toLowerCase() || '';
+    const url = activeViewingFileUrl.toLowerCase();
+    return viewingFile.fileType === 'image' ||
+      viewingFile.mimeType?.startsWith('image/') ||
+      /\.(jpg|jpeg|png|webp|gif|svg|bmp|ico)$/i.test(url) ||
+      /\.(jpg|jpeg|png|webp|gif|svg|bmp|ico)$/i.test(name);
+  }, [viewingFile, activeViewingFileUrl]);
 
   // Track Ctrl/Cmd key state to pass mousewheel events directly through cross-origin iframes
   useEffect(() => {
@@ -261,7 +299,21 @@ export const NotesModule = () => {
       } finally {
         const q = query(collection(db, 'storage_nodes'), where('userId', '==', user.uid));
         unsubscribe = onSnapshot(q, (snapshot) => {
-          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as StorageNode[];
+          const data = snapshot.docs.map(d => {
+            const raw = d.data();
+            let rawUrl = raw.url;
+            if (rawUrl && typeof rawUrl === 'object') {
+              const extracted = (rawUrl as any).url || (rawUrl as any).secure_url || '';
+              if (extracted) {
+                // Auto-heal corrupted Firestore node saved as { url, size }
+                updateDoc(doc(db, 'storage_nodes', d.id), { url: extracted }).catch(() => {});
+                rawUrl = extracted;
+              }
+            } else if (rawUrl === '[object Object]') {
+              rawUrl = '';
+            }
+            return { id: d.id, ...raw, url: rawUrl } as StorageNode;
+          });
           setNodes(data);
           setIsLoading(false);
 
@@ -455,15 +507,17 @@ export const NotesModule = () => {
         else if (file.type.includes('word') || file.name.endsWith('.docx')) fileType = 'docx';
         else if (file.type.startsWith('image/')) fileType = 'image';
 
-        const secureUrl = await uploadFileToCloudinary(file);
+        const uploadRes = await uploadFileToCloudinary(file);
+        const resolvedUrl = typeof uploadRes === 'object' && uploadRes !== null && 'url' in uploadRes ? (uploadRes as any).url : String(uploadRes || '');
+        const resolvedSize = typeof uploadRes === 'object' && uploadRes !== null && 'size' in uploadRes ? (uploadRes as any).size : file.size;
 
         await addDoc(collection(db, 'storage_nodes'), {
           userId: auth.currentUser!.uid,
           type: 'file',
           fileType,
           name: file.name,
-          url: secureUrl,
-          size: file.size,
+          url: resolvedUrl,
+          size: resolvedSize,
           mimeType: file.type,
           parentId: currentFolderId,
           createdAt: Date.now(),
@@ -971,10 +1025,10 @@ export const NotesModule = () => {
                     <span>{(!isSidebarOpen && !isFeedOpen) ? 'Show Feed' : 'Full Width'}</span>
                   </button>
 
-                  {viewingFile.url && (
+                  {activeViewingFileUrl && (
                     <>
                       <a
-                        href={viewingFile.url}
+                        href={activeViewingFileUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="notes-file-action-btn"
@@ -984,7 +1038,7 @@ export const NotesModule = () => {
                         <span>Open</span>
                       </a>
                       <a
-                        href={viewingFile.url}
+                        href={activeViewingFileUrl}
                         download={viewingFile.name}
                         className="notes-file-action-btn primary"
                         title="Download File"
@@ -1034,7 +1088,7 @@ export const NotesModule = () => {
                   />
                 )}
 
-                {viewingFile.url && (viewingFile.fileType === 'pdf' || viewingFile.mimeType?.includes('pdf') || viewingFile.url?.toLowerCase().endsWith('.pdf') || viewingFile.name?.toLowerCase().endsWith('.pdf') || viewingFile.fileType === 'docx' || viewingFile.name?.toLowerCase().match(/\.(docx?|pptx?|xlsx?)$/i)) ? (
+                {activeViewingFileUrl && isPdfOrOfficeDoc ? (
                   <>
                     {isIframeLoading && (
                       <div className="notes-preview-loading-overlay">
@@ -1054,7 +1108,7 @@ export const NotesModule = () => {
                       style={getTransformStyle()}
                     >
                       <iframe
-                        src={`https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(viewingFile.url)}`}
+                        src={`https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(activeViewingFileUrl)}`}
                         title={viewingFile.name}
                         className="notes-preview-iframe"
                         onLoad={() => setIsIframeLoading(false)}
@@ -1065,25 +1119,86 @@ export const NotesModule = () => {
                       />
                     </div>
                   </>
-                ) : viewingFile.url && (viewingFile.fileType === 'image' || viewingFile.mimeType?.startsWith('image/') || viewingFile.url?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i) || viewingFile.name?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i)) ? (
+                ) : activeViewingFileUrl && isImageDoc ? (
                   <div
                     className="notes-rotatable-wrapper notes-preview-img-container"
                     style={getTransformStyle()}
                   >
-                    <img
-                      src={viewingFile.url}
-                      alt={viewingFile.name}
-                      className="notes-preview-img"
-                      style={{
-                        pointerEvents: (isCtrlHeld || isDraggingPan || isZoomMode || pdfScale > 1) ? 'none' : 'auto',
-                      }}
-                    />
+                    {isImageLoading && !imageError && (
+                      <div className="notes-preview-loading-overlay">
+                        <div className="notes-preview-loader-card">
+                          <div className="notes-preview-spinner-ring">
+                            <Loader2 size={24} className="notes-preview-spinner animate-spin" />
+                          </div>
+                          <div className="notes-preview-loader-info">
+                            <h4 className="notes-preview-loader-title">Loading image preview...</h4>
+                            <p className="notes-preview-loader-subtitle">{viewingFile.name}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {imageError ? (
+                      <div className="notes-preview-generic-box">
+                        <ImageIcon size={44} color="#f87171" />
+                        <h4>Image preview unavailable</h4>
+                        <p>Unable to display "{viewingFile.name}". The image URL could not be rendered directly in the canvas.</p>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                          <a
+                            href={activeViewingFileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="notes-file-action-btn primary"
+                          >
+                            <ExternalLink size={13} />
+                            <span>Open Image in New Tab</span>
+                          </a>
+                          <button
+                            type="button"
+                            className="notes-file-action-btn"
+                            onClick={() => {
+                              setImageError(false);
+                              setIsImageLoading(true);
+                            }}
+                          >
+                            <span>Retry</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <img
+                        src={activeViewingFileUrl}
+                        alt={viewingFile.name}
+                        className="notes-preview-img"
+                        onLoad={() => setIsImageLoading(false)}
+                        onError={() => {
+                          setIsImageLoading(false);
+                          setImageError(true);
+                        }}
+                        style={{
+                          display: isImageLoading ? 'none' : 'block',
+                          pointerEvents: (isCtrlHeld || isDraggingPan || isZoomMode || pdfScale > 1) ? 'none' : 'auto',
+                        }}
+                      />
+                    )}
                   </div>
                 ) : (
                   <div className="notes-preview-generic-box">
                     <FileText size={48} color="#dba87e" />
                     <h4>{viewingFile.name}</h4>
                     <p>Document preview is not available in browser. Use the download or open link button above.</p>
+                    {activeViewingFileUrl && (
+                      <a
+                        href={activeViewingFileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="notes-file-action-btn primary"
+                        style={{ marginTop: '0.5rem' }}
+                      >
+                        <ExternalLink size={13} />
+                        <span>Open Document</span>
+                      </a>
+                    )}
                   </div>
                 )}
 

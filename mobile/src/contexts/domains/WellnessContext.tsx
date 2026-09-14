@@ -172,6 +172,14 @@ export function WellnessProvider({
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.GYM_LOGS), where("userId", "==", uid)),
       snap => {
+        // Skip the immediate local-pending echo of our own write.
+        // When we do an optimistic write (logSetAndStartTimer → saveLog → setDoc),
+        // Firestore fires this snapshot twice:
+        //   1. Immediately with hasPendingWrites=true  ← OUR echo, skip it
+        //   2. ~500ms later with hasPendingWrites=false ← server confirmed, process it
+        // Without this guard, echo #1 lands in useGymLog's gymLogs dep, re-runs setLog(),
+        // and overwrites the local optimistic state — causing the visible flicker.
+        if (snap.metadata.hasPendingWrites) return;
         if (snap.docs.length === 0 && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => parseGymLog(d.data(), d.id));

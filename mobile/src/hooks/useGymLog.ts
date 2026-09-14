@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { InteractionManager, DeviceEventEmitter } from 'react-native';
+import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates } from 'react-native';
 import { collection, doc, setDoc, updateDoc, serverTimestamp, deleteField } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useWellnessData } from '../contexts/domains/WellnessContext';
@@ -84,6 +84,17 @@ export function useGymLog(dateStr: string) {
   const { gymLogs, gymLogsReady, ensureSubscribed: gymEnsureSubscribed, userGymPlan, updateMasterPlan, optimisticAddGymLog, optimisticUpdateGymLog } = useWellnessData();
   const { user } = useCoreData();
 
+  // ── FIX 1: Ref-based gymLogs access inside saveLog ────────────────────────
+  // Keeping gymLogs in saveLog's deps caused a new saveLog reference on EVERY
+  // Firestore snapshot, which cascaded to recreate all 10+ useCallbacks that
+  // depend on saveLog — triggering a full screen re-render on each snapshot.
+  // Using a ref breaks that chain: saveLog always reads the latest gymLogs
+  // without becoming a new function reference when the array changes.
+  const gymLogsRef = useRef(gymLogs);
+  useEffect(() => {
+    gymLogsRef.current = gymLogs;
+  });
+
   useEffect(() => {
     gymEnsureSubscribed?.();
   }, [gymEnsureSubscribed]);
@@ -107,6 +118,54 @@ export function useGymLog(dateStr: string) {
   const logRef = useRef<GymDayLog | null>(null);
   // Tracks the most recent local write timestamp so we can skip stale Firestore snapshots
   const localWriteAtRef = useRef<number>(0);
+
+  // ── Debounced Firestore write: collapse rapid set-logs into a single write ───
+  // Every set-log tap calls saveLog() which previously fired setDoc() immediately.
+  // For a 30-set workout = 30 writes = 30 snapshot echoes = 30 potential flickers.
+  // Instead: optimistic update fires instantly (UI is always correct), and the
+  // actual Firestore write is debounced to 1500ms after the LAST call.
+  // endWorkout (completed=true) bypasses the debounce and flushes immediately.
+  const pendingFirestoreLogRef = useRef<{ logId: string; log: GymDayLog } | null>(null);
+  const firestoreDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushPendingFirestoreWrite = useCallback(async () => {
+    if (firestoreDebounceTimerRef.current) {
+      clearTimeout(firestoreDebounceTimerRef.current);
+      firestoreDebounceTimerRef.current = null;
+    }
+    const pending = pendingFirestoreLogRef.current;
+    if (!pending) return;
+    pendingFirestoreLogRef.current = null;
+    const { logId, log: updatedLog } = pending;
+    try {
+      const docRef = doc(db, COLLECTION.GYM_LOGS, logId);
+      const sanitizedLog: any = { id: logId };
+      Object.keys(updatedLog).forEach(key => {
+        if (key === '_idx') return;
+        const val = (updatedLog as any)[key];
+        if (val === undefined || val === null) {
+          sanitizedLog[key] = deleteField();
+        } else {
+          sanitizedLog[key] = deepSanitize(val);
+        }
+      });
+      if (updatedLog.completed) {
+        sanitizedLog.workoutStartTime = deleteField();
+        sanitizedLog.restTimerStartTime = deleteField();
+        sanitizedLog.restTimerDurationSecs = deleteField();
+        sanitizedLog.restTimerExerciseName = deleteField();
+      }
+      await safeWrite(
+        () => setDoc(docRef, sanitizedLog, { merge: true }),
+        COLLECTION.GYM_LOGS,
+        'set',
+        sanitizedLog,
+        logId
+      );
+    } catch (e) {
+      console.error('[Gym] Save error', e);
+    }
+  }, []);
 
   const historyIndex = useMemo(
     () => buildExerciseHistoryIndex(gymLogs, dateStr),
@@ -158,6 +217,14 @@ export function useGymLog(dateStr: string) {
         return;
       }
 
+      // ── FIX 3: Strengthen the local-write guard with a 5000ms grace window.
+      // The original guard compared Firestore server timestamps vs local Date.now() timestamps.
+      // Server timestamps can differ from client time (clock skew, latency), causing the
+      // guard to fail and let the Firestore echo snapshot re-run setLog() right after a write.
+      // Grace window: if we wrote within the last 5000ms, always skip Firestore snapshots
+      // for this document — our local state is definitively fresher.
+      const recentLocalWrite = (Date.now() - localWriteAtRef.current) < 5000;
+
       // Only skip if: local state is newer AND local exercises have actual weight data
       const localHasWeights = (logRef.current?.exercises || []).some((ex: any) =>
         (ex.setsLog || []).some((s: any) => s.weight !== null && s.weight !== undefined && Number(s.weight) > 0)
@@ -166,8 +233,20 @@ export function useGymLog(dateStr: string) {
         (ex.setsLog || []).some((s: any) => s.weight !== null && s.weight !== undefined && Number(s.weight) > 0)
       );
 
-      if (logRef.current && existingTs <= localTs && (logRef.current.exercises?.length ?? 0) > 0 && (localHasWeights || !firestoreHasWeights)) {
-        return; // Firestore snapshot is older than local state — skip
+      // ── Secondary guard: if Firestore snapshot has fewer completed sets than local
+      // state, it is definitively stale (a server-confirmed echo of an older state).
+      // This covers the ~500ms delayed server-confirmation snapshot that arrives after
+      // the hasPendingWrites echo is already blocked in WellnessContext.
+      const localCompletedCount = (logRef.current?.exercises || []).reduce(
+        (sum: number, ex: any) => sum + (ex.setsLog || []).filter((s: any) => s.completed).length, 0
+      );
+      const firestoreCompletedCount = (existing.exercises || []).reduce(
+        (sum: number, ex: any) => sum + (ex.setsLog || []).filter((s: any) => s.completed).length, 0
+      );
+      const firestoreIsStale = logRef.current !== null && firestoreCompletedCount < localCompletedCount;
+
+      if (logRef.current && (recentLocalWrite || firestoreIsStale || (existingTs <= localTs && (logRef.current.exercises?.length ?? 0) > 0 && (localHasWeights || !firestoreHasWeights)))) {
+        return; // Local write in-flight or Firestore snapshot is older than local state — skip
       }
 
       let patchedExercises: GymExerciseLog[] = [];
@@ -331,47 +410,75 @@ export function useGymLog(dateStr: string) {
     const writeAt = Date.now();
     localWriteAtRef.current = writeAt;
 
-    // Schedule optimistic update on next microtask to avoid updating WellnessProvider during ActiveLoggingScreen render
+    // ── STEP 1: Optimistic update — instant UI, no waiting for Firestore.
+    // queueMicrotask runs outside React's synthetic event batching, so without
+    // unstable_batchedUpdates each setState would trigger its own render flush.
     queueMicrotask(() => {
-      if (gymLogs.some(l => l.id === logId || l.date === updatedLog.date)) {
-        optimisticUpdateGymLog(logId, updatedLog as any);
-      } else {
-        optimisticAddGymLog(updatedLog as any);
-      }
+      unstable_batchedUpdates(() => {
+        if (gymLogsRef.current.some(l => l.id === logId || l.date === updatedLog.date)) {
+          optimisticUpdateGymLog(logId, updatedLog as any);
+        } else {
+          optimisticAddGymLog(updatedLog as any);
+        }
+      });
     });
 
-    // Persist to Firestore with WhatsApp-style offline queue fallback
-    (async () => {
-      try {
-        const docRef = doc(db, COLLECTION.GYM_LOGS, logId);
-        const sanitizedLog: any = { id: logId };
-        Object.keys(updatedLog).forEach(key => {
-          if (key === '_idx') return;
-          const val = (updatedLog as any)[key];
-          if (val === undefined || val === null) {
-            sanitizedLog[key] = deleteField();
-          } else {
-            sanitizedLog[key] = deepSanitize(val);
-          }
-        });
-        if (updatedLog.completed) {
-          sanitizedLog.workoutStartTime = deleteField();
-          sanitizedLog.restTimerStartTime = deleteField();
-          sanitizedLog.restTimerDurationSecs = deleteField();
-          sanitizedLog.restTimerExerciseName = deleteField();
-        }
-        await safeWrite(
-          () => setDoc(docRef, sanitizedLog, { merge: true }),
-          COLLECTION.GYM_LOGS,
-          'set',
-          sanitizedLog,
-          logId
-        );
-      } catch (e) {
-        console.error('[Gym] Save error', e);
+    // ── STEP 2: Debounced Firestore write — collapses rapid set-logs. ─────────
+    // For a 30-set workout, without debouncing = 30 setDoc() calls = 30 snapshot
+    // echoes = 30 potential re-renders. With 1500ms debounce, only the FINAL
+    // state of each burst is written. Completed workouts flush immediately.
+    pendingFirestoreLogRef.current = { logId, log: updatedLog };
+
+    if (updatedLog.completed) {
+      // Completed workout: flush immediately — never debounce final state.
+      flushPendingFirestoreWrite();
+    } else {
+      // Normal set-log: debounce 1500ms. Each new call resets the timer,
+      // so only the last state in a rapid burst reaches Firestore.
+      if (firestoreDebounceTimerRef.current) {
+        clearTimeout(firestoreDebounceTimerRef.current);
       }
-    })();
-  }, [user, gymLogs, optimisticAddGymLog, optimisticUpdateGymLog]);
+      firestoreDebounceTimerRef.current = setTimeout(() => {
+        firestoreDebounceTimerRef.current = null;
+        flushPendingFirestoreWrite();
+      }, 1500);
+    }
+  // ── gymLogs removed from deps — accessed via gymLogsRef instead.
+  }, [user, optimisticAddGymLog, optimisticUpdateGymLog, flushPendingFirestoreWrite]);
+
+  // ── Flush pending Firestore write on unmount ──────────────────────────────
+  // If the user backs out of the workout screen while the 1500ms debounce timer
+  // is still counting down, flush immediately so no set data is lost.
+  useEffect(() => {
+    return () => {
+      flushPendingFirestoreWrite();
+    };
+  }, [flushPendingFirestoreWrite]);
+
+  // ── Cross-instance sync: mark log completed when ANY useGymLog calls endWorkout ────
+  // GymHomeScreen and ActiveLoggingScreen each mount their own useGymLog instance.
+  // When ActiveLoggingScreen's endWorkout() fires, it emits 'gym_workout_completed'.
+  // This listener ensures GymHomeScreen's log immediately reflects completed=true,
+  // making the banner switch from "IN PROGRESS" to "Workout Completed" instantly.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('gym_workout_completed', (event: any) => {
+      if (event?.date && event.date !== dateStr) return;
+      setLog(prev => {
+        if (!prev || prev.completed) return prev; // already completed, no-op
+        return {
+          ...prev,
+          completed: true,
+          workoutStartTime: undefined,
+          workoutDurationMinutes: event?.duration ?? prev.workoutDurationMinutes,
+          restTimerStartTime: undefined,
+          restTimerDurationSecs: undefined,
+          restTimerExerciseName: undefined,
+          updatedAt: Date.now(),
+        };
+      });
+    });
+    return () => sub.remove();
+  }, [dateStr]);
 
   // Autonomous Geofence Departure: if geofence auto-completes workout, update local log immediately
   useEffect(() => {
@@ -395,6 +502,7 @@ export function useGymLog(dateStr: string) {
     });
     return () => sub.remove();
   }, [dateStr]);
+
 
   const updateSet = useCallback((exerciseIndex: number, setIndex: number, set: GymSet) => {
     setLog(prev => {
@@ -715,11 +823,15 @@ export function useGymLog(dateStr: string) {
 
   const endWorkout = useCallback(async (_force?: boolean) => {
     awardXP('GYM_SESSION').catch(() => {});
+    let completedDate: string | undefined;
+    let completedDuration = 0;
     setLog(prev => {
       if (!prev) return prev;
       const startMs = prev.workoutStartTime || Date.now();
       const elapsedMins = Math.round((Date.now() - startMs) / 60000);
       const duration = Math.max(1, elapsedMins);
+      completedDate = prev.date;
+      completedDuration = duration;
 
       const startD = new Date(startMs);
       const endD = new Date();
@@ -753,6 +865,19 @@ export function useGymLog(dateStr: string) {
 
       return updated;
     });
+
+    // ── Broadcast workout completion to ALL useGymLog instances ───────────────
+    // GymHomeScreen has its own useGymLog instance. Without this broadcast its
+    // `log` stays stale (workoutStartTime still set) until Firestore syncs,
+    // causing the banner to show "IN PROGRESS" and requiring a manual second finish.
+    // The broadcast makes every listener instantly flip to completed state.
+    if (completedDate) {
+      DeviceEventEmitter.emit('gym_workout_completed', {
+        date: completedDate,
+        duration: completedDuration,
+      });
+    }
+
 
     if (currentRestTimerNotifId) {
       await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId);

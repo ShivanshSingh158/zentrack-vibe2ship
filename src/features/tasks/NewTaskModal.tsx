@@ -15,7 +15,9 @@ import {
   Flag,
   Sun,
   CalendarDays,
-  CheckSquare
+  CheckSquare,
+  Mic,
+  Timer
 } from 'lucide-react';
 import {
   parseNLTask,
@@ -25,7 +27,9 @@ import {
   formatRecurrenceLabel,
   toYMD,
   nextWeekday,
-  formatTimeRangeDisplay
+  formatTimeRangeDisplay,
+  extractTaskDurationMinutes,
+  formatHoursDisplay
 } from '../../utils/dateUtils';
 import type { NLPToken } from '../../utils/dateUtils';
 import type { TodoItem, TodoSubtask, RecurrenceRule } from '../../types';
@@ -66,6 +70,116 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
   const [oneTimeDates, setOneTimeDates] = useState<string[] | undefined>(undefined);
   const [nlpTokens, setNlpTokens] = useState<NLPToken[]>([]);
   const [saving, setSaving] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  // Real-Time NLP Parsing Engine
+  const handleInputChange = useCallback((text: string) => {
+    setRawInput(text);
+
+    if (!text.trim()) {
+      setTitle('');
+      setNlpTokens([]);
+      return;
+    }
+
+    const parsed = parseNLTask(text);
+    setTitle(parsed.title || text);
+    setNlpTokens(parsed.tokens || []);
+
+    if (parsed.date && parsed.tokens.some(t => t.type === 'date')) {
+      setDate(parsed.date);
+    }
+    if (parsed.timeSlot && parsed.tokens.some(t => t.type === 'time')) {
+      setStartTime(parsed.timeSlot);
+      if (parsed.endTimeSlot) setEndTime(parsed.endTimeSlot);
+    }
+    if (parsed.tokens.some(t => t.type === 'priority')) {
+      setPriority(parsed.priority);
+    }
+    if (parsed.tokens.some(t => t.type === 'recurrence') && parsed.recurrenceRule) {
+      setRecurrenceRule(parsed.recurrenceRule as any);
+    }
+    if (parsed.oneTimeDates && parsed.oneTimeDates.length > 1) {
+      setOneTimeDates(parsed.oneTimeDates);
+    } else {
+      setOneTimeDates(undefined);
+    }
+    if (parsed.tags && parsed.tags.length > 0) {
+      setSelectedTags(prev => Array.from(new Set([...prev, ...parsed.tags!])));
+    }
+    if (parsed.durationMinutes != null) {
+      setDurationMinutes(parsed.durationMinutes);
+    }
+    if (parsed.subtasks && parsed.subtasks.length > 0) {
+      setIsSubtasksOpen(true);
+      setSubtasks(parsed.subtasks.map((st, idx) => ({
+        id: `st-${Date.now()}-${idx}`,
+        title: st,
+        completed: false,
+        status: 'pending',
+      })));
+    }
+  }, []);
+
+  // Voice Dictation (Web Speech API)
+  const toggleVoiceListening = useCallback(() => {
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      alert('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.');
+      return;
+    }
+
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRec();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0]?.[0]?.transcript;
+        if (transcript) {
+          setRawInput(prev => {
+            const next = prev ? `${prev} ${transcript}` : transcript;
+            handleInputChange(next);
+            return next;
+          });
+        }
+      };
+
+      recognition.onerror = () => {
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.error('Speech recognition error:', err);
+      setIsListening(false);
+    }
+  }, [isListening, handleInputChange]);
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
 
   // Popover state
   const [activePopover, setActivePopover] = useState<'date' | 'priority' | 'time' | 'tags' | 'repeat' | null>(null);
@@ -205,58 +319,21 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, activePopover, onClose]);
 
-  // Real-Time NLP Parsing Engine
-  const handleInputChange = useCallback((text: string) => {
-    setRawInput(text);
 
-    if (!text.trim()) {
-      setTitle('');
-      setNlpTokens([]);
-      return;
-    }
-
-    const parsed = parseNLTask(text);
-    setTitle(parsed.title || text);
-    setNlpTokens(parsed.tokens || []);
-
-    if (parsed.date && parsed.tokens.some(t => t.type === 'date')) {
-      setDate(parsed.date);
-    }
-    if (parsed.timeSlot && parsed.tokens.some(t => t.type === 'time')) {
-      setStartTime(parsed.timeSlot);
-      if (parsed.endTimeSlot) setEndTime(parsed.endTimeSlot);
-    }
-    if (parsed.tokens.some(t => t.type === 'priority')) {
-      setPriority(parsed.priority);
-    }
-    if (parsed.tokens.some(t => t.type === 'recurrence') && parsed.recurrenceRule) {
-      setRecurrenceRule(parsed.recurrenceRule as any);
-    }
-    if (parsed.oneTimeDates && parsed.oneTimeDates.length > 1) {
-      setOneTimeDates(parsed.oneTimeDates);
-    } else {
-      setOneTimeDates(undefined);
-    }
-    if (parsed.tags && parsed.tags.length > 0) {
-      setSelectedTags(prev => Array.from(new Set([...prev, ...parsed.tags!])));
-    }
-    if (parsed.durationMinutes != null) {
-      setDurationMinutes(parsed.durationMinutes);
-    }
-    if (parsed.subtasks && parsed.subtasks.length > 0) {
-      setIsSubtasksOpen(true);
-      setSubtasks(parsed.subtasks.map((st, idx) => ({
-        id: `st-${Date.now()}-${idx}`,
-        title: st,
-        completed: false,
-        status: 'pending',
-      })));
-    }
-  }, []);
-
-  // Dismiss a recognized token
+  // Dismiss a recognized token and restore corresponding state
   const handleDismissToken = (tok: NLPToken) => {
     const cleaned = (rawInput.slice(0, tok.start) + rawInput.slice(tok.end)).replace(/\s{2,}/g, ' ').trim();
+    if (tok.type === 'date') setDate(initialDate || getLocalDateString());
+    if (tok.type === 'time') {
+      setStartTime('');
+      setEndTime('');
+    }
+    if (tok.type === 'priority') setPriority('medium');
+    if (tok.type === 'recurrence') setRecurrenceRule({ type: 'once' });
+    if (tok.type === 'tag') {
+      const tagClean = tok.value.replace(/^#/, '').toLowerCase();
+      setSelectedTags(prev => prev.filter(t => t.toLowerCase() !== tagClean));
+    }
     handleInputChange(cleaned);
   };
 
@@ -285,20 +362,40 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
     const cleanTitle = (title || rawInput).trim();
     if (!cleanTitle || saving) return;
 
+    // Synchronously parse to ensure latest NLP state
+    const finalParsed = parseNLTask(rawInput || cleanTitle);
+    const resolvedTitle = (cleanTaskTitle(finalParsed.title || cleanTitle) || cleanTitle).trim();
+    const finalDate = (finalParsed.tokens.some(t => t.type === 'date') && finalParsed.date) ? finalParsed.date : (date || null);
+    const finalPriority = finalParsed.tokens.some(t => t.type === 'priority') ? finalParsed.priority : (priority || 'medium');
+    const finalStartTime = (finalParsed.tokens.some(t => t.type === 'time') && finalParsed.timeSlot)
+      ? (finalParsed.timeSlot.includes('-') ? finalParsed.timeSlot.split(/[-–]/)[0].trim() : finalParsed.timeSlot)
+      : (startTime || null);
+    const finalEndTime = (finalParsed.tokens.some(t => t.type === 'time') && finalParsed.endTimeSlot)
+      ? finalParsed.endTimeSlot
+      : (endTime || null);
+    const finalTimeSlot = finalStartTime
+      ? (finalEndTime ? `${finalStartTime} - ${finalEndTime}` : finalStartTime)
+      : (finalParsed.timeSlot || null);
+    const finalDuration = finalParsed.durationMinutes
+      || durationMinutes
+      || (finalTimeSlot ? extractTaskDurationMinutes(null, finalTimeSlot, resolvedTitle) : null);
+    const finalRecurrence = (finalParsed.tokens.some(t => t.type === 'recurrence') && finalParsed.recurrenceRule) ? finalParsed.recurrenceRule : recurrenceRule;
+    const finalTags = Array.from(new Set([...selectedTags, ...(finalParsed.tags || [])]));
+
     setSaving(true);
     try {
       await onSave({
-        title: cleanTitle,
-        text: cleanTitle,
-        date: date || null,
-        priority: priority || 'medium',
-        timeSlot: startTime || null,
+        title: resolvedTitle,
+        text: resolvedTitle,
+        date: finalDate,
+        priority: finalPriority,
+        timeSlot: finalTimeSlot,
         subtasks: subtasks.length > 0 ? subtasks : [],
-        tags: selectedTags,
-        isRecurring: recurrenceRule && recurrenceRule.type !== 'once',
-        recurrenceRule: recurrenceRule && recurrenceRule.type !== 'once' ? recurrenceRule : null,
-        oneTimeDates: oneTimeDates,
-        durationMinutes: durationMinutes || null,
+        tags: finalTags,
+        isRecurring: finalRecurrence && finalRecurrence.type !== 'once',
+        recurrenceRule: finalRecurrence && finalRecurrence.type !== 'once' ? finalRecurrence : null,
+        oneTimeDates: finalParsed.oneTimeDates && finalParsed.oneTimeDates.length > 1 ? finalParsed.oneTimeDates : oneTimeDates,
+        durationMinutes: finalDuration || null,
       });
       onClose();
     } catch (err) {
@@ -380,21 +477,32 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
     }
   }, [priority]);
 
-  if (!isOpen) return null;
-
   return (
     <AnimatePresence>
-      <div className="todoist-quick-add-overlay" onClick={onClose}>
+      {isOpen && (
         <motion.div
-          ref={cardRef}
-          className="todoist-quick-add-card"
-          initial={{ opacity: 0, y: -12, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -12, scale: 0.98 }}
-          transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-          onClick={e => e.stopPropagation()}
+          className="todoist-quick-add-overlay"
+          onClick={onClose}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          role="dialog"
+          aria-modal="true"
         >
-          {/* Main Title Input Area */}
+          <motion.div
+            ref={cardRef}
+            className="todoist-quick-add-card"
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{
+              duration: 0.18,
+              ease: [0.16, 1, 0.3, 1]
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+          {/* Main Title Input Area with Mic Button on the Far Right */}
           <form onSubmit={handleSubmit} className="todoist-quick-add-input-wrapper">
             <input
               ref={inputRef}
@@ -411,6 +519,14 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
               className="todoist-quick-add-input"
               autoFocus
             />
+            <button
+              type="button"
+              className={`todoist-mic-btn ${isListening ? 'listening' : ''}`}
+              onClick={toggleVoiceListening}
+              title={isListening ? 'Listening... click to stop' : 'Voice dictation'}
+            >
+              <Mic size={15} />
+            </button>
           </form>
 
           {/* Inline Subtasks Expansion */}
@@ -498,7 +614,10 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
                 title="Set time"
               >
                 <Clock size={13} />
-                <span>{startTime ? (endTime ? `${startTime} - ${endTime}` : startTime) : 'Time'}</span>
+                <span>
+                  {startTime ? formatTimeRangeDisplay(endTime ? `${startTime} - ${endTime}` : startTime) : 'Time'}
+                  {durationMinutes ? ` (${formatHoursDisplay(durationMinutes / 60)})` : ''}
+                </span>
                 {startTime && (
                   <span
                     className="todoist-pill-clear"
@@ -642,7 +761,6 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
                       const p = parseNLTask(val);
                       if (p.date) {
                         setDate(p.date);
-                        setIsInbox(false);
                       }
                     }
                   }}
@@ -874,13 +992,15 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
 
           {/* ── POPOVER 3: TIME PICKER ── */}
           {activePopover === 'time' && (
-            <div className="todoist-popover todoist-time-popover" style={{ width: 220, padding: 8, left: `${popoverAnchorLeft}px` }}>
+            <div className="todoist-popover todoist-time-popover" style={{ width: 250, padding: 10, left: `${popoverAnchorLeft}px` }}>
               <div className="todoist-presets-list">
                 <button
                   type="button"
                   className="todoist-preset-item"
                   onClick={() => {
                     setStartTime('09:00');
+                    setEndTime('10:00');
+                    setDurationMinutes(60);
                     setActivePopover(null);
                   }}
                 >
@@ -892,6 +1012,8 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
                   className="todoist-preset-item"
                   onClick={() => {
                     setStartTime('14:00');
+                    setEndTime('15:00');
+                    setDurationMinutes(60);
                     setActivePopover(null);
                   }}
                 >
@@ -903,6 +1025,8 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
                   className="todoist-preset-item"
                   onClick={() => {
                     setStartTime('18:00');
+                    setEndTime('19:00');
+                    setDurationMinutes(60);
                     setActivePopover(null);
                   }}
                 >
@@ -914,6 +1038,8 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
                   className="todoist-preset-item"
                   onClick={() => {
                     setStartTime('21:00');
+                    setEndTime('22:00');
+                    setDurationMinutes(60);
                     setActivePopover(null);
                   }}
                 >
@@ -922,26 +1048,107 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
                 </button>
               </div>
 
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={e => setStartTime(e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: '4px 6px',
-                    borderRadius: 4,
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    background: 'transparent',
-                    color: 'inherit',
-                    fontSize: 12
-                  }}
-                />
-                {startTime && (
+              {/* Start & End Time Inputs */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8, padding: '6px 0', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 11, color: 'var(--color-text-3)', width: 32 }}>Start:</span>
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={e => {
+                      const newStart = e.target.value;
+                      setStartTime(newStart);
+                      if (newStart && endTime) {
+                        const dur = extractTaskDurationMinutes(null, `${newStart} - ${endTime}`);
+                        if (dur > 0) setDurationMinutes(dur);
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '4px 6px',
+                      borderRadius: 4,
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      background: 'transparent',
+                      color: 'inherit',
+                      fontSize: 12
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 11, color: 'var(--color-text-3)', width: 32 }}>End:</span>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={e => {
+                      const newEnd = e.target.value;
+                      setEndTime(newEnd);
+                      if (startTime && newEnd) {
+                        const dur = extractTaskDurationMinutes(null, `${startTime} - ${newEnd}`);
+                        if (dur > 0) setDurationMinutes(dur);
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '4px 6px',
+                      borderRadius: 4,
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      background: 'transparent',
+                      color: 'inherit',
+                      fontSize: 12
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Duration Block Presets */}
+              <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ fontSize: 11, color: 'var(--color-text-3)', marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Block Time:</span>
+                  {durationMinutes ? (
+                    <span style={{ color: '#818cf8', fontWeight: 600 }}>{durationMinutes}m ({formatHoursDisplay(durationMinutes / 60)})</span>
+                  ) : null}
+                </div>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {[25, 45, 60, 90, 120].map(mins => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() => {
+                        setDurationMinutes(mins);
+                        const baseStart = startTime || '09:00';
+                        if (!startTime) setStartTime(baseStart);
+                        const [sh, sm] = baseStart.split(':').map(Number);
+                        const totalEnd = sh * 60 + sm + mins;
+                        const eh = Math.floor(totalEnd / 60) % 24;
+                        const em = totalEnd % 60;
+                        setEndTime(`${eh.toString().padStart(2, '0')}:${em.toString().padStart(2, '0')}`);
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '3px 4px',
+                        borderRadius: 4,
+                        border: durationMinutes === mins ? '1px solid #818cf8' : '1px solid rgba(255,255,255,0.1)',
+                        background: durationMinutes === mins ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.04)',
+                        color: durationMinutes === mins ? '#818cf8' : 'inherit',
+                        fontSize: 11,
+                        cursor: 'pointer',
+                        textAlign: 'center'
+                      }}
+                    >
+                      {mins === 60 ? '1h' : mins === 120 ? '2h' : `${mins}m`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {startTime && (
+                <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
                   <button
                     type="button"
                     onClick={() => {
                       setStartTime('');
+                      setEndTime('');
+                      setDurationMinutes(null);
                       setActivePopover(null);
                     }}
                     style={{
@@ -949,13 +1156,14 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
                       background: 'transparent',
                       color: '#ef4444',
                       fontSize: 11,
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      padding: '2px 6px'
                     }}
                   >
-                    Clear
+                    Clear Time
                   </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1090,7 +1298,8 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
             </div>
           )}
         </motion.div>
-      </div>
+      </motion.div>
+      )}
     </AnimatePresence>
   );
 };

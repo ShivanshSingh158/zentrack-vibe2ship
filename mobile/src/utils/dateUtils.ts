@@ -746,16 +746,18 @@ export function parseNLTask(rawInput: string): ParsedTask {
   }
 
   // ── 2. DURATION ────────────────────────────────────────────
-  // Supports: "for 45m"  "1h30m"  "half an hour"  "an hour"  "a couple hours"  "2.5h"
+  // Supports: "for 45m"  "1h30m"  "half an hour"  "an hour"  "a couple hours"  "2.5h" "2 hour block" "120 minutes"
   const durationPatterns: Array<[RegExp, (m: RegExpMatchArray) => number]> = [
     // Natural English — must be before numeric patterns
     [/\bhalf\s+an?\s+hour\b/i,                                             _ => 30],
     [/\ban?\s+hour\s+and\s+a\s+half\b/i,                                  _ => 90],
     [/\ba\s+couple\s+(?:of\s+)?hours?\b/i,                                _ => 120],
-    [/\ban?\s+hour\b/i,                                                    _ => 60],
+    [/\ban?\s+hour\s*(?:block|session)?\b/i,                              _ => 60],
     [/\ba\s+few\s+minutes?\b/i,                                           _ => 10],
     // Decimal hours: "2.5h" "1.5 hours"
-    [/\b(\d+\.\d+)\s*h(?:(?:ou)?rs?)?\b/i,                              m => Math.round(parseFloat(m[1])*60)],
+    [/\b(\d+\.\d+)\s*h(?:(?:ou)?rs?)?\s*(?:block|time\s*block|time|session)?\b/i, m => Math.round(parseFloat(m[1])*60)],
+    [/\b(\d+)\s*(?:hours?|hrs?|hr)\s*(?:block|time\s*block|time|session)?\b/i,   m => parseInt(m[1], 10)*60],
+    [/\bblock\s*(?:of\s*|time\s*(?:of\s*)?)?(\d+)\s*(?:hours?|hrs?|h)\b/i,        m => parseInt(m[1], 10)*60],
     // Compound: "for 1h30m"  "for 1h 30m"
     [/\bfor\s+(\d+)\s*h(?:(?:ou)?rs?)?\s+(\d+)\s*m(?:in(?:utes?)?)?\b/i, m => parseInt(m[1])*60 + parseInt(m[2])],
     [/\bfor\s+(\d+)\s*h(\d{2})\b/i,                                        m => parseInt(m[1])*60 + parseInt(m[2])],
@@ -763,6 +765,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
     [/\bfor\s+(\d+)\s*m(?:in(?:utes?)?)?\b/i,                             m => parseInt(m[1])],
     [/\bfor\s+(\d+)\s+hours?\b/i,                                          m => parseInt(m[1])*60],
     [/\bfor\s+(\d+)\s+minutes?\b/i,                                        m => parseInt(m[1])],
+    [/\b(\d+)\s*(?:minutes?|mins?|min)\s*(?:block|time\s*block|session)?\b/i, m => parseInt(m[1], 10)],
     [/\b(\d+)h(\d+)m\b/i,                                                  m => parseInt(m[1])*60 + parseInt(m[2])],
     [/\b(\d+)h\b(?!\d)/i,                                                  m => parseInt(m[1])*60],
     [/\b(\d+)min\b/i,                                                       m => parseInt(m[1])],
@@ -1034,20 +1037,52 @@ export function parseNLTask(rawInput: string): ParsedTask {
     const rangeMatch = text.match(rangePattern);
 
     if (rangeMatch) {
+      const h1Num = parseInt(rangeMatch[1], 10);
+      const h2Num = parseInt(rangeMatch[4], 10);
+      const isHourRange = h1Num >= 1 && h1Num <= 24 && h2Num >= 1 && h2Num <= 24;
       const hasAmPm = rangeMatch[3] || rangeMatch[6];
       const hasColon = rangeMatch[2] || rangeMatch[5];
       const hasKeyword = /\b(?:at|from|between)\b/i.test(rangeMatch[0]);
-      // Guard against false positives like "chapter 1 to 2" unless time keywords, colons, or am/pm exist
-      if (hasAmPm || hasColon || hasKeyword) {
+      if (hasAmPm || hasColon || hasKeyword || isHourRange) {
         const rawP2 = (rangeMatch[6] || '').toLowerCase().replace(/[^a-z]/g, '');
         const rawP1 = (rangeMatch[3] || '').toLowerCase().replace(/[^a-z]/g, '');
-        const p2 = rawP2 || rawP1 || '';
-        const p1 = rawP1 || (p2 && parseInt(rangeMatch[1], 10) < 12 ? p2 : '');
+        let p2 = rawP2 || rawP1 || '';
+        let p1 = rawP1 || (p2 && h1Num < 12 ? p2 : '');
+
+        // If no AM/PM specified, check hints or default intelligently
+        if (!p1 && !p2) {
+          const hasEve = /\b(?:evening|shaam|sham|night|raat|afternoon|dopahar)\b/i.test(text);
+          const hasMorn = /\b(?:morning|subah)\b/i.test(text);
+          if (hasEve) { p1 = 'pm'; p2 = 'pm'; }
+          else if (hasMorn) { p1 = 'am'; p2 = 'am'; }
+          else if (h1Num >= 1 && h1Num <= 7) { p1 = 'pm'; p2 = 'pm'; }
+          else if (h1Num >= 8 && h1Num <= 11) { p1 = 'am'; p2 = h2Num < h1Num || h2Num === 12 ? 'pm' : 'am'; }
+        }
+
         const t1 = parseSingleTime(rangeMatch[1], rangeMatch[2], p1);
-        const t2 = parseSingleTime(rangeMatch[4], rangeMatch[5], p2);
-        timeSlot = `${t1.hh}:${t1.mm}`;
+        let t2 = parseSingleTime(rangeMatch[4], rangeMatch[5], p2);
+
+        // Colloquial midnight check: "11 pm to 12 pm" / "11 pm to 12" -> 12 at night is midnight (00:00 / 12:00 AM)
+        if ((t1.hh === '23' || parseInt(t1.hh, 10) >= 18) && h2Num === 12 && (!rawP2 || rawP2 === 'pm')) {
+          t2 = { hh: '00', mm: t2.mm, display: `12:${t2.mm}am` };
+        }
+
+        timeSlot = `${t1.hh}:${t1.mm} - ${t2.hh}:${t2.mm}`;
         endTimeSlot = `${t2.hh}:${t2.mm}`;
-        registerToken('time', rangeMatch[0], `${t1.display} - ${t2.display}`);
+        registerToken('time', rangeMatch[0], `${t1.display} – ${t2.display}`);
+
+        // Automatically compute duration in minutes from the time range
+        const startTotalMin = parseInt(t1.hh, 10) * 60 + parseInt(t1.mm, 10);
+        let endTotalMin = parseInt(t2.hh, 10) * 60 + parseInt(t2.mm, 10);
+        let rangeDiff = endTotalMin - startTotalMin;
+        if (rangeDiff <= 0) rangeDiff += 24 * 60;
+        if (rangeDiff > 0 && rangeDiff <= 24 * 60 && (!durationMinutes || durationMinutes === 25)) {
+          durationMinutes = rangeDiff;
+          const hh = Math.floor(rangeDiff / 60);
+          const mm = rangeDiff % 60;
+          const disp = hh > 0 ? (mm > 0 ? `${hh}h ${mm}m` : `${hh}h`) : `${mm}m`;
+          registerToken('duration', rangeMatch[0], disp);
+        }
       }
     }
   }

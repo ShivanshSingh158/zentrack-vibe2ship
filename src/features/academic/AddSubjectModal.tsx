@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Sparkles, Calculator, Plus, Trash2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { AttendanceSubject } from './AttendanceModule';
 
 interface AddSubjectModalProps {
@@ -207,285 +208,293 @@ export const AddSubjectModal: React.FC<AddSubjectModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="tt-modal-overlay" onClick={onClose}>
-      <div
-        className="tt-modal-dialog"
-        style={{ maxWidth: '640px' }}
-        onClick={e => e.stopPropagation()}
-        onWheel={e => e.stopPropagation()}
-      >
-        <div className="tt-modal-header">
-          <h2 className="tt-header-title">{existingSubject ? 'Edit Subject' : 'Add Subject'}</h2>
-          <button type="button" className="tt-close-btn" onClick={onClose} title="Close">
-            <X size={18} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="tt-modal-list custom-scrollbar">
-          {/* Subject Name Input Group */}
-          <div className="tt-input-group">
-            <label className="tt-input-label">Subject Name</label>
-            <input
-              type="text"
-              className="tt-text-input"
-              placeholder="e.g., Data Structures & Algorithms"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              required
-              autoFocus
-            />
-          </div>
-
-          {/* Target Percentage Input Group */}
-          <div className="tt-input-group">
-            <div className="tt-input-label-row">
-              <label className="tt-input-label">Target Percentage (%)</label>
-              <span className="tt-target-slider-val">{targetPercentage}%</span>
-            </div>
-            <input
-              type="range"
-              min="50"
-              max="95"
-              step="5"
-              value={targetPercentage}
-              onChange={e => setTargetPercentage(e.target.value)}
-              className="tt-range-slider"
-            />
-          </div>
-
-          {/* ── Mid-Semester Calibration Segmented Control ── */}
-          <div className="tt-input-group">
-            <label className="tt-input-label">Starting Point Calibration</label>
-
-            <div className="tt-segmented-control">
-              <button
-                type="button"
-                className={`tt-seg-btn ${calibrationMode === 'fresh' ? 'active' : ''}`}
-                onClick={() => setCalibrationMode('fresh')}
-              >
-                <Sparkles size={14} />
-                <span>Starting Fresh (0/0)</span>
-              </button>
-              <button
-                type="button"
-                className={`tt-seg-btn ${calibrationMode === 'mid_semester' ? 'active' : ''}`}
-                onClick={() => setCalibrationMode('mid_semester')}
-              >
-                <Calculator size={14} />
-                <span>Mid-Semester Baseline</span>
+    <AnimatePresence>
+      {isOpen && (
+        <div className="tt-modal-overlay" onClick={onClose}>
+          <motion.div
+            className="tt-modal-dialog"
+            style={{ maxWidth: '640px' }}
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0, transition: { type: 'spring', damping: 25, stiffness: 350 } }}
+            exit={{ opacity: 0, scale: 0.95, y: 15, transition: { duration: 0.15 } }}
+            onClick={e => e.stopPropagation()}
+            onWheel={e => e.stopPropagation()}
+          >
+            <div className="tt-modal-header">
+              <h2 className="tt-header-title">{existingSubject ? 'Edit Subject' : 'Add Subject'}</h2>
+              <button type="button" className="tt-close-btn" onClick={onClose} title="Close">
+                <X size={18} />
               </button>
             </div>
 
-            {calibrationMode === 'fresh' ? (
-              <p className="tt-helper-text">
-                ✨ Starting with 0 classes. You'll log attendance day-by-day as classes happen.
-              </p>
-            ) : (
-              <div className="tt-calibration-card">
-                <span className="tt-calib-header">
-                  Input your past attendance record to calibrate your baseline stats:
-                </span>
+            <form onSubmit={handleSubmit} className="tt-modal-list custom-scrollbar">
+              {/* Subject Name Input Group */}
+              <div className="tt-input-group">
+                <label className="tt-input-label">Subject Name</label>
+                <input
+                  type="text"
+                  className="tt-text-input"
+                  placeholder="e.g., Data Structures & Algorithms"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
 
-                {/* Classes inputs */}
-                <div>
-                  <span className="tt-micro-label">Classes Attended / Total Held</span>
-                  <div className="tt-calib-row">
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="Attended (e.g. 24)"
-                      value={classesAttended}
-                      onChange={e => setClassesAttended(e.target.value)}
-                      className="tt-calib-input"
-                    />
-                    <span className="tt-calib-slash">/</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="Total Held (e.g. 30)"
-                      value={classesTotal}
-                      onChange={e => setClassesTotal(e.target.value)}
-                      className="tt-calib-input"
-                    />
-                  </div>
+              {/* Target Percentage Input Group */}
+              <div className="tt-input-group">
+                <div className="tt-input-label-row">
+                  <label className="tt-input-label">Target Percentage (%)</label>
+                  <span className="tt-target-slider-val">{targetPercentage}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="50"
+                  max="95"
+                  step="5"
+                  value={targetPercentage}
+                  onChange={e => setTargetPercentage(e.target.value)}
+                  className="tt-range-slider"
+                  style={{
+                    background: `linear-gradient(to right, #a599ff 0%, #a599ff ${Math.max(0, Math.min(100, ((Number(targetPercentage) - 50) / 45) * 100))}%, #272734 ${Math.max(0, Math.min(100, ((Number(targetPercentage) - 50) / 45) * 100))}%, #272734 100%)`
+                  }}
+                />
+              </div>
+
+              {/* ── Mid-Semester Calibration Segmented Control ── */}
+              <div className="tt-input-group">
+                <label className="tt-input-label">Starting Point Calibration</label>
+
+                <div className="tt-segmented-control">
+                  <button
+                    type="button"
+                    className={`tt-seg-btn ${calibrationMode === 'fresh' ? 'active' : ''}`}
+                    onClick={() => setCalibrationMode('fresh')}
+                  >
+                    <Sparkles size={14} />
+                    <span>Starting Fresh (0/0)</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`tt-seg-btn ${calibrationMode === 'mid_semester' ? 'active' : ''}`}
+                    onClick={() => setCalibrationMode('mid_semester')}
+                  >
+                    <Calculator size={14} />
+                    <span>Mid-Semester Baseline</span>
+                  </button>
                 </div>
 
-                {/* Labs Toggle */}
-                <label className="tt-lab-toggle-row">
-                  <input
-                    type="checkbox"
-                    checked={hasLabs}
-                    onChange={e => setHasLabs(e.target.checked)}
-                    className="tt-checkbox"
-                  />
-                  <span className="tt-lab-toggle-text">
-                    Include Separate Lab Attendance
-                  </span>
-                </label>
+                {calibrationMode === 'fresh' ? (
+                  <p className="tt-helper-text">
+                    ✨ Starting with 0 classes. You'll log attendance day-by-day as classes happen.
+                  </p>
+                ) : (
+                  <div className="tt-calibration-card">
+                    <span className="tt-calib-header">
+                      Input your past attendance record to calibrate your baseline stats:
+                    </span>
 
-                {hasLabs && (
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <span className="tt-micro-label">Labs Attended / Total Held</span>
-                    <div className="tt-calib-row">
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="Attended (e.g. 5)"
-                        value={labsAttended}
-                        onChange={e => setLabsAttended(e.target.value)}
-                        className="tt-calib-input"
-                      />
-                      <span className="tt-calib-slash">/</span>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="Total Held (e.g. 6)"
-                        value={labsTotal}
-                        onChange={e => setLabsTotal(e.target.value)}
-                        className="tt-calib-input"
-                      />
+                    {/* Classes inputs */}
+                    <div>
+                      <span className="tt-micro-label">Classes Attended / Total Held</span>
+                      <div className="tt-calib-row">
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="Attended (e.g. 24)"
+                          value={classesAttended}
+                          onChange={e => setClassesAttended(e.target.value)}
+                          className="tt-calib-input"
+                        />
+                        <span className="tt-calib-slash">/</span>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="Total Held (e.g. 30)"
+                          value={classesTotal}
+                          onChange={e => setClassesTotal(e.target.value)}
+                          className="tt-calib-input"
+                        />
+                      </div>
                     </div>
-                  </div>
-                )}
 
-                {/* Live Calibration Stats Preview */}
-                {previewData && (
-                  <div className={`tt-preview-card ${previewData.safe ? 'safe' : 'danger'}`}>
-                    <div className="tt-preview-header">
-                      <span className="tt-preview-title">Calibrated Starting Baseline</span>
-                      <span className="tt-preview-pct">{previewData.pct}%</span>
-                    </div>
-                    <span className="tt-preview-label">{previewData.label}</span>
+                    {/* Labs Toggle */}
+                    <label className="tt-lab-toggle-row">
+                      <input
+                        type="checkbox"
+                        checked={hasLabs}
+                        onChange={e => setHasLabs(e.target.checked)}
+                        className="tt-checkbox"
+                      />
+                      <span className="tt-lab-toggle-text">
+                        Include Separate Lab Attendance
+                      </span>
+                    </label>
+
+                    {hasLabs && (
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <span className="tt-micro-label">Labs Attended / Total Held</span>
+                        <div className="tt-calib-row">
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="Attended (e.g. 5)"
+                            value={labsAttended}
+                            onChange={e => setLabsAttended(e.target.value)}
+                            className="tt-calib-input"
+                          />
+                          <span className="tt-calib-slash">/</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="Total Held (e.g. 6)"
+                            value={labsTotal}
+                            onChange={e => setLabsTotal(e.target.value)}
+                            className="tt-calib-input"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Live Calibration Stats Preview */}
+                    {previewData && (
+                      <div className={`tt-preview-card ${previewData.safe ? 'safe' : 'danger'}`}>
+                        <div className="tt-preview-header">
+                          <span className="tt-preview-title">Calibrated Starting Baseline</span>
+                          <span className="tt-preview-pct">{previewData.pct}%</span>
+                        </div>
+                        <span className="tt-preview-label">{previewData.label}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
 
-          {/* Weekly Schedule (Monday - Sunday) */}
-          <div className="tt-input-group">
-            <label className="tt-input-label">Weekly Schedule (Classes / Labs)</label>
+              {/* Weekly Schedule (Monday - Sunday) */}
+              <div className="tt-input-group">
+                <label className="tt-input-label">Weekly Schedule (Classes / Labs)</label>
 
-            <div className="tt-days-list">
-              {DAYS.map((dayName, i) => {
-                const dayIdx = DAY_MAP[i];
-                const sched = schedule[dayIdx.toString()] || { classes: [], labs: [] };
-                const classes = sched.classes || [];
-                const labs = sched.labs || [];
+                <div className="tt-days-list">
+                  {DAYS.map((dayName, i) => {
+                    const dayIdx = DAY_MAP[i];
+                    const sched = schedule[dayIdx.toString()] || { classes: [], labs: [] };
+                    const classes = sched.classes || [];
+                    const labs = sched.labs || [];
 
-                return (
-                  <div key={dayName} className="tt-day-card">
-                    <div className="tt-day-header">
-                      <span className="tt-day-title">{dayName}</span>
-                      <div className="tt-day-actions">
-                        <button
-                          type="button"
-                          className="tt-add-session-btn class"
-                          onClick={() => addSession(dayIdx, 'classes')}
-                        >
-                          <Plus size={12} strokeWidth={2.5} />
-                          <span>Class</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="tt-add-session-btn lab"
-                          onClick={() => addSession(dayIdx, 'labs')}
-                        >
-                          <Plus size={12} strokeWidth={2.5} />
-                          <span>Lab</span>
-                        </button>
+                    return (
+                      <div key={dayName} className="tt-day-card">
+                        <div className="tt-day-header">
+                          <span className="tt-day-title">{dayName}</span>
+                          <div className="tt-day-actions">
+                            <button
+                              type="button"
+                              className="tt-add-session-btn class"
+                              onClick={() => addSession(dayIdx, 'classes')}
+                            >
+                              <Plus size={12} strokeWidth={2.5} />
+                              <span>Class</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="tt-add-session-btn lab"
+                              onClick={() => addSession(dayIdx, 'labs')}
+                            >
+                              <Plus size={12} strokeWidth={2.5} />
+                              <span>Lab</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {classes.length === 0 && labs.length === 0 ? (
+                          <div className="tt-no-sessions">No sessions scheduled</div>
+                        ) : null}
+
+                        {/* Classes List */}
+                        {classes.map((cls: any, idx: number) => (
+                          <div key={`class-${idx}`} className="tt-session-row">
+                            <span className="tt-session-type class">CLASS</span>
+                            <input
+                              type="text"
+                              placeholder="Time (e.g. 10:00 AM)"
+                              value={cls.time || ''}
+                              onChange={e => updateSession(dayIdx, 'classes', idx, 'time', e.target.value)}
+                              className="tt-session-input time"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Room (e.g. L4)"
+                              value={cls.room || ''}
+                              onChange={e => updateSession(dayIdx, 'classes', idx, 'room', e.target.value)}
+                              className="tt-session-input room"
+                            />
+                            <button
+                              type="button"
+                              className="tt-session-del-btn"
+                              onClick={() => removeSession(dayIdx, 'classes', idx)}
+                              title="Remove"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+
+                        {/* Labs List */}
+                        {labs.map((lab: any, idx: number) => (
+                          <div key={`lab-${idx}`} className="tt-session-row">
+                            <span className="tt-session-type lab">LAB</span>
+                            <input
+                              type="text"
+                              placeholder="Time (e.g. 02:00 PM)"
+                              value={lab.time || ''}
+                              onChange={e => updateSession(dayIdx, 'labs', idx, 'time', e.target.value)}
+                              className="tt-session-input time"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Room (e.g. Lab 2)"
+                              value={lab.room || ''}
+                              onChange={e => updateSession(dayIdx, 'labs', idx, 'room', e.target.value)}
+                              className="tt-session-input room"
+                            />
+                            <button
+                              type="button"
+                              className="tt-session-del-btn"
+                              onClick={() => removeSession(dayIdx, 'labs', idx)}
+                              title="Remove"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
                       </div>
-                    </div>
+                    );
+                  })}
+                </div>
+              </div>
 
-                    {classes.length === 0 && labs.length === 0 ? (
-                      <div className="tt-no-sessions">No sessions scheduled</div>
-                    ) : null}
-
-                    {/* Classes List */}
-                    {classes.map((cls: any, idx: number) => (
-                      <div key={`class-${idx}`} className="tt-session-row">
-                        <span className="tt-session-type class">CLASS</span>
-                        <input
-                          type="text"
-                          placeholder="Time (e.g. 10:00 AM)"
-                          value={cls.time || ''}
-                          onChange={e => updateSession(dayIdx, 'classes', idx, 'time', e.target.value)}
-                          className="tt-session-input time"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Room"
-                          value={cls.room || ''}
-                          onChange={e => updateSession(dayIdx, 'classes', idx, 'room', e.target.value)}
-                          className="tt-session-input room"
-                        />
-                        <button
-                          type="button"
-                          className="tt-session-del-btn"
-                          onClick={() => removeSession(dayIdx, 'classes', idx)}
-                          title="Remove"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    ))}
-
-                    {/* Labs List */}
-                    {labs.map((lab: any, idx: number) => (
-                      <div key={`lab-${idx}`} className="tt-session-row">
-                        <span className="tt-session-type lab">LAB</span>
-                        <input
-                          type="text"
-                          placeholder="Time (e.g. 02:00 PM)"
-                          value={lab.time || ''}
-                          onChange={e => updateSession(dayIdx, 'labs', idx, 'time', e.target.value)}
-                          className="tt-session-input time"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Room"
-                          value={lab.room || ''}
-                          onChange={e => updateSession(dayIdx, 'labs', idx, 'room', e.target.value)}
-                          className="tt-session-input room"
-                        />
-                        <button
-                          type="button"
-                          className="tt-session-del-btn"
-                          onClick={() => removeSession(dayIdx, 'labs', idx)}
-                          title="Remove"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="tt-modal-footer" style={{ marginTop: '1rem' }}>
-            <button
-              type="button"
-              className="tt-footer-action-btn cancel"
-              onClick={onClose}
-              disabled={loading}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="tt-save-btn"
-              disabled={loading}
-            >
-              {loading ? 'Saving...' : existingSubject ? 'Update Subject' : 'Save Subject'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+              <div className="tt-modal-footer">
+                <button
+                  type="button"
+                  className="tt-footer-action-btn cancel"
+                  onClick={onClose}
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="tt-save-btn"
+                  disabled={loading}
+                >
+                  {loading ? 'Saving...' : existingSubject ? 'Update Subject' : 'Save Subject'}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 };

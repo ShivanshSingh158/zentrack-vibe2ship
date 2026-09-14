@@ -4,6 +4,7 @@ import {
   doc, writeBatch, deleteDoc, getDocs
 } from 'firebase/firestore';
 import { onAuthStateChanged, type User } from 'firebase/auth';
+import { motion, AnimatePresence } from 'framer-motion';
 import { db, auth } from '../../services/firebase';
 import {
   GraduationCap, Check, X, RotateCcw, Plus, Calendar,
@@ -1084,251 +1085,272 @@ export const AttendanceModule = () => {
       />
 
       {/* ── SUBJECT HISTORY MODAL ── */}
-      {selectedHistorySubject && (
-        <div className="att-modal-overlay" onClick={() => setSelectedHistorySubject(null)}>
-          <div
-            className="att-modal-dialog"
-            style={{
-              maxWidth: '560px',
-              maxHeight: '82vh',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              padding: '1.35rem 1.35rem 1.15rem',
-            }}
-            onClick={e => e.stopPropagation()}
-            onWheel={e => e.stopPropagation()}
-          >
-            <div className="att-modal-header" style={{ flexShrink: 0, paddingBottom: '0.5rem' }}>
-              <h3 className="att-modal-title">{selectedHistorySubject.name} Log History</h3>
-              <button type="button" className="att-modal-close-btn" onClick={() => setSelectedHistorySubject(null)}>
-                <X size={16} />
-              </button>
-            </div>
-
-            <div
-              className="custom-scrollbar"
+      <AnimatePresence>
+        {selectedHistorySubject && (
+          <div className="att-modal-overlay" onClick={() => setSelectedHistorySubject(null)}>
+            <motion.div
+              className="att-modal-dialog"
               style={{
+                maxWidth: '560px',
+                maxHeight: '82vh',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '0.45rem',
-                flex: 1,
-                overflowY: 'auto',
-                paddingRight: '4px',
-                overscrollBehavior: 'contain',
-                minHeight: 0,
-                marginTop: '0.35rem',
+                overflow: 'hidden',
+                padding: '1.5rem 1.6rem 1.25rem',
               }}
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0, transition: { type: 'spring', damping: 25, stiffness: 350 } }}
+              exit={{ opacity: 0, scale: 0.95, y: 15, transition: { duration: 0.15 } }}
+              onClick={e => e.stopPropagation()}
+              onWheel={e => e.stopPropagation()}
             >
-              {(() => {
-                const rawLogs = (selectedHistorySubject.id ? logsBySubjectId[selectedHistorySubject.id] : null) || logsBySubjectId[selectedHistorySubject.name] || [];
-                // Sort Newest to Oldest (by date descending, then timestamp descending)
-                const histLogs = [...rawLogs].sort((a, b) => {
-                  if (b.date !== a.date) {
-                    return (b.date || '').localeCompare(a.date || '');
+              <div className="att-modal-header" style={{ flexShrink: 0, paddingBottom: '0.85rem' }}>
+                <h3 className="att-modal-title">{selectedHistorySubject.name} Log History</h3>
+                <button type="button" className="att-modal-close-btn" onClick={() => setSelectedHistorySubject(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div
+                className="custom-scrollbar"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.65rem',
+                  flex: 1,
+                  overflowY: 'auto',
+                  paddingRight: '4px',
+                  overscrollBehavior: 'contain',
+                  minHeight: 0,
+                  marginTop: '0.65rem',
+                }}
+              >
+                {(() => {
+                  const rawLogs = (selectedHistorySubject.id ? logsBySubjectId[selectedHistorySubject.id] : null) || logsBySubjectId[selectedHistorySubject.name] || [];
+                  // Sort Newest to Oldest (by date descending, then timestamp descending)
+                  const histLogs = [...rawLogs].sort((a, b) => {
+                    if (b.date !== a.date) {
+                      return (b.date || '').localeCompare(a.date || '');
+                    }
+                    return (b.timestamp || 0) - (a.timestamp || 0);
+                  });
+
+                  if (histLogs.length === 0) {
+                    return (
+                      <div style={{ textAlign: 'center', padding: '3rem 0', color: 'var(--att-text-tertiary)', fontSize: '0.88rem' }}>
+                        No attendance logs recorded for this subject yet.
+                      </div>
+                    );
                   }
-                  return (b.timestamp || 0) - (a.timestamp || 0);
-                });
 
-                if (histLogs.length === 0) {
-                  return (
-                    <div style={{ textAlign: 'center', padding: '2.5rem 0', color: 'var(--att-text-tertiary)', fontSize: '0.85rem' }}>
-                      No attendance logs recorded for this subject yet.
-                    </div>
-                  );
-                }
-
-                return histLogs.map(l => (
-                  <div
-                    key={l.id}
-                    className="att-history-row"
-                  >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                      <span style={{
-                        fontSize: '0.85rem',
-                        fontWeight: 700,
-                        color: l.action === 'attended' ? '#5eda9e' : l.action === 'missed' ? '#ff6961' : '#8e8e93'
-                      }}>
-                        {l.action === 'attended' ? '✓ Attended' : l.action === 'missed' ? '✕ Missed' : '⊘ Cancelled'} {l.isExtra ? '(Extra)' : ''} {l.type || 'class'}
-                      </span>
-                      <span style={{ fontSize: '0.72rem', color: '#8e8e93', fontWeight: 500 }}>
-                        {formatDisplayDate(l.date)} • {new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="att-history-undo-btn"
-                      onClick={() => handleUndoLog(l.id)}
-                      title="Undo this log"
+                  return histLogs.map(l => (
+                    <div
+                      key={l.id}
+                      className="att-history-row"
                     >
-                      <RotateCcw size={12} strokeWidth={2.5} />
-                      <span>Undo</span>
-                    </button>
-                  </div>
-                ));
-              })()}
-            </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                        <span style={{
+                          fontSize: '0.88rem',
+                          fontWeight: 700,
+                          color: l.action === 'attended' ? '#5eda9e' : l.action === 'missed' ? '#ff6961' : '#8e8e93'
+                        }}>
+                          {l.action === 'attended' ? '✓ Attended' : l.action === 'missed' ? '✕ Missed' : '⊘ Cancelled'} {l.isExtra ? '(Extra)' : ''} {l.type || 'class'}
+                        </span>
+                        <span style={{ fontSize: '0.74rem', color: '#8e8e93', fontWeight: 500 }}>
+                          {formatDisplayDate(l.date)} • {new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="att-history-undo-btn"
+                        onClick={() => handleUndoLog(l.id)}
+                        title="Undo this log"
+                      >
+                        <RotateCcw size={12} strokeWidth={2.5} />
+                        <span>Undo</span>
+                      </button>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* ── EXTRA CLASS MODAL ── */}
-      {isExtraOpen && (
-        <div className="att-modal-overlay" onClick={() => setIsExtraOpen(false)}>
-          <div className="att-modal-dialog" onClick={e => e.stopPropagation()}>
-            <div className="att-modal-header">
-              <h3 className="att-modal-title">Log Extra Session</h3>
-              <button type="button" className="att-modal-close-btn" onClick={() => setIsExtraOpen(false)}>
-                <X size={16} />
-              </button>
-            </div>
+      <AnimatePresence>
+        {isExtraOpen && (
+          <div className="att-modal-overlay" onClick={() => setIsExtraOpen(false)}>
+            <motion.div
+              className="att-modal-dialog"
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0, transition: { type: 'spring', damping: 25, stiffness: 350 } }}
+              exit={{ opacity: 0, scale: 0.95, y: 15, transition: { duration: 0.15 } }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="att-modal-header">
+                <h3 className="att-modal-title">Log Extra Session</h3>
+                <button type="button" className="att-modal-close-btn" onClick={() => setIsExtraOpen(false)}>
+                  <X size={16} />
+                </button>
+              </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.95rem' }}>
-              <label className="att-input-label">
-                <span>SELECT SUBJECT</span>
-                <select
-                  value={extraSubjectId}
-                  onChange={e => setExtraSubjectId(e.target.value)}
-                  className="att-modal-input"
-                >
-                  {subjects.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <label className="att-input-label">
+                  <span>SELECT SUBJECT</span>
+                  <select
+                    value={extraSubjectId}
+                    onChange={e => setExtraSubjectId(e.target.value)}
+                    className="att-modal-input"
+                  >
+                    {subjects.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </label>
 
-              {/* Class & Lab Buttons */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginTop: '0.2rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span className="att-extra-type-label class">Extra Lecture</span>
-                  <div style={{ display: 'flex', gap: '0.45rem' }}>
-                    <button
-                      type="button"
-                      className="att-log-pill present"
-                      onClick={() => {
-                        const targetSub = subjects.find(s => s.id === extraSubjectId);
-                        if (targetSub) handleLogSession(targetSub, 'class', 'attended', selectedDate, true);
-                        setIsExtraOpen(false);
-                      }}
-                    >
-                      Present
-                    </button>
-                    <button
-                      type="button"
-                      className="att-log-pill absent"
-                      onClick={() => {
-                        const targetSub = subjects.find(s => s.id === extraSubjectId);
-                        if (targetSub) handleLogSession(targetSub, 'class', 'missed', selectedDate, true);
-                        setIsExtraOpen(false);
-                      }}
-                    >
-                      Absent
-                    </button>
+                {/* Class & Lab Buttons */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.2rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className="att-extra-type-label class">Extra Lecture</span>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        className="att-log-pill present"
+                        onClick={() => {
+                          const targetSub = subjects.find(s => s.id === extraSubjectId);
+                          if (targetSub) handleLogSession(targetSub, 'class', 'attended', selectedDate, true);
+                          setIsExtraOpen(false);
+                        }}
+                      >
+                        Present
+                      </button>
+                      <button
+                        type="button"
+                        className="att-log-pill absent"
+                        onClick={() => {
+                          const targetSub = subjects.find(s => s.id === extraSubjectId);
+                          if (targetSub) handleLogSession(targetSub, 'class', 'missed', selectedDate, true);
+                          setIsExtraOpen(false);
+                        }}
+                      >
+                        Absent
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span className="att-extra-type-label lab">Extra Practical / Lab</span>
-                  <div style={{ display: 'flex', gap: '0.45rem' }}>
-                    <button
-                      type="button"
-                      className="att-log-pill present"
-                      onClick={() => {
-                        const targetSub = subjects.find(s => s.id === extraSubjectId);
-                        if (targetSub) handleLogSession(targetSub, 'lab', 'attended', selectedDate, true);
-                        setIsExtraOpen(false);
-                      }}
-                    >
-                      Present
-                    </button>
-                    <button
-                      type="button"
-                      className="att-log-pill absent"
-                      onClick={() => {
-                        const targetSub = subjects.find(s => s.id === extraSubjectId);
-                        if (targetSub) handleLogSession(targetSub, 'lab', 'missed', selectedDate, true);
-                        setIsExtraOpen(false);
-                      }}
-                    >
-                      Absent
-                    </button>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className="att-extra-type-label lab">Extra Practical / Lab</span>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        className="att-log-pill present"
+                        onClick={() => {
+                          const targetSub = subjects.find(s => s.id === extraSubjectId);
+                          if (targetSub) handleLogSession(targetSub, 'lab', 'attended', selectedDate, true);
+                          setIsExtraOpen(false);
+                        }}
+                      >
+                        Present
+                      </button>
+                      <button
+                        type="button"
+                        className="att-log-pill absent"
+                        onClick={() => {
+                          const targetSub = subjects.find(s => s.id === extraSubjectId);
+                          if (targetSub) handleLogSession(targetSub, 'lab', 'missed', selectedDate, true);
+                          setIsExtraOpen(false);
+                        }}
+                      >
+                        Absent
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* ── MANUAL OVERRIDE MODAL ── */}
-      {overrideSubject && (
-        <div className="att-modal-overlay" onClick={() => setOverrideSubject(null)}>
-          <div className="att-modal-dialog" onClick={e => e.stopPropagation()}>
-            <div className="att-modal-header">
-              <h3 className="att-modal-title">Manual Count Override ({overrideSubject.name})</h3>
-              <button type="button" className="att-modal-close-btn" onClick={() => setOverrideSubject(null)}>
-                <X size={16} />
-              </button>
-            </div>
+      <AnimatePresence>
+        {overrideSubject && (
+          <div className="att-modal-overlay" onClick={() => setOverrideSubject(null)}>
+            <motion.div
+              className="att-modal-dialog"
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0, transition: { type: 'spring', damping: 25, stiffness: 350 } }}
+              exit={{ opacity: 0, scale: 0.95, y: 15, transition: { duration: 0.15 } }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="att-modal-header">
+                <h3 className="att-modal-title">Manual Count Override ({overrideSubject.name})</h3>
+                <button type="button" className="att-modal-close-btn" onClick={() => setOverrideSubject(null)}>
+                  <X size={16} />
+                </button>
+              </div>
 
-            <div className="att-modal-grid-2">
-              <label className="att-input-label">
-                <span>Classes Attended:</span>
-                <input
-                  type="number"
-                  min="0"
-                  className="att-modal-input"
-                  value={overrideCounts.classesAttended}
-                  onChange={e => setOverrideCounts({ ...overrideCounts, classesAttended: parseInt(e.target.value, 10) || 0 })}
-                />
-              </label>
+              <div className="att-modal-grid-2">
+                <label className="att-input-label">
+                  <span>Classes Attended:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    className="att-modal-input"
+                    value={overrideCounts.classesAttended}
+                    onChange={e => setOverrideCounts({ ...overrideCounts, classesAttended: parseInt(e.target.value, 10) || 0 })}
+                  />
+                </label>
 
-              <label className="att-input-label">
-                <span>Classes Total:</span>
-                <input
-                  type="number"
-                  min="0"
-                  className="att-modal-input"
-                  value={overrideCounts.classesTotal}
-                  onChange={e => setOverrideCounts({ ...overrideCounts, classesTotal: parseInt(e.target.value, 10) || 0 })}
-                />
-              </label>
+                <label className="att-input-label">
+                  <span>Classes Total:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    className="att-modal-input"
+                    value={overrideCounts.classesTotal}
+                    onChange={e => setOverrideCounts({ ...overrideCounts, classesTotal: parseInt(e.target.value, 10) || 0 })}
+                  />
+                </label>
 
-              <label className="att-input-label">
-                <span>Labs Attended:</span>
-                <input
-                  type="number"
-                  min="0"
-                  className="att-modal-input"
-                  value={overrideCounts.labsAttended}
-                  onChange={e => setOverrideCounts({ ...overrideCounts, labsAttended: parseInt(e.target.value, 10) || 0 })}
-                />
-              </label>
+                <label className="att-input-label">
+                  <span>Labs Attended:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    className="att-modal-input"
+                    value={overrideCounts.labsAttended}
+                    onChange={e => setOverrideCounts({ ...overrideCounts, labsAttended: parseInt(e.target.value, 10) || 0 })}
+                  />
+                </label>
 
-              <label className="att-input-label">
-                <span>Labs Total:</span>
-                <input
-                  type="number"
-                  min="0"
-                  className="att-modal-input"
-                  value={overrideCounts.labsTotal}
-                  onChange={e => setOverrideCounts({ ...overrideCounts, labsTotal: parseInt(e.target.value, 10) || 0 })}
-                />
-              </label>
-            </div>
+                <label className="att-input-label">
+                  <span>Labs Total:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    className="att-modal-input"
+                    value={overrideCounts.labsTotal}
+                    onChange={e => setOverrideCounts({ ...overrideCounts, labsTotal: parseInt(e.target.value, 10) || 0 })}
+                  />
+                </label>
+              </div>
 
-            <div className="att-modal-footer">
-              <button type="button" className="att-modal-cancel-btn" onClick={() => setOverrideSubject(null)}>
-                Cancel
-              </button>
-              <button type="button" className="att-modal-save-btn" onClick={handleApplyOverride}>
-                Save Counts
-              </button>
-            </div>
+              <div className="att-modal-footer">
+                <button type="button" className="att-modal-cancel-btn" onClick={() => setOverrideSubject(null)}>
+                  Cancel
+                </button>
+                <button type="button" className="att-modal-save-btn" onClick={handleApplyOverride}>
+                  Save Counts
+                </button>
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* ── RESET SEMESTER CONFIRM DIALOG ── */}
       <ConfirmDialog
@@ -1337,7 +1359,7 @@ export const AttendanceModule = () => {
         message="Are you sure you want to reset all attendance counts to 0 and wipe your attendance logs? This action is permanent and cannot be undone."
         confirmText="Reset Everything"
         cancelText="Cancel"
-        type="danger"
+        danger
         onConfirm={handleResetSemesterConfirmed}
         onCancel={() => setIsResetConfirmOpen(false)}
       />
@@ -1349,7 +1371,7 @@ export const AttendanceModule = () => {
         message="Are you sure you want to delete this subject and its timetable schedule?"
         confirmText="Delete"
         cancelText="Cancel"
-        type="danger"
+        danger
         onConfirm={async () => {
           if (deleteConfirmId) {
             await deleteDoc(doc(db, 'attendance_subjects', deleteConfirmId));

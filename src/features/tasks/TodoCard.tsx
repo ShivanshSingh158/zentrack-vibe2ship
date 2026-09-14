@@ -2,7 +2,7 @@ import React from 'react';
 import { GripVertical, Check, ChevronDown, ChevronRight, Edit2, Timer, Trash2, Calendar as CalendarIcon, Clock, X, Plus } from 'lucide-react';
 import { Draggable } from '@hello-pangea/dnd';
 import { motion, AnimatePresence } from 'framer-motion';
-import { formatHoursDisplay, extractTaskDurationMinutes } from '../../utils/dateUtils';
+import { formatHoursDisplay, extractTaskDurationMinutes, formatTimeRangeDisplay } from '../../utils/dateUtils';
 import type { TodoItem, TodoSubtask } from '../../types';
 
 interface TodoCardProps {
@@ -155,9 +155,9 @@ export const TodoCard = React.memo(({
                 <div className="todo-submeta-row">
                   {/* Time Slot / Range */}
                   {todo.timeSlot && (
-                    <span className="submeta-time-text">
+                    <span className="submeta-time-text" title={todo.timeSlot}>
                       <Clock size={11} />
-                      <span>{todo.timeSlot}</span>
+                      <span>{formatTimeRangeDisplay(todo.timeSlot)}</span>
                     </span>
                   )}
 
@@ -171,7 +171,7 @@ export const TodoCard = React.memo(({
 
                   {/* Duration Focus */}
                   {computedMinutes ? (
-                    <span className="submeta-duration-chip">
+                    <span className="submeta-duration-chip" title={`${computedMinutes} minutes`}>
                       <Timer size={11} />
                       <span>{formatHoursDisplay(computedMinutes / 60)}</span>
                     </span>
