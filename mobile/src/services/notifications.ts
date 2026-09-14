@@ -1523,16 +1523,20 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
           ? (Notifications.AndroidNotificationPriority?.MAX ?? ('max' as any))
           : (Notifications.AndroidNotificationPriority?.HIGH ?? ('high' as any));
 
+        // Use DATE trigger on both platforms for future-dated notifications.
+        // Android TIME_INTERVAL with large values (hours) is silently dropped by battery
+        // optimization on Android 12+. DATE type uses AlarmManager.setExactAndAllowWhileIdle
+        // which correctly fires even for multi-hour delays.
+        const targetFireTime = new Date(Math.max(finalTrigger.getTime(), Date.now() + 3000));
         const triggerConfig: any = Platform.OS === 'android'
           ? {
-              type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval',
-              seconds: delaySeconds,
-              repeats: false,
+              type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
+              date: targetFireTime,
               channelId: notif.channel,
             }
           : {
               type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
-              date: new Date(Math.max(finalTrigger.getTime(), Date.now() + 3000)),
+              date: targetFireTime,
             };
 
         preparedList.push({
@@ -1567,7 +1571,10 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
               });
               scheduledCount++;
             } catch (e: any) {
-              _lastScheduleError = e?.message || String(e);
+              // Capture FIRST error only so it isn't overwritten by subsequent failures
+              if (!_lastScheduleError) {
+                _lastScheduleError = e?.message || String(e);
+              }
               console.warn('[Notifications] Failed to schedule notification:', item.title, e);
             }
           })
@@ -1733,16 +1740,15 @@ export async function runNotificationDiagnostic(): Promise<string> {
       lines.push(`${fail} cancelAllScheduledNotificationsAsync: ${e?.message}`);
     }
 
-    // 5. Try scheduling a test notification 10s from now (using platform-safe trigger & omitting sound on Android)
-    const testDate = new Date(Date.now() + 10000);
+    // 5. Try scheduling a test notification 30s from now using DATE trigger (same as real scheduler)
+    const testDate = new Date(Date.now() + 30000);
     let scheduleError: string | null = null;
     let scheduledId: string | null = null;
     try {
       const triggerConfig: any = Platform.OS === 'android'
         ? {
-            type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval',
-            seconds: 10,
-            repeats: false,
+            type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
+            date: testDate,
             channelId: 'reminders',
           }
         : {
@@ -1760,7 +1766,7 @@ export async function runNotificationDiagnostic(): Promise<string> {
         } as any,
         trigger: triggerConfig,
       });
-      lines.push(`${ok} Test Alarm Scheduled (+10s): OK (id: ${scheduledId})`);
+      lines.push(`${ok} Test Alarm Scheduled (+30s DATE): OK (id: ${scheduledId?.slice(0, 8)})`);
     } catch (e: any) {
       scheduleError = e?.message || String(e);
       lines.push(`${fail} Test Alarm Scheduled (+10s): ${scheduleError}`);
@@ -1771,25 +1777,26 @@ export async function runNotificationDiagnostic(): Promise<string> {
     let scheduled = await Notifications.getAllScheduledNotificationsAsync();
     lines.push(`${scheduled.length > 0 ? ok : fail} getAllScheduledNotificationsAsync: ${scheduled.length} alarm(s) in OS queue`);
 
-    // 7. Test clean DATE probe without sound on Android
+    // 7. Long-range DATE probe (1h) — representative of real multi-hour notifications
     if (Platform.OS === 'android') {
       try {
-        const dateTestId = await Notifications.scheduleNotificationAsync({
+        const longDate = new Date(Date.now() + 60 * 60 * 1000);
+        const longTestId = await Notifications.scheduleNotificationAsync({
           content: {
-            title: '🔬 Date Probe',
-            body: 'Testing clean Date trigger',
+            title: '🔬 Long-Range Probe',
+            body: 'Testing 1h DATE trigger (representative of real alarms)',
             channelId: 'reminders',
           } as any,
           trigger: {
-            type: dateType,
-            date: testDate,
+            type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
+            date: longDate,
             channelId: 'reminders',
           } as any,
         });
-        lines.push(`${ok} Clean DATE Trigger Probe: OK (id: ${dateTestId})`);
-        await Notifications.cancelScheduledNotificationAsync(dateTestId).catch(() => {});
+        lines.push(`${ok} Long-Range DATE Trigger (1h): OK (id: ${longTestId?.slice(0, 8)})`);
+        await Notifications.cancelScheduledNotificationAsync(longTestId).catch(() => {});
       } catch (de: any) {
-        lines.push(`${warn} Clean DATE Trigger Probe: ${de?.message}`);
+        lines.push(`${warn} Long-Range DATE Trigger (1h) FAILED: ${de?.message || String(de)}`);
       }
     }
 
