@@ -209,7 +209,23 @@ export default function App() {
       const { notification, actionIdentifier } = response;
       const data = notification.request.content.data as any;
       const categoryId = notification.request.content.categoryIdentifier;
-      const notifType = (data?.type as string | undefined) || categoryId;
+      const identifier = notification.request.identifier || '';
+
+      const parsedTaskId = (data?.taskId as string | undefined) ||
+        (identifier.startsWith('task_') ? identifier.split('_')[1] : undefined);
+      const parsedHabitId = (data?.habitId as string | undefined) ||
+        (identifier.startsWith('habit_') ? identifier.split('_')[1] : undefined);
+      const parsedSubjectId = (data?.subjectId as string | undefined) ||
+        (identifier.startsWith('class_') ? identifier.split('_')[1] : identifier.startsWith('lab_') ? identifier.split('_')[1] : undefined);
+
+      const notifType = (data?.type as string | undefined) ||
+        (identifier.startsWith('water_') ? 'water_reminder' :
+         identifier.startsWith('brief_') ? 'morning_brief' :
+         identifier.startsWith('gym_') ? 'gym' :
+         identifier.startsWith('task_') ? 'task_alarm' :
+         identifier.startsWith('habit_') ? 'habit_reminder' :
+         identifier.startsWith('class_') ? 'class_reminder' :
+         categoryId);
 
       // Helper: navigate imperatively, works before React tree mounts
       const nav = (screen: string, params?: object) => {
@@ -239,23 +255,24 @@ export default function App() {
       // ── ACTION: "Snooze 15m" button on gym_reminder ────────────────────────
       if (actionIdentifier === 'snooze_15m') {
         const snoozeSeconds = 15 * 60;
+        const snoozeDate = new Date(Date.now() + snoozeSeconds * 1000);
         const triggerConfig: any = Platform.OS === 'android'
           ? {
-              type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval',
-              seconds: snoozeSeconds,
-              repeats: false,
+              type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
+              date: snoozeDate,
               channelId: 'default',
             }
           : {
               type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
-              date: new Date(Date.now() + snoozeSeconds * 1000),
+              date: snoozeDate,
             };
 
         await Notifications.scheduleNotificationAsync({
+          identifier: `gym_snooze_${Date.now()}`,
           content: {
             title: 'Workout Reminder: Gym Day',
             body: 'Snoozed 15 min. Ready to begin your workout?',
-            data: { type: 'gym' },
+            data: Platform.OS === 'ios' ? { type: 'gym' } : undefined,
             categoryIdentifier: 'gym_reminder',
             channelId: 'default',
             ...(Platform.OS === 'ios' ? { sound: 'default' } : {}),
@@ -268,8 +285,8 @@ export default function App() {
 
       // ── ACTION: "Mark Done" button on task_reminder & location_task_reminder ─────────────────
       if (actionIdentifier === 'mark_task_done' || actionIdentifier === 'MARK_DONE') {
-        const taskId    = data?.taskId    as string | undefined;
-        const taskTitle = data?.taskTitle as string | undefined;
+        const taskId    = parsedTaskId;
+        const taskTitle = (data?.taskTitle as string | undefined) || (notification.request.content.title as string | undefined);
         let success = false;
         if (taskId) {
           try {
@@ -341,28 +358,28 @@ export default function App() {
       // ── ACTION: "Snooze 10m" button on task_reminder ─────────────────────────────
       // Reschedules the same task reminder 10 minutes from now without opening the app.
       if (actionIdentifier === 'snooze_10m') {
-        const taskId    = data?.taskId    as string | undefined;
-        const taskTitle = (data?.taskTitle ?? 'Task') as string;
+        const taskId    = parsedTaskId;
+        const taskTitle = (data?.taskTitle ?? (notification.request.content.title as string) ?? 'Task') as string;
         const snoozeSeconds = 10 * 60;
+        const snoozeDate = new Date(Date.now() + snoozeSeconds * 1000);
         const triggerConfig: any = Platform.OS === 'android'
           ? {
-              type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval',
-              seconds: snoozeSeconds,
-              repeats: false,
+              type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
+              date: snoozeDate,
               channelId: 'task_alarm',
             }
           : {
               type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
-              date: new Date(Date.now() + snoozeSeconds * 1000),
+              date: snoozeDate,
             };
         await Notifications.scheduleNotificationAsync({
+          identifier: taskId ? `task_${taskId}_snooze` : undefined,
           content: {
             title: taskTitle,
             body: 'Snoozed 10 minutes. Time to start.',
-            data: { taskId, taskTitle },
+            data: Platform.OS === 'ios' ? { taskId, taskTitle } : undefined,
             channelId: 'task_alarm',
-            sound: 'default',
-            vibrate: [0, 400, 200, 400, 100, 400, 100, 800],
+            ...(Platform.OS === 'ios' ? { sound: 'default' } : {}),
             priority: Notifications.AndroidNotificationPriority?.MAX ?? ('max' as any),
             categoryIdentifier: 'task_reminder',
           } as any,
@@ -376,7 +393,7 @@ export default function App() {
       // Added duplicate-log guard so double-tapping won't write two entries.
       // A confirmation banner fires 1s later with streak info.
       if (actionIdentifier === 'log_habit') {
-        const habitId = data?.habitId as string | undefined;
+        const habitId = parsedHabitId;
         let success = false;
         let confirmTitle = 'Habit Logged';
         let confirmBody  = 'Keep the momentum going.';
@@ -480,7 +497,7 @@ export default function App() {
       //             → if not logged: increment counters and create doc.
       // setDoc with merge:true makes this safe to call multiple times.
       if (actionIdentifier === 'mark_present') {
-        const subjectId   = data?.subjectId  as string | undefined;
+        const subjectId   = parsedSubjectId;
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
         const logDate     = (data?.date || formatLocalDateStr()) as string;
@@ -559,7 +576,7 @@ export default function App() {
       // ── ACTION: "Absent" button on class_reminder ───────────────────────────
       // IDEMPOTENCY: Same deterministic-ID + getDoc + delta pattern as mark_present.
       if (actionIdentifier === 'mark_absent' || actionIdentifier === 'mark_bunking') {
-        const subjectId   = data?.subjectId  as string | undefined;
+        const subjectId   = parsedSubjectId;
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
         const logDate     = (data?.date || formatLocalDateStr()) as string;
@@ -637,7 +654,7 @@ export default function App() {
       // ── ACTION: "Cancelled" button on class_reminder ───────────────────────
       // IDEMPOTENCY: Deterministic ID + setDoc (cancelled logs don't affect counters).
       if (actionIdentifier === 'mark_cancelled') {
-        const subjectId   = data?.subjectId  as string | undefined;
+        const subjectId   = parsedSubjectId;
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
         const logDate     = (data?.date || formatLocalDateStr()) as string;

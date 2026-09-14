@@ -157,29 +157,31 @@ function formatAlarmTrigger(triggerMs: number, nowMs: number): { label: string; 
 function getCategoryInfo(item: any): { tag: string; icon: string; color: string } {
   const type = item.content?.data?.type || '';
   const channel = item.content?.channelId || item.trigger?.channelId || '';
+  const identifier = item.identifier || '';
+  const categoryId = item.content?.categoryIdentifier || '';
 
-  if (type === 'water_reminder' || channel === 'wellness') {
+  if (type === 'water_reminder' || channel === 'wellness' || identifier.startsWith('water_')) {
     return { tag: 'Water', icon: 'water', color: '#38BDF8' };
   }
-  if (type === 'gym' || type === 'gym_rest') {
+  if (type === 'gym' || type === 'gym_rest' || categoryId === 'gym_reminder' || identifier.startsWith('gym_')) {
     return { tag: 'Gym', icon: 'barbell', color: '#5EDA9E' };
   }
-  if (type === 'morning_brief') {
+  if (type === 'morning_brief' || identifier.startsWith('brief_')) {
     return { tag: 'Briefing', icon: 'sunny', color: '#FF9F4D' };
   }
-  if (type === 'habit_reminder' || type === 'habit_streak' || channel === 'habits') {
+  if (type === 'habit_reminder' || type === 'habit_streak' || channel === 'habits' || categoryId === 'habit_reminder' || identifier.startsWith('habit_')) {
     return { tag: 'Habit', icon: 'flame', color: '#FF9F4D' };
   }
-  if (type.startsWith('class_') || type.startsWith('lab_') || type === 'attendance_warning') {
+  if (type.startsWith('class_') || type.startsWith('lab_') || type === 'attendance_warning' || categoryId === 'class_reminder' || identifier.startsWith('class_') || identifier.startsWith('lab_')) {
     return { tag: 'Class', icon: 'school', color: '#FBBF24' };
   }
-  if (type === 'sleep_night' || type === 'sleep_morning') {
+  if (type === 'sleep_night' || type === 'sleep_morning' || identifier.startsWith('sleep_')) {
     return { tag: 'Sleep', icon: 'moon', color: '#A599FF' };
   }
-  if (type.startsWith('assignment_')) {
+  if (type.startsWith('assignment_') || identifier.startsWith('asn_')) {
     return { tag: 'Assignment', icon: 'book', color: '#EF4444' };
   }
-  if (item.content?.data?.taskId || channel === 'reminders' || type === 'overdue_nudge') {
+  if (item.content?.data?.taskId || channel === 'reminders' || channel === 'task_alarm' || categoryId === 'task_reminder' || identifier.startsWith('task_') || type === 'overdue_nudge') {
     return { tag: 'Task', icon: 'checkmark-circle', color: '#A599FF' };
   }
   return { tag: 'Reminder', icon: 'notifications', color: '#A599FF' };

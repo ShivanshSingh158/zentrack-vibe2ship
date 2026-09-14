@@ -151,7 +151,6 @@ try {
 
 export function clearScheduleCache() {
   _lastScheduleFingerprint = null;
-  _lastScheduleError = null;
   AsyncStorage.removeItem(NOTIF_FINGERPRINT_KEY).catch(() => {});
   updateL1Cache('notifFingerprint', null);
 }
@@ -1481,6 +1480,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       let droppedCount = 0;
 
       interface PreparedNotif {
+        identifier?: string;
         title: string;
         body: string;
         data?: any;
@@ -1519,7 +1519,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         scheduledKeys.add(dedupeKey);
 
         const delaySeconds = Math.max(3, Math.round((finalTrigger.getTime() - Date.now()) / 1000));
-        const notifPriority = (notif.channel === 'reminders' || notif.channel === 'sara_critical' || notif.channel === 'wellness')
+        const notifPriority = (notif.channel === 'reminders' || notif.channel === 'sara_critical' || notif.channel === 'wellness' || notif.channel === 'task_alarm')
           ? (Notifications.AndroidNotificationPriority?.MAX ?? ('max' as any))
           : (Notifications.AndroidNotificationPriority?.HIGH ?? ('high' as any));
 
@@ -1539,10 +1539,31 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
               date: targetFireTime,
             };
 
+        // Deterministic identifier encodes type and entity ID so notification response handlers
+        // in App.tsx can identify tasks/habits/classes on Android without needing a non-serializable 'data' payload.
+        let notifId: string | undefined = undefined;
+        if (notif.data?.taskId) {
+          notifId = `task_${notif.data.taskId}_${Math.floor(targetFireTime.getTime() / 1000)}`;
+        } else if (notif.data?.habitId) {
+          notifId = `habit_${notif.data.habitId}_${Math.floor(targetFireTime.getTime() / 1000)}`;
+        } else if (notif.data?.subjectId) {
+          notifId = `class_${notif.data.subjectId}_${Math.floor(targetFireTime.getTime() / 1000)}`;
+        } else if (notif.data?.type === 'water_reminder') {
+          notifId = `water_${Math.floor(targetFireTime.getTime() / 1000)}`;
+        } else if (notif.data?.type === 'morning_brief') {
+          notifId = `brief_${Math.floor(targetFireTime.getTime() / 1000)}`;
+        } else if (notif.data?.type === 'gym' || notif.data?.type === 'gym_rest') {
+          notifId = `gym_${Math.floor(targetFireTime.getTime() / 1000)}`;
+        }
+
         preparedList.push({
+          identifier: notifId,
           title: notif.title,
           body: notif.body,
-          data: notif.data,  // Must be sent on BOTH platforms — Android action handlers (mark_done, mark_present, log_habit, etc.) need taskId/subjectId/habitId to write to Firestore
+          // CRITICAL: On Android, omit `data` to prevent `java.io.NotSerializableException: org.json.JSONObject`.
+          // Android native AlarmManager serialization throws when `content.data` is an object.
+          // Entity IDs (taskId, habitId, subjectId) are encoded in `identifier` above instead.
+          data: Platform.OS === 'ios' ? notif.data : undefined,
           categoryId: notif.categoryId,
           channel: notif.channel,
           notifPriority,
@@ -1558,6 +1579,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
           chunk.map(async (item) => {
             try {
               await Notifications.scheduleNotificationAsync({
+                ...(item.identifier ? { identifier: item.identifier } : {}),
                 content: {
                   title: item.title,
                   body: item.body,
@@ -1871,32 +1893,32 @@ export async function scheduleSingleTaskReminder(task: Task) {
   const delaySeconds = Math.max(2, Math.round((triggerTime - Date.now()) / 1000));
 
   try {
+    const targetDateObj = new Date(triggerTime);
     const triggerConfig: any = Platform.OS === 'android'
       ? {
-          type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval',
-          seconds: delaySeconds,
-          repeats: false,
+          type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
+          date: targetDateObj,
           channelId: 'task_alarm',
         }
       : {
           type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
-          date: triggerTime,
+          date: targetDateObj,
         };
 
     await Notifications.scheduleNotificationAsync({
+      identifier: task.id ? `task_${task.id}` : undefined,
       content: {
         title: task.title,
         body: 'Time to start. Tap to open or mark as done.',
-        data: { taskId: task.id, taskTitle: task.title },  // BUG-02 FIX: always send data on both platforms
+        data: Platform.OS === 'ios' ? { taskId: task.id, taskTitle: task.title } : undefined,
         channelId: 'task_alarm',
-        sound: 'default',
+        ...(Platform.OS === 'ios' ? { sound: 'default' } : {}),
         priority: Notifications.AndroidNotificationPriority?.MAX ?? ('max' as any),
-        vibrate: [0, 400, 200, 400, 100, 400, 100, 800],
         categoryIdentifier: 'task_reminder',
       } as any,
       trigger: triggerConfig,
     });
-    console.log(`[Notifications] Direct reminder scheduled for "${task.title}" at ${new Date(triggerTime).toLocaleTimeString()}`);
+    console.log(`[Notifications] Direct reminder scheduled for "${task.title}" at ${targetDateObj.toLocaleTimeString()}`);
   } catch (err) {
     console.warn('[Notifications] scheduleSingleTaskReminder error:', err);
   }
