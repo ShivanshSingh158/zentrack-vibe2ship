@@ -1454,6 +1454,28 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       // Sort: ascending priority (1=Critical first), then ascending trigger time.
       pendingQueue.sort((a, b) => a.priority - b.priority || a.trigger.getTime() - b.trigger.getTime());
 
+      // Summarize what's in the queue for diagnostics
+      const queueSummary: Record<string, number> = {};
+      pendingQueue.forEach(n => {
+        const t = n.data?.type || n.channel || 'other';
+        queueSummary[t] = (queueSummary[t] || 0) + 1;
+      });
+      console.log(`[Notifications] pendingQueue: ${pendingQueue.length} items →`, JSON.stringify(queueSummary));
+      // Save queue summary to AsyncStorage so diagnostics can read it
+      AsyncStorage.setItem('@zentrack_last_notif_queue_summary', JSON.stringify({
+        ts: Date.now(),
+        total: pendingQueue.length,
+        byType: queueSummary,
+        taskCount: tasks.length,
+        habitCount: allHabits.length,
+        attendanceCount: attendance.length,
+        morningBriefEnabled: boolVal('morning_brief'),
+        modTasks: boolVal('mod_tasks'),
+        modHabits: boolVal('mod_habits'),
+        modGym: boolVal('mod_gym'),
+        modAttendance: boolVal('mod_attendance'),
+      })).catch(() => {});
+
       const scheduledKeys = new Set<string>();
       let scheduledCount = 0;
       let droppedCount = 0;
@@ -1778,6 +1800,22 @@ export async function runNotificationDiagnostic(): Promise<string> {
     lines.push(`ℹ️ Prefs: waterFreq="${freq ?? '0'}", modTasks="${modTasks ?? 'true'}", modGym="${modGym ?? 'true'}"`);
     lines.push(`ℹ️ Last Schedule: ${_lastScheduledCount} alarm(s) set, error="${_lastScheduleError ?? 'none'}"`);
     lines.push(`ℹ️ Cache cleared — next app tick will force full reschedule.`);
+
+    // 8b. Queue summary from last real scheduling run
+    try {
+      const qsRaw = await AsyncStorage.getItem('@zentrack_last_notif_queue_summary');
+      if (qsRaw) {
+        const qs = JSON.parse(qsRaw);
+        const age = Math.round((Date.now() - qs.ts) / 1000);
+        lines.push(`ℹ️ Last queue (${age}s ago): ${qs.total} items | tasks=${qs.taskCount}, habits=${qs.habitCount}, attendance=${qs.attendanceCount}`);
+        lines.push(`ℹ️ Modules: tasks=${qs.modTasks}, habits=${qs.modHabits}, gym=${qs.modGym}, attend=${qs.modAttendance}, brief=${qs.morningBriefEnabled}`);
+        if (qs.total === 0) {
+          lines.push(`⚠️ Queue was 0 — all triggers were in the past OR per-habit notifications are not enabled individually (check each habit’s reminder settings).`);
+        } else {
+          lines.push(`ℹ️ Types: ${Object.entries(qs.byType).map(([k,v]) => `${k}:${v}`).join(', ')}`);
+        }
+      }
+    } catch {}
 
     // 9. Summary
     lines.push('');
