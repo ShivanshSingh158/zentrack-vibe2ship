@@ -366,39 +366,57 @@ export const NotesModule = () => {
     };
   }, []);
 
-  // Filtering and Sorting
+  // -- Filtering and Sorting --------------------------------------------------
   const filteredNodes = useMemo(() => {
+    const isInsideFolder = currentFolderId !== null;
     let result = nodes;
 
-    // Filter by tag
     if (selectedTag) {
       const tagLower = selectedTag.toLowerCase();
-      result = result.filter(n =>
-        (n.tags && n.tags.includes(selectedTag)) ||
-        (n.content && n.content.toLowerCase().includes(`#${tagLower}`))
-      );
+      result = result
+        .filter(n => n.type !== 'folder')
+        .filter(n =>
+          (n.tags && n.tags.some(t => t.toLowerCase() === tagLower)) ||
+          (n.content && n.content.toLowerCase().includes('#' + tagLower))
+        );
     } else if (isPinnedFilterActive) {
-      result = result.filter(n => n.isPinned);
+      // web writes 'isPinned', mobile writes 'pinned' - check both
+      result = result
+        .filter(n => n.type !== 'folder')
+        .filter(n => n.isPinned === true || (n as any).pinned === true);
     } else if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      result = result.filter(n =>
-        n.name.toLowerCase().includes(q) ||
-        (n.type === 'note' && n.content?.toLowerCase().includes(q))
-      );
-    } else if (currentFolderId !== null) {
+      result = result
+        .filter(n => n.type !== 'folder')
+        .filter(n =>
+          n.name.toLowerCase().includes(q) ||
+          (n.type === 'note' && n.content?.toLowerCase().includes(q))
+        );
+    } else if (isInsideFolder) {
       result = result.filter(n => n.parentId === currentFolderId);
+      const sortFn = (a: StorageNode, b: StorageNode): number => {
+        if (sortBy === 'newest')    return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
+        if (sortBy === 'oldest')    return (a.createdAt || 0) - (b.createdAt || 0);
+        if (sortBy === 'name-asc')  return a.name.localeCompare(b.name);
+        if (sortBy === 'name-desc') return b.name.localeCompare(a.name);
+        if (sortBy === 'size-desc') return (b.size || 0) - (a.size || 0);
+        return 0;
+      };
+      const subFolders = result.filter(n => n.type === 'folder').sort(sortFn);
+      const docs       = result.filter(n => n.type !== 'folder').sort(sortFn);
+      return [...subFolders, ...docs];
+    } else {
+      result = result.filter(n => n.type !== 'folder');
     }
 
-    result.sort((a, b) => {
-      if (sortBy === 'newest') return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
-      if (sortBy === 'oldest') return (a.createdAt || 0) - (b.createdAt || 0);
-      if (sortBy === 'name-asc') return a.name.localeCompare(b.name);
+    return [...result].sort((a, b) => {
+      if (sortBy === 'newest')    return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
+      if (sortBy === 'oldest')    return (a.createdAt || 0) - (b.createdAt || 0);
+      if (sortBy === 'name-asc')  return a.name.localeCompare(b.name);
       if (sortBy === 'name-desc') return b.name.localeCompare(a.name);
       if (sortBy === 'size-desc') return (b.size || 0) - (a.size || 0);
       return 0;
     });
-
-    return result;
   }, [nodes, searchQuery, sortBy, currentFolderId, selectedTag, isPinnedFilterActive]);
 
   // Create New Note
@@ -452,9 +470,11 @@ export const NotesModule = () => {
   const handleTogglePin = async (note: StorageNode) => {
     if (!note.id) return;
     try {
-      const newPinState = !note.isPinned;
+      const currentPinState = note.isPinned === true || (note as any).pinned === true;
+      const newPinState = !currentPinState;
       await updateDoc(doc(db, 'storage_nodes', note.id), {
-        isPinned: newPinState,
+        isPinned: newPinState, // web field
+        pinned:   newPinState, // mobile field — write both for cross-platform sync
         updatedAt: Date.now(),
       });
       toast.success(newPinState ? 'Note pinned to top' : 'Note unpinned');
@@ -495,12 +515,17 @@ export const NotesModule = () => {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const uploadedFiles = e.target.files;
     if (!uploadedFiles || uploadedFiles.length === 0) return;
+    let filesToUpload = Array.from(uploadedFiles);
+    if (filesToUpload.length > 10) {
+      toast(`Selected ${filesToUpload.length} files. Uploading the first 10 files at once.`);
+      filesToUpload = filesToUpload.slice(0, 10);
+    }
 
     setIsUploading(true);
     try {
-      for (let i = 0; i < uploadedFiles.length; i++) {
-        const file = uploadedFiles[i];
-        setUploadProgress(Math.round(((i + 1) / uploadedFiles.length) * 100));
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const file = filesToUpload[i];
+        setUploadProgress(Math.round(((i + 1) / filesToUpload.length) * 100));
 
         let fileType: 'pdf' | 'docx' | 'image' | 'file' = 'file';
         if (file.type.includes('pdf')) fileType = 'pdf';

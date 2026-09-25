@@ -245,6 +245,13 @@ export function useGymLog(dateStr: string) {
       );
       const firestoreIsStale = logRef.current !== null && firestoreCompletedCount < localCompletedCount;
 
+      // ── Active workout protection: never let a Firestore snapshot echo overwrite an active
+      // in-progress workout session that already has equal or newer local completed sets.
+      const isLocalSessionActive = logRef.current !== null && !logRef.current.completed;
+      if (isLocalSessionActive && firestoreCompletedCount <= localCompletedCount) {
+        return;
+      }
+
       if (logRef.current && (recentLocalWrite || firestoreIsStale || (existingTs <= localTs && (logRef.current.exercises?.length ?? 0) > 0 && (localHasWeights || !firestoreHasWeights)))) {
         return; // Local write in-flight or Firestore snapshot is older than local state — skip
       }
@@ -411,9 +418,8 @@ export function useGymLog(dateStr: string) {
     localWriteAtRef.current = writeAt;
 
     // ── STEP 1: Optimistic update — instant UI, no waiting for Firestore.
-    // queueMicrotask runs outside React's synthetic event batching, so without
-    // unstable_batchedUpdates each setState would trigger its own render flush.
-    queueMicrotask(() => {
+    // For completed workouts, update immediately to avoid microtask unmount races.
+    if (updatedLog.completed) {
       unstable_batchedUpdates(() => {
         if (gymLogsRef.current.some(l => l.id === logId || l.date === updatedLog.date)) {
           optimisticUpdateGymLog(logId, updatedLog as any);
@@ -421,7 +427,17 @@ export function useGymLog(dateStr: string) {
           optimisticAddGymLog(updatedLog as any);
         }
       });
-    });
+    } else {
+      queueMicrotask(() => {
+        unstable_batchedUpdates(() => {
+          if (gymLogsRef.current.some(l => l.id === logId || l.date === updatedLog.date)) {
+            optimisticUpdateGymLog(logId, updatedLog as any);
+          } else {
+            optimisticAddGymLog(updatedLog as any);
+          }
+        });
+      });
+    }
 
     // ── STEP 2: Debounced Firestore write — collapses rapid set-logs. ─────────
     // For a 30-set workout, without debouncing = 30 setDoc() calls = 30 snapshot
@@ -464,17 +480,25 @@ export function useGymLog(dateStr: string) {
     const sub = DeviceEventEmitter.addListener('gym_workout_completed', (event: any) => {
       if (event?.date && event.date !== dateStr) return;
       setLog(prev => {
-        if (!prev || prev.completed) return prev; // already completed, no-op
-        return {
-          ...prev,
+        const base = prev || (gymLogsRef.current || []).find(l => l.date === dateStr);
+        if (!base) return prev;
+        if (base.completed && !base.workoutStartTime) return prev;
+        const updated: GymDayLog = {
+          ...base,
+          exercises: (base.exercises as any) || [],
+          cardio: (base.cardio as any) || [],
+          dayPlanIndex: base.dayPlanIndex ?? planIdx,
+          createdAt: (base as any)?.createdAt || Date.now(),
           completed: true,
           workoutStartTime: undefined,
-          workoutDurationMinutes: event?.duration ?? prev.workoutDurationMinutes,
+          workoutDurationMinutes: event?.duration ?? base.workoutDurationMinutes,
           restTimerStartTime: undefined,
           restTimerDurationSecs: undefined,
           restTimerExerciseName: undefined,
           updatedAt: Date.now(),
         };
+        logRef.current = updated;
+        return updated;
       });
     });
     return () => sub.remove();
@@ -823,64 +847,66 @@ export function useGymLog(dateStr: string) {
 
   const endWorkout = useCallback(async (_force?: boolean) => {
     awardXP('GYM_SESSION').catch(() => {});
-    let completedDate: string | undefined;
-    let completedDuration = 0;
-    setLog(prev => {
-      if (!prev) return prev;
-      const startMs = prev.workoutStartTime || Date.now();
-      const elapsedMins = Math.round((Date.now() - startMs) / 60000);
-      const duration = Math.max(1, elapsedMins);
-      completedDate = prev.date;
-      completedDuration = duration;
+    const currentLog = logRef.current || (gymLogsRef.current || []).find(l => l.date === dateStr);
+    const targetDate = currentLog?.date || dateStr;
+    const startMs = currentLog?.workoutStartTime || Date.now();
+    const elapsedMins = Math.round((Date.now() - startMs) / 60000);
+    const duration = Math.max(1, elapsedMins);
 
-      const startD = new Date(startMs);
-      const endD = new Date();
-      const startTimeStr = `${startD.getHours().toString().padStart(2, '0')}:${startD.getMinutes().toString().padStart(2, '0')}`;
-      const endTimeStr = `${endD.getHours().toString().padStart(2, '0')}:${endD.getMinutes().toString().padStart(2, '0')}`;
+    const startD = new Date(startMs);
+    const endD = new Date();
+    const startTimeStr = `${startD.getHours().toString().padStart(2, '0')}:${startD.getMinutes().toString().padStart(2, '0')}`;
+    const endTimeStr = `${endD.getHours().toString().padStart(2, '0')}:${endD.getMinutes().toString().padStart(2, '0')}`;
 
-      const updated: GymDayLog = {
-        ...prev,
-        completed: true,
-        workoutStartTime: undefined,
-        workoutDurationMinutes: duration,
-        startTime: prev.startTime || startTimeStr,
-        endTime: prev.endTime || endTimeStr,
-        restTimerStartTime: undefined,
-        restTimerDurationSecs: undefined,
-        restTimerExerciseName: undefined,
-        updatedAt: Date.now()
-      };
-      saveLog(updated);
+    const updated: GymDayLog = {
+      ...(currentLog || {}),
+      id: currentLog?.id || (user ? `${user.uid}_${targetDate}` : undefined),
+      userId: user?.uid || currentLog?.userId || '',
+      date: targetDate,
+      dayPlanIndex: currentLog?.dayPlanIndex ?? planIdx,
+      exercises: currentLog?.exercises || [],
+      cardio: currentLog?.cardio || [],
+      completed: true,
+      workoutStartTime: undefined,
+      workoutDurationMinutes: duration,
+      startTime: currentLog?.startTime || startTimeStr,
+      endTime: currentLog?.endTime || endTimeStr,
+      restTimerStartTime: undefined,
+      restTimerDurationSecs: undefined,
+      restTimerExerciseName: undefined,
+      createdAt: (currentLog as any)?.createdAt || Date.now(),
+      updatedAt: Date.now(),
+    };
 
-      try {
-        const today = todayStr();
-        const widgetData = buildLiveWorkoutWidgetData({
-          todayStr: today,
-          gymLogs: [updated, ...(gymLogs || []).filter(l => l.date !== today)],
-          userGymPlan,
-        });
-        saveCachedLiveWorkoutData(widgetData).catch(() => {});
-        updateLiveWorkoutWidget(widgetData).catch(() => {});
-      } catch {}
+    // 1. Synchronously update local ref and local state
+    logRef.current = updated;
+    setLog(updated);
 
-      return updated;
+    // 2. Synchronously broadcast workout completion to ALL useGymLog instances (e.g. GymHomeScreen)
+    // Synchronous dispatch guarantees every subscriber screen immediately turns off the workout timer.
+    DeviceEventEmitter.emit('gym_workout_completed', {
+      date: targetDate,
+      duration,
     });
 
-    // ── Broadcast workout completion to ALL useGymLog instances ───────────────
-    // GymHomeScreen has its own useGymLog instance. Without this broadcast its
-    // `log` stays stale (workoutStartTime still set) until Firestore syncs,
-    // causing the banner to show "IN PROGRESS" and requiring a manual second finish.
-    // The broadcast makes every listener instantly flip to completed state.
-    if (completedDate) {
-      DeviceEventEmitter.emit('gym_workout_completed', {
-        date: completedDate,
-        duration: completedDuration,
+    // 3. Synchronously trigger saveLog (which runs immediate optimistic update & immediate Firestore write)
+    saveLog(updated);
+
+    // 4. Update widget data
+    try {
+      const today = todayStr();
+      const widgetData = buildLiveWorkoutWidgetData({
+        todayStr: today,
+        gymLogs: [updated, ...(gymLogsRef.current || []).filter(l => l.date !== today)],
+        userGymPlan,
       });
-    }
+      saveCachedLiveWorkoutData(widgetData).catch(() => {});
+      updateLiveWorkoutWidget(widgetData).catch(() => {});
+    } catch {}
 
-
+    // 5. Clean up notifications & local session caches
     if (currentRestTimerNotifId) {
-      await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId);
+      await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId).catch(() => {});
       currentRestTimerNotifId = null;
     }
 
@@ -892,7 +918,7 @@ export function useGymLog(dateStr: string) {
       updatedAt: Date.now(),
     })).catch(() => {});
     dismissActiveWorkoutNotification().catch(() => {});
-  }, [saveLog, gymLogs, userGymPlan]);
+  }, [user, dateStr, planIdx, saveLog, userGymPlan]);
 
   const resumeWorkout = useCallback(() => {
     setLog(prev => {

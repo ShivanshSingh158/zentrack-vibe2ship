@@ -1,8 +1,22 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { BlurView } from 'expo-blur';
+import Reanimated, {
+  LinearTransition,
+  FadeIn,
+  FadeInDown,
+  FadeOut,
+  SlideInDown,
+  SlideOutDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  Easing,
+} from 'react-native-reanimated';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { db } from '../../services/firebase';
 import { collection, addDoc, updateDoc, doc, setDoc } from 'firebase/firestore';
@@ -24,7 +38,62 @@ const defaultSchedule = {
 };
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 // Map visual index to actual Date.getDay() (0=Sun, 1=Mon)
+// Map visual index to actual Date.getDay() (0=Sun, 1=Mon)
 const DAY_MAP = [1, 2, 3, 4, 5, 6, 0];
+
+// ── WhatsApp-Grade Tactile Spring Pressable ──────────────────────────────────
+const SpringPressableBtn = React.memo(function SpringPressableBtn({
+  onPress,
+  children,
+  style,
+  disabled = false,
+  activeScale = 0.95,
+  haptic = 'light',
+}: {
+  onPress: () => void;
+  children: React.ReactNode;
+  style?: any;
+  disabled?: boolean;
+  activeScale?: number;
+  haptic?: 'light' | 'medium';
+}) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = useCallback(() => {
+    if (disabled) return;
+    scale.value = withTiming(activeScale, { duration: 70 });
+  }, [activeScale, disabled, scale]);
+
+  const handlePressOut = useCallback(() => {
+    scale.value = withTiming(1.0, { duration: 110 });
+  }, [scale]);
+
+  const handlePress = useCallback(() => {
+    if (disabled) return;
+    if (haptic === 'medium') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    onPress();
+  }, [disabled, haptic, onPress]);
+
+  return (
+    <Pressable
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={handlePress}
+      disabled={disabled}
+    >
+      <Reanimated.View style={[style, animStyle]}>
+        {children}
+      </Reanimated.View>
+    </Pressable>
+  );
+});
 
 export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, onClose, existingSubject }: {
   visible: boolean;
@@ -232,14 +301,27 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBg}>
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBg}>
+        {Platform.OS === 'ios' && (
+          <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+        )}
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.modalSheet}>
+
+        <Reanimated.View
+          entering={SlideInDown.duration(280).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+          exiting={SlideOutDown.duration(200).easing(Easing.in(Easing.quad))}
+          style={styles.modalSheet}
+        >
+          {/* iOS Sheet Grab Handle */}
+          <View style={styles.handleContainer}>
+            <View style={styles.sheetHandle} />
+          </View>
+
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{existingSubject ? 'Edit Subject' : 'Add Subject'}</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={colors.textPrimary} />
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close" size={18} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
@@ -416,19 +498,35 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
                   <View style={styles.dayHeader}>
                     <Text style={styles.dayText}>{dayName}</Text>
                     <View style={styles.dayActions}>
-                      <TouchableOpacity onPress={() => addSession(dayIdx, 'classes')} style={styles.addBtn}>
+                      <SpringPressableBtn
+                        onPress={() => addSession(dayIdx, 'classes')}
+                        style={styles.addBtn}
+                        activeScale={0.88}
+                        haptic="light"
+                      >
                         <Ionicons name="add" size={14} color={colors.accentPrimary} />
                         <Text style={styles.addBtnText}>Class</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => addSession(dayIdx, 'labs')} style={styles.addBtn}>
+                      </SpringPressableBtn>
+                      <SpringPressableBtn
+                        onPress={() => addSession(dayIdx, 'labs')}
+                        style={styles.addBtn}
+                        activeScale={0.88}
+                        haptic="light"
+                      >
                         <Ionicons name="add" size={14} color={colors.accentBlue} />
                         <Text style={[styles.addBtnText, { color: colors.accentBlue }]}>Lab</Text>
-                      </TouchableOpacity>
+                      </SpringPressableBtn>
                     </View>
                   </View>
                   
                   {classes.map((cls: any, idx: number) => (
-                    <View key={`class-${idx}`} style={styles.sessionRow}>
+                    <Reanimated.View
+                      key={`class-${idx}`}
+                      layout={LinearTransition.duration(220).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+                      entering={FadeInDown.duration(180).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+                      exiting={FadeOut.duration(140)}
+                      style={styles.sessionRow}
+                    >
                       <Text style={styles.sessionType}>Class</Text>
                       <TouchableOpacity
                         style={[styles.sessionInput, { justifyContent: 'center' }]}
@@ -442,11 +540,17 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
                       <TouchableOpacity style={{ padding: 4 }} onPress={() => removeSession(dayIdx, 'classes', idx)}>
                         <Ionicons name="trash-outline" size={16} color={colors.error} />
                       </TouchableOpacity>
-                    </View>
+                    </Reanimated.View>
                   ))}
                   
                   {labs.map((lab: any, idx: number) => (
-                    <View key={`lab-${idx}`} style={styles.sessionRow}>
+                    <Reanimated.View
+                      key={`lab-${idx}`}
+                      layout={LinearTransition.duration(220).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+                      entering={FadeInDown.duration(180).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+                      exiting={FadeOut.duration(140)}
+                      style={styles.sessionRow}
+                    >
                       <Text style={[styles.sessionType, { color: colors.accentBlue }]}>Lab</Text>
                       <TouchableOpacity
                         style={[styles.sessionInput, { justifyContent: 'center' }]}
@@ -460,20 +564,21 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
                       <TouchableOpacity style={{ padding: 4 }} onPress={() => removeSession(dayIdx, 'labs', idx)}>
                         <Ionicons name="trash-outline" size={16} color={colors.error} />
                       </TouchableOpacity>
-                    </View>
+                    </Reanimated.View>
                   ))}
                 </View>
               );
             })}
           </ScrollView>
 
-          <TouchableOpacity 
+          <SpringPressableBtn 
             style={[styles.saveBtn, (!name.trim() || loading) && styles.saveBtnDisabled]} 
             onPress={handleSave} 
             disabled={!name.trim() || loading}
+            haptic="medium"
           >
             <Text style={styles.saveBtnText}>{loading ? 'Saving...' : (existingSubject ? 'Save Changes' : 'Add Subject')}</Text>
-          </TouchableOpacity>
+          </SpringPressableBtn>
           
           {activePicker && (
             <DateTimePicker
@@ -502,39 +607,72 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
               }}
             />
           )}
-        </View>
+        </Reanimated.View>
       </KeyboardAvoidingView>
     </Modal>
   );
 });
 
 const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
-  modalBg: { flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalBg: { flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.70)' : 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalSheet: {
-    backgroundColor: isDark ? (colors.surfaceRaised || '#18181b') : '#FFFFFF',
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
-    padding: SPACE.xl,
+    backgroundColor: isDark ? '#000000' : '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: SPACE.xl,
+    paddingTop: 10,
     paddingBottom: 40,
     maxHeight: '90%',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: isDark ? '#1c1c20' : colors.border,
+    borderBottomWidth: 0,
+  },
+  handleContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    marginBottom: 6,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4.5,
+    borderRadius: 2.25,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.18)',
   },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.lg },
-  modalTitle: { fontFamily: FONT_FAMILY.title, fontSize: FONT_SIZE.xl, color: colors.textPrimary },
+  modalTitle: { fontFamily: 'Inter_700Bold', fontSize: FONT_SIZE.xl, color: colors.textPrimary },
+  closeBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)',
+    borderWidth: 1,
+    borderColor: isDark ? '#1c1c20' : 'rgba(0, 0, 0, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   
   inputGroup: { marginBottom: SPACE.xl },
   label: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: colors.textMuted, marginBottom: SPACE.sm },
-  input: { backgroundColor: isDark ? (colors.surface2 || '#1c1c1f') : '#F5F4FA', borderWidth: 1, borderColor: colors.border, borderRadius: RADIUS.md, padding: SPACE.md, color: colors.textPrimary, fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base },
+  input: {
+    backgroundColor: isDark ? '#0d0d10' : '#F5F4FA',
+    borderWidth: 1,
+    borderColor: isDark ? '#1c1c20' : colors.border,
+    borderRadius: RADIUS.md,
+    padding: SPACE.md,
+    color: colors.textPrimary,
+    fontFamily: FONT_FAMILY.body,
+    fontSize: FONT_SIZE.base
+  },
   
   // ── Segmented Control Styles ──
   segmentedContainer: {
     flexDirection: 'row',
-    backgroundColor: isDark ? colors.surface : '#EAE9F2',
+    backgroundColor: isDark ? '#0d0d10' : '#EAE9F2',
     borderRadius: RADIUS.lg,
     padding: 3,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: isDark ? '#1c1c20' : colors.border,
     marginBottom: SPACE.sm,
   },
   segmentBtn: {
@@ -569,10 +707,10 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
 
   // ── Calibration Card Styles ──
   calibrationCard: {
-    backgroundColor: isDark ? colors.surface : '#F8F7FC',
+    backgroundColor: isDark ? '#000000' : '#F8F7FC',
     borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: isDark ? '#1c1c20' : colors.border,
     padding: SPACE.md,
     marginTop: 4,
   },
@@ -597,9 +735,9 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     marginBottom: 4,
   },
   calibInput: {
-    backgroundColor: isDark ? colors.background : '#FFFFFF',
+    backgroundColor: isDark ? '#0d0d10' : '#FFFFFF',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: isDark ? '#1c1c20' : colors.border,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACE.md,
     paddingVertical: 8,
@@ -621,22 +759,65 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
   previewCard: {
     marginTop: SPACE.md,
-    backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF',
+    backgroundColor: isDark ? '#0d0d10' : '#FFFFFF',
     borderRadius: RADIUS.md,
     borderWidth: 1,
+    borderColor: isDark ? '#1c1c20' : colors.border,
     padding: SPACE.md,
   },
 
-  dayCard: { backgroundColor: isDark ? colors.surface : '#FFFFFF', borderRadius: RADIUS.md, marginBottom: SPACE.md, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
-  dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: isDark ? colors.surface2 : '#F5F4FA', padding: SPACE.md, borderBottomWidth: 1, borderColor: colors.border },
+  dayCard: {
+    backgroundColor: isDark ? '#000000' : '#FFFFFF',
+    borderRadius: RADIUS.md,
+    marginBottom: SPACE.md,
+    borderWidth: 1,
+    borderColor: isDark ? '#1c1c20' : colors.border,
+    overflow: 'hidden'
+  },
+  dayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: isDark ? '#0d0d10' : '#F5F4FA',
+    padding: SPACE.md,
+    borderBottomWidth: 1,
+    borderColor: isDark ? '#1c1c20' : colors.border
+  },
   dayText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.textPrimary },
   dayActions: { flexDirection: 'row', gap: SPACE.sm },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF', borderWidth: isDark ? 0 : 1, borderColor: colors.border, borderRadius: RADIUS.sm },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: isDark ? '#0d0d10' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? '#1c1c20' : colors.border,
+    borderRadius: RADIUS.sm
+  },
   addBtnText: { color: colors.accentPrimary, fontSize: 12, fontWeight: 'bold' },
   
-  sessionRow: { flexDirection: 'row', alignItems: 'center', padding: SPACE.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border, gap: SPACE.sm },
+  sessionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACE.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: isDark ? '#1c1c20' : colors.border,
+    gap: SPACE.sm
+  },
   sessionType: { width: 40, fontSize: 11, fontWeight: 'bold', color: colors.accentPrimary },
-  sessionInput: { flex: 1, backgroundColor: isDark ? colors.background : '#F5F4FA', borderRadius: RADIUS.sm, paddingHorizontal: 8, paddingVertical: 6, fontSize: 12, color: colors.textPrimary, borderWidth: 1, borderColor: colors.border },
+  sessionInput: {
+    flex: 1,
+    backgroundColor: isDark ? '#0d0d10' : '#F5F4FA',
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    fontSize: 12,
+    color: colors.textPrimary,
+    borderWidth: 1,
+    borderColor: isDark ? '#1c1c20' : colors.border
+  },
 
   saveBtn: { backgroundColor: colors.accentPrimary, padding: SPACE.md, borderRadius: RADIUS.md, alignItems: 'center', marginTop: SPACE.lg },
   saveBtnDisabled: { opacity: 0.5 },

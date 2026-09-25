@@ -455,16 +455,8 @@ TaskManager.defineTask(GEOFENCE_TASK_NAME, async ({ data, error }: any) => {
 
 // ─── 2. Permissions & Device Service Helpers ─────────────────────────────────
 export async function requestLocationPermissions(): Promise<boolean> {
-  try {
-    const { status: fg } = await Location.requestForegroundPermissionsAsync();
-    if (fg !== 'granted') return false;
-
-    const { status: bg } = await Location.requestBackgroundPermissionsAsync();
-    return bg === 'granted';
-  } catch (err) {
-    console.warn('[Geofence] Permission request failed:', err);
-    return false;
-  }
+  // Location permissions and location-based notifications are completely disabled
+  return false;
 }
 
 /**
@@ -680,176 +672,42 @@ export async function saveTaskLocationReminder(reminder: {
   radius: number;
   triggerType: 'enter' | 'exit';
 }): Promise<void> {
-  const current = await getActiveTaskLocationReminders();
-  const id = `task_${reminder.taskId}`;
-  const updated = current.filter(r => r.id !== id && r.taskId !== reminder.taskId);
-  updated.push({ ...reminder, id });
-
-  await AsyncStorage.setItem(TASK_REMINDERS_STORAGE_KEY, JSON.stringify(updated));
-  await syncAllActiveGeofences();
+  // Completely disabled per user request: no-op
 }
 
-export async function removeTaskLocationReminder(taskId: string): Promise<void> {
-  const current = await getActiveTaskLocationReminders();
-  const id = `task_${taskId}`;
-  const updated = current.filter(r => r.id !== id && r.taskId !== taskId);
-
-  await AsyncStorage.setItem(TASK_REMINDERS_STORAGE_KEY, JSON.stringify(updated));
-  await syncAllActiveGeofences();
+export async function removeTaskLocationReminder(_taskId: string): Promise<void> {
+  // Completely disabled per user request: no-op
 }
 
 // ─── 4. Master Geofence Sync with OS Hardware ────────────────────────────────
 export async function syncAllActiveGeofences(): Promise<void> {
   try {
-    const hasPermission = await requestLocationPermissions();
-    if (!hasPermission) {
-      console.log('[Geofence] Background location permission not granted, skipping geofence sync');
-      return;
-    }
-
-    const regions: Location.LocationRegion[] = [];
-
-    // 1. Add Gym Geofence
-    const gymConfig = await getGymGeofenceConfig();
-    if (gymConfig && gymConfig.enabled && gymConfig.latitude && gymConfig.longitude) {
-      regions.push({
-        identifier: 'gym_main',
-        latitude: gymConfig.latitude,
-        longitude: gymConfig.longitude,
-        radius: gymConfig.radius || 150,
-        notifyOnEnter: gymConfig.promptOnEnter ?? true,
-        notifyOnExit: gymConfig.promptOnExit ?? true,
-      });
-    }
-
-    // 2. Add Task Location Reminders
-    const taskReminders = await getActiveTaskLocationReminders();
-    taskReminders.forEach(r => {
-      if (r.latitude && r.longitude) {
-        regions.push({
-          identifier: r.id || `task_${r.taskId}`,
-          latitude: r.latitude,
-          longitude: r.longitude,
-          radius: r.radius || 150,
-          notifyOnEnter: r.triggerType === 'enter',
-          notifyOnExit: r.triggerType === 'exit',
-        });
-      }
-    });
-
-    if (regions.length > 0) {
-      await Location.startGeofencingAsync(GEOFENCE_TASK_NAME, regions);
-      // Verify that the OS actually accepted the registration
-      const isRegistered = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME);
-      if (isRegistered) {
-        console.log(`[Geofence] Successfully registered ${regions.length} active geofence(s) with OS ✅`);
-      } else {
-        console.warn(`[Geofence] ⚠️ startGeofencingAsync returned but hasStartedGeofencingAsync=false — OS may have rejected the registration.`);
-      }
-    } else {
-      const isRegistered = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME);
-      if (isRegistered) {
-        await Location.stopGeofencingAsync(GEOFENCE_TASK_NAME);
-        console.log('[Geofence] Stopped geofencing (no active regions)');
-      }
+    const isRegistered = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => false);
+    if (isRegistered) {
+      await Location.stopGeofencingAsync(GEOFENCE_TASK_NAME).catch(() => {});
+      console.log('[Geofence] Stopped geofencing (location notifications removed)');
     }
   } catch (err: any) {
-    console.warn('[Geofence] syncAllActiveGeofences failed:', err?.message);
+    console.warn('[Geofence] syncAllActiveGeofences cleanup warning:', err?.message);
   }
 }
 
 // ─── 5. Cold Boot & Lifecycle Auto-Arm ───────────────────────────────────────
 export async function initGeofencingOnBoot(): Promise<void> {
-  try {
-    const gymConfig = await getGymGeofenceConfig();
-    const taskReminders = await getActiveTaskLocationReminders();
-
-    const hasAnyTarget = (gymConfig && gymConfig.enabled && gymConfig.latitude) || (taskReminders && taskReminders.length > 0);
-    if (!hasAnyTarget) {
-      return;
-    }
-
-    // Only auto-sync if permissions were already granted
-    const { status: fg } = await Location.getForegroundPermissionsAsync();
-    if (fg !== 'granted') return;
-
-    const { status: bg } = await Location.getBackgroundPermissionsAsync();
-    if (bg === 'granted') {
-      await syncAllActiveGeofences();
-    }
-
-    // Evaluate immediate proximity if location services are on
-    const servicesOn = await Location.hasServicesEnabledAsync();
-    if (servicesOn) {
-      checkImmediateGymProximity().catch(() => {});
-    }
-  } catch (err: any) {
-    console.warn('[Geofence] initGeofencingOnBoot error:', err?.message);
-  }
+  // Completely disabled per user request: no-op
 }
 
 // ─── 6. Foreground Proximity Polling ─────────────────────────────────────────
 /**
- * Starts a periodic foreground proximity check that runs every `intervalMs` milliseconds
- * (default: 30 seconds) while the app is actively in the foreground.
- *
- * Why this is needed: Android's OS-level geofencing is delayed by DOZE mode and
- * Standby Buckets — events can arrive 5–30 minutes late in background. When the user
- * is actively using the app (i.e. they opened the gym screen), foreground polling gives
- * immediate 30-second precision arrival/departure detection without waiting for the OS.
- *
- * Returns a cleanup function that stops polling when called.
+ * Kept for backwards compatibility - no-op since gym geofencing/GPS is removed.
  */
 export function startForegroundGymProximityPolling(
-  intervalMs: number = 30000
+  _intervalMs: number = 30000
 ): () => void {
-  // Run an immediate check first (don't wait for the first interval)
-  checkImmediateGymProximity().catch(() => {});
-
-  const timer = setInterval(() => {
-    checkImmediateGymProximity().catch((err) => {
-      console.warn('[Geofence] Foreground polling error:', err?.message);
-    });
-  }, intervalMs);
-
-  return () => clearInterval(timer);
+  return () => {};
 }
 
 // ─── 7. Geofence Health Re-arm ────────────────────────────────────────────────
-/**
- * Re-registers all active geofences if the OS has silently de-registered them.
- * This can happen after a device reboot, low-memory kill, or permission re-grant.
- *
- * Call this from AppState.change → 'active' to ensure geofencing is always running
- * after the app is foregrounded.
- */
 export async function rearmGeofencesIfNeeded(): Promise<void> {
-  try {
-    const gymConfig = await getGymGeofenceConfig();
-    const taskReminders = await getActiveTaskLocationReminders();
-
-    const hasAnyTarget =
-      (gymConfig && gymConfig.enabled && gymConfig.latitude) ||
-      (taskReminders && taskReminders.length > 0);
-
-    if (!hasAnyTarget) return;
-
-    // Only re-arm if background location permission is still granted
-    const { status: bg } = await Location.getBackgroundPermissionsAsync();
-    if (bg !== 'granted') return;
-
-    const isRegistered = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK_NAME);
-    if (!isRegistered) {
-      console.log('[Geofence] Re-arming: geofences not registered, re-syncing with OS...');
-      await syncAllActiveGeofences();
-
-      // Also run an immediate proximity check in case user is already at location
-      const servicesOn = await Location.hasServicesEnabledAsync();
-      if (servicesOn) {
-        checkImmediateGymProximity().catch(() => {});
-      }
-    }
-  } catch (err: any) {
-    console.warn('[Geofence] rearmGeofencesIfNeeded error:', err?.message);
-  }
+  // Completely disabled per user request: no-op
 }

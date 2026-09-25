@@ -268,19 +268,9 @@ export function parseProxyResponse(data: any): {
 
 export async function transcribeAudioViaProxy(
   base64Audio: string,
-  timeoutMs: number = 8000
+  timeoutMs: number = 15000  // Increased from 8s → 15s for slow 4G/3G networks
 ): Promise<string | null> {
-  try {
-    const data = await callProxy({
-      model: 'gemini-2.5-flash',
-      timeoutMs,
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { inlineData: { mimeType: 'audio/mp4', data: base64Audio } },
-            {
-              text: `You are an expert, high-accuracy speech-to-text transcriber for ZenTrack, a task management and productivity app.
+  const TRANSCRIBE_PROMPT = `You are an expert, high-accuracy speech-to-text transcriber for ZenTrack, a task management and productivity app.
 Transcribe this user voice audio recording accurately into text.
 
 CRITICAL TASK VOCABULARY RULES:
@@ -299,19 +289,43 @@ CRITICAL TASK VOCABULARY RULES:
 5. SUBTASKS & TAGS:
    - E.g. "with subtasks...", "checklist...", "tag...", "hashtag...".
 
-Return ONLY the raw transcribed text with no quotes, explanations, or commentary.`,
-            },
-          ],
-        },
+Return ONLY the raw transcribed text with no quotes, explanations, or commentary.`;
+
+  const callContents = [
+    {
+      role: 'user',
+      parts: [
+        { inlineData: { mimeType: 'audio/mp4', data: base64Audio } },
+        { text: TRANSCRIBE_PROMPT },
       ],
+    },
+  ];
+
+  const attemptTranscription = async (): Promise<string | null> => {
+    const data = await callProxy({
+      model: 'gemini-2.5-flash',
+      timeoutMs,
+      contents: callContents,
       generationConfig: { temperature: 0, maxOutputTokens: 80 },
     });
     const parsed = parseProxyResponse(data);
     const text = parsed.text?.trim() || null;
     if (!text) return null;
     return normalizeVoiceTranscript(text);
+  };
+
+  // Attempt 1
+  try {
+    return await attemptTranscription();
+  } catch (err: any) {
+    console.warn('[GeminiProxy] Transcription attempt 1 failed, retrying...', err?.message || err);
+  }
+
+  // Attempt 2 (single automatic retry — catches transient network blips / key rotation)
+  try {
+    return await attemptTranscription();
   } catch (err) {
-    console.warn('[GeminiProxy] Transcription failed or timed out:', err);
+    console.warn('[GeminiProxy] Transcription attempt 2 failed, giving up:', err);
     return null;
   }
 }

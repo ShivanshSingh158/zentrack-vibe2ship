@@ -4,14 +4,24 @@
  * flanking habit & water metrics, sleep row, and XP progress bar at the bottom.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle as SvgCircle, Defs, LinearGradient as SvgLinearGradient, RadialGradient, Stop } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, {
+  FadeIn, FadeOut,
+  useSharedValue,
+  useAnimatedStyle,
+  useAnimatedProps,
+  useDerivedValue,
+  withTiming,
+  withRepeat,
+  withSequence,
+  Easing,
+} from 'react-native-reanimated';
 import AnimatedPressable from '../AnimatedPressable';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '../../theme/tokens';
@@ -68,6 +78,17 @@ interface UnifiedLifeWidgetProps {
   onPressAssignments?: () => void;
 }
 
+// ── AnimatedXPValue: Reanimated-native text ticker ──────────────────────────
+// Uses useAnimatedProps to drive Text.text via a DerivedValue — no JS-thread
+// re-renders on each animation frame, runs at 60fps on the UI thread.
+const AnimatedTextNode = Animated.createAnimatedComponent(
+  require('react-native').Text,
+);
+function AnimatedXPValue({ animText }: { animText: ReturnType<typeof useDerivedValue<string>> }) {
+  const animProps = useAnimatedProps(() => ({ text: animText.value } as any));
+  return <AnimatedTextNode animatedProps={animProps} />;
+}
+
 import { MASCOT_IMAGES, getGradientForLevel } from './mascotConstants';
 import { makeStyles, RING_SIZE, RING_STROKE, RING_RADIUS, RING_CIRCUMFERENCE } from './unifiedLifeWidgetStyles';
 
@@ -108,6 +129,42 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
 }: UnifiedLifeWidgetProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
+  // ── Gap 3: Streak badge pulse — heartbeat when streak > 0 ──────────────────
+  const streakPulse = useSharedValue(1);
+  useEffect(() => {
+    if (currentStreak > 0) {
+      streakPulse.value = withRepeat(
+        withSequence(
+          withTiming(1.14, { duration: 850, easing: Easing.inOut(Easing.sin) }),
+          withTiming(1.0,  { duration: 850, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,   // infinite
+        false,
+      );
+    } else {
+      streakPulse.value = 1;
+    }
+    return () => { streakPulse.value = 1; };
+  }, [currentStreak]);
+
+  const streakPulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: streakPulse.value }],
+  }));
+
+  // ── Gap 2: XP counter tick — animates from 0 → levelXP on mount ────────────
+  const displayXP = useSharedValue(0);
+  useEffect(() => {
+    displayXP.value = 0;
+    displayXP.value = withTiming(levelXP, {
+      duration: 900,
+      easing: Easing.out(Easing.exp),
+    });
+  }, [levelXP]);
+
+  const animatedXPText = useDerivedValue(() =>
+    `${Math.round(displayXP.value)}`,
+  );
 
   const mascotConfig = useMemo(() => {
     if (levelLabel === 'Warden') return { w: 90, b: -28, x: 0 };
@@ -242,18 +299,19 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
           {/* HABITS */}
           <AnimatedPressable
             style={[
-              styles.compactMetricRow, 
-              { 
-                backgroundColor: isDark ? '#1C1C20' : 'rgba(5, 150, 105, 0.08)', 
-                borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border, 
-                borderWidth: 1 
+              styles.compactMetricRow,
+              {
+                backgroundColor: isDark ? '#1C1C20' : 'rgba(5, 150, 105, 0.08)',
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+                borderWidth: 1
               }
             ]}
             activeOpacity={0.75}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressHabits(); }}
           >
             <View style={styles.compactLeftGroup}>
-              <Text style={styles.compactEmoji}>🌱</Text>
+              {/* Streak emoji with pulse animation */}
+              <Animated.Text style={[styles.compactEmoji, currentStreak > 0 ? streakPulseStyle : undefined]}>🌱</Animated.Text>
               <Text style={[styles.compactLabel, { color: colors.accentGreen }]}>Momentum</Text>
             </View>
             <Text style={[styles.valuePillText, { color: colors.accentGreen }]}>{habitsCompleted}/{habitsTotal}</Text>
@@ -322,9 +380,9 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
       </View>
 
       {showXPSection && (
-        <AnimatedPressable 
-          style={[styles.xpSection, { zIndex: 100 }]} 
-          activeOpacity={0.7} 
+        <AnimatedPressable
+          style={[styles.xpSection, { zIndex: 100 }]}
+          activeOpacity={0.7}
           onPress={() => {
             if (onPressXP) {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -336,39 +394,42 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
             {/* 3D Overflow Mascot Container */}
             <View style={{ width: 65, height: 45, marginRight: 8, justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
               {/* Glow / Aura Layer (Cross-Platform) */}
-              <Animated.Image 
-                source={MASCOT_IMAGES[levelLabel]} 
-                style={{ 
-                  width: mascotConfig.w, 
-                  height: mascotConfig.w, 
-                  position: 'absolute', 
-                  bottom: mascotConfig.b, 
+              <Animated.Image
+                source={MASCOT_IMAGES[levelLabel]}
+                style={{
+                  width: mascotConfig.w,
+                  height: mascotConfig.w,
+                  position: 'absolute',
+                  bottom: mascotConfig.b,
                   transform: [{ translateX: mascotConfig.x }],
                   zIndex: 90,
                   tintColor: getGradientForLevel(levelLabel)[0],
                   opacity: 0.95,
-                }} 
+                }}
                 blurRadius={12}
-                resizeMode="contain" 
+                resizeMode="contain"
               />
-              
+
               {/* Real Mascot Image */}
-              <Animated.Image 
-                source={MASCOT_IMAGES[levelLabel]} 
-                style={{ 
-                  width: mascotConfig.w, 
-                  height: mascotConfig.w, 
-                  position: 'absolute', 
-                  bottom: mascotConfig.b, 
+              <Animated.Image
+                source={MASCOT_IMAGES[levelLabel]}
+                style={{
+                  width: mascotConfig.w,
+                  height: mascotConfig.w,
+                  position: 'absolute',
+                  bottom: mascotConfig.b,
                   transform: [{ translateX: mascotConfig.x }],
-                  zIndex: 100 
-                }} 
-                resizeMode="contain" 
+                  zIndex: 100,
+                }}
+                resizeMode="contain"
               />
             </View>
             <View style={{ flex: 1 }}>
               <View style={styles.xpLabelRow}>
-                <Text style={styles.xpLevelText}>{levelLabel} • {levelXP} / {levelNextXP} xp</Text>
+                {/* XP tick counter — counts from 0 → real value on mount */}
+                <Animated.Text style={styles.xpLevelText}>
+                  {levelLabel} • <AnimatedXPValue animText={animatedXPText} /> / {levelNextXP} xp
+                </Animated.Text>
                 <Text style={styles.xpToNext}>{levelNextXP - levelXP} to {levelNextLabel}</Text>
               </View>
               <View style={styles.xpTrack}>

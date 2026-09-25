@@ -1,5 +1,14 @@
 import React, { useCallback } from 'react';
 import { View, Text, TouchableOpacity, TextInput } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSequence,
+  withSpring,
+  Easing,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { GymSet } from '../../types/gym.types';
 import { hapticLight } from '../../utils/haptics';
@@ -58,13 +67,47 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
     }
   }, [idx, onAction, onBlur]);
 
+  // Reanimated Spring Latch & Glow Pulse Values
+  const glowAnim = useSharedValue(0);
+  const rowScale = useSharedValue(1);
+  const checkScale = useSharedValue(1);
+
+  const animatedRowStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: rowScale.value }],
+  }));
+
+  const animatedGlowStyle = useAnimatedStyle(() => ({
+    opacity: glowAnim.value,
+  }));
+
+  const animatedCheckStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: checkScale.value }],
+  }));
+
   const handleToggleCompleteInternal = useCallback(() => {
+    if (!isCompleted) {
+      // Firm haptic latch + momentary emerald glow ripple + spring latch
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      glowAnim.value = 1;
+      glowAnim.value = withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) });
+      rowScale.value = withSequence(
+        withTiming(0.98, { duration: 60, easing: Easing.out(Easing.quad) }),
+        withTiming(1.0, { duration: 120, easing: Easing.out(Easing.cubic) })
+      );
+      checkScale.value = withSequence(
+        withTiming(0.85, { duration: 60, easing: Easing.out(Easing.quad) }),
+        withTiming(1.1, { duration: 80, easing: Easing.out(Easing.cubic) }),
+        withTiming(1.0, { duration: 60, easing: Easing.out(Easing.cubic) })
+      );
+    } else {
+      hapticLight();
+    }
     if (onAction) {
       onAction(idx, 'toggle');
     } else if (onToggleComplete) {
       onToggleComplete();
     }
-  }, [idx, onAction, onToggleComplete]);
+  }, [idx, onAction, onToggleComplete, isCompleted, glowAnim, rowScale, checkScale]);
 
   const handleLongPressInternal = useCallback(() => {
     if (onAction) {
@@ -95,13 +138,32 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
     <View style={[styles.setRowWrapper, isActive && styles.setRowWrapperActive]}>
       {isActive && <View style={styles.activeIndicator} />}
 
-      <View
+      <Animated.View
         style={[
           styles.setRow,
           isCompleted && styles.setRowCompleted,
           isActive && styles.setRowActive,
+          animatedRowStyle,
         ]}
       >
+        {/* Momentary Emerald Glow Ripple on Lock-In */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            {
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              borderRadius: 12,
+              backgroundColor: set.isWarmup ? 'rgba(255, 159, 77, 0.18)' : 'rgba(52, 211, 153, 0.20)',
+              borderWidth: 1.5,
+              borderColor: set.isWarmup ? '#ff9f4d' : '#34D399',
+            },
+            animatedGlowStyle,
+          ]}
+        />
         {/* Left: Set number / warmup tag (tap to toggle complete, long-press to delete) */}
         <TouchableOpacity
           onPress={handleToggleCompleteInternal}
@@ -197,28 +259,30 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
           </TouchableOpacity>
         </View>
 
-        {/* Right Action: Clean checkmark button to log / toggle complete */}
-        <TouchableOpacity
-          onPress={handleToggleCompleteInternal}
-          style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
-          hitSlop={6}
-          activeOpacity={0.7}
-        >
-          {isCompleted ? (
-            <Ionicons
-              name="checkmark-circle"
-              size={22}
-              color={set.isWarmup ? '#ff9f4d' : (colors.accentPrimary || '#34C759')}
-            />
-          ) : (
-            <Ionicons
-              name="checkmark-circle-outline"
-              size={22}
-              color={isActive ? colors.accentPrimary : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)')}
-            />
-          )}
-        </TouchableOpacity>
-      </View>
+        {/* Right Action: Clean checkmark button to log / toggle complete with spring pop */}
+        <Animated.View style={animatedCheckStyle}>
+          <TouchableOpacity
+            onPress={handleToggleCompleteInternal}
+            style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
+            hitSlop={6}
+            activeOpacity={0.7}
+          >
+            {isCompleted ? (
+              <Ionicons
+                name="checkmark-circle"
+                size={22}
+                color={set.isWarmup ? '#ff9f4d' : (colors.accentPrimary || '#34C759')}
+              />
+            ) : (
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={22}
+                color={isActive ? colors.accentPrimary : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)')}
+              />
+            )}
+          </TouchableOpacity>
+        </Animated.View>
+      </Animated.View>
     </View>
   );
 }, (prev, next) =>

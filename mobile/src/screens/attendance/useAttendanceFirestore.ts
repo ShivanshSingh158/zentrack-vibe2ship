@@ -24,6 +24,7 @@ import { buildTodayAgendaData, saveCachedWidgetData, updateTodayAgendaWidget, ge
 import { readAcademicCache } from '../../utils/domainCache';
 import { formatLocalDateStr } from '../../utils/dateUtils';
 import { readCoreCacheMulti } from '../../utils/coreCache';
+import { cancelClassNotificationsImmediately, clearScheduleCache } from '../../services/notifications';
 
 // Set the notification handler once at module level (previously in AttendanceScreen top-level)
 Notifications.setNotificationHandler({
@@ -264,6 +265,15 @@ export function useAttendanceFirestore({
         }).catch(handleSyncError);
       }
 
+      // Immediately cancel any pending scheduled OS notifications (60m, 30m, checkpoint, post-log)
+      // for this class/lab session so they don't fire after user has marked it.
+      // NOTE: We do NOT call clearScheduleCache() here — doing so triggers a reschedule before
+      // Firestore confirms the new attendance log, which would re-add the just-cancelled
+      // notifications. The BackgroundNotificationWatcher will pick up the attendanceLogs change
+      // (via Firestore snapshot ~1-2s later) and run a full reschedule that properly skips
+      // all marked sessions via the sessionLog guard in Section 10.
+      cancelClassNotificationsImmediately(subject.id!, subject.name, cleanLogDate, sessionIdx).catch(() => {});
+
       // Sync to Android widget immediately if logging today's session
       const nowStr = formatLocalDateStr(new Date());
       if (cleanLogDate === nowStr) {
@@ -374,6 +384,10 @@ export function useAttendanceFirestore({
           await queueWrite(COLLECTION.ATTENDANCE_LOGS, 'delete', null, logId);
         }
       }).catch(handleSyncError);
+
+      // NOTE: We do NOT call clearScheduleCache() here — the Firestore snapshot that removes
+      // the log will update attendanceLogs, change the fingerprint, and trigger a proper
+      // reschedule automatically via BackgroundNotificationWatcher.
     } catch (err) { Alert.alert('Error', 'Failed to undo attendance log'); }
   }, [optimisticUpdateAttendance, optimisticRemoveAttendanceLog]);
 

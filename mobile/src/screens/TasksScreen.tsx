@@ -1,6 +1,19 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pressable, Platform, StatusBar, Linking } from 'react-native';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  FadeInUp,
+  FadeInDown,
+  FadeOut,
+  SlideInRight,
+  SlideInLeft,
+  LinearTransition,
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSequence,
+  Easing,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
@@ -42,6 +55,7 @@ const VoiceDictationOverlay = React.lazy(() => import('../components/Tasks/Voice
 // Extracted Task Components
 import { TaskDateStrip } from '../components/Tasks/TaskDateStrip';
 import TaskRow from '../components/Tasks/TaskRow';
+import TaskContextMenuModal from '../components/Tasks/TaskContextMenuModal';
 import EmptyState from '../components/ui/EmptyState';
 import { usePomodoro } from '../contexts/PomodoroContext';
 import TasksSkeleton from '../components/Tasks/TasksSkeleton';
@@ -76,18 +90,21 @@ interface TaskRowMemoProps {
   onComplete: (task: Task) => void;
   onReschedule: (taskId: string) => void;
   onPress: (task: Task) => void;
+  onLongPress?: (task: Task) => void;
+  onDelete?: (task: Task) => void;
   onToggleSelect: (taskId: string) => void;
   onUpdateTask: (taskId: string, updates: Partial<Task>) => void;
 }
 
 const TaskRowMemo = React.memo(function TaskRowMemo({
   task, isOverdue, isBulkEdit, isSelected,
-  onComplete, onReschedule, onPress, onToggleSelect, onUpdateTask,
+  onComplete, onReschedule, onPress, onLongPress, onDelete, onToggleSelect, onUpdateTask,
 }: TaskRowMemoProps) {
   const handleComplete  = useCallback(() => onComplete(task), [onComplete, task]);
   const handleReschedule = useCallback(() => onReschedule(task.id!), [onReschedule, task.id]);
   const handlePress     = useCallback(() => onPress(task), [onPress, task]);
-  const handleLongPress = useCallback(() => onPress(task), [onPress, task]);
+  const handleLongPress = useCallback(() => (onLongPress ? onLongPress(task) : onPress(task)), [onLongPress, onPress, task]);
+  const handleDelete    = useCallback(() => onDelete?.(task), [onDelete, task]);
   const handleToggle    = useCallback(() => onToggleSelect(task.id!), [onToggleSelect, task.id]);
   const handleUpdate    = useCallback((id: string, updates: Partial<Task>) => onUpdateTask(id, updates), [onUpdateTask]);
   const handleAddSubtask = useCallback(() => onPress(task), [onPress, task]);
@@ -102,6 +119,7 @@ const TaskRowMemo = React.memo(function TaskRowMemo({
       onReschedule={handleReschedule}
       onPress={handlePress}
       onLongPress={handleLongPress}
+      onDelete={handleDelete}
       onToggleSelect={handleToggle}
       onUpdateTask={handleUpdate}
       onAddSubtask={handleAddSubtask}
@@ -116,7 +134,9 @@ const TaskRowMemo = React.memo(function TaskRowMemo({
   prev.isBulkEdit === next.isBulkEdit &&
   prev.onComplete === next.onComplete &&
   prev.onReschedule === next.onReschedule &&
-  prev.onPress === next.onPress
+  prev.onPress === next.onPress &&
+  prev.onLongPress === next.onLongPress &&
+  prev.onDelete === next.onDelete
 );
 
 
@@ -160,9 +180,33 @@ export default function TasksScreen() {
     }
   }, [route.params?.openAddTask, route.params?.timestamp]);
 
+  const [contextMenuTask, setContextMenuTask] = useState<Task | null>(null);
+
+  // Morphing View Switcher Animation
+  const viewRotate = useSharedValue(0);
+  const animViewRotateStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${viewRotate.value}deg` }],
+  }));
+
+  // Direction-aware view cycle: list → timeline → kanban → list
+  // The cycle order determines the slide direction: cycling forward = slide left
+  const VIEW_ORDER = ['list', 'timeline', 'kanban'] as const;
+  const prevViewRef = useRef(viewMode);
+
+  const handleToggleView = useCallback(() => {
+    const curIdx = VIEW_ORDER.indexOf(viewMode as any);
+    const nextIdx = (curIdx + 1) % VIEW_ORDER.length;
+    prevViewRef.current = viewMode;
+    viewRotate.value = withSequence(
+      withTiming(viewRotate.value + 90, { duration: 180, easing: Easing.bezier(0.16, 1, 0.3, 1) })
+    );
+    setViewMode(VIEW_ORDER[nextIdx]);
+  }, [setViewMode, viewRotate, viewMode]);
+
   // 3. Firestore Hook
   const {
     completeTask,
+    deleteTask,
     clearCompletedTasks,
     bulkComplete,
     bulkDelete,
@@ -285,6 +329,8 @@ export default function TasksScreen() {
     setBulkRescheduleModal(true);
   }, [setSelectedTaskIds, setBulkRescheduleModal]);
   const onPressRef = useCallback((task: any) => setEditingTask(task), [setEditingTask]);
+  const onLongPressRef = useCallback((task: any) => setContextMenuTask(task), []);
+  const onDeleteRef = useCallback((task: any) => { if (task.id) deleteTask(task.id); }, [deleteTask]);
   const onToggleSelectRef = useCallback((taskId: string) => toggleTaskSelection(taskId), [toggleTaskSelection]);
   const onUpdateTaskRef = useCallback((id: string, updates: any) => updateTask(id, updates), [updateTask]);
 
@@ -318,10 +364,12 @@ export default function TasksScreen() {
       onComplete={onCompleteRef}
       onReschedule={onRescheduleRef}
       onPress={onPressRef}
+      onLongPress={onLongPressRef}
+      onDelete={onDeleteRef}
       onToggleSelect={onToggleSelectRef}
       onUpdateTask={onUpdateTaskRef}
     />
-  ), [isBulkEdit, selectedTaskIds, todayDateStr, onCompleteRef, onRescheduleRef, onPressRef, onToggleSelectRef, onUpdateTaskRef]);
+  ), [isBulkEdit, selectedTaskIds, todayDateStr, onCompleteRef, onRescheduleRef, onPressRef, onLongPressRef, onDeleteRef, onToggleSelectRef, onUpdateTaskRef]);
 
   const renderSectionHeader = useCallback(({ section: { title } }: any) => (
     <View style={styles.listSectionHeader}>
@@ -422,8 +470,10 @@ export default function TasksScreen() {
                 <Ionicons name="timer-outline" size={20} color={colors.textPrimary} />
                 <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>Timer</Text>
               </AnimatedPressable>
-              <AnimatedPressable style={styles.iconBtn} onPress={() => setViewMode(v => v === 'list' ? 'timeline' : v === 'timeline' ? 'kanban' : 'list')}>
-                <Ionicons name={viewMode === 'list' ? 'time-outline' : viewMode === 'timeline' ? 'git-branch-outline' : 'list'} size={20} color={colors.textPrimary} />
+              <AnimatedPressable style={styles.iconBtn} onPress={handleToggleView}>
+                <Animated.View style={animViewRotateStyle}>
+                  <Ionicons name={viewMode === 'list' ? 'time-outline' : viewMode === 'timeline' ? 'git-branch-outline' : 'list'} size={20} color={colors.textPrimary} />
+                </Animated.View>
                 <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>View</Text>
               </AnimatedPressable>
               <AnimatedPressable style={styles.iconBtn} onPress={() => setIsNewTaskOpen(true)}>
@@ -457,31 +507,35 @@ export default function TasksScreen() {
                 ? (!filterTag || filterTag === 'all')
                 : filterTag?.toLowerCase() === item.key;
               return (
-                <TouchableOpacity
+                <Animated.View
                   key={item.key}
-                  style={[
-                    styles.filterTagChip,
-                    isActive && styles.filterTagChipActive,
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    if (item.key === 'all' || filterTag?.toLowerCase() === item.key) {
-                      setFilterTag(null);
-                    } else {
-                      setFilterTag(item.key);
-                    }
-                  }}
-                  activeOpacity={0.7}
+                  layout={LinearTransition.springify().damping(22).stiffness(250)}
                 >
-                  <Text style={[styles.filterTagChipText, isActive && styles.filterTagChipTextActive]}>
-                    {item.label}
-                  </Text>
-                  <View style={[styles.tagCountBadge, isActive && styles.tagCountBadgeActive]}>
-                    <Text style={[styles.tagCountText, isActive && styles.tagCountTextActive]}>
-                      {item.count}
+                  <TouchableOpacity
+                    style={[
+                      styles.filterTagChip,
+                      isActive && styles.filterTagChipActive,
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      if (item.key === 'all' || filterTag?.toLowerCase() === item.key) {
+                        setFilterTag(null);
+                      } else {
+                        setFilterTag(item.key);
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.filterTagChipText, isActive && styles.filterTagChipTextActive]}>
+                      {item.label}
                     </Text>
-                  </View>
-                </TouchableOpacity>
+                    <View style={[styles.tagCountBadge, isActive && styles.tagCountBadgeActive]}>
+                      <Text style={[styles.tagCountText, isActive && styles.tagCountTextActive]}>
+                        {item.count}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </Animated.View>
               );
             })}
           </ScrollView>
@@ -538,7 +592,12 @@ export default function TasksScreen() {
         <Suspense fallback={null}>
           <BulkRescheduleSheet
             visible={bulkRescheduleModal}
-            onClose={() => setBulkRescheduleModal(false)}
+            onClose={() => {
+              setBulkRescheduleModal(false);
+              if (!isBulkEdit) {
+                setSelectedTaskIds(new Set());
+              }
+            }}
             selectedTaskIds={selectedTaskIds}
             allTasks={tasks}
             onConfirm={(newDate, newSlot) => handleBulkReschedule(selectedTaskIds, newDate, newSlot)}
@@ -574,19 +633,19 @@ export default function TasksScreen() {
           <TasksSkeleton />
         </ScrollView>
       ) : viewMode === 'timeline' ? (
-        <View style={{ flex: 1 }}>
+        <Animated.View key="timeline" entering={SlideInRight.duration(200).easing(Easing.out(Easing.exp))} exiting={FadeOut.duration(140)} style={{ flex: 1 }}>
           <Suspense fallback={<TasksSkeleton />}>
-            <TimelineView 
-              tasks={displayedTasks} 
-              onTaskPress={(t) => setEditingTask(t)} 
+            <TimelineView
+              tasks={displayedTasks}
+              onTaskPress={(t) => setEditingTask(t)}
               colors={colors}
               isDark={isDark}
               selectedDate={selectedDate}
             />
           </Suspense>
-        </View>
+        </Animated.View>
       ) : viewMode === 'kanban' ? (
-        <View style={{ flex: 1 }}>
+        <Animated.View key="kanban" entering={SlideInRight.duration(200).easing(Easing.out(Easing.exp))} exiting={FadeOut.duration(140)} style={{ flex: 1 }}>
           <Suspense fallback={<TasksSkeleton />}>
             <KanbanView
               tasks={tasks.filter(t => !filterTag || (t.tags ?? []).includes(filterTag))}
@@ -594,8 +653,9 @@ export default function TasksScreen() {
               colors={colors}
             />
           </Suspense>
-        </View>
+        </Animated.View>
       ) : (
+        <Animated.View key="list" entering={SlideInLeft.duration(200).easing(Easing.out(Easing.exp))} exiting={FadeOut.duration(140)} style={{ flex: 1 }}>
         <SectionList
           style={{ flex: 1 }}
           contentContainerStyle={[
@@ -651,16 +711,22 @@ export default function TasksScreen() {
           renderSectionHeader={renderSectionHeader}
           renderItem={renderItem}
         />
+        </Animated.View>
       )}
 
       {/* FLOATING ACTION PILLS */}
       <View style={[styles.floatingAddContainer, { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 }]}>
-        <AnimatedPressable style={styles.floatingAddBtn} onPress={() => setIsNewTaskOpen(true)}>
+        <AnimatedPressable
+          style={[styles.floatingAddBtn, { shadowColor: colors.accentPrimary, shadowOpacity: 0.28, shadowRadius: 14, elevation: 6 }]}
+          variant="cta"
+          onPress={() => setIsNewTaskOpen(true)}
+        >
           <Ionicons name="add" size={18} color={isDark ? '#000000' : '#ffffff'} style={{ marginRight: 4 }} />
           <Text style={styles.floatingAddText}>Add task</Text>
         </AnimatedPressable>
         <AnimatedPressable
-          style={[styles.floatingAddBtn, { backgroundColor: '#FF453A', paddingHorizontal: 16 }]}
+          style={[styles.floatingAddBtn, { backgroundColor: '#FF453A', paddingHorizontal: 16, shadowColor: '#FF453A', shadowOpacity: 0.35, shadowRadius: 14, elevation: 6 }]}
+          variant="cta"
           onPress={() => setIsVoiceDictationOpen(true)}
         >
           <Ionicons name="mic" size={18} color="#ffffff" style={{ marginRight: 4 }} />
@@ -701,17 +767,20 @@ export default function TasksScreen() {
               )}
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
-              {overdueTasks.map(t => (
-                <TaskRowMemo
-                  key={t.id}
-                  task={t}
-                  isOverdue={true}
-                  onComplete={onCompleteRef}
-                  onReschedule={onOverdueRescheduleRef}
-                  onPress={onOverduePressRef}
-                  onToggleSelect={onToggleSelectRef}
-                  onUpdateTask={onUpdateTaskRef}
-                />
+              {overdueTasks.map((t, idx) => (
+                <Animated.View key={t.id} entering={FadeInDown.duration(180).delay(Math.min(idx * 30, 200))}>
+                  <TaskRowMemo
+                    task={t}
+                    isOverdue={true}
+                    onComplete={onCompleteRef}
+                    onReschedule={onOverdueRescheduleRef}
+                    onPress={onOverduePressRef}
+                    onLongPress={onLongPressRef}
+                    onDelete={onDeleteRef}
+                    onToggleSelect={onToggleSelectRef}
+                    onUpdateTask={onUpdateTaskRef}
+                  />
+                </Animated.View>
               ))}
             </ScrollView>
           </View>
@@ -730,19 +799,23 @@ export default function TasksScreen() {
               <Text style={{ color: colors.textTertiary, fontFamily: 'Inter_500Medium', textAlign: 'center', marginTop: 20, paddingBottom: 40 }}>No tasks in your inbox.</Text>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-                {inboxTasks.map(t => (
-                  <TaskRowMemo
-                    key={t.id}
-                    task={t}
-                    isOverdue={false}
-                    onComplete={onCompleteRef}
-                    onReschedule={onInboxRescheduleRef}
-                    onPress={onInboxPressRef}
-                    isBulkEdit={isBulkEdit}
-                    isSelected={selectedTaskIds.has(t.id!)}
-                    onToggleSelect={onToggleSelectRef}
-                    onUpdateTask={onUpdateTaskRef}
-                  />
+                {inboxTasks.map((t, idx) => (
+                  <Animated.View key={t.id} entering={FadeInDown.duration(180).delay(Math.min(idx * 30, 200))}>
+                    <TaskRowMemo
+                      key={t.id}
+                      task={t}
+                      isOverdue={false}
+                      onComplete={onCompleteRef}
+                      onReschedule={onInboxRescheduleRef}
+                      onPress={onInboxPressRef}
+                      onLongPress={onLongPressRef}
+                      onDelete={onDeleteRef}
+                      isBulkEdit={isBulkEdit}
+                      isSelected={selectedTaskIds.has(t.id!)}
+                      onToggleSelect={onToggleSelectRef}
+                      onUpdateTask={onUpdateTaskRef}
+                    />
+                  </Animated.View>
                 ))}
               </ScrollView>
             )}
@@ -754,7 +827,7 @@ export default function TasksScreen() {
       {isMenuOpen && (
         <Modal visible={isMenuOpen} transparent animationType="fade" onRequestClose={() => setIsMenuOpen(false)}>
           <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setIsMenuOpen(false)}>
-            <View style={styles.menuContainer}>
+            <Animated.View entering={FadeIn.duration(150)} style={styles.menuContainer}>
               <TouchableOpacity style={styles.menuItem} onPress={() => { setSortBy('priority'); setIsMenuOpen(false); }}>
                 <Ionicons name="filter" size={18} color={colors.textPrimary} style={{ marginRight: 12 }} />
                 <Text style={styles.menuItemText}>Sort by Priority</Text>
@@ -775,7 +848,7 @@ export default function TasksScreen() {
                 <Ionicons name="trash-bin-outline" size={18} color={colors.error} style={{ marginRight: 12 }} />
                 <Text style={[styles.menuItemText, { color: colors.error }]}>Clear Completed</Text>
               </TouchableOpacity>
-            </View>
+            </Animated.View>
           </TouchableOpacity>
         </Modal>
       )}
@@ -806,6 +879,28 @@ export default function TasksScreen() {
           <TaskTimeLogSheet task={timeLogTask} visible={!!timeLogTask} onSkip={() => skipTimeLog(timeLogTask?.id!, optimisticUpdateTask)} onSave={(taskId, actualMinutes, actualStartTime) => saveTimeLog(taskId, actualMinutes, actualStartTime, optimisticUpdateTask)} />
         </Suspense>
       )}
+
+      {/* WHATSAPP-GRADE FLOATING CONTEXT MENU */}
+      <TaskContextMenuModal
+        visible={!!contextMenuTask}
+        task={contextMenuTask}
+        onClose={() => setContextMenuTask(null)}
+        onToggleComplete={(t) => {
+          completeTask(t);
+        }}
+        onReschedule={(t) => {
+          if (t.id) {
+            setSelectedTaskIds(new Set([t.id]));
+            setBulkRescheduleModal(true);
+          }
+        }}
+        onEdit={(t) => {
+          setEditingTask(t);
+        }}
+        onDelete={(t) => {
+          if (t.id) deleteTask(t.id);
+        }}
+      />
 
     </View>
   );

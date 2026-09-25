@@ -2,15 +2,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Animated, Dimensions, Image, Platform
+  ActivityIndicator, Animated, Dimensions, Image, Platform, DeviceEventEmitter
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithCredential, signInAnonymously } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../services/firebase';
 import * as Haptics from 'expo-haptics';
 import { RADIUS, FONT_FAMILY, FONT_SIZE, SHADOW, SPACE } from '../theme/tokens';
 import { useTheme } from '../contexts/ThemeContext';
+import { updateL1Cache } from '../utils/bootManifest';
 import TermsScreen from './TermsScreen';
 
 // Web client ID from Google Cloud Console
@@ -131,6 +133,62 @@ export default function AuthScreen() {
     }
   };
 
+  const lastSyncTapRef = useRef<number>(0);
+
+  const handleSkipNow = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setError('');
+    setLoading(true);
+
+    try {
+      // 1. Standard Firebase anonymous authentication
+      await signInAnonymously(auth);
+    } catch (e: any) {
+      console.warn('[AuthScreen] Anonymous auth fallback:', e?.message);
+      // 2. Failsafe: if Firebase anonymous auth is disabled or offline, create guest user
+      try {
+        const guestUid = `guest_${Date.now()}`;
+        const guestUser = {
+          uid: guestUid,
+          isAnonymous: true,
+          email: null,
+          displayName: 'Guest User',
+          getIdToken: async () => 'guest_token',
+        } as any;
+
+        updateL1Cache('optimisticUser', guestUser);
+        await AsyncStorage.setItem(
+          '@zentrack_optimistic_user',
+          JSON.stringify({
+            uid: guestUid,
+            email: null,
+            displayName: 'Guest User',
+          })
+        );
+        DeviceEventEmitter.emit('guest_sign_in', guestUser);
+      } catch (fallbackErr: any) {
+        console.error('[AuthScreen] Fallback guest sign-in error:', fallbackErr);
+        setError('Could not skip sign in. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSeamlessSyncPress = () => {
+    const now = Date.now();
+    const DOUBLE_TAP_WINDOW = 500;
+    if (now - lastSyncTapRef.current < DOUBLE_TAP_WINDOW) {
+      // Double tap on Seamless Sync detected!
+      lastSyncTapRef.current = 0;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      handleSkipNow();
+    } else {
+      lastSyncTapRef.current = now;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
   const pressIn = () => Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }).start();
   const pressOut = () => Animated.spring(btnScale, { toValue: 1, useNativeDriver: true }).start();
 
@@ -177,10 +235,16 @@ export default function AuthScreen() {
               const iconColor = isDark ? item.colorDark : item.colorLight;
               const iconBg = isDark ? item.bgDark : item.bgLight;
               const badgeBorder = isDark ? item.borderDark : item.borderLight;
+              const isSeamlessSync = item.title === 'Seamless Sync';
 
               return (
                 <View key={item.title}>
-                  <View style={styles.specRow}>
+                  <TouchableOpacity
+                    activeOpacity={isSeamlessSync ? 0.65 : 1}
+                    onPress={isSeamlessSync ? handleSeamlessSyncPress : undefined}
+                    disabled={!isSeamlessSync || loading}
+                    style={styles.specRow}
+                  >
                     <View style={[styles.specIconBox, { backgroundColor: iconBg }]}>
                       <Ionicons name={item.icon as any} size={15} color={iconColor} />
                     </View>
@@ -191,7 +255,7 @@ export default function AuthScreen() {
                     <View style={[styles.specBadge, { backgroundColor: iconBg, borderColor: badgeBorder }]}>
                       <Text style={[styles.specBadgeText, { color: iconColor }]}>{item.tag}</Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                   {index < GUARANTEES.length - 1 && (
                     <View
                       style={[
@@ -260,6 +324,40 @@ export default function AuthScreen() {
               }}
             />
           )}
+
+          {/* Skip for Now Button */}
+          <TouchableOpacity
+            style={styles.skipBtnContainer}
+            onPress={handleSkipNow}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            <View
+              style={[
+                styles.skipBtn,
+                {
+                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+                  borderColor: isDark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(0, 0, 0, 0.08)',
+                },
+              ]}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={colors.textSecondary} />
+              ) : (
+                <View style={styles.skipBtnInner}>
+                  <Text style={[styles.skipBtnText, { color: colors.textPrimary }]}>
+                    Skip for now
+                  </Text>
+                  <Ionicons
+                    name="arrow-forward"
+                    size={14}
+                    color={colors.textSecondary}
+                    style={{ marginLeft: 6 }}
+                  />
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
 
           {/* Terms & Privacy Footnote */}
           <Text style={[styles.legalText, { color: colors.textMuted }]}>
@@ -437,6 +535,29 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     width: '100%',
     height: 52,
     marginBottom: 10,
+  },
+  skipBtnContainer: {
+    width: '100%',
+    marginBottom: 12,
+  },
+  skipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.lg,
+    paddingVertical: 13,
+    width: '100%',
+    borderWidth: 1,
+  },
+  skipBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skipBtnText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 14.5,
+    letterSpacing: 0.2,
   },
   legalText: {
     fontFamily: FONT_FAMILY.body,

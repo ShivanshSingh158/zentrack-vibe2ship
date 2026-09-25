@@ -11,19 +11,32 @@
  * - Smooth Week Gestures: PanResponder horizontal swiping (left for next week, right for prev week)
  *   with native-driven directional spring micro-animations.
  * - Multi-colored Event Dots: up to 5 categorized dot indicators for classes, tasks, gym, and events.
- * - Accessible Haptics: tactile feedback on date taps and week transitions.
+ *
+ * ANIMATION UPGRADES (2026-09-25):
+ * - iOS-grade sliding pill indicator: shared value drives translateX between day positions
+ * - Month label: cross-fade + vertical slide on month boundary crossing during week swipe
+ * - DayPill: Reanimated spring scale on press (replaces TouchableOpacity activeOpacity)
  */
 
-import React, { useMemo, useRef, useCallback } from 'react';
+import React, { useMemo, useRef, useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   PanResponder,
-  Animated,
+  LayoutChangeEvent,
+  Animated,       // React Native Animated — used for the week-row slide (nativeDriver)
+  Easing,         // RN Easing, compatible with RN Animated.timing
 } from 'react-native';
-import * as Haptics from 'expo-haptics';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  withSequence,
+  Easing as REasing,   // Reanimated Easing — used for Reanimated worklets only
+} from 'react-native-reanimated';
+import AnimatedPressable from '../AnimatedPressable';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY } from '../../theme/tokens';
 import { formatLocalDateStr } from '../../utils/dateUtils';
@@ -70,7 +83,15 @@ function getSundayOfDate(dateStr: string): Date {
   return dt;
 }
 
+function getMonthLabel(dateStr: string): string {
+  const [y, m] = dateStr.split('-').map(Number);
+  const dt = new Date(y, (m || 1) - 1, 1);
+  return dt.toLocaleString('default', { month: 'long', year: 'numeric' });
+}
+
 // ── Pure Memoized Day Pill ─────────────────────────────────────────────────────
+// NOTE: background pill is now transparent — the selected state is shown by the
+// parent's sliding PillIndicator overlay, not per-pill styling.
 const DayPill = React.memo(function DayPill({
   dateStr,
   dateNum,
@@ -84,15 +105,14 @@ const DayPill = React.memo(function DayPill({
   styles,
 }: DayPillProps) {
   const handlePress = useCallback(() => {
-    Haptics.selectionAsync();
     onSelectDate(dateStr);
   }, [onSelectDate, dateStr]);
 
   return (
-    <TouchableOpacity
+    <AnimatedPressable
       style={styles.dayCol}
       onPress={handlePress}
-      activeOpacity={0.7}
+      variant="subtle"
     >
       <Text style={[styles.dayLetter, isSelected && styles.dayLetterActive]}>
         {dateDay}
@@ -101,7 +121,6 @@ const DayPill = React.memo(function DayPill({
       <View
         style={[
           styles.dayPill,
-          isSelected && styles.dayPillSelected,
           isToday && !isSelected && styles.dayPillToday,
         ]}
       >
@@ -134,10 +153,68 @@ const DayPill = React.memo(function DayPill({
           </View>
         )}
       </View>
-    </TouchableOpacity>
+    </AnimatedPressable>
   );
 });
 
+// ── Sliding Active Pill (runs entirely on UI thread) ──────────────────────────
+interface PillProps {
+  activeIndex: number;
+  tabWidth: number;
+  colors: any;
+}
+
+function SlidingDayPill({ activeIndex, tabWidth, colors }: PillProps) {
+  const pillX = useSharedValue(activeIndex * tabWidth);
+
+  useEffect(() => {
+    pillX.value = withSpring(activeIndex * tabWidth, {
+      damping:   22,
+      stiffness: 380,
+      mass:      0.5,
+    });
+  }, [activeIndex, tabWidth]);
+
+  const pillStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: pillX.value }],
+  }));
+
+  return (
+    <Reanimated.View
+      pointerEvents="none"
+      style={[
+        styles_pill.pillOuter,
+        { width: tabWidth },
+        pillStyle,
+      ]}
+    >
+      <View
+        style={[
+          styles_pill.pillInner,
+          { backgroundColor: colors.accentPrimary || '#a599ff' },
+        ]}
+      />
+    </Reanimated.View>
+  );
+}
+
+const styles_pill = StyleSheet.create({
+  pillOuter: {
+    position:   'absolute',
+    top:        22,    // aligns with the day pill circle
+    height:     42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pillInner: {
+    width:        38,
+    height:       42,
+    borderRadius: 12,
+    opacity:      1,
+  },
+});
+
+// ── Main CalendarWeekStripPager ───────────────────────────────────────────────
 export function CalendarWeekStripPager({
   selectedDate,
   onSelectDate,
@@ -147,9 +224,9 @@ export function CalendarWeekStripPager({
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const todayStr = useMemo(() => formatLocalDateStr(new Date()), []);
 
-  // Animations for horizontal week slide transition
+  // Week slide animation — using RN Animated (nativeDriver) for the whole row slide
   const translateXAnim = useRef(new Animated.Value(0)).current;
-  const opacityAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim    = useRef(new Animated.Value(1)).current;
 
   // Active week's Sunday derived deterministically from selectedDate (or today)
   const activeSunday = useMemo(() => {
@@ -166,52 +243,73 @@ export function CalendarWeekStripPager({
         dateStr,
         dateNum: d.getDate(),
         dateDay: DAY_LETTERS[i],
-        isToday: dateStr === todayStr,
+        isToday:    dateStr === todayStr,
         isSelected: dateStr === selectedDate,
       };
     });
   }, [activeSunday, selectedDate, todayStr]);
 
-  // Spring transition for week changes
+  // Active day index within the visible week (for sliding pill)
+  const activeIndex = useMemo(() => {
+    const idx = weekDays.findIndex(d => d.isSelected);
+    return idx >= 0 ? idx : 0;
+  }, [weekDays]);
+
+  // Tab width measured from layout (needed to position the pill)
+  const [tabWidth, setTabWidth] = useState(0);
+  const onRowLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width / 7;
+    setTabWidth(w);
+  }, []);
+
+  // Month label cross-fade + vertical slide on month boundary crossing
+  const monthLabel  = getMonthLabel(selectedDate || todayStr);
+  const prevMonthRef = useRef(monthLabel);
+  const monthOpacity = useSharedValue(1);
+  const monthTransY  = useSharedValue(0);
+
+  useEffect(() => {
+    if (prevMonthRef.current !== monthLabel) {
+      const isForward = monthLabel > prevMonthRef.current;
+      prevMonthRef.current = monthLabel;
+      monthOpacity.value = withSequence(
+        withTiming(0, { duration: 100 }),
+        withTiming(1, { duration: 200, easing: REasing.out(REasing.quad) }),
+      );
+      monthTransY.value = withSequence(
+        withTiming(isForward ? -6 : 6, { duration: 100 }),
+        withTiming(0, { duration: 200, easing: REasing.out(REasing.quad) }),
+      );
+    }
+  }, [monthLabel]);
+
+  const monthAnimStyle = useAnimatedStyle(() => ({
+    opacity:   monthOpacity.value,
+    transform: [{ translateY: monthTransY.value }],
+  }));
+
+  // Spring transition for week changes (RN Animated.timing, nativeDriver)
   const animateTransition = useCallback(
     (direction: 'left' | 'right', commitAction: () => void) => {
-      const exitValue = direction === 'left' ? -26 : 26;
-      const enterValue = direction === 'left' ? 26 : -26;
+      const exitValue  = direction === 'left'  ? -26 :  26;
+      const enterValue = direction === 'left'  ?  26 : -26;
 
       Animated.parallel([
-        Animated.timing(translateXAnim, {
-          toValue: exitValue,
-          duration: 90,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 0.3,
-          duration: 90,
-          useNativeDriver: true,
-        }),
+        Animated.timing(translateXAnim, { toValue: exitValue,  duration: 90,  easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(opacityAnim,    { toValue: 0.2,        duration: 90,  useNativeDriver: true }),
       ]).start(() => {
         commitAction();
         translateXAnim.setValue(enterValue);
         Animated.parallel([
-          Animated.spring(translateXAnim, {
-            toValue: 0,
-            friction: 8,
-            tension: 75,
-            useNativeDriver: true,
-          }),
-          Animated.timing(opacityAnim, {
-            toValue: 1,
-            duration: 120,
-            useNativeDriver: true,
-          }),
+          Animated.timing(translateXAnim, { toValue: 0, duration: 140, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+          Animated.timing(opacityAnim,    { toValue: 1, duration: 140, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
         ]).start();
       });
     },
-    [translateXAnim, opacityAnim]
+    [translateXAnim, opacityAnim],
   );
 
   const goToNextWeek = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     animateTransition('left', () => {
       const cur = parseDateToMidnight(selectedDate || todayStr);
       cur.setDate(cur.getDate() + 7);
@@ -220,7 +318,6 @@ export function CalendarWeekStripPager({
   }, [selectedDate, todayStr, onSelectDate, animateTransition]);
 
   const goToPrevWeek = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     animateTransition('right', () => {
       const cur = parseDateToMidnight(selectedDate || todayStr);
       cur.setDate(cur.getDate() - 7);
@@ -228,7 +325,6 @@ export function CalendarWeekStripPager({
     });
   }, [selectedDate, todayStr, onSelectDate, animateTransition]);
 
-  // PanResponder for smooth horizontal week swiping without blocking vertical timeline scroll
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -239,46 +335,60 @@ export function CalendarWeekStripPager({
           );
         },
         onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dx < -35) {
-            goToNextWeek();
-          } else if (gestureState.dx > 35) {
-            goToPrevWeek();
-          }
+          if      (gestureState.dx < -35) goToNextWeek();
+          else if (gestureState.dx >  35) goToPrevWeek();
         },
       }),
-    [goToNextWeek, goToPrevWeek]
+    [goToNextWeek, goToPrevWeek],
   );
 
   return (
     <View style={styles.container} {...panResponder.panHandlers}>
-      <Animated.View
-        style={[
-          styles.weekRow,
-          {
-            transform: [{ translateX: translateXAnim }],
-            opacity: opacityAnim,
-          },
-        ]}
-      >
-        {weekDays.map((day) => {
-          const dots = markedDates[day.dateStr]?.dots || EMPTY_DOTS;
-          return (
-            <DayPill
-              key={day.dateStr}
-              dateStr={day.dateStr}
-              dateNum={day.dateNum}
-              dateDay={day.dateDay}
-              isToday={day.isToday}
-              isSelected={day.isSelected}
-              dots={dots}
-              onSelectDate={onSelectDate}
-              colors={colors}
-              isDark={isDark}
-              styles={styles}
-            />
-          );
-        })}
-      </Animated.View>
+      {/* Month label with cross-fade + vertical slide on month change */}
+      <Reanimated.Text style={[styles.monthLabel, monthAnimStyle]}>
+        {monthLabel}
+      </Reanimated.Text>
+
+      <View style={{ position: 'relative' }}>
+        {/* Sliding active day pill — underneath the day numbers */}
+        {tabWidth > 0 && (
+          <SlidingDayPill
+            activeIndex={activeIndex}
+            tabWidth={tabWidth}
+            colors={colors}
+          />
+        )}
+
+        <Animated.View
+          style={[
+            styles.weekRow,
+            {
+              transform: [{ translateX: translateXAnim }],
+              opacity:   opacityAnim,
+            },
+          ]}
+          onLayout={onRowLayout}
+        >
+          {weekDays.map((day) => {
+            const dots = markedDates[day.dateStr]?.dots || EMPTY_DOTS;
+            return (
+              <DayPill
+                key={day.dateStr}
+                dateStr={day.dateStr}
+                dateNum={day.dateNum}
+                dateDay={day.dateDay}
+                isToday={day.isToday}
+                isSelected={day.isSelected}
+                dots={dots}
+                onSelectDate={onSelectDate}
+                colors={colors}
+                isDark={isDark}
+                styles={styles}
+              />
+            );
+          })}
+        </Animated.View>
+      </View>
     </View>
   );
 }
@@ -286,29 +396,37 @@ export function CalendarWeekStripPager({
 const makeStyles = (colors: any, isDark: boolean) =>
   StyleSheet.create({
     container: {
-      minHeight: 74,
-      paddingBottom: 8,
+      minHeight:       80,
+      paddingBottom:   8,
       backgroundColor: colors.background,
       borderBottomWidth: 1,
       borderBottomColor: colors.border || 'rgba(255,255,255,0.06)',
-      justifyContent: 'center',
+    },
+    monthLabel: {
+      fontSize:       11,
+      fontFamily:     FONT_FAMILY.bold,
+      color:          colors.textTertiary || colors.textSecondary,
+      letterSpacing:  0.5,
+      textAlign:      'center',
+      paddingTop:     6,
+      paddingBottom:  2,
     },
     weekRow: {
-      flexDirection: 'row',
+      flexDirection:  'row',
       justifyContent: 'space-between',
-      alignItems: 'center',
-      minHeight: 64,
+      alignItems:     'center',
+      minHeight:      64,
       paddingHorizontal: 8,
-      width: '100%',
+      width:          '100%',
     },
     dayCol: {
-      alignItems: 'center',
-      gap: 4,
-      flex: 1,
+      alignItems:  'center',
+      gap:         4,
+      flex:        1,
     },
     dayLetter: {
-      fontSize: 10.5,
-      color: colors.textMuted || '#8e8e93',
+      fontSize:   10.5,
+      color:      colors.textMuted || '#8e8e93',
       fontFamily: FONT_FAMILY.bold,
       letterSpacing: 0.5,
     },
@@ -316,44 +434,41 @@ const makeStyles = (colors: any, isDark: boolean) =>
       color: colors.textPrimary,
     },
     dayPill: {
-      width: 38,
-      height: 42,
-      borderRadius: 12,
+      width:           38,
+      height:          42,
+      borderRadius:    12,
       backgroundColor: 'transparent',
-      alignItems: 'center',
-      justifyContent: 'center',
-      position: 'relative',
+      alignItems:      'center',
+      justifyContent:  'center',
+      position:        'relative',
     },
     dayPillToday: {
       borderWidth: 1.5,
       borderColor: colors.accentPrimary ? `${colors.accentPrimary}80` : '#a599ff',
     },
-    dayPillSelected: {
-      backgroundColor: colors.accentPrimary || '#a599ff',
-    },
     dayNum: {
-      fontSize: 15,
-      color: colors.textPrimary,
+      fontSize:   15,
+      color:      colors.textPrimary,
       fontFamily: FONT_FAMILY.body,
     },
     dayNumToday: {
-      color: colors.accentPrimary || '#a599ff',
+      color:      colors.accentPrimary || '#a599ff',
       fontFamily: FONT_FAMILY.bold,
     },
     dayNumSelected: {
-      color: isDark ? '#000000' : '#FFFFFF',
+      color:      isDark ? '#000000' : '#FFFFFF',
       fontFamily: FONT_FAMILY.bold,
     },
     dotsRow: {
       flexDirection: 'row',
-      alignItems: 'center',
-      gap: 2,
-      position: 'absolute',
-      bottom: 3,
+      alignItems:    'center',
+      gap:           2,
+      position:      'absolute',
+      bottom:        3,
     },
     dot: {
-      width: 3.5,
-      height: 3.5,
+      width:        3.5,
+      height:       3.5,
       borderRadius: 2,
     },
   });

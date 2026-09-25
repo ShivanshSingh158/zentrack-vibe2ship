@@ -25,6 +25,7 @@ import { parseTask, parseHabit, parseHabitLog, areItemsEqual } from "../../utils
 import { syncXPWithFirestore } from "../../services/xpSystem";
 import { clearOrchestratorCache } from "../../agent/orchestrator";
 import { usePinnedModules } from "../PinnedModulesContext";
+import { cacheUserAvatar, initAvatarCacheOnBoot, clearAvatarCache } from "../../services/userAvatarService";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface CoreDataContextType {
@@ -152,6 +153,10 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
 
     // Check synchronous auth on Frame 0
     if (auth.currentUser) {
+      if (auth.currentUser.photoURL) {
+        cacheUserAvatar(auth.currentUser.uid, auth.currentUser.photoURL).catch(() => {});
+      }
+      initAvatarCacheOnBoot(auth.currentUser.uid).catch(() => {});
       setUser(prev => {
         if (prev?.uid === auth.currentUser?.uid) return prev;
         firstAuthAtRef.current = Date.now();
@@ -234,6 +239,10 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     const unsub = onAuthStateChanged(auth, u => {
       if (!cancelled) {
         if (u) {
+          if (u.photoURL) {
+            cacheUserAvatar(u.uid, u.photoURL).catch(() => {});
+          }
+          initAvatarCacheOnBoot(u.uid).catch(() => {});
           setUser(prev => {
             if (prev?.uid === u.uid) return prev;
             firstAuthAtRef.current = Date.now();
@@ -254,9 +263,15 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
+    const guestSub = DeviceEventEmitter.addListener('guest_sign_in', (guestUsr: any) => {
+      setUser(guestUsr);
+      setFirestoreReady(true);
+    });
+
     return () => {
       cancelled = true;
       unsub();
+      guestSub.remove();
     };
   }, []);
 
@@ -532,6 +547,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
 export async function performSignOut() {
   try {
     clearOrchestratorCache();
+    const currentUid = auth.currentUser?.uid;
 
     await AsyncStorage.multiRemove([
       '@zentrack_optimistic_user',
@@ -544,6 +560,9 @@ export async function performSignOut() {
     await clearAllDomainCaches();
     clearScheduleCache();
     await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+    if (currentUid) {
+      await clearAvatarCache(currentUid).catch(() => {});
+    }
   } catch (err) {
     console.warn('[Auth] Sign out error:', err);
   }

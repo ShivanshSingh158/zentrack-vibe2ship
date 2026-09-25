@@ -40,6 +40,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useNavigation } from '@react-navigation/native';
 
 import AnimatedPressable from '../components/AnimatedPressable';
+import UserAvatar from '../components/ui/UserAvatar';
 import { useTheme } from '../contexts/ThemeContext';
 import { useCoreData, performSignOut } from '../contexts/domains/CoreDataContext';
 import { useWellnessData } from '../contexts/domains/WellnessContext';
@@ -115,7 +116,6 @@ export default function SettingsScreen() {
   const [signOutModal, setSignOutModal] = useState(false);
   const [accountModalVisible, setAccountModalVisible] = useState(false);
   const [copiedUid, setCopiedUid] = useState(false);
-  const [avatarPhotoError, setAvatarPhotoError] = useState(false);
 
   // ── Load Saved Preferences ─────────────────────────────────────────────────
   useEffect(() => {
@@ -354,15 +354,12 @@ export default function SettingsScreen() {
           onPress={handleShowAccountDetails}
         >
           <View style={s.profileAvatar}>
-            {user?.photoURL && !avatarPhotoError ? (
-              <Image
-                source={{ uri: user.photoURL }}
-                style={{ width: '100%', height: '100%', borderRadius: 999 }}
-                onError={() => setAvatarPhotoError(true)}
-              />
-            ) : (
-              <Text style={s.profileAvatarText}>{avatarLetter}</Text>
-            )}
+            <UserAvatar
+              size={44}
+              uid={user?.uid}
+              photoURL={user?.photoURL}
+              fallbackLetter={avatarLetter}
+            />
           </View>
           <View style={s.profileInfo}>
             <Text style={s.profileName} numberOfLines={1}>
@@ -785,18 +782,14 @@ export default function SettingsScreen() {
                 {/* Hero Avatar & Identity */}
                 <View style={s.accountHero}>
                   <View style={s.accountAvatarWrapper}>
-                    {user?.photoURL && !avatarPhotoError ? (
-                      <Image
-                        source={{ uri: user.photoURL }}
-                        style={s.accountAvatarImg}
-                        onError={() => setAvatarPhotoError(true)}
-                      />
-                    ) : (
-                      <View style={s.accountAvatarFallback}>
-                        <Text style={s.accountAvatarLetter}>{avatarLetter}</Text>
-                      </View>
-                    )}
-                    <View style={s.accountOnlineRing} />
+                    <UserAvatar
+                      size={56}
+                      uid={user?.uid}
+                      photoURL={user?.photoURL}
+                      fallbackLetter={avatarLetter}
+                      imageStyle={{ borderWidth: 2, borderColor: colors.accentPrimary }}
+                      showOnlineRing
+                    />
                   </View>
                   <Text style={s.accountName} numberOfLines={1}>
                     {displayName}

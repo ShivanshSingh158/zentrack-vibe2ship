@@ -38,7 +38,6 @@
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.WAKE_LOCK",
         "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.USE_EXACT_ALARM",
@@ -84,7 +83,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "ZenTrack needs location access to remind you to log workouts when you arrive at the gym."
+          "locationWhenInUsePermission": "ZenTrack uses location only when you select places or map coordinates."
         }
       ],
       [

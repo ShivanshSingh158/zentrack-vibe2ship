@@ -44,23 +44,27 @@ export async function ensureVaultCacheDir(): Promise<string | null> {
 
 /**
  * Generates a deterministic, filesystem-safe local filename from a remote URL.
+ * URL is stripped of query params (like temporary access tokens or timestamps)
+ * so that identical assets always map to the exact same cache file.
  */
 export async function getCacheFilenameForUrl(url: string, originalFilename?: string): Promise<string> {
   if (!url) return 'file_fallback.dat';
   try {
+    // Strip ephemeral query params/hashes to get stable asset URL
+    const cleanUrl = url.split('?')[0].split('#')[0] || url;
+
     let hash = '';
     try {
-      hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, url);
+      hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, cleanUrl);
     } catch {
-      // Fallback simple hash if Crypto fails
       let h = 0;
-      for (let i = 0; i < url.length; i++) {
-        h = ((h << 5) - h + url.charCodeAt(i)) | 0;
+      for (let i = 0; i < cleanUrl.length; i++) {
+        h = ((h << 5) - h + cleanUrl.charCodeAt(i)) | 0;
       }
       hash = Math.abs(h).toString(16);
     }
 
-    const shortHash = (hash || 'hash').substring(0, 16);
+    const shortHash = (hash || 'hash').substring(0, 24);
 
     // Extract or preserve extension
     let ext = '';
@@ -68,20 +72,49 @@ export async function getCacheFilenameForUrl(url: string, originalFilename?: str
       const parts = originalFilename.split('.');
       ext = '.' + (parts.pop() || '').toLowerCase();
     } else {
-      const urlExtMatch = url.match(/\.([a-zA-Z0-9]{2,5})(?:\?|#|$)/);
+      const urlExtMatch = cleanUrl.match(/\.([a-zA-Z0-9]{2,5})(?:\?|#|$)/);
       if (urlExtMatch) {
         ext = '.' + urlExtMatch[1].toLowerCase();
       }
     }
+    if (!ext && (url.includes('/image/') || url.includes('image'))) ext = '.jpg';
+    if (!ext && (url.includes('/pdf') || url.includes('.pdf'))) ext = '.pdf';
 
-    const cleanName = (originalFilename || 'doc')
-      .replace(/[^a-zA-Z0-9_-]/g, '_')
-      .substring(0, 20);
-
-    return `${cleanName}_${shortHash}${ext}`;
+    return `vcache_${shortHash}${ext}`;
   } catch {
     const safeUrl = url.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 24);
     return `vault_${safeUrl}.dat`;
+  }
+}
+
+/**
+ * Returns legacy filename format for backwards compatibility with previously cached files.
+ */
+export async function getLegacyCacheFilenameForUrl(url: string, originalFilename?: string): Promise<string> {
+  try {
+    let hash = '';
+    try {
+      hash = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, url);
+    } catch {
+      let h = 0;
+      for (let i = 0; i < url.length; i++) {
+        h = ((h << 5) - h + url.charCodeAt(i)) | 0;
+      }
+      hash = Math.abs(h).toString(16);
+    }
+    const shortHash = (hash || 'hash').substring(0, 16);
+    let ext = '';
+    if (originalFilename && originalFilename.includes('.')) {
+      const parts = originalFilename.split('.');
+      ext = '.' + (parts.pop() || '').toLowerCase();
+    } else {
+      const urlExtMatch = url.match(/\.([a-zA-Z0-9]{2,5})(?:\?|#|$)/);
+      if (urlExtMatch) ext = '.' + urlExtMatch[1].toLowerCase();
+    }
+    const cleanName = (originalFilename || 'doc').replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 20);
+    return `${cleanName}_${shortHash}${ext}`;
+  } catch {
+    return '';
   }
 }
 
@@ -107,6 +140,7 @@ export async function getCachedFilePath(url: string, originalFilename?: string):
     const dir = await ensureVaultCacheDir();
     if (!dir) return null;
 
+    // 1. Check primary deterministic filename
     const filename = await getCacheFilenameForUrl(url, originalFilename);
     const targetPath = `${dir}${filename}`;
     const fileInfo = await FileSystem.getInfoAsync(targetPath);
@@ -114,6 +148,23 @@ export async function getCachedFilePath(url: string, originalFilename?: string):
     if (fileInfo.exists && fileInfo.size && fileInfo.size > 0) {
       return targetPath;
     }
+
+    // 2. Check legacy filename for backward compatibility
+    const legacyFilename = await getLegacyCacheFilenameForUrl(url, originalFilename);
+    if (legacyFilename && legacyFilename !== filename) {
+      const legacyPath = `${dir}${legacyFilename}`;
+      const legacyInfo = await FileSystem.getInfoAsync(legacyPath);
+      if (legacyInfo.exists && legacyInfo.size && legacyInfo.size > 0) {
+        // Transparently migrate to canonical path
+        try {
+          await FileSystem.copyAsync({ from: legacyPath, to: targetPath });
+          return targetPath;
+        } catch {
+          return legacyPath;
+        }
+      }
+    }
+
     return null;
   } catch (err) {
     console.warn('[VaultCache] Error checking cache:', err);

@@ -1,7 +1,7 @@
-/**
- * notifications.ts — ZenTrack Mobile
+﻿/**
+ * notifications.ts â€” ZenTrack Mobile
  *
- * scheduleAllNotifications() — the single source of truth for all local notifications.
+ * scheduleAllNotifications() â€” the single source of truth for all local notifications.
  * Reads all user prefs from AsyncStorage before scheduling.
  */
 
@@ -70,7 +70,7 @@ import {
 
 export { requestNotificationPermissions };
 
-// ── Time & Date Helpers ───────────────────────────────────────────────────────
+// â”€â”€ Time & Date Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function parseTimeString(t?: string): { hours: number; minutes: number } | null {
   if (!t || typeof t !== 'string') return null;
@@ -111,7 +111,7 @@ function dateAtHM(base: Date, hours: number, minutes: number): Date {
   return d;
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
+// â”€â”€ Main export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface ScheduleParams {
   tasks?: Task[];
@@ -129,7 +129,7 @@ export interface ScheduleParams {
   userName?: string;
 }
 
-// ── Data Fingerprint Cache (Persisted to Disk) ─────────────────────────────────
+// â”€â”€ Data Fingerprint Cache (Persisted to Disk) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const NOTIF_FINGERPRINT_KEY = '@zentrack_notif_fingerprint';
 let _lastScheduleFingerprint: string | null = null;
 let _lastScheduleError: string | null = null;
@@ -176,7 +176,7 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     .join(';');
 
   const attendanceLogFingerprint = (params.attendanceLogs || [])
-    .map(l => `${l.id}_${l.action}_${l.date}`)
+    .map(l => `${l.id || ''}_${l.subjectId || ''}_${l.type || ''}_${l.idx ?? ''}_${l.action}_${(l.date || '').slice(0, 10)}`)
     .join(';');
 
   const flashcardDueCount = (params.flashcards || [])
@@ -246,7 +246,7 @@ let _pendingResolveList: (() => void)[] = [];
 let _pendingRejectList: ((err: any) => void)[] = [];
 let _latestParams: ScheduleParams | null = null;
 
-// ── Priority Queue Entry ──────────────────────────────────────────────────────
+// â”€â”€ Priority Queue Entry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface PendingNotif {
   title: string;
@@ -258,7 +258,7 @@ interface PendingNotif {
   priority: number; // 1 = highest, use PRIORITY.* constants
 }
 
-// ── scheduleAllNotifications ──────────────────────────────────────────────────
+// â”€â”€ scheduleAllNotifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function scheduleAllNotifications(params: ScheduleParams): Promise<void> {
   _latestParams = params;
@@ -299,7 +299,7 @@ export function scheduleAllNotifications(params: ScheduleParams): Promise<void> 
 }
 
 async function _executeScheduleLoop(currentParams: ScheduleParams) {
-  // ── Active Workout Guard ────────────────────────────────────────────────────
+  // â”€â”€ Active Workout Guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // If the user is actively logging a workout, bail out immediately.
   // This is a second line of defence behind BackgroundNotificationWatcher's guard.
   // The watcher guard prevents most calls; this catches any that slip through
@@ -309,7 +309,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
     if (activeStateRaw) {
       const activeState = JSON.parse(activeStateRaw);
       if (activeState && !activeState.completed) {
-        console.log('[Notifications] Active workout in progress (inner guard) — skipping reschedule.');
+        console.log('[Notifications] Active workout in progress (inner guard) â€” skipping reschedule.');
         return;
       }
     }
@@ -347,7 +347,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
 
       const isWeekend = now.getDay() === 0 || now.getDay() === 6;
 
-      // ── Batched Preference Retrieval ──────────────────────────────────────
+      // â”€â”€ Batched Preference Retrieval â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const BOOL_KEYS = [
         'zentrack_notif_mod_tasks', 'zentrack_notif_mod_habits', 'zentrack_notif_mod_gym',
         'zentrack_notif_mod_attendance', 'zentrack_notif_mod_assignments',
@@ -389,21 +389,21 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
 
       const fingerprint = _buildFingerprint(currentParams, kv);
       if (fingerprint === _lastScheduleFingerprint) {
-        console.log('[Notifications] Data & preferences unchanged — skipping reschedule.');
+        console.log('[Notifications] Data & preferences unchanged â€” skipping reschedule.');
         return;
       }
-      // NOTE: Do NOT save fingerprint yet — only save after successful scheduling.
+      // NOTE: Do NOT save fingerprint yet â€” only save after successful scheduling.
       // If cancel/schedule throws, we must NOT poison the cache or future calls
       // will permanently skip rescheduling.
 
-      // ── Permission Guard ────────────────────────────────────────────────────
+      // â”€â”€ Permission Guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // Never attempt to cancel/schedule if permission is not granted.
       // This was a silent failure path: cancelAllScheduledNotificationsAsync() would
       // succeed (no-op), but scheduleNotificationAsync() would throw every time,
       // and the poisoned fingerprint would block all future attempts.
       const { status: permStatus } = await Notifications.getPermissionsAsync();
       if (permStatus !== 'granted') {
-        console.warn('[Notifications] Permission not granted — skipping schedule. Status:', permStatus);
+        console.warn('[Notifications] Permission not granted â€” skipping schedule. Status:', permStatus);
         return;
       }
 
@@ -411,7 +411,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       // gym rest-timer notifications (scheduled by useGymLog with a future DATE trigger)
       // and reschedule them afterward so an in-progress workout isn't disrupted.
       // BUG-12 FIX: If all user data arrays are empty (likely offline cold-start), skip
-      // the cancel+reschedule entirely — a wipe with no data would leave the user with
+      // the cancel+reschedule entirely â€” a wipe with no data would leave the user with
       // zero notifications until the app is foregrounded.
       const dataIsEmpty =
         tasks.length === 0 &&
@@ -419,7 +419,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         attendance.length === 0 &&
         assignments.length === 0;
       if (dataIsEmpty) {
-        console.warn('[Notifications] All data arrays empty (likely offline) — skipping reschedule to preserve existing notifications.');
+        console.warn('[Notifications] All data arrays empty (likely offline) â€” skipping reschedule to preserve existing notifications.');
         return;
       }
 
@@ -511,7 +511,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         return val >= qs && val < qe;
       }
 
-      // ── Priority Queue ────────────────────────────────────────────────────
+      // â”€â”€ Priority Queue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // Collect ALL candidate notifications, then sort by priority tier before
       // flushing. This guarantees critical notifications (tier 1) are always
       // within the OS alarm budget before lower-tier ones are dropped.
@@ -531,7 +531,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         pendingQueue.push({ priority, title, body, trigger: validTrigger, data, channel, categoryId });
       }
 
-      // ── 1. Morning Briefings (Today & Tomorrow) ────────────────────────────
+      // â”€â”€ 1. Morning Briefings (Today & Tomorrow) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (morningBriefEnabled) {
         const mbTime = parseHM(morningBriefTimeStr);
         for (let dayOffset = 0; dayOffset <= 1; dayOffset++) {
@@ -590,7 +590,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
             if (atRisk.length > 0) {
               const worst = atRisk[0];
               const pct = ((worst.classesAttended / worst.classesTotal) * 100).toFixed(0);
-              body += ` (⚠️ ${worst.name}: ${pct}% attendance)`;
+              body += ` (âš ï¸ ${worst.name}: ${pct}% attendance)`;
             }
           }
 
@@ -605,7 +605,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // ── 2. Overdue Task Nudge (Today Only) ──────────────────────────────────
+      // â”€â”€ 2. Overdue Task Nudge (Today Only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (overdueNudge && modTasks) {
         const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
@@ -631,7 +631,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // ── 3. Task Reminders & Time Windows (7-Day Rolling Horizon) ─────────
+      // â”€â”€ 3. Task Reminders & Time Windows (7-Day Rolling Horizon) â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (modTasks) {
         const eligibleTasks = tasks
           .filter(t => {
@@ -718,7 +718,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
               );
             }
 
-            // ── 5 Minutes Before Alert ──────────────────────────────────────
+            // â”€â”€ 5 Minutes Before Alert â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if (task5MinAlert) {
               const t5 = new Date(base.getTime() - 5 * 60 * 1000);
               if (t5 > now) {
@@ -734,7 +734,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
               }
             }
 
-            // ── Exact Time Alert (Full Screen & Heads-Up) ───────────────────
+            // â”€â”€ Exact Time Alert (Full Screen & Heads-Up) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if (base > now) {
               enqueue(
                 PRIORITY.CRITICAL,
@@ -814,7 +814,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // ── 3b. Undated Tasks (Inbox — no due date set) ───────────────────────
+      // â”€â”€ 3b. Undated Tasks (Inbox â€” no due date set) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // Tasks without a date are "inbox" tasks. Schedule a single nudge at the
       // next upcoming smart check-in slot so they're never silently ignored.
       if (modTasks) {
@@ -850,7 +850,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // ── 4. Calendar Custom Events (Next 2 Days) ────────────────────────────
+      // â”€â”€ 4. Calendar Custom Events (Next 2 Days) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       for (const event of customEvents.filter(e => e.date === todayStr || e.date === tomorrowStr)) {
         const [year, month, day] = event.date.split('-').map(Number);
         if (!year) continue;
@@ -871,13 +871,13 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
               getRandomMessage(CALENDAR_EVENT_POOLS(event.title, event.startTime, offsetLabel)),
               evTrigger,
               { eventId: event.id },
-              'reminders'  // BUG-11 FIX: use 'reminders' channel (louder) — calendar events are time-critical
+              'reminders'  // BUG-11 FIX: use 'reminders' channel (louder) â€” calendar events are time-critical
             );
           }
         }
       }
 
-      // ── 5. Habit Streak at Risk (Midnight Protection) ──────────────────────
+      // â”€â”€ 5. Habit Streak at Risk (Midnight Protection) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (habitStreakRisk && modHabits) {
         const hst = parseHM(habitStreakTimeStr);
         const trigger = dateAtHM(now, hst.hours, hst.minutes);
@@ -908,7 +908,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // ── 6. Per-Habit Daily Reminders (2-Day Rolling) ──────────────────────
+      // â”€â”€ 6. Per-Habit Daily Reminders (2-Day Rolling) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (modHabits && (allHabits?.length ?? 0) > 0) {
         const habitsWithReminders = allHabits.slice(0, 10);
         const notifKeys = habitsWithReminders.flatMap(h => [
@@ -959,7 +959,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
 
             enqueue(
               PRIORITY.MEDIUM,
-              habit.name,  // BUG-09 FIX: No emoji in title — emoji stays in-app only
+              habit.name,  // BUG-09 FIX: No emoji in title â€” emoji stays in-app only
               habitBody,
               fireDate,
               { type: 'habit_reminder', habitId: habit.id },
@@ -970,7 +970,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // ── 7. Assignment Deadlines (48h & 24h) ───────────────────────────────
+      // â”€â”€ 7. Assignment Deadlines (48h & 24h) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (modAssignments) {
         for (const asn of assignments.filter(a => a.status !== 'submitted' && a.status !== 'graded' && a.dueDate)) {
           const [yA, mA, dA] = asn.dueDate.split('-').map(Number);
@@ -983,7 +983,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
             if (t48 > now && (t48.getTime() - now.getTime()) <= 48 * 60 * 60 * 1000) {
               enqueue(
                 PRIORITY.HIGH,
-                `Deadline in 48h: ${asn.title}`,  // BUG-10 FIX: removed emoji '⏳'
+                `Deadline in 48h: ${asn.title}`,  // BUG-10 FIX: removed emoji 'â³'
                 getRandomMessage(ASSIGNMENT_48H_POOLS(asn.title)),
                 t48,
                 { type: 'assignment_48h', asnId: asn.id }
@@ -992,7 +992,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
           }
 
           if (assignment24h) {
-            // FIX 7.8: Resilient 24h deadline trigger — if 8:00 AM has passed today, fire in 15min
+            // FIX 7.8: Resilient 24h deadline trigger â€” if 8:00 AM has passed today, fire in 15min
             const dayBeforeDue = new Date(dueDate.getTime() - 24 * 60 * 60 * 1000);
             let t24 = new Date(dayBeforeDue);
             t24.setHours(defaultTime.hours, defaultTime.minutes, 0, 0);
@@ -1013,7 +1013,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // ── 8. Attendance Low-Percentage Warnings (<75%) — CRITICAL ───────────
+      // â”€â”€ 8. Attendance Low-Percentage Warnings (<75%) â€” CRITICAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (attendanceWarning && modAttendance) {
         for (let dayOffset = 0; dayOffset <= 1; dayOffset++) {
           const targetDay = new Date(now);
@@ -1046,7 +1046,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // ── 9. Sunday Weekly Review ────────────────────────────────────────────
+      // â”€â”€ 9. Sunday Weekly Review â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (weeklyReview) {
         const daysUntilSunday = (7 - now.getDay()) % 7;
         if (daysUntilSunday <= 1) {
@@ -1065,7 +1065,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // ── 10. Gym & Academic Classes (2-Day Rolling) ─────────────────────────
+      // â”€â”€ 10. Gym & Academic Classes (2-Day Rolling) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       for (let dayOffset = 0; dayOffset <= 1; dayOffset++) {
         const targetDate = new Date(now);
         targetDate.setDate(targetDate.getDate() + dayOffset);
@@ -1118,12 +1118,13 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
             isLab: boolean;
             startMs: number;
             durationMinutes?: number;
+            sessionIdx: number;
           }
           const daySessions: DaySession[] = [];
 
           const parseSessionTimes = (timeStr: string, isLab: boolean) => {
             const trimmed = (timeStr || '').trim();
-            const parts = trimmed.split(/[-–—•]| to /i).map(s => s.trim());
+            const parts = trimmed.split(/[-â€“â€”â€¢]| to /i).map(s => s.trim());
             const startParsed = parseTimeString(parts[0]);
             const startH = startParsed ? startParsed.hours : (isLab ? 14 : 9);
             const startM = startParsed ? startParsed.minutes : 0;
@@ -1158,7 +1159,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
             const labCnt = (sch.labCount || 0) as number;
 
             if (classes.length > 0) {
-              classes.forEach((c: any) => {
+              classes.forEach((c: any, cIdx: number) => {
                 const { startH, startM, durationMinutes } = parseSessionTimes(c?.time ?? '', false);
                 const startMs = dateAtHM(targetDate, startH, startM).getTime();
                 daySessions.push({
@@ -1168,6 +1169,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
                   isLab: false,
                   startMs,
                   durationMinutes,
+                  sessionIdx: cIdx,
                 });
               });
             } else {
@@ -1176,12 +1178,13 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
                   subject: subj.name, subjectId: subj.id!, time: '', isLab: false,
                   startMs: dateAtHM(targetDate, 9, 0).getTime() + ci * 60 * 60 * 1000,
                   durationMinutes: 60,
+                  sessionIdx: ci,
                 });
               }
             }
 
             if (labs.length > 0) {
-              labs.forEach((l: any) => {
+              labs.forEach((l: any, lIdx: number) => {
                 const { startH, startM, durationMinutes } = parseSessionTimes(l?.time ?? '', true);
                 const startMs = dateAtHM(targetDate, startH, startM).getTime();
                 daySessions.push({
@@ -1191,6 +1194,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
                   isLab: true,
                   startMs,
                   durationMinutes,
+                  sessionIdx: lIdx,
                 });
               });
             } else {
@@ -1199,6 +1203,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
                   subject: `${subj.name} Lab`, subjectId: subj.id!, time: '', isLab: true,
                   startMs: dateAtHM(targetDate, 14, 0).getTime() + li * 2 * 60 * 60 * 1000,
                   durationMinutes: 120,
+                  sessionIdx: li,
                 });
               }
             }
@@ -1211,8 +1216,35 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
             const subjectEnabled = kv[`@class_notif_enabled_${sid}`] !== 'false';
             if (!subjectEnabled) continue;
 
-            // Bunk safety status calculation for subject
             const subj = attendance.find(s => s.id === sid);
+
+            // Check if this class or lab session has ALREADY been marked (attended, missed, or cancelled)
+            const sessionLog = attendanceLogs.find(l => {
+              const matchSubj = l.subjectId === sid || (subj?.name && (l.subjectName === subj.name || l.subjectId === subj.name));
+              if (!matchSubj) return false;
+
+              const logDate = (l.date || '').slice(0, 10);
+              if (logDate !== dateStr) return false;
+
+              const matchType = sess.isLab ? l.type === 'lab' : (l.type === 'class' || !l.type);
+              if (!matchType) return false;
+
+              if (l.isExtra) return false;
+
+              if (typeof l.idx === 'number') {
+                return l.idx === sess.sessionIdx;
+              }
+              const sessionsOfSameType = daySessions.filter(s => s.subjectId === sid && s.isLab === sess.isLab);
+              return sess.sessionIdx === 0 || sessionsOfSameType.length === 1;
+            });
+
+            // If this session has already been logged (cancelled, missed/absent, or attended/present),
+            // completely suppress all notifications for this slot (upcoming 60m/30m, checkpoint, post-class).
+            if (sessionLog) {
+              continue;
+            }
+
+            // Bunk safety status calculation for subject
             let bunkStatusText = '';
             if (subj) {
               const totalAtt = (subj.classesAttended || 0) + (subj.labsAttended || 0);
@@ -1249,7 +1281,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
                   `Upcoming: ${sess.subject} (${offsetLabel})`,
                   getRandomMessage(CLASS_PRE_POOLS(sess.subject, sess.time, offsetLabel, bunkStatusText)),
                   new Date(triggerMs),
-                  { type: 'class_pre', subject: sess.subject, subjectId: sid, isLab: sess.isLab, date: dateStr },
+                  { type: 'class_pre', subject: sess.subject, subjectId: sid, isLab: sess.isLab, date: dateStr, sessionIdx: sess.sessionIdx },
                   'reminders',
                   actionableNotifs ? 'class_reminder' : undefined
                 );
@@ -1260,7 +1292,12 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
             const durationMs = (sess.durationMinutes ?? (sess.isLab ? 120 : 60)) * 60 * 1000;
             const endTriggerMs = sess.startMs + durationMs + logDelay * 60 * 1000;
             const alreadyLogged = attendanceLogs.some(
-              l => l.subjectId === sid && l.date === dateStr && (sess.isLab ? l.type === 'lab' : (l.type === 'class' || !l.type)) && !l.isExtra
+              l =>
+                (l.subjectId === sid || (subj?.name && (l.subjectName === subj.name || l.subjectId === subj.name))) &&
+                (l.date || '').slice(0, 10) === dateStr &&
+                (sess.isLab ? l.type === 'lab' : (l.type === 'class' || !l.type)) &&
+                !l.isExtra &&
+                (typeof l.idx === 'number' ? l.idx === sess.sessionIdx : true)
             );
 
             if (!sess.isLab) {
@@ -1270,7 +1307,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
                   `Class Ended: ${sess.subject}`,
                   getRandomMessage(POST_CLASS_LOG_POOLS(sess.subject)),
                   new Date(endTriggerMs),
-                  { type: 'class_log', subject: sess.subject, subjectId: sid, isLab: false, date: dateStr },
+                  { type: 'class_log', subject: sess.subject, subjectId: sid, isLab: false, date: dateStr, sessionIdx: sess.sessionIdx },
                   'reminders',
                   actionableNotifs ? 'class_reminder' : undefined
                 );
@@ -1284,7 +1321,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
                   `Lab Checkpoint: ${sess.subject}`,
                   getRandomMessage(LAB_MID_POOLS(sess.subject)),
                   new Date(midTriggerMs),
-                  { type: 'lab_mid', subject: sess.subject, subjectId: sid, isLab: true, date: dateStr },
+                  { type: 'lab_mid', subject: sess.subject, subjectId: sid, isLab: true, date: dateStr, sessionIdx: sess.sessionIdx },
                   'reminders',
                   actionableNotifs ? 'class_reminder' : undefined
                 );
@@ -1296,7 +1333,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
                   `Lab Completed: ${sess.subject}`,
                   getRandomMessage(POST_LAB_LOG_POOLS(sess.subject)),
                   new Date(endTriggerMs),
-                  { type: 'lab_log', subject: sess.subject, subjectId: sid, isLab: true, date: dateStr },
+                  { type: 'lab_log', subject: sess.subject, subjectId: sid, isLab: true, date: dateStr, sessionIdx: sess.sessionIdx },
                   'reminders',
                   actionableNotifs ? 'class_reminder' : undefined
                 );
@@ -1306,7 +1343,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // ── 11. Inactivity Nudge (3+ Days Inactive) ────────────────────────────
+      // â”€â”€ 11. Inactivity Nudge (3+ Days Inactive) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       if (inactivityNudge) {
         const thresholdDate = new Date(now);
         thresholdDate.setDate(thresholdDate.getDate() - inactivityDays);
@@ -1330,7 +1367,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // ── 12. Sleep Reminders (Night Wind-Down & Morning Recovery) ──────────
+      // â”€â”€ 12. Sleep Reminders (Night Wind-Down & Morning Recovery) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const sleepRemindersEnabled = kv['@zentrack_sleep_reminders_enabled'] === 'true';
       if (sleepRemindersEnabled) {
         const nightTime = parseHM(kv['@zentrack_sleep_reminder_night'] || '22:30');
@@ -1367,7 +1404,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // ── 13. Hydration Checks (4-Day Rolling) ──────────────────────────────
+      // â”€â”€ 13. Hydration Checks (4-Day Rolling) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const waterReminderFreq = parseInt(kv['@zentrack_water_reminder_freq'] || '0', 10);
       if (waterReminderFreq > 0) {
         const savedWaterGoal = kv['zentrack_water_goal_ml'];
@@ -1429,7 +1466,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       }
 
 
-      // ── 14. Flashcard Spaced Repetition Due Review Nudge ─────────────────
+      // â”€â”€ 14. Flashcard Spaced Repetition Due Review Nudge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       const dueCards = (flashcards || []).filter(f => f.nextReviewDate && f.nextReviewDate <= todayStr);
       if (dueCards.length > 0) {
         const reviewTrigger = dateAtHM(now, 19, 0); // 7:00 PM
@@ -1444,12 +1481,12 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // ── Flush Priority Queue ───────────────────────────────────────────────
+      // â”€â”€ Flush Priority Queue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // Sort: ascending priority (1=Critical first), then ascending trigger time.
       // Critical notifications always win the budget race.
       // On iOS (cap=64): low-priority items are dropped before any high-priority one is.
       // On Android (cap=450): virtually all notifications fit; sorted order still applies.
-      // ── Flush Priority Queue in Concurrent Chunks of 6 ─────────────────────
+      // â”€â”€ Flush Priority Queue in Concurrent Chunks of 6 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // Sort: ascending priority (1=Critical first), then ascending trigger time.
       pendingQueue.sort((a, b) => a.priority - b.priority || a.trigger.getTime() - b.trigger.getTime());
 
@@ -1459,7 +1496,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         const t = n.data?.type || n.channel || 'other';
         queueSummary[t] = (queueSummary[t] || 0) + 1;
       });
-      console.log(`[Notifications] pendingQueue: ${pendingQueue.length} items →`, JSON.stringify(queueSummary));
+      console.log(`[Notifications] pendingQueue: ${pendingQueue.length} items â†’`, JSON.stringify(queueSummary));
       // Save queue summary to AsyncStorage so diagnostics can read it
       AsyncStorage.setItem('@zentrack_last_notif_queue_summary', JSON.stringify({
         ts: Date.now(),
@@ -1547,7 +1584,8 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         } else if (notif.data?.habitId) {
           notifId = `habit_${notif.data.habitId}_${Math.floor(targetFireTime.getTime() / 1000)}`;
         } else if (notif.data?.subjectId) {
-          notifId = `class_${notif.data.subjectId}_${Math.floor(targetFireTime.getTime() / 1000)}`;
+          const sIdx = typeof notif.data.sessionIdx === 'number' ? notif.data.sessionIdx : 0;
+          notifId = `class_${notif.data.subjectId}_${sIdx}_${Math.floor(targetFireTime.getTime() / 1000)}`;
         } else if (notif.data?.type === 'water_reminder') {
           notifId = `water_${Math.floor(targetFireTime.getTime() / 1000)}`;
         } else if (notif.data?.type === 'morning_brief') {
@@ -1610,7 +1648,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       if (droppedCount > 0) {
         console.warn(`[Notifications] Budget hit: ${droppedCount} low-priority notifications dropped (${Platform.OS} cap=${ALARM_CAP}).`);
       }
-      console.log(`[Notifications] Schedule Complete: ${scheduledCount}/${ALARM_CAP} alarms set (${Platform.OS}) ✅`);
+      console.log(`[Notifications] Schedule Complete: ${scheduledCount}/${ALARM_CAP} alarms set (${Platform.OS}) âœ…`);
       _lastScheduledCount = scheduledCount;
       if (scheduledCount > 0 || pendingQueue.length === 0) {
         _lastScheduleFingerprint = fingerprint;
@@ -1622,7 +1660,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       }
 }
 
-// ── Hydration Milestone Trigger ──────────────────────────────────────────────
+// â”€â”€ Hydration Milestone Trigger â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function checkAndTriggerWaterMilestones(
   previousTotalMl: number,
   newTotalMl: number,
@@ -1693,7 +1731,7 @@ export async function checkAndTriggerWaterMilestones(
   }
 }
 
-// ── Test Notification ─────────────────────────────────────────────────────────
+// â”€â”€ Test Notification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function sendTestNotification(userName?: string) {
   const name = userName ? userName.split(' ')[0] : 'there';
   const bodies = [
@@ -1716,14 +1754,14 @@ export async function sendTestNotification(userName?: string) {
   });
 }
 
-// ── Notification Diagnostic ───────────────────────────────────────────────────
+// â”€â”€ Notification Diagnostic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Runs each step of the pipeline independently and returns a report.
 // Call this from the settings screen to pinpoint exactly why scheduling fails.
 export async function runNotificationDiagnostic(): Promise<string> {
   const lines: string[] = [];
-  const ok = '✅';
-  const fail = '❌';
-  const warn = '⚠️';
+  const ok = 'âœ…';
+  const fail = 'âŒ';
+  const warn = 'âš ï¸';
 
   try {
     // 1. Permission
@@ -1780,7 +1818,7 @@ export async function runNotificationDiagnostic(): Promise<string> {
 
       scheduledId = await Notifications.scheduleNotificationAsync({
         content: {
-          title: '🔬 Diagnostic Test',
+          title: 'ðŸ”¬ Diagnostic Test',
           body: 'If you see this, OS alarms are active.',
           channelId: 'reminders',
           ...(Platform.OS === 'ios' ? { sound: 'default' } : {}),
@@ -1799,13 +1837,13 @@ export async function runNotificationDiagnostic(): Promise<string> {
     let scheduled = await Notifications.getAllScheduledNotificationsAsync();
     lines.push(`${scheduled.length > 0 ? ok : fail} getAllScheduledNotificationsAsync: ${scheduled.length} alarm(s) in OS queue`);
 
-    // 7. Long-range DATE probe (1h) — representative of real multi-hour notifications
+    // 7. Long-range DATE probe (1h) â€” representative of real multi-hour notifications
     if (Platform.OS === 'android') {
       try {
         const longDate = new Date(Date.now() + 60 * 60 * 1000);
         const longTestId = await Notifications.scheduleNotificationAsync({
           content: {
-            title: '🔬 Long-Range Probe',
+            title: 'ðŸ”¬ Long-Range Probe',
             body: 'Testing 1h DATE trigger (representative of real alarms)',
             channelId: 'reminders',
           } as any,
@@ -1826,9 +1864,9 @@ export async function runNotificationDiagnostic(): Promise<string> {
     const freq = await AsyncStorage.getItem('@zentrack_water_reminder_freq');
     const modTasks = await AsyncStorage.getItem('zentrack_notif_mod_tasks');
     const modGym = await AsyncStorage.getItem('zentrack_notif_mod_gym');
-    lines.push(`ℹ️ Prefs: waterFreq="${freq ?? '0'}", modTasks="${modTasks ?? 'true'}", modGym="${modGym ?? 'true'}"`);
-    lines.push(`ℹ️ Last Schedule: ${_lastScheduledCount} alarm(s) set, error="${_lastScheduleError ?? 'none'}"`);
-    lines.push(`ℹ️ Cache cleared — next app tick will force full reschedule.`);
+    lines.push(`â„¹ï¸ Prefs: waterFreq="${freq ?? '0'}", modTasks="${modTasks ?? 'true'}", modGym="${modGym ?? 'true'}"`);
+    lines.push(`â„¹ï¸ Last Schedule: ${_lastScheduledCount} alarm(s) set, error="${_lastScheduleError ?? 'none'}"`);
+    lines.push(`â„¹ï¸ Cache cleared â€” next app tick will force full reschedule.`);
 
     // 8b. Queue summary from last real scheduling run
     try {
@@ -1836,12 +1874,12 @@ export async function runNotificationDiagnostic(): Promise<string> {
       if (qsRaw) {
         const qs = JSON.parse(qsRaw);
         const age = Math.round((Date.now() - qs.ts) / 1000);
-        lines.push(`ℹ️ Last queue (${age}s ago): ${qs.total} items | tasks=${qs.taskCount}, habits=${qs.habitCount}, attendance=${qs.attendanceCount}`);
-        lines.push(`ℹ️ Modules: tasks=${qs.modTasks}, habits=${qs.modHabits}, gym=${qs.modGym}, attend=${qs.modAttendance}, brief=${qs.morningBriefEnabled}`);
+        lines.push(`â„¹ï¸ Last queue (${age}s ago): ${qs.total} items | tasks=${qs.taskCount}, habits=${qs.habitCount}, attendance=${qs.attendanceCount}`);
+        lines.push(`â„¹ï¸ Modules: tasks=${qs.modTasks}, habits=${qs.modHabits}, gym=${qs.modGym}, attend=${qs.modAttendance}, brief=${qs.morningBriefEnabled}`);
         if (qs.total === 0) {
-          lines.push(`⚠️ Queue was 0 — all triggers were in the past OR per-habit notifications are not enabled individually (check each habit’s reminder settings).`);
+          lines.push(`âš ï¸ Queue was 0 â€” all triggers were in the past OR per-habit notifications are not enabled individually (check each habitâ€™s reminder settings).`);
         } else {
-          lines.push(`ℹ️ Types: ${Object.entries(qs.byType).map(([k,v]) => `${k}:${v}`).join(', ')}`);
+          lines.push(`â„¹ï¸ Types: ${Object.entries(qs.byType).map(([k,v]) => `${k}:${v}`).join(', ')}`);
         }
       }
     } catch {}
@@ -1866,7 +1904,7 @@ export async function runNotificationDiagnostic(): Promise<string> {
 
 
 
-// ── Immediate / Direct Task Reminder Scheduler ────────────────────────────────
+// â”€â”€ Immediate / Direct Task Reminder Scheduler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function scheduleSingleTaskReminder(task: Task) {
   if (!task.title || task.status === 'completed') return;
   const parsedTime = parseTimeString(task.timeSlot);
@@ -1924,7 +1962,7 @@ export async function scheduleSingleTaskReminder(task: Task) {
   }
 }
 
-// ── Legacy compatibility export ───────────────────────────────────────────────
+// â”€â”€ Legacy compatibility export â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function scheduleTaskReminders(
   tasks: Task[] = [],
   customEvents: CustomEvent[] = [],
@@ -1944,7 +1982,7 @@ export async function scheduleTaskReminders(
   });
 }
 
-// ── Background Fetch ──────────────────────────────────────────────────────────
+// â”€â”€ Background Fetch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const BACKGROUND_NOTIFICATION_SYNC_TASK = 'background-notification-sync';
 
 TaskManager.defineTask(BACKGROUND_NOTIFICATION_SYNC_TASK, async () => {
@@ -2072,6 +2110,127 @@ export async function getAppNotificationSettings(): Promise<{ summary: string }>
     };
   } catch {
     return { summary: 'Default notification settings active' };
+  }
+}
+
+/**
+ * Immediately cancels any pending scheduled OS notifications for a given class or lab session.
+ * Used when a user logs/cancels attendance in-app, via widget, or from an actionable notification.
+ *
+ * ANDROID NOTE: content.data is stripped to prevent NotSerializableException, so we cannot
+ * rely on data.type / data.subjectId on Android. We use the deterministic identifier
+ * "class_{subjectId}_{sessionIdx}_{timestamp}" as the primary match signal on all platforms.
+ */
+export async function cancelClassNotificationsImmediately(
+  subjectId?: string,
+  subjectName?: string,
+  dateStr?: string,
+  sessionIdx?: number
+): Promise<void> {
+  try {
+    if (!subjectId && !subjectName) return;
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    if (!scheduled || scheduled.length === 0) return;
+
+    const targetDateStr = dateStr ? dateStr.slice(0, 10) : formatLocalDateStr(new Date());
+    const toCancel: string[] = [];
+
+    for (const notif of scheduled) {
+      const id = notif.identifier || ``;
+      // On Android, content.data is undefined -- do NOT rely solely on it for matching.
+      const data = (notif.content?.data || {}) as any;
+      const title = (notif.content?.title || ``) as string;
+
+      // Is this a class/lab notification?
+      // Strategy 1 (Android + iOS): identifier prefix
+      const isClassIdentifier = id.startsWith(`class_`);
+      // Strategy 2 (iOS only): data.type since data is available on iOS
+      const isClassData =
+        data.type === `class_pre` ||
+        data.type === `class_log` ||
+        data.type === `lab_mid` ||
+        data.type === `lab_log`;
+
+      if (!isClassIdentifier && !isClassData) continue;
+
+      // Subject matching
+      let matchesSubject = false;
+
+      if (isClassIdentifier) {
+        // identifier: class_{subjectId}_{sessionIdx}_{unixSec}
+        const parts = id.split(`_`);
+        const idSubjId = parts.length >= 2 ? parts[1] : undefined;
+        if (subjectId && idSubjId === subjectId) {
+          matchesSubject = true;
+        }
+        // Title fallback
+        if (!matchesSubject && subjectName && title.includes(subjectName)) {
+          matchesSubject = true;
+        }
+      }
+
+      if (!matchesSubject && isClassData) {
+        // iOS path: data fields are available
+        const notifSubjId = data.subjectId;
+        if (subjectId && notifSubjId === subjectId) {
+          matchesSubject = true;
+        } else if (subjectName && (
+          data.subject === subjectName ||
+          data.subject === `${subjectName} Lab` ||
+          title.includes(subjectName)
+        )) {
+          matchesSubject = true;
+        }
+      }
+
+      if (!matchesSubject) continue;
+
+      // Date matching: verify the notification fires on targetDateStr
+      const trigger = notif.trigger as any;
+      const fireTimestamp = trigger?.value ?? trigger?.date;
+      if (fireTimestamp) {
+        const fireDate = new Date(fireTimestamp);
+        if (!isNaN(fireDate.getTime())) {
+          const fireDateStr = formatLocalDateStr(fireDate);
+          if (fireDateStr !== targetDateStr) continue;
+        }
+      } else if (isClassData && data.date && data.date !== targetDateStr) {
+        continue;
+      }
+
+      // Session index matching
+      if (sessionIdx !== undefined) {
+        let notifSessionIdx: number | undefined = undefined;
+
+        if (isClassIdentifier) {
+          const parts = id.split(`_`);
+          if (parts.length >= 3) {
+            const parsed = parseInt(parts[2], 10);
+            if (!isNaN(parsed)) notifSessionIdx = parsed;
+          }
+        }
+        if (notifSessionIdx === undefined && typeof data.sessionIdx === `number`) {
+          notifSessionIdx = data.sessionIdx;
+        }
+
+        if (notifSessionIdx !== undefined) {
+          if (notifSessionIdx !== sessionIdx) continue;
+        } else if (sessionIdx !== 0) {
+          continue;
+        }
+      }
+
+      toCancel.push(notif.identifier);
+    }
+
+    if (toCancel.length > 0) {
+      console.log(`[Notifications] cancelClassNotificationsImmediately: cancelling ${toCancel.length} notif(s) for "${subjectName || subjectId}" on ${targetDateStr} slot ${sessionIdx ?? 0}`);
+      await Promise.all(toCancel.map(id => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
+    } else {
+      console.log(`[Notifications] cancelClassNotificationsImmediately: no pending notifications found for "${subjectName || subjectId}" on ${targetDateStr} slot ${sessionIdx ?? 0}`);
+    }
+  } catch (err) {
+    console.warn(`[Notifications] Failed to cancel class notifications immediately:`, err);
   }
 }
 

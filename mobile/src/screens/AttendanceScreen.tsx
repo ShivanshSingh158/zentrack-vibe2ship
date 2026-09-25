@@ -1,7 +1,7 @@
 import React, { useRef, useCallback, useMemo, useState, useEffect, Suspense } from 'react';
 import {
   View, Text, FlatList, SectionList, TouchableOpacity, ScrollView,
-  Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Animated
+  Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Animated, StyleSheet
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -13,7 +13,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useSaraSurface } from '../hooks/useSaraSurface';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
 
-// ── Lazy-loaded Modals: Skips parsing ~1,400 LOC of modals on initial boot / tab warm-up ──
+// â”€â”€ Lazy-loaded Modals: Skips parsing ~1,400 LOC of modals on initial boot / tab warm-up â”€â”€
 const AddSubjectModal = React.lazy(() => import('../components/Academic/AddSubjectModal').then(m => ({ default: m.AddSubjectModal })));
 const TimetableModal = React.lazy(() => import('../components/Academic/TimetableModal').then(m => ({ default: m.TimetableModal })));
 const ClassNotifSettingsModal = React.lazy(() => import('../components/Academic/ClassNotifSettingsModal'));
@@ -37,8 +37,239 @@ import { setTabBarVisible } from '../utils/tabBarScroll';
 import BottomSheet from '../components/ui/BottomSheet';
 import type { AttendanceSubject } from '../contexts/MobileDataContext';
 import AttendanceSkeleton from '../components/Academic/AttendanceSkeleton';
+import SubjectContextMenuModal from '../components/Academic/SubjectContextMenuModal';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withSequence,
+  withTiming,
+  interpolateColor,
+  FadeIn,
+  FadeOut,
+  FadeInDown,
+  SlideOutRight,
+  LinearTransition,
+  Easing,
+} from 'react-native-reanimated';
+import { Svg, Circle } from 'react-native-svg';
 
-// ── Pure Memoized Session Action Row ─────────────────────────────────────────
+// â”€â”€ Spring-Compressing Action Chip (WhatsApp-Grade Tactile Micro-Interaction) â”€â”€
+const SpringChip = React.memo(function SpringChip({
+  onPress,
+  style,
+  children,
+  hapticType = 'light',
+}: {
+  onPress: () => void;
+  style?: any;
+  children: React.ReactNode;
+  hapticType?: 'light' | 'medium' | 'success';
+}) {
+  const scale = useSharedValue(1);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = useCallback(() => {
+    scale.value = withTiming(0.94, { duration: 60 });
+  }, [scale]);
+
+  const handlePressOut = useCallback(() => {
+    scale.value = withTiming(1.0, { duration: 100 });
+  }, [scale]);
+
+  const handlePress = useCallback(() => {
+    if (hapticType === 'success') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else if (hapticType === 'medium') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    onPress();
+  }, [hapticType, onPress]);
+
+  return (
+    <Reanimated.View style={animStyle}>
+      <TouchableOpacity
+        onPress={handlePress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={0.88}
+        style={style}
+      >
+        {children}
+      </TouchableOpacity>
+    </Reanimated.View>
+  );
+});
+
+// â”€â”€ Apple iOS Tactile Header Action Button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const TactileHeaderBtn = React.memo(function TactileHeaderBtn({
+  onPress,
+  children,
+  style,
+  haptic = 'light',
+}: {
+  onPress: () => void;
+  children: React.ReactNode;
+  style?: any;
+  haptic?: 'light' | 'medium';
+}) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = useCallback(() => {
+    scale.value = withTiming(0.94, { duration: 70 });
+  }, [scale]);
+
+  const handlePressOut = useCallback(() => {
+    scale.value = withTiming(1.0, { duration: 110 });
+  }, [scale]);
+
+  const handlePress = useCallback(() => {
+    if (haptic === 'medium') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    onPress();
+  }, [haptic, onPress]);
+
+  return (
+    <Reanimated.View style={animStyle}>
+      <TouchableOpacity
+        onPress={handlePress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        activeOpacity={0.85}
+        style={style}
+      >
+        {children}
+      </TouchableOpacity>
+    </Reanimated.View>
+  );
+});
+
+// â”€â”€ Smooth Rolling Number Counter (300ms Cubic Ease-Out) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const RollingNumber = React.memo(function RollingNumber({
+  value,
+  suffix = '',
+  style,
+}: {
+  value: number;
+  suffix?: string;
+  style?: any;
+}) {
+  const [displayVal, setDisplayVal] = useState(value);
+  const animVal = useRef(value);
+
+  useEffect(() => {
+    if (animVal.current === value) return;
+    const start = animVal.current;
+    const end = value;
+    const duration = 300;
+    const startTime = Date.now();
+
+    const timer = setInterval(() => {
+      const now = Date.now();
+      const progress = Math.min(1, (now - startTime) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.round(start + (end - start) * eased);
+      setDisplayVal(current);
+      if (progress >= 1) {
+        clearInterval(timer);
+        animVal.current = end;
+      }
+    }, 16);
+
+    return () => clearInterval(timer);
+  }, [value]);
+
+  return <Text style={style}>{displayVal}{suffix}</Text>;
+});
+
+// â”€â”€ Elastic Progress Bar with Spring Deceleration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const ElasticProgressBar = React.memo(function ElasticProgressBar({
+  pct,
+  color,
+  style,
+  height = 6,
+}: {
+  pct: number;
+  color: string;
+  style?: any;
+  height?: number;
+}) {
+  const animatedPct = useSharedValue(pct);
+
+  useEffect(() => {
+    animatedPct.value = withTiming(Math.max(0, Math.min(100, pct)), {
+      duration: 320,
+    });
+  }, [pct, animatedPct]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    width: `${animatedPct.value}%`,
+    backgroundColor: color,
+  }));
+
+  return (
+    <View style={[{ height, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: height / 2, overflow: 'hidden' }, style]}>
+      <Reanimated.View style={[{ height: '100%', borderRadius: height / 2 }, animatedStyle]} />
+    </View>
+  );
+});
+
+// â”€â”€ Bunk Safety Gauge Circular Ring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const BunkSafetyRing = React.memo(function BunkSafetyRing({
+  pct,
+  color,
+  size = 32,
+  strokeWidth = 3,
+}: {
+  pct: number;
+  color: string;
+  size?: number;
+  strokeWidth?: number;
+}) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clampedPct = Math.max(0, Math.min(100, pct));
+  const strokeDashoffset = circumference - (circumference * clampedPct) / 100;
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="rgba(255,255,255,0.08)"
+          strokeWidth={strokeWidth}
+          fill="none"
+        />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          fill="none"
+        />
+      </Svg>
+    </View>
+  );
+});
+
+// â”€â”€ Pure Memoized Session Action Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface SessionRowProps {
   session: any;
   log: any;
@@ -84,18 +315,66 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
   const { idx: sessionIdx } = session;
   const isExtra = !!session.isExtra;
 
+  // Existing WhatsApp-grade fluid reaction flash overlays
+  const emeraldRipple = useSharedValue(0);
+  const crimsonWave   = useSharedValue(0);
+
+  const animEmeraldStyle = useAnimatedStyle(() => ({
+    opacity: emeraldRipple.value,
+  }));
+
+  const animCrimsonStyle = useAnimatedStyle(() => ({
+    opacity: crimsonWave.value,
+  }));
+
+  // Gap 1: rowScale burst (1 â†’ 1.04 â†’ 1.0 spring on mark, 0.96 â†’ 1.0 on absent)
+  const rowScale    = useSharedValue(1);
+  // rowColorVal: 0=neutral, 1=present, -1=absent, 0.5=cancelled
+  const rowColorVal = useSharedValue(
+    log?.action === 'attended' ? 1 : log?.action === 'missed' ? -1 : log?.action === 'cancelled' ? 0.5 : 0
+  );
+
+  const rowScaleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: rowScale.value }],
+  }));
+
+  const rowBgStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      rowColorVal.value,
+      [-1, -0.5, 0, 0.5, 1],
+      [
+        isDark ? 'rgba(239,68,68,0.10)'  : 'rgba(220,38,38,0.07)',
+        isDark ? 'rgba(239,68,68,0.05)'  : 'rgba(220,38,38,0.03)',
+        'transparent',
+        isDark ? 'rgba(161,161,170,0.07)': 'rgba(113,113,122,0.05)',
+        isDark ? 'rgba(52,211,153,0.10)' : 'rgba(16,185,129,0.08)',
+      ],
+    ),
+  }));
+
   const handlePressPresent = useCallback(() => {
     if (processingRef.current) return;
     processingRef.current = true;
     setTimeout(() => { processingRef.current = false; }, 300);
     if (isPresent) {
       setLocalAction(null);
+      rowColorVal.value = withTiming(0, { duration: 200 });
       if (log?.id) onUndo(log.id);
     } else {
+      emeraldRipple.value = withSequence(
+        withTiming(1, { duration: 120 }),
+        withTiming(0, { duration: 420 })
+      );
+      // Scale burst: expand â†’ spring settle
+      rowScale.value = withSequence(
+        withSpring(1.04, { damping: 10, stiffness: 500 }),
+        withSpring(1.0,  { damping: 18, stiffness: 350 }),
+      );
+      rowColorVal.value = withTiming(1, { duration: 220 });
       setLocalAction('attended');
       onLog(subject, type, 'attended', log?.id, sessionIdx, undefined, isExtra);
     }
-  }, [isPresent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra]);
+  }, [isPresent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, emeraldRipple, rowScale, rowColorVal]);
 
   const handlePressAbsent = useCallback(() => {
     if (processingRef.current) return;
@@ -103,12 +382,23 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
     setTimeout(() => { processingRef.current = false; }, 300);
     if (isAbsent) {
       setLocalAction(null);
+      rowColorVal.value = withTiming(0, { duration: 200 });
       if (log?.id) onUndo(log.id);
     } else {
+      crimsonWave.value = withSequence(
+        withTiming(1, { duration: 100 }),
+        withTiming(0, { duration: 380 })
+      );
+      // Compress burst: shrink â†’ spring back
+      rowScale.value = withSequence(
+        withSpring(0.96, { damping: 12, stiffness: 500 }),
+        withSpring(1.0,  { damping: 18, stiffness: 350 }),
+      );
+      rowColorVal.value = withTiming(-1, { duration: 220 });
       setLocalAction('missed');
       onLog(subject, type, 'missed', log?.id, sessionIdx, undefined, isExtra);
     }
-  }, [isAbsent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra]);
+  }, [isAbsent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, crimsonWave, rowScale, rowColorVal]);
 
   const handlePressCancelled = useCallback(() => {
     if (processingRef.current) return;
@@ -116,15 +406,47 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
     setTimeout(() => { processingRef.current = false; }, 300);
     if (isCancelled) {
       setLocalAction(null);
+      rowColorVal.value = withTiming(0, { duration: 200 });
       if (log?.id) onUndo(log.id);
     } else {
+      rowColorVal.value = withTiming(0.5, { duration: 220 });
       setLocalAction('cancelled');
       onLog(subject, type, 'cancelled', log?.id, sessionIdx, undefined, isExtra);
     }
-  }, [isCancelled, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra]);
+  }, [isCancelled, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, rowColorVal]);
 
   return (
-    <View style={styles.sessionCard}>
+    <Reanimated.View style={[styles.sessionCard, { position: 'relative', overflow: 'hidden' }, rowScaleStyle, rowBgStyle]}>
+      {/* WhatsApp Emerald Glow Ripple Overlay */}
+      <Reanimated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFillObject,
+          {
+            backgroundColor: isDark ? 'rgba(52, 211, 153, 0.20)' : 'rgba(16, 185, 129, 0.16)',
+            borderRadius: 14,
+            borderWidth: 1.5,
+            borderColor: isDark ? 'rgba(52, 211, 153, 0.45)' : 'rgba(16, 185, 129, 0.40)',
+          },
+          animEmeraldStyle,
+        ]}
+      />
+
+      {/* WhatsApp Crimson Warning Wave Overlay */}
+      <Reanimated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFillObject,
+          {
+            backgroundColor: isDark ? 'rgba(239, 68, 68, 0.14)' : 'rgba(220, 38, 38, 0.10)',
+            borderRadius: 14,
+            borderWidth: 1.5,
+            borderColor: isDark ? 'rgba(239, 68, 68, 0.45)' : 'rgba(220, 38, 38, 0.35)',
+          },
+          animCrimsonStyle,
+        ]}
+      />
+
       {/* Left: subject name + time + inline class/lab tag */}
       <View style={{ flex: 1, marginRight: 10 }}>
         <Text style={styles.sessionSubjectName} numberOfLines={1}>
@@ -141,57 +463,53 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
         </View>
       </View>
 
-      {/* Right: Segmented Present / Absent / Cancelled Toggle */}
+      {/* Right: Segmented Present / Absent / Cancelled Toggle with Spring Compressing Chips */}
       <View style={styles.segmentedToggleContainer}>
         {/* Present segment */}
-        <TouchableOpacity
+        <SpringChip
           onPress={handlePressPresent}
-          delayPressIn={0}
+          hapticType="success"
           style={[
             styles.segmentBtn,
             isPresent && styles.segmentBtnPresentActive,
           ]}
-          activeOpacity={0.7}
         >
           <Text style={[styles.segmentBtnText, isPresent && styles.segmentBtnPresentTextActive]}>
             Present
           </Text>
-        </TouchableOpacity>
+        </SpringChip>
 
         {/* Absent segment */}
-        <TouchableOpacity
+        <SpringChip
           onPress={handlePressAbsent}
-          delayPressIn={0}
+          hapticType="medium"
           style={[
             styles.segmentBtn,
             isAbsent && styles.segmentBtnAbsentActive,
           ]}
-          activeOpacity={0.7}
         >
           <Text style={[styles.segmentBtnText, isAbsent && styles.segmentBtnAbsentTextActive]}>
             Absent
           </Text>
-        </TouchableOpacity>
+        </SpringChip>
 
         {/* Cancelled (Cross) segment */}
-        <TouchableOpacity
+        <SpringChip
           onPress={handlePressCancelled}
-          delayPressIn={0}
+          hapticType="light"
           style={[
             styles.segmentIconBtn,
             isCancelled && styles.segmentBtnCancelledActive,
           ]}
-          activeOpacity={0.7}
-          accessibilityLabel="Mark Class Cancelled"
         >
           <Ionicons
             name="close"
             size={15}
             color={isCancelled ? (isDark ? '#F2F2F7' : '#1C1C1E') : (isDark ? '#8E8E93' : '#6B7280')}
           />
-        </TouchableOpacity>
+        </SpringChip>
       </View>
-    </View>
+    </Reanimated.View>
   );
 }, (prev, next) => {
   return (
@@ -210,13 +528,14 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
   );
 });
 
-// ── Pure Memoized Subject Summary Row (By Subject with Decoupled Plain Labels) ──
+// â”€â”€ Pure Memoized Subject Summary Row (By Subject with Decoupled Plain Labels) â”€â”€
 interface SubjectSummaryRowProps {
   subject: AttendanceSubject;
   colors: any;
   isDark: boolean;
   styles: any;
   onSelect: (subject: AttendanceSubject) => void;
+  onLongPress?: (subject: AttendanceSubject) => void;
 }
 
 const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
@@ -225,9 +544,24 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
   isDark,
   styles,
   onSelect,
+  onLongPress,
 }: SubjectSummaryRowProps) {
   const getThemeProgressColor = (urgency: string) =>
     urgency === 'danger' ? colors.priorityHigh : urgency === 'warning' ? colors.priorityMed : colors.priorityLow;
+
+  const cardScale = useSharedValue(1);
+
+  const animCardStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: cardScale.value }],
+  }));
+
+  const handlePressIn = useCallback(() => {
+    cardScale.value = withTiming(0.98, { duration: 60 });
+  }, [cardScale]);
+
+  const handlePressOut = useCallback(() => {
+    cardScale.value = withTiming(1.0, { duration: 100 });
+  }, [cardScale]);
 
   const hasLabs = (subject.labsTotal || 0) > 0 || (subject.labsAttended || 0) > 0;
   const hasClasses = (subject.classesTotal || 0) > 0 || (subject.classesAttended || 0) > 0;
@@ -257,91 +591,110 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
     onSelect(subject);
   }, [onSelect, subject]);
 
+  const handleLongPress = useCallback(() => {
+    if (onLongPress) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      onLongPress(subject);
+    }
+  }, [onLongPress, subject]);
+
   // Cleanly resolved bunk message without inline IIFE
   let bunkElement: React.ReactNode = null;
   if (bunk.status === 'safe' && bunk.count > 0) {
     bunkElement = (
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-        <Text style={{ color: colors.priorityLow || '#10B981', fontSize: 12, fontWeight: '600' }}>
-          ✓ Can miss {bunk.count} more
+      <View style={styles.bySubjectBunkRow}>
+        <Ionicons name="checkmark-circle-outline" size={13.5} color={colors.priorityLow || '#30D158'} style={{ marginRight: 4 }} />
+        <Text style={{ color: colors.priorityLow || '#30D158', fontSize: 12, fontFamily: FONT_FAMILY.medium }}>
+          Can miss <RollingNumber value={bunk.count} style={{ color: colors.priorityLow || '#30D158', fontSize: 12, fontFamily: FONT_FAMILY.bold }} /> more
         </Text>
       </View>
     );
   } else if (bunk.status === 'warning') {
     bunkElement = (
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-        <Text style={{ color: colors.priorityMed || '#F59E0B', fontSize: 12, fontWeight: '600' }}>
-          ⚠️ 0 misses left — attend all next classes
+      <View style={styles.bySubjectBunkRow}>
+        <Ionicons name="alert-circle-outline" size={13.5} color={colors.priorityMed || '#FF9F0A'} style={{ marginRight: 4 }} />
+        <Text style={{ color: colors.priorityMed || '#FF9F0A', fontSize: 12, fontFamily: FONT_FAMILY.medium }}>
+          0 misses left â€” attend all next classes
         </Text>
       </View>
     );
   } else if (bunk.status === 'critical') {
     const needed = bunk.count;
     bunkElement = (
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-        <Text style={{ color: colors.error || '#EF4444', fontSize: 12, fontWeight: '600' }}>
-          ⚠️ Attend {needed} more {needed === 1 ? 'class' : 'classes'} to reach {subject.targetPercentage || 75}%
+      <View style={styles.bySubjectBunkRow}>
+        <Ionicons name="warning-outline" size={13.5} color={colors.error || '#FF453A'} style={{ marginRight: 4 }} />
+        <Text style={{ color: colors.error || '#FF453A', fontSize: 12, fontFamily: FONT_FAMILY.medium }}>
+          Attend <RollingNumber value={needed} style={{ color: colors.error || '#FF453A', fontSize: 12, fontFamily: FONT_FAMILY.bold }} /> more {needed === 1 ? 'class' : 'classes'} to reach {subject.targetPercentage || 75}%
         </Text>
       </View>
     );
   }
 
   return (
-    <TouchableOpacity onPress={handlePress} style={styles.bySubjectCard} activeOpacity={0.8}>
-      {/* Top row: Subject name and overall percentage */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <Text style={styles.bySubjectName} numberOfLines={1}>{subject.name}</Text>
-        <Text style={[styles.bySubjectPct, { color: pColor }]}>
-          {combinedStatus.pct !== null ? `${Math.round(combinedStatus.pct)}%` : '--%'}
-        </Text>
-      </View>
-
-      {/* Decoupled Progress Bars */}
-      <View style={{ gap: 8 }}>
-        {hasClasses && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Text style={styles.plainTrackLabel}>Class</Text>
-            <View style={styles.plainProgressBarBg}>
-              <View
-                style={[
-                  styles.plainProgressBarFill,
-                  {
-                    width: `${Math.min(100, classStatus.pct || 0)}%`,
-                    backgroundColor: getThemeProgressColor(classStatus.urgency),
-                  },
-                ]}
+    <Reanimated.View style={animCardStyle}>
+      <TouchableOpacity
+        onPress={handlePress}
+        onLongPress={handleLongPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={styles.bySubjectCard}
+        activeOpacity={0.88}
+      >
+        {/* Top row: Subject name and overall percentage pill */}
+        <View style={styles.bySubjectHeaderRow}>
+          <Text style={[styles.bySubjectName, { flex: 1, marginRight: 10 }]} numberOfLines={1}>{subject.name}</Text>
+          {combinedStatus.pct !== null ? (
+            <View style={[styles.bySubjectPctBadge, { backgroundColor: pColor + '14', borderColor: pColor + '35' }]}>
+              <RollingNumber
+                value={Math.round(combinedStatus.pct)}
+                suffix="%"
+                style={[styles.bySubjectPct, { color: pColor }]}
               />
             </View>
-            <Text style={styles.plainTrackCount}>
-              {subject.classesAttended || 0}/{subject.classesTotal || 0}
-            </Text>
-          </View>
-        )}
-
-        {hasLabs && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Text style={styles.plainTrackLabel}>Lab</Text>
-            <View style={styles.plainProgressBarBg}>
-              <View
-                style={[
-                  styles.plainProgressBarFill,
-                  {
-                    width: `${Math.min(100, labStatus.pct || 0)}%`,
-                    backgroundColor: getThemeProgressColor(labStatus.urgency),
-                  },
-                ]}
-              />
+          ) : (
+            <View style={[styles.bySubjectPctBadge, { backgroundColor: (colors.border || '#333') + '20', borderColor: colors.border }]}>
+              <Text style={[styles.bySubjectPct, { color: colors.textTertiary }]}>--%</Text>
             </View>
-            <Text style={styles.plainTrackCount}>
-              {subject.labsAttended || 0}/{subject.labsTotal || 0}
-            </Text>
-          </View>
-        )}
+          )}
+        </View>
 
-        {/* Bottom Status / Bunk Message */}
-        {bunkElement}
-      </View>
-    </TouchableOpacity>
+        {/* Decoupled Progress Bars with Elastic Spring Sweep */}
+        <View style={{ gap: 8 }}>
+          {hasClasses && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Text style={styles.plainTrackLabel}>Class</Text>
+              <ElasticProgressBar
+                pct={classStatus.pct || 0}
+                color={getThemeProgressColor(classStatus.urgency)}
+                style={{ flex: 1 }}
+                height={6}
+              />
+              <Text style={styles.plainTrackCount}>
+                {subject.classesAttended || 0}/{subject.classesTotal || 0}
+              </Text>
+            </View>
+          )}
+
+          {hasLabs && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Text style={styles.plainTrackLabel}>Lab</Text>
+              <ElasticProgressBar
+                pct={labStatus.pct || 0}
+                color={getThemeProgressColor(labStatus.urgency)}
+                style={{ flex: 1 }}
+                height={6}
+              />
+              <Text style={styles.plainTrackCount}>
+                {subject.labsAttended || 0}/{subject.labsTotal || 0}
+              </Text>
+            </View>
+          )}
+
+          {/* Bottom Status / Bunk Message */}
+          {bunkElement}
+        </View>
+      </TouchableOpacity>
+    </Reanimated.View>
   );
 }, (prev, next) => {
   return (
@@ -355,7 +708,8 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
     prev.isDark === next.isDark &&
     prev.colors === next.colors &&
     prev.styles === next.styles &&
-    prev.onSelect === next.onSelect
+    prev.onSelect === next.onSelect &&
+    prev.onLongPress === next.onLongPress
   );
 });
 
@@ -418,7 +772,12 @@ const UnloggedSessionRow = React.memo(function UnloggedSessionRow({
   }, [item.subject, item.type, item.idx, item.date, onLog]);
 
   return (
-    <View style={styles.unloggedCard}>
+    <Reanimated.View
+      layout={LinearTransition.duration(220).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+      entering={FadeInDown.duration(180).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+      exiting={SlideOutRight.duration(200).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+      style={styles.unloggedCard}
+    >
       <TouchableOpacity activeOpacity={0.7} onPress={handlePressCard}>
         <View style={styles.unloggedHeaderRow}>
           <Text style={styles.unloggedSubjectName} numberOfLines={1}>
@@ -439,38 +798,41 @@ const UnloggedSessionRow = React.memo(function UnloggedSessionRow({
             </Text>
           </View>
           <Text style={styles.unloggedTimeText}>
-            ⏱️ {item.timeStr}
+            â±ï¸ {item.timeStr}
           </Text>
         </View>
       </TouchableOpacity>
 
-      {/* Quick 1-Tap Logging Actions */}
+      {/* Quick 1-Tap Logging Actions with Spring Compressing Chips */}
       <View style={styles.unloggedActionsRow}>
-        <TouchableOpacity
+        <SpringChip
           style={[styles.unloggedActionBtn, styles.unloggedActionBtnPresent]}
           onPress={handlePresent}
+          hapticType="success"
         >
           <Ionicons name="checkmark" size={13} color={isDark ? '#34D399' : '#059669'} />
           <Text style={styles.unloggedActionTextPresent}>Present</Text>
-        </TouchableOpacity>
+        </SpringChip>
 
-        <TouchableOpacity
+        <SpringChip
           style={[styles.unloggedActionBtn, styles.unloggedActionBtnAbsent]}
           onPress={handleAbsent}
+          hapticType="medium"
         >
           <Ionicons name="close" size={13} color={isDark ? '#F87171' : '#DC2626'} />
           <Text style={styles.unloggedActionTextAbsent}>Absent</Text>
-        </TouchableOpacity>
+        </SpringChip>
 
-        <TouchableOpacity
+        <SpringChip
           style={[styles.unloggedActionBtn, styles.unloggedActionBtnCancel]}
           onPress={handleCancelled}
+          hapticType="light"
         >
           <Ionicons name="ban" size={12} color={isDark ? '#FBBF24' : '#D97706'} />
           <Text style={styles.unloggedActionTextCancel}>Cancelled</Text>
-        </TouchableOpacity>
+        </SpringChip>
       </View>
-    </View>
+    </Reanimated.View>
   );
 });
 
@@ -481,11 +843,13 @@ export default function AttendanceScreen() {
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const insets = useSafeAreaInsets();
 
+  const [contextMenuSubject, setContextMenuSubject] = useState<AttendanceSubject | null>(null);
+
   // Helper for theme-aware progress colors
   const getThemeProgressColor = (urgency: string) =>
     urgency === 'danger' ? colors.priorityHigh : urgency === 'warning' ? colors.priorityMed : colors.priorityLow;
 
-  // ── Animated pill visibility: 0 at top (pills invisible), fades in on scroll past 20px ──
+  // â”€â”€ Animated pill visibility: 0 at top (pills invisible), fades in on scroll past 20px â”€â”€
   const pillAnim = useRef(new Animated.Value(0)).current;
   const isPillVisibleRef = useRef(false);
   const lastScrollY = useRef(0);
@@ -497,7 +861,7 @@ export default function AttendanceScreen() {
       // transition animation frame completes. Firing it immediately causes
       // visible jitter because the list is snapping while the screen is
       // still sliding in. At 50ms the transition is done but the eye hasn't
-      // settled on content yet — the reset is invisible.
+      // settled on content yet â€” the reset is invisible.
       const t = setTimeout(() => {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
         isPillVisibleRef.current = false;
@@ -579,6 +943,20 @@ export default function AttendanceScreen() {
     handleApplyOverride, handleResetSemester
   } = firestoreActions;
 
+  // Holiday tactile palm tree bounce worklet
+  const holidayScale = useSharedValue(1);
+  const holidayIconAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: holidayScale.value }],
+  }));
+
+  const handleHolidayPress = useCallback(() => {
+    holidayScale.value = withSequence(
+      withTiming(1.28, { duration: 120 }),
+      withTiming(1.0, { duration: 140 })
+    );
+    handleToggleHoliday(isSelectedHoliday);
+  }, [handleToggleHoliday, isSelectedHoliday]);
+
   const handleAddSubject = () => {
     // Close the Timetable modal first, then open AddSubject after
     // its slide-out animation completes (avoids double-modal stacking)
@@ -589,7 +967,7 @@ export default function AttendanceScreen() {
     }, 350);
   };
 
-  // Same close-first pattern as handleAddSubject — avoids both modals stacking
+  // Same close-first pattern as handleAddSubject â€” avoids both modals stacking
   const handleEditSubject = useCallback((subject: AttendanceSubject) => {
     setIsTimetableOpen(false);
     setTimeout(() => {
@@ -642,7 +1020,7 @@ export default function AttendanceScreen() {
 
   const listHeader = useMemo(() => (
     <>
-      {/* ── Semester Overview ── */}
+      {/* â”€â”€ Semester Overview â”€â”€ */}
       <View style={{ marginBottom: 0 }}>
         <View style={styles.overviewCard}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -650,17 +1028,26 @@ export default function AttendanceScreen() {
             <Text style={styles.overviewStats}>{globalAttended}/{globalTotal} classes</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-            <Text style={[styles.overviewPct, { color: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.error)) : colors.textMuted }]}>
-              {globalPct !== null ? `${Math.round(globalPct)}%` : '--%'}
-            </Text>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${Math.min(100, globalPct || 0)}%`, backgroundColor: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.error)) : colors.border }]} />
-            </View>
+            {globalPct !== null ? (
+              <RollingNumber
+                value={Math.round(globalPct)}
+                suffix="%"
+                style={[styles.overviewPct, { color: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.error)) : colors.textMuted }]}
+              />
+            ) : (
+              <Text style={[styles.overviewPct, { color: colors.textMuted }]}>--%</Text>
+            )}
+            <ElasticProgressBar
+              pct={globalPct || 0}
+              color={globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.error)) : colors.border}
+              style={{ flex: 1 }}
+              height={8}
+            />
           </View>
         </View>
       </View>
 
-      {/* ── Warnings ── */}
+      {/* â”€â”€ Warnings â”€â”€ */}
       {warningSubjects.length > 0 && (
         <View style={styles.warningBanner}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -681,7 +1068,7 @@ export default function AttendanceScreen() {
               const need = Math.max(0, Math.ceil((targetPct * tot - 100 * att) / (100 - targetPct)));
               return (
                 <Text key={s.id} style={styles.warningText}>
-                  {s.name} at {pct}% — attend {need} more to recover
+                  {s.name} at {pct}% â€” attend {need} more to recover
                 </Text>
               );
             })}
@@ -689,7 +1076,7 @@ export default function AttendanceScreen() {
         </View>
       )}
 
-      {/* ── Swipeable Horizontal Week Strip ── */}
+      {/* â”€â”€ Swipeable Horizontal Week Strip â”€â”€ */}
       <HorizontalWeekStrip
         selectedDate={selectedDate}
         onSelectDate={setSelectedDate}
@@ -697,7 +1084,7 @@ export default function AttendanceScreen() {
         today={today}
       />
 
-      {/* ── Daily Schedule ── */}
+      {/* â”€â”€ Daily Schedule â”€â”€ */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 2, marginTop: 4, marginBottom: 10 }}>
         <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>TODAY'S CLASSES</Text>
         <TouchableOpacity onPress={() => setIsExtraOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -724,6 +1111,7 @@ export default function AttendanceScreen() {
             isDark={isDark}
             styles={styles}
             onSelect={setSelectedHistorySubject}
+            onLongPress={setContextMenuSubject}
           />
         ))}
       </View>
@@ -741,7 +1129,7 @@ export default function AttendanceScreen() {
           actionLabel={surfaceActionLabel || undefined}
         />
 
-        {/* ── Single Sticky Header (Absolute below status bar, 100% Transparent Background, Morphs to Glass Pills on scroll) ── */}
+        {/* â”€â”€ Single Sticky Header (Absolute below status bar, 100% Transparent Background, Morphs to Glass Pills on scroll) â”€â”€ */}
         <View style={[styles.topHeaderWrapper, { top: insets.top }]} pointerEvents="box-none">
           <View style={styles.headerInner}>
             <Text style={styles.headerTitle}>Attendance</Text>
@@ -755,13 +1143,10 @@ export default function AttendanceScreen() {
               </TouchableOpacity>
 
               {/* Unlogged / Pending Classes & Labs Drawer Trigger */}
-              <TouchableOpacity
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setIsUnloggedOpen(true);
-                }}
+              <TactileHeaderBtn
+                onPress={() => setIsUnloggedOpen(true)}
                 style={styles.morphBtn}
-                activeOpacity={0.7}
+                haptic="medium"
               >
                 <View style={styles.morphBtnIconWrap}>
                   <Animated.View
@@ -787,32 +1172,52 @@ export default function AttendanceScreen() {
                 <Text style={[styles.headerBtnText, unloggedCount > 0 && { color: isDark ? '#F87171' : '#DC2626' }]}>
                   Due
                 </Text>
-              </TouchableOpacity>
+              </TactileHeaderBtn>
 
               {/* Holiday Toggle */}
-              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleToggleHoliday(isSelectedHoliday); }} style={styles.morphBtn} activeOpacity={0.7}>
+              <TactileHeaderBtn
+                onPress={handleHolidayPress}
+                style={styles.morphBtn}
+                haptic="medium"
+              >
                 <View style={styles.morphBtnIconWrap}>
                   <Animated.View style={[styles.morphBtnPill, isSelectedHoliday && styles.morphBtnPillHoliday, { opacity: pillAnim }]} />
-                  <Text style={{ fontSize: 13 }}>🌴</Text>
+                  <Reanimated.View style={holidayIconAnimStyle}>
+                    <Ionicons
+                      name={isSelectedHoliday ? 'sunny' : 'sunny-outline'}
+                      size={16}
+                      color={isSelectedHoliday ? (isDark ? '#fbbf24' : '#D97706') : colors.textSecondary}
+                    />
+                  </Reanimated.View>
                 </View>
                 <Text style={[styles.headerBtnText, isSelectedHoliday && { color: isDark ? '#fbbf24' : '#D97706' }]}>Holiday</Text>
-              </TouchableOpacity>
+              </TactileHeaderBtn>
 
-              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowClassNotifModal(true); }} style={styles.morphBtn} activeOpacity={0.7}>
+              {/* Alerts Button */}
+              <TactileHeaderBtn
+                onPress={() => setShowClassNotifModal(true)}
+                style={styles.morphBtn}
+                haptic="medium"
+              >
                 <View style={styles.morphBtnIconWrap}>
                   <Animated.View style={[styles.morphBtnPill, styles.morphBtnPillAccent, { opacity: pillAnim }]} />
                   <Ionicons name="notifications-outline" size={16} color={colors.accentPrimary} />
                 </View>
                 <Text style={[styles.headerBtnText, { color: colors.accentPrimary }]}>Alerts</Text>
-              </TouchableOpacity>
+              </TactileHeaderBtn>
 
-              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setIsTimetableOpen(true); }} style={styles.morphBtn} activeOpacity={0.7}>
+              {/* Setup Button */}
+              <TactileHeaderBtn
+                onPress={() => setIsTimetableOpen(true)}
+                style={styles.morphBtn}
+                haptic="medium"
+              >
                 <View style={styles.morphBtnIconWrap}>
                   <Animated.View style={[styles.morphBtnPill, { opacity: pillAnim }]} />
                   <Ionicons name="settings-outline" size={16} color={colors.textMuted} />
                 </View>
                 <Text style={styles.headerBtnText}>Setup</Text>
-              </TouchableOpacity>
+              </TactileHeaderBtn>
             </View>
           </View>
         </View>
@@ -875,23 +1280,28 @@ export default function AttendanceScreen() {
             scrollEventThrottle={32}
           ListHeaderComponent={listHeader}
           ListEmptyComponent={
-            <EmptyState
-              style={{ marginTop: 0 }}
-              mascot="idle"
-              title={isSelectedHoliday ? "Holiday 🌴" : "All clear!"}
-              subtitle={isSelectedHoliday ? "Enjoy your day off. No classes today." : "No classes scheduled for this day. Relax or catch up on work."}
-              action={subjects.length === 0 ? {
-                label: "Setup Timetable",
-                onPress: () => setIsTimetableOpen(true)
-              } : undefined}
-            />
+            <Reanimated.View
+              entering={FadeIn.duration(240).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+              exiting={FadeOut.duration(160)}
+            >
+              <EmptyState
+                style={{ marginTop: 0 }}
+                mascot="idle"
+                title={isSelectedHoliday ? "Holiday 🌴" : "All clear!"}
+                subtitle={isSelectedHoliday ? "Enjoy your day off. No classes today." : "No classes scheduled for this day. Relax or catch up on work."}
+                action={subjects.length === 0 ? {
+                  label: "Setup Timetable",
+                  onPress: () => setIsTimetableOpen(true)
+                } : undefined}
+              />
+            </Reanimated.View>
           }
           renderItem={renderItem}
           ListFooterComponent={listFooter}
         />
       )}
 
-      {/* ── Lazy Loaded Modals ── */}
+      {/* â”€â”€ Lazy Loaded Modals â”€â”€ */}
       <Suspense fallback={null}>
         {/* Timetable Modal */}
         {isTimetableOpen && (
@@ -907,19 +1317,17 @@ export default function AttendanceScreen() {
         )}
 
         {/* History Modal */}
-        {!!selectedHistorySubject && (
-          <SubjectHistoryModal
-            visible={!!selectedHistorySubject}
-            subject={selectedHistorySubject}
-            logs={logs}
-            subjects={subjects}
-            colors={colors}
-            isDark={isDark}
-            styles={styles}
-            onClose={() => setSelectedHistorySubject(null)}
-            onUndo={handleUndo}
-          />
-        )}
+        <SubjectHistoryModal
+          visible={!!selectedHistorySubject}
+          subject={selectedHistorySubject}
+          logs={logs}
+          subjects={subjects}
+          colors={colors}
+          isDark={isDark}
+          styles={styles}
+          onClose={() => setSelectedHistorySubject(null)}
+          onUndo={handleUndo}
+        />
 
         {/* Add Subject Modal */}
         {showAddModal && (
@@ -937,6 +1345,44 @@ export default function AttendanceScreen() {
             onClose={() => setShowClassNotifModal(false)}
           />
         )}
+
+        {/* WhatsApp-Grade Floating Action Context Menu for Subjects */}
+        <SubjectContextMenuModal
+          visible={!!contextMenuSubject}
+          subject={contextMenuSubject}
+          onClose={() => setContextMenuSubject(null)}
+          onQuickLogExtra={(subj) => {
+            setExtraSubjectId(subj.id);
+            setIsExtraOpen(true);
+          }}
+          onViewHistory={(subj) => {
+            setSelectedHistorySubject(subj);
+          }}
+          onEditSubject={(subj) => {
+            handleEditSubject(subj);
+          }}
+          onResetSubject={(subj) => {
+            Alert.alert(
+              'Reset Attendance',
+              `Are you sure you want to reset attendance for "${subj.name}"? This will set attended and total counts to 0.`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Reset',
+                  style: 'destructive',
+                  onPress: () => {
+                    academic.optimisticUpdateAttendance(subj.id, {
+                      classesAttended: 0,
+                      classesTotal: 0,
+                      labsAttended: 0,
+                      labsTotal: 0,
+                    });
+                  },
+                },
+              ]
+            );
+          }}
+        />
       </Suspense>
 
       {/* Unlogged / Pending Classes & Labs Drawer */}
@@ -947,7 +1393,7 @@ export default function AttendanceScreen() {
               <View style={{ flex: 1, marginRight: 10 }}>
                 <Text style={styles.sheetTitle}>Unlogged Classes & Labs</Text>
                 <Text style={{ fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
-                  {unloggedSessions.length} {unloggedSessions.length === 1 ? 'past session' : 'past sessions'} pending • Newest first
+                  {unloggedSessions.length} {unloggedSessions.length === 1 ? 'past session' : 'past sessions'} pending â€¢ Newest first
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setIsUnloggedOpen(false)} style={{ padding: 4 }}>
@@ -956,7 +1402,10 @@ export default function AttendanceScreen() {
             </View>
 
             {unloggedSessions.length === 0 ? (
-              <View style={{ paddingVertical: 36, alignItems: 'center', gap: 10 }}>
+              <Reanimated.View
+                entering={FadeIn.duration(220).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+                style={{ paddingVertical: 36, alignItems: 'center', gap: 10 }}
+              >
                 <Ionicons name="checkmark-done-circle-outline" size={48} color={isDark ? '#34D399' : '#059669'} />
                 <Text style={{ fontSize: 16, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
                   All Caught Up! 🎉
@@ -964,7 +1413,7 @@ export default function AttendanceScreen() {
                 <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', paddingHorizontal: 20 }}>
                   No unlogged classes or labs found in the past 30 days. Everything is up to date.
                 </Text>
-              </View>
+              </Reanimated.View>
             ) : (
               <ScrollView style={{ marginTop: 12, marginBottom: 8 }} showsVerticalScrollIndicator={false}>
                 {unloggedSessions.map(item => (
@@ -993,7 +1442,7 @@ export default function AttendanceScreen() {
           <View style={{ width: '100%' }}>
             <Text style={[styles.sheetTitle, { marginBottom: 16 }]}>Log Extra Class</Text>
 
-            {/* Subject selector — vertical full-width pills */}
+            {/* Subject selector â€” vertical full-width pills */}
             <ScrollView style={{ maxHeight: 180, marginBottom: 20 }} showsVerticalScrollIndicator={false}>
               {subjects.map(s => (
                 <TouchableOpacity
@@ -1011,7 +1460,7 @@ export default function AttendanceScreen() {
               ))}
             </ScrollView>
 
-            {/* Action rows — CLASS and LAB */}
+            {/* Action rows â€” CLASS and LAB */}
             {(['class', 'lab'] as const).map(type => (
               <View key={type} style={styles.extraTypeRow}>
                 <Text style={styles.extraTypeLabel}>{type === 'class' ? 'Class' : 'Lab'}</Text>

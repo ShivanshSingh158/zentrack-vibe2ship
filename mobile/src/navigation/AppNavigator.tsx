@@ -167,17 +167,19 @@ const ALLOWED_SAVE_ROUTES = new Set([
 
 
 // --- Full Component Map for Bottom Tabs --------------------------------------
+// withTabEntrance applied to the four pinned tabs (highest-traffic screens)
+// for WhatsApp/Telegram-grade fade + lift on focus. Others get raw error boundary.
 const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
-  Tasks:          withErrorBoundary(TasksScreen, 'Tasks'),
-  Attendance:     withErrorBoundary(AttendanceScreen, 'Attendance'),
-  Gym:            withErrorBoundary(GymStack, 'Gym'),
-  Calendar:       withErrorBoundary(CalendarScreen, 'Calendar'),
-  Habits:         withErrorBoundary(HabitsScreen, 'Habits'),
+  Tasks:          withTabEntrance(withErrorBoundary(TasksScreen,      'Tasks')),
+  Attendance:     withTabEntrance(withErrorBoundary(AttendanceScreen, 'Attendance')),
+  Gym:            withErrorBoundary(GymStack,        'Gym'),
+  Calendar:       withTabEntrance(withErrorBoundary(CalendarScreen,   'Calendar')),
+  Habits:         withErrorBoundary(HabitsScreen,    'Habits'),
   Analytics:      withErrorBoundary(AnalyticsScreen, 'Analytics'),
-  Notes:          withErrorBoundary(NotesScreen, 'Notes'),
-  Grades:         withErrorBoundary(GradesScreen, 'Grades'),
+  Notes:          withErrorBoundary(NotesScreen,     'Notes'),
+  Grades:         withErrorBoundary(GradesScreen,    'Grades'),
   Assignments:    withErrorBoundary(AssignmentsScreen, 'Assignments'),
-  Learning:       withErrorBoundary(LearningScreen, 'Learning'),
+  Learning:       withErrorBoundary(LearningScreen,  'Learning'),
 };
 
 const ALL_NAV_MODULE_IDS = Object.keys(COMPONENT_MAP);
@@ -200,10 +202,12 @@ function NestedHeader({ title }: { title: string }) {
 
 import { usePinnedModules } from '../contexts/PinnedModulesContext';
 import { TelegramTabBar } from '../components/Navigation/TelegramTabBar';
+import { withTabEntrance } from '../components/Navigation/withTabEntrance';
 
 // --- SafeDashboard & SafeMore (defined before MainTabNavigator that uses them) -------------
-const SafeDashboard = withErrorBoundary(DashboardScreen, 'Dashboard');
-const SafeMore = withErrorBoundary(MoreScreen, 'More');
+// withTabEntrance adds WhatsApp/Telegram-grade fade + lift on every tab focus
+const SafeDashboard = withTabEntrance(withErrorBoundary(DashboardScreen, 'Dashboard'));
+const SafeMore      = withErrorBoundary(MoreScreen, 'More');
 
 const TabBarNullButton = () => null;
 
@@ -305,7 +309,7 @@ function NestedScreens() {
           header:            ({ route }) => <NestedHeader title={route.name} />,
           contentStyle:      { backgroundColor: colors.background },
           animation:         'slide_from_right',
-          animationDuration: 180,
+          animationDuration: 220,
           fullScreenGestureEnabled: true,
         }}
       >
@@ -442,23 +446,23 @@ export default function AppNavigator() {
 
     const bootPromise = boot();
 
+    const saveOptimisticUser = (u: User | null) => {
+      updateL1Cache('optimisticUser', u);
+      if (u) {
+        AsyncStorage.setItem('@zentrack_optimistic_user', JSON.stringify({
+          uid: u.uid,
+          email: u.email,
+          displayName: u.displayName,
+        })).catch(() => {});
+      } else {
+        AsyncStorage.removeItem('@zentrack_optimistic_user').catch(() => {});
+        clearBootManifest();
+      }
+    };
+
     // Firebase auth listener -- one subscription, lives forever
     const unsubAuth = onAuthStateChanged(auth, async (usr) => {
       await bootPromise;
-
-      const saveOptimisticUser = (u: User | null) => {
-        updateL1Cache('optimisticUser', u);
-        if (u) {
-          AsyncStorage.setItem('@zentrack_optimistic_user', JSON.stringify({
-            uid: u.uid,
-            email: u.email,
-            displayName: u.displayName,
-          })).catch(() => {});
-        } else {
-          AsyncStorage.removeItem('@zentrack_optimistic_user').catch(() => {});
-          clearBootManifest();
-        }
-      };
 
       if (!hasResolved.current) {
         // We only hit this block if we did NOT have an optimistic user (i.e. fresh install or logged out).
@@ -632,11 +636,18 @@ export default function AppNavigator() {
     const resetOnboardingSub = DeviceEventEmitter.addListener('reset_onboarding', () => {
       setOnboarded(false);
     });
+    const guestSignInSub = DeviceEventEmitter.addListener('guest_sign_in', (guestUsr: any) => {
+      wasLoggedInRef.current = true;
+      hasResolved.current = true;
+      setUser(guestUsr);
+      saveOptimisticUser(guestUsr);
+    });
 
     return () => {
       unsubAuth();
       appStateSub.remove();
       resetOnboardingSub.remove();
+      guestSignInSub.remove();
       // Cancel any pending dead-session logout timer on unmount
       if (deadSessionTimerRef.current) {
         clearTimeout(deadSessionTimerRef.current);

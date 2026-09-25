@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,8 +14,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
-  FadeIn, FadeOut, withRepeat, withTiming, withSequence, withDelay,
-  useSharedValue, useAnimatedStyle, Easing, cancelAnimation
+  FadeIn, FadeOut, FadeInRight, FadeInDown, withRepeat, withTiming, withSequence, withDelay,
+  withSpring, useSharedValue, useAnimatedStyle, Easing, cancelAnimation
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -43,8 +43,6 @@ import { today, formatTimeDisplay, formatDisplayDate, Priority, TAG_STORAGE_KEY,
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { scheduleSingleTaskReminder } from '../../services/notifications';
 import { safeWrite } from '../../utils/safeWrite';
-import { saveTaskLocationReminder } from '../../services/geofenceService';
-import { LocationPickerModal } from './LocationPickerModal';
 import { collection, doc, writeBatch, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
@@ -75,8 +73,6 @@ export interface EditableVoiceTask {
   subtasks: string[];
   durationMinutes: number;
   isReminder: boolean;
-  locationReminder?: any | null;
-  locationName?: string;
   rawSegment?: string;
 }
 
@@ -88,25 +84,30 @@ const QUICK_TEMPLATES = [
   { icon: 'school-outline', text: 'Submit lab report Friday 5pm', color: '#C084FC' },
 ];
 
-// Sub-component: Soundwave Equalizer Bars for voice visualizer
+// Sub-component: Fluid Dynamic Soundwave Equalizer Bars (Apple iOS Voice Memo style)
 function SoundWaveBars({ active }: { active: boolean }) {
   const bar1 = useSharedValue(6);
-  const bar2 = useSharedValue(10);
-  const bar3 = useSharedValue(16);
-  const bar4 = useSharedValue(22);
-  const bar5 = useSharedValue(16);
-  const bar6 = useSharedValue(10);
-  const bar7 = useSharedValue(6);
+  const bar2 = useSharedValue(9);
+  const bar3 = useSharedValue(14);
+  const bar4 = useSharedValue(18);
+  const bar5 = useSharedValue(22);
+  const bar6 = useSharedValue(18);
+  const bar7 = useSharedValue(14);
+  const bar8 = useSharedValue(9);
+  const bar9 = useSharedValue(6);
 
   useEffect(() => {
     if (active) {
-      bar1.value = withRepeat(withSequence(withTiming(20, { duration: 320 }), withTiming(6, { duration: 320 })), -1, true);
-      bar2.value = withDelay(80, withRepeat(withSequence(withTiming(28, { duration: 380 }), withTiming(8, { duration: 380 })), -1, true));
-      bar3.value = withDelay(160, withRepeat(withSequence(withTiming(36, { duration: 300 }), withTiming(10, { duration: 300 })), -1, true));
-      bar4.value = withDelay(240, withRepeat(withSequence(withTiming(42, { duration: 350 }), withTiming(14, { duration: 350 })), -1, true));
-      bar5.value = withDelay(120, withRepeat(withSequence(withTiming(34, { duration: 400 }), withTiming(10, { duration: 400 })), -1, true));
-      bar6.value = withDelay(180, withRepeat(withSequence(withTiming(28, { duration: 340 }), withTiming(8, { duration: 340 })), -1, true));
-      bar7.value = withDelay(60, withRepeat(withSequence(withTiming(20, { duration: 360 }), withTiming(6, { duration: 360 })), -1, true));
+      const ease = Easing.bezier(0.33, 1, 0.68, 1);
+      bar1.value = withRepeat(withSequence(withTiming(18, { duration: 340, easing: ease }), withTiming(6, { duration: 340, easing: ease })), -1, true);
+      bar2.value = withDelay(60, withRepeat(withSequence(withTiming(26, { duration: 380, easing: ease }), withTiming(8, { duration: 380, easing: ease })), -1, true));
+      bar3.value = withDelay(120, withRepeat(withSequence(withTiming(34, { duration: 310, easing: ease }), withTiming(10, { duration: 310, easing: ease })), -1, true));
+      bar4.value = withDelay(180, withRepeat(withSequence(withTiming(40, { duration: 360, easing: ease }), withTiming(14, { duration: 360, easing: ease })), -1, true));
+      bar5.value = withDelay(100, withRepeat(withSequence(withTiming(44, { duration: 320, easing: ease }), withTiming(16, { duration: 320, easing: ease })), -1, true));
+      bar6.value = withDelay(220, withRepeat(withSequence(withTiming(38, { duration: 370, easing: ease }), withTiming(12, { duration: 370, easing: ease })), -1, true));
+      bar7.value = withDelay(140, withRepeat(withSequence(withTiming(32, { duration: 330, easing: ease }), withTiming(10, { duration: 330, easing: ease })), -1, true));
+      bar8.value = withDelay(80, withRepeat(withSequence(withTiming(24, { duration: 390, easing: ease }), withTiming(8, { duration: 390, easing: ease })), -1, true));
+      bar9.value = withDelay(40, withRepeat(withSequence(withTiming(18, { duration: 350, easing: ease }), withTiming(6, { duration: 350, easing: ease })), -1, true));
     } else {
       cancelAnimation(bar1);
       cancelAnimation(bar2);
@@ -115,13 +116,18 @@ function SoundWaveBars({ active }: { active: boolean }) {
       cancelAnimation(bar5);
       cancelAnimation(bar6);
       cancelAnimation(bar7);
-      bar1.value = withTiming(6);
-      bar2.value = withTiming(10);
-      bar3.value = withTiming(16);
-      bar4.value = withTiming(22);
-      bar5.value = withTiming(16);
-      bar6.value = withTiming(10);
-      bar7.value = withTiming(6);
+      cancelAnimation(bar8);
+      cancelAnimation(bar9);
+      const easeOut = Easing.out(Easing.quad);
+      bar1.value = withTiming(6, { duration: 250, easing: easeOut });
+      bar2.value = withTiming(9, { duration: 250, easing: easeOut });
+      bar3.value = withTiming(14, { duration: 250, easing: easeOut });
+      bar4.value = withTiming(18, { duration: 250, easing: easeOut });
+      bar5.value = withTiming(22, { duration: 250, easing: easeOut });
+      bar6.value = withTiming(18, { duration: 250, easing: easeOut });
+      bar7.value = withTiming(14, { duration: 250, easing: easeOut });
+      bar8.value = withTiming(9, { duration: 250, easing: easeOut });
+      bar9.value = withTiming(6, { duration: 250, easing: easeOut });
     }
   }, [active]);
 
@@ -132,16 +138,20 @@ function SoundWaveBars({ active }: { active: boolean }) {
   const style5 = useAnimatedStyle(() => ({ height: bar5.value }));
   const style6 = useAnimatedStyle(() => ({ height: bar6.value }));
   const style7 = useAnimatedStyle(() => ({ height: bar7.value }));
+  const style8 = useAnimatedStyle(() => ({ height: bar8.value }));
+  const style9 = useAnimatedStyle(() => ({ height: bar9.value }));
 
   return (
     <View style={visualizerStyles.waveContainer}>
       <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#FF6961' }, style1]} />
       <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#FF453A' }, style2]} />
-      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#A599FF' }, style3]} />
-      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#FF453A' }, style4]} />
-      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#A599FF' }, style5]} />
-      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#FF453A' }, style6]} />
-      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#FF6961' }, style7]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#E056FD' }, style3]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#A599FF' }, style4]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#FFFFFF' }, style5]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#A599FF' }, style6]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#E056FD' }, style7]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#FF453A' }, style8]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#FF6961' }, style9]} />
     </View>
   );
 }
@@ -151,13 +161,13 @@ const visualizerStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    height: 38,
+    gap: 4.5,
+    height: 48,
     marginTop: 16,
   },
   bar: {
-    width: 5,
-    borderRadius: 4,
+    width: 4.5,
+    borderRadius: 3,
   },
 });
 
@@ -227,6 +237,20 @@ export default function VoiceDictationOverlay({
   const glowScale = useSharedValue(1);
   const glowOpacity = useSharedValue(0.4);
 
+  // Apple Intelligence / Siri-style dual breathing radial aura
+  const auraScale1 = useSharedValue(1);
+  const auraScale2 = useSharedValue(1);
+  const auraOpacity1 = useSharedValue(0);
+  const auraOpacity2 = useSharedValue(0);
+
+  // ── Section 7: Orb open/close morph ──────────────────────────────────────
+  // orbScale: 0.88 (closed) → 1.0 (open) via overshoot spring
+  // orbOpacity: 0 → 1 on open, 0 on close
+  // pulseRing: 1.0 ↔ 1.35 sinusoidal while listening
+  const orbScale   = useSharedValue(0.88);
+  const orbOpacity = useSharedValue(0);
+  const pulseRing  = useSharedValue(1);
+
   const tomorrowStr = (() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
@@ -255,6 +279,22 @@ export default function VoiceDictationOverlay({
   // Main lifecycle when modal opens / closes
   useEffect(() => {
     if (visible) {
+      // Orb morph: scale from 0.88 → 1.0 with an overshoot spring
+      orbScale.value   = withSpring(1,   { damping: 20, stiffness: 260, mass: 0.8 });
+      orbOpacity.value = withTiming(1,   { duration: 180 });
+
+      // Pulse ring: starts after orb settles (250ms)
+      const pulseTimer = setTimeout(() => {
+        pulseRing.value = withRepeat(
+          withSequence(
+            withTiming(1.35, { duration: 700, easing: Easing.out(Easing.sin) }),
+            withTiming(1.0,  { duration: 700, easing: Easing.in(Easing.sin) }),
+          ),
+          -1,
+          false,
+        );
+      }, 250);
+
       glowScale.value = withRepeat(
         withTiming(1.3, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
         -1,
@@ -266,11 +306,72 @@ export default function VoiceDictationOverlay({
         true
       );
       resetState();
-      handleStartRecording();
+      // 100ms delay: allows the modal fade-in animation to complete and the iOS
+      // audio session to initialize before VAD polling begins. Without this,
+      // startVADRecording fires before the audio driver is ready on iOS,
+      // causing the first recording attempt to silently fail.
+      const armTimer = setTimeout(() => {
+        handleStartRecording();
+      }, 100);
+      return () => { clearTimeout(armTimer); clearTimeout(pulseTimer); };
     } else {
+      // Orb close: collapse back + fade
+      orbScale.value   = withTiming(0.88, { duration: 220, easing: Easing.in(Easing.quad) });
+      orbOpacity.value = withTiming(0, { duration: 180 });
+      cancelAnimation(pulseRing);
+      pulseRing.value  = withTiming(1, { duration: 100 });
       cleanup();
     }
   }, [visible]);
+
+  // Siri-style multi-layered breathing radial aura animation
+  useEffect(() => {
+    if (visible && state === 'recording') {
+      const ease = Easing.bezier(0.35, 0, 0.25, 1);
+      auraScale1.value = withRepeat(
+        withTiming(1.5, { duration: 1500, easing: ease }),
+        -1,
+        true
+      );
+      auraOpacity1.value = withRepeat(
+        withSequence(
+          withTiming(0.4, { duration: 750, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0.12, { duration: 750, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        true
+      );
+
+      auraScale2.value = withDelay(
+        350,
+        withRepeat(
+          withTiming(1.85, { duration: 1700, easing: ease }),
+          -1,
+          true
+        )
+      );
+      auraOpacity2.value = withDelay(
+        350,
+        withRepeat(
+          withSequence(
+            withTiming(0.25, { duration: 850, easing: Easing.inOut(Easing.ease) }),
+            withTiming(0.06, { duration: 850, easing: Easing.inOut(Easing.ease) })
+          ),
+          -1,
+          true
+        )
+      );
+    } else {
+      cancelAnimation(auraScale1);
+      cancelAnimation(auraScale2);
+      cancelAnimation(auraOpacity1);
+      cancelAnimation(auraOpacity2);
+      auraScale1.value = withTiming(1, { duration: 250 });
+      auraScale2.value = withTiming(1, { duration: 250 });
+      auraOpacity1.value = withTiming(0, { duration: 250 });
+      auraOpacity2.value = withTiming(0, { duration: 250 });
+    }
+  }, [visible, state]);
 
   const cleanup = () => {
     cancelVoiceRecording().catch(() => {});
@@ -356,10 +457,6 @@ export default function VoiceDictationOverlay({
       if (parsed.subtasks && parsed.subtasks.length > 0) {
         updates.subtasks = parsed.subtasks;
       }
-      if (parsed.locationReminder) {
-        updates.locationReminder = parsed.locationReminder;
-        updates.locationName = parsed.locationName;
-      }
 
       setTasks(prev => {
         if (prev.length === 0) return prev;
@@ -392,7 +489,6 @@ export default function VoiceDictationOverlay({
       subtasks: [],
       durationMinutes: 0,
       isReminder: false,
-      locationReminder: null,
     }]);
     setActiveTaskIdx(0);
     setState('preview');
@@ -439,8 +535,6 @@ export default function VoiceDictationOverlay({
         subtasks: pt.subtasks || [],
         durationMinutes: pt.durationMinutes || 0,
         isReminder: !!pt.isReminder,
-        locationReminder: pt.locationReminder || null,
-        locationName: pt.locationName,
       };
     });
 
@@ -643,7 +737,6 @@ export default function VoiceDictationOverlay({
         const isRecur = t.isRecurring || parsedAgain.isRecurring || false;
         const recurRule = t.recurrenceRule || parsedAgain.recurrenceRule || null;
         const isReminderFinal = t.isReminder || parsedAgain.isReminder || false;
-        const locationReminderFinal = t.locationReminder || parsedAgain.locationReminder || undefined;
 
         if (isRecur && recurRule) {
           // Recurring task series creation
@@ -737,25 +830,12 @@ export default function VoiceDictationOverlay({
             subtasks: subtaskObjects,
             tags: tagsCombined,
             isReminder: isReminderFinal,
-            locationReminder: locationReminderFinal || undefined,
           };
 
           optimisticAddTask(newTaskPayload);
 
           if (finalTime || isReminderFinal) {
             scheduleSingleTaskReminder(newTaskPayload).catch(e => console.warn('[VoiceDictation] Reminder schedule error:', e));
-          }
-
-          if (locationReminderFinal) {
-            saveTaskLocationReminder({
-              taskId,
-              taskTitle: cleanTitle,
-              placeName: locationReminderFinal.placeName,
-              latitude: locationReminderFinal.latitude,
-              longitude: locationReminderFinal.longitude,
-              radius: locationReminderFinal.radius,
-              triggerType: locationReminderFinal.triggerType,
-            }).catch(console.warn);
           }
 
           const taskDocData = {
@@ -776,7 +856,6 @@ export default function VoiceDictationOverlay({
             subtasks: subtaskObjects,
             tags: tagsCombined,
             isReminder: isReminderFinal || false,
-            locationReminder: locationReminderFinal || null,
           };
 
           await safeWrite(
@@ -799,7 +878,6 @@ export default function VoiceDictationOverlay({
           subtasks: t.subtasks,
           isReminder: t.isReminder,
           durationMinutes: estMinutes,
-          locationReminder: t.locationReminder,
         });
       }
 
@@ -833,6 +911,28 @@ export default function VoiceDictationOverlay({
     opacity: state === 'recording' ? glowOpacity.value : 0,
   }));
 
+  const aura1AnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: auraScale1.value }],
+    opacity: auraOpacity1.value,
+  }));
+
+  const aura2AnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: auraScale2.value }],
+    opacity: auraOpacity2.value,
+  }));
+
+  // Orb morph animated style — wraps the entire Modal content
+  const orbMorphStyle = useAnimatedStyle(() => ({
+    flex: 1,
+    transform: [{ scale: orbScale.value }],
+    opacity:   orbOpacity.value,
+  }));
+
+  // Pulse ring style — applies to the outer aura ring during listening
+  const pulseRingStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: state === 'recording' ? pulseRing.value : 1 }],
+  }));
+
   if (!visible) return null;
 
   const currentExample = EXAMPLE_PHRASES[exampleIndex];
@@ -851,13 +951,18 @@ export default function VoiceDictationOverlay({
   const priorityColor = currentTask?.priority === 'high' ? '#f87171' : currentTask?.priority === 'medium' ? '#fb923c' : '#8e8e93';
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      {/* orbMorphStyle wraps the entire content — drives the open/close morph */}
+      <Animated.View style={orbMorphStyle}>
       <View style={[styles.backdrop, { paddingTop: insets.top }]}>
-        {/* Ambient Dark Gradient Background — starts BELOW status bar so clock/icons stay visible */}
+        {/* Solid Deep Obsidian Canvas — 100% blocks underlying screen bleed */}
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0C0C0E' }]} />
+
+        {/* Ambient Subtle Siri/Apple Intelligence Aura */}
         <LinearGradient
-          colors={['transparent', '#18090C', '#0B0B0E', '#050507']}
+          colors={['rgba(165, 153, 255, 0.08)', 'rgba(255, 69, 58, 0.04)', 'transparent', '#0C0C0E']}
           style={StyleSheet.absoluteFillObject}
-          locations={[0, 0.08, 0.45, 1]}
+          locations={[0, 0.22, 0.65, 1]}
         />
 
         {/* Top Header Bar */}
@@ -904,8 +1009,8 @@ export default function VoiceDictationOverlay({
             <LinearGradient
               colors={
                 state === 'preview'
-                  ? ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.03)']
-                  : ['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.02)']
+                  ? ['#1C1C22', '#141418']
+                  : ['#1A1A20', '#131317']
               }
               style={[
                 styles.glassCard,
@@ -1046,232 +1151,224 @@ export default function VoiceDictationOverlay({
                       contentContainerStyle={styles.chipsRow}
                     >
                       {/* Date Chip */}
-                      <TouchableOpacity
-                        style={[styles.nlpChip, styles.dateChip]}
-                        onPress={() => setShowCalendar(true)}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="calendar-outline" size={13} color="#60a5fa" />
-                        <Text style={styles.dateChipText}>{activeDateLabel}</Text>
-                        {currentTask.date !== today && (
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              updateActiveTask({ date: today });
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Ionicons name="close-circle" size={13} color="#60a5fa" style={{ marginLeft: 2 }} />
-                          </TouchableOpacity>
-                        )}
-                      </TouchableOpacity>
+                      <Animated.View entering={FadeInRight.duration(180).delay(30)}>
+                        <TouchableOpacity
+                          style={[styles.nlpChip, styles.dateChip]}
+                          onPress={() => setShowCalendar(true)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="calendar-outline" size={13} color="#60a5fa" />
+                          <Text style={styles.dateChipText}>{activeDateLabel}</Text>
+                          {currentTask.date !== today && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                updateActiveTask({ date: today });
+                              }}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Ionicons name="close-circle" size={13} color="#60a5fa" style={{ marginLeft: 2 }} />
+                            </TouchableOpacity>
+                          )}
+                        </TouchableOpacity>
+                      </Animated.View>
 
                       {/* Recurrence Chip (Prominent position right next to Date) */}
-                      <TouchableOpacity
-                        style={[
-                          styles.nlpChip,
-                          currentTask.isRecurring ? styles.recurrenceChip : styles.emptyChip
-                        ]}
-                        onPress={() => setShowRecurrenceModal(true)}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="repeat-outline" size={13} color={currentTask.isRecurring ? '#c084fc' : '#8e8e93'} />
-                        <Text style={[styles.recurrenceChipText, !currentTask.isRecurring && { color: '#8e8e93' }]}>
-                          {activeRecurrenceLabel || 'Repeat'}
-                        </Text>
-                        {currentTask.isRecurring && (
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              updateActiveTask({ isRecurring: false, recurrenceRule: null });
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Ionicons name="close-circle" size={13} color="#c084fc" style={{ marginLeft: 2 }} />
-                          </TouchableOpacity>
-                        )}
-                      </TouchableOpacity>
+                      <Animated.View entering={FadeInRight.duration(180).delay(60)}>
+                        <TouchableOpacity
+                          style={[
+                            styles.nlpChip,
+                            currentTask.isRecurring ? styles.recurrenceChip : styles.emptyChip
+                          ]}
+                          onPress={() => setShowRecurrenceModal(true)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="repeat-outline" size={13} color={currentTask.isRecurring ? '#c084fc' : '#8e8e93'} />
+                          <Text style={[styles.recurrenceChipText, !currentTask.isRecurring && { color: '#8e8e93' }]}>
+                            {activeRecurrenceLabel || 'Repeat'}
+                          </Text>
+                          {currentTask.isRecurring && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                updateActiveTask({ isRecurring: false, recurrenceRule: null });
+                              }}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Ionicons name="close-circle" size={13} color="#c084fc" style={{ marginLeft: 2 }} />
+                            </TouchableOpacity>
+                          )}
+                        </TouchableOpacity>
+                      </Animated.View>
 
                       {/* Start Time Chip */}
-                      <TouchableOpacity
-                        style={[
-                          styles.nlpChip,
-                          currentTask.timeSlot ? styles.timeChip : styles.emptyChip
-                        ]}
-                        onPress={() => setShowStartTimePicker(true)}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="time-outline" size={13} color={currentTask.timeSlot ? '#34d399' : '#8e8e93'} />
-                        <Text style={[styles.timeChipText, !currentTask.timeSlot && { color: '#8e8e93' }]}>
-                          {currentTask.timeSlot ? formatTimeDisplay(currentTask.timeSlot) : 'Start Time'}
-                        </Text>
-                        {!!currentTask.timeSlot && (
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              updateActiveTask({ timeSlot: null });
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Ionicons name="close-circle" size={13} color="#34d399" style={{ marginLeft: 2 }} />
-                          </TouchableOpacity>
-                        )}
-                      </TouchableOpacity>
+                      <Animated.View entering={FadeInRight.duration(180).delay(90)}>
+                        <TouchableOpacity
+                          style={[
+                            styles.nlpChip,
+                            currentTask.timeSlot ? styles.timeChip : styles.emptyChip
+                          ]}
+                          onPress={() => setShowStartTimePicker(true)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="time-outline" size={13} color={currentTask.timeSlot ? '#34d399' : '#8e8e93'} />
+                          <Text style={[styles.timeChipText, !currentTask.timeSlot && { color: '#8e8e93' }]}>
+                            {currentTask.timeSlot ? formatTimeDisplay(currentTask.timeSlot) : 'Start Time'}
+                          </Text>
+                          {!!currentTask.timeSlot && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                updateActiveTask({ timeSlot: null });
+                              }}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Ionicons name="close-circle" size={13} color="#34d399" style={{ marginLeft: 2 }} />
+                            </TouchableOpacity>
+                          )}
+                        </TouchableOpacity>
+                      </Animated.View>
 
                       {/* End Time Chip */}
-                      <TouchableOpacity
-                        style={[
-                          styles.nlpChip,
-                          currentTask.endTimeSlot ? styles.timeChip : styles.emptyChip
-                        ]}
-                        onPress={() => setShowEndTimePicker(true)}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="arrow-forward-outline" size={13} color={currentTask.endTimeSlot ? '#34d399' : '#8e8e93'} />
-                        <Text style={[styles.timeChipText, !currentTask.endTimeSlot && { color: '#8e8e93' }]}>
-                          {currentTask.endTimeSlot ? formatTimeDisplay(currentTask.endTimeSlot) : 'End Time'}
-                        </Text>
-                        {!!currentTask.endTimeSlot && (
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              updateActiveTask({ endTimeSlot: null });
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Ionicons name="close-circle" size={13} color="#34d399" style={{ marginLeft: 2 }} />
-                          </TouchableOpacity>
-                        )}
-                      </TouchableOpacity>
+                      <Animated.View entering={FadeInRight.duration(180).delay(120)}>
+                        <TouchableOpacity
+                          style={[
+                            styles.nlpChip,
+                            currentTask.endTimeSlot ? styles.timeChip : styles.emptyChip
+                          ]}
+                          onPress={() => setShowEndTimePicker(true)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="arrow-forward-outline" size={13} color={currentTask.endTimeSlot ? '#34d399' : '#8e8e93'} />
+                          <Text style={[styles.timeChipText, !currentTask.endTimeSlot && { color: '#8e8e93' }]}>
+                            {currentTask.endTimeSlot ? formatTimeDisplay(currentTask.endTimeSlot) : 'End Time'}
+                          </Text>
+                          {!!currentTask.endTimeSlot && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                updateActiveTask({ endTimeSlot: null });
+                              }}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Ionicons name="close-circle" size={13} color="#34d399" style={{ marginLeft: 2 }} />
+                            </TouchableOpacity>
+                          )}
+                        </TouchableOpacity>
+                      </Animated.View>
 
                       {/* Duration Chip */}
-                      <TouchableOpacity
-                        style={[
-                          styles.nlpChip,
-                          currentTask.durationMinutes > 0 ? styles.durationChip : styles.emptyChip
-                        ]}
-                        onPress={cycleDuration}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="hourglass-outline" size={13} color={currentTask.durationMinutes > 0 ? '#fbbf24' : '#8e8e93'} />
-                        <Text style={[styles.durationChipText, currentTask.durationMinutes <= 0 && { color: '#8e8e93' }]}>
-                          {formatDurationText(currentTask.durationMinutes)}
-                        </Text>
-                        {currentTask.durationMinutes > 0 && (
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              updateActiveTask({ durationMinutes: 0 });
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Ionicons name="close-circle" size={13} color="#fbbf24" style={{ marginLeft: 2 }} />
-                          </TouchableOpacity>
-                        )}
-                      </TouchableOpacity>
+                      <Animated.View entering={FadeInRight.duration(180).delay(150)}>
+                        <TouchableOpacity
+                          style={[
+                            styles.nlpChip,
+                            currentTask.durationMinutes > 0 ? styles.durationChip : styles.emptyChip
+                          ]}
+                          onPress={cycleDuration}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="hourglass-outline" size={13} color={currentTask.durationMinutes > 0 ? '#fbbf24' : '#8e8e93'} />
+                          <Text style={[styles.durationChipText, currentTask.durationMinutes <= 0 && { color: '#8e8e93' }]}>
+                            {formatDurationText(currentTask.durationMinutes)}
+                          </Text>
+                          {currentTask.durationMinutes > 0 && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                updateActiveTask({ durationMinutes: 0 });
+                              }}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Ionicons name="close-circle" size={13} color="#fbbf24" style={{ marginLeft: 2 }} />
+                            </TouchableOpacity>
+                          )}
+                        </TouchableOpacity>
+                      </Animated.View>
 
                       {/* Priority Chip */}
-                      <TouchableOpacity
-                        style={[
-                          styles.nlpChip,
-                          currentTask.priority !== 'low' ? styles.priorityChip : styles.emptyChip
-                        ]}
-                        onPress={cyclePriority}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="flag" size={12} color={priorityColor} />
-                        <Text style={[styles.priorityChipText, { color: priorityColor }]}>
-                          {currentTask.priority === 'high' ? 'P1 High' : currentTask.priority === 'medium' ? 'P2 Medium' : 'Priority'}
-                        </Text>
-                        {currentTask.priority !== 'low' && (
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              updateActiveTask({ priority: 'low' });
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Ionicons name="close-circle" size={13} color={priorityColor} style={{ marginLeft: 2 }} />
-                          </TouchableOpacity>
-                        )}
-                      </TouchableOpacity>
+                      <Animated.View entering={FadeInRight.duration(180).delay(180)}>
+                        <TouchableOpacity
+                          style={[
+                            styles.nlpChip,
+                            currentTask.priority !== 'low' ? styles.priorityChip : styles.emptyChip
+                          ]}
+                          onPress={cyclePriority}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="flag" size={12} color={priorityColor} />
+                          <Text style={[styles.priorityChipText, { color: priorityColor }]}>
+                            {currentTask.priority === 'high' ? 'P1 High' : currentTask.priority === 'medium' ? 'P2 Medium' : 'Priority'}
+                          </Text>
+                          {currentTask.priority !== 'low' && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                updateActiveTask({ priority: 'low' });
+                              }}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Ionicons name="close-circle" size={13} color={priorityColor} style={{ marginLeft: 2 }} />
+                            </TouchableOpacity>
+                          )}
+                        </TouchableOpacity>
+                      </Animated.View>
 
                       {/* Reminder / Alarm Chip */}
-                      <TouchableOpacity
-                        style={[
-                          styles.nlpChip,
-                          currentTask.isReminder ? styles.reminderChip : styles.emptyChip
-                        ]}
-                        onPress={toggleReminder}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name={currentTask.isReminder ? "notifications" : "notifications-outline"} size={13} color={currentTask.isReminder ? '#f59e0b' : '#8e8e93'} />
-                        <Text style={[styles.reminderChipText, !currentTask.isReminder && { color: '#8e8e93' }]}>
-                          {currentTask.isReminder ? (currentTask.timeSlot ? `Alarm ${formatTimeDisplay(currentTask.timeSlot)}` : 'Alarm ON') : 'Reminder'}
-                        </Text>
-                        {currentTask.isReminder && (
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              updateActiveTask({ isReminder: false });
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Ionicons name="close-circle" size={13} color="#f59e0b" style={{ marginLeft: 2 }} />
-                          </TouchableOpacity>
-                        )}
-                      </TouchableOpacity>
-
-                      {/* Location Chip */}
-                      <TouchableOpacity
-                        style={[
-                          styles.nlpChip,
-                          currentTask.locationReminder ? styles.locationChip : styles.emptyChip
-                        ]}
-                        onPress={() => setShowLocationPicker(true)}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="location-outline" size={13} color={currentTask.locationReminder ? '#34d399' : '#8e8e93'} />
-                        <Text style={[styles.locationChipText, !currentTask.locationReminder && { color: '#8e8e93' }]}>
-                          {currentTask.locationReminder ? `📍 ${currentTask.locationReminder.placeName}` : 'Location'}
-                        </Text>
-                        {!!currentTask.locationReminder && (
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              updateActiveTask({ locationReminder: null, locationName: undefined });
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Ionicons name="close-circle" size={13} color="#34d399" style={{ marginLeft: 2 }} />
-                          </TouchableOpacity>
-                        )}
-                      </TouchableOpacity>
+                      <Animated.View entering={FadeInRight.duration(180).delay(210)}>
+                        <TouchableOpacity
+                          style={[
+                            styles.nlpChip,
+                            currentTask.isReminder ? styles.reminderChip : styles.emptyChip
+                          ]}
+                          onPress={toggleReminder}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name={currentTask.isReminder ? "notifications" : "notifications-outline"} size={13} color={currentTask.isReminder ? '#f59e0b' : '#8e8e93'} />
+                          <Text style={[styles.reminderChipText, !currentTask.isReminder && { color: '#8e8e93' }]}>
+                            {currentTask.isReminder ? (currentTask.timeSlot ? `Alarm ${formatTimeDisplay(currentTask.timeSlot)}` : 'Alarm ON') : 'Reminder'}
+                          </Text>
+                          {currentTask.isReminder && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                updateActiveTask({ isReminder: false });
+                              }}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Ionicons name="close-circle" size={13} color="#f59e0b" style={{ marginLeft: 2 }} />
+                            </TouchableOpacity>
+                          )}
+                        </TouchableOpacity>
+                      </Animated.View>
 
                       {/* Tags Chips */}
-                      {currentTask.tags.map(tag => (
-                        <View key={tag} style={[styles.nlpChip, styles.tagChip]}>
-                          <Ionicons name="pricetag-outline" size={11} color="#38bdf8" />
-                          <Text style={styles.tagChipText}>#{tag}</Text>
-                          <TouchableOpacity onPress={() => removeTag(tag)}>
-                            <Ionicons name="close" size={11} color="#38bdf8" style={{ marginLeft: 2 }} />
-                          </TouchableOpacity>
-                        </View>
+                      {currentTask.tags.map((tag, tagIdx) => (
+                        <Animated.View key={tag} entering={FadeInRight.duration(180).delay(240 + tagIdx * 30)}>
+                          <View style={[styles.nlpChip, styles.tagChip]}>
+                            <Ionicons name="pricetag-outline" size={11} color="#38bdf8" />
+                            <Text style={styles.tagChipText}>#{tag}</Text>
+                            <TouchableOpacity onPress={() => removeTag(tag)}>
+                              <Ionicons name="close" size={11} color="#38bdf8" style={{ marginLeft: 2 }} />
+                            </TouchableOpacity>
+                          </View>
+                        </Animated.View>
                       ))}
 
                       {/* Add Tag Quick Trigger */}
-                      <TouchableOpacity
-                        style={[styles.nlpChip, styles.emptyChip]}
-                        onPress={() => setShowTagInput(v => !v)}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="add" size={12} color="#8e8e93" />
-                        <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 12, color: '#8e8e93' }}>Tag</Text>
-                      </TouchableOpacity>
+                      <Animated.View entering={FadeInRight.duration(180).delay(240 + currentTask.tags.length * 30)}>
+                        <TouchableOpacity
+                          style={[styles.nlpChip, styles.emptyChip]}
+                          onPress={() => setShowTagInput(v => !v)}
+                          activeOpacity={0.7}
+                        >
+                          <Ionicons name="add" size={12} color="#8e8e93" />
+                          <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 12, color: '#8e8e93' }}>Tag</Text>
+                        </TouchableOpacity>
+                      </Animated.View>
                     </ScrollView>
                   )}
 
@@ -1414,13 +1511,15 @@ export default function VoiceDictationOverlay({
           {/* Sleek Voice Waveform & Mic Orb Container */}
           <View style={styles.orbArea}>
             <View style={styles.listeningContainer}>
-              {/* Interactive Glow Mic Orb */}
+              {/* Interactive Glow Mic Orb with Apple Intelligence Dual Breathing Aura */}
               <TouchableOpacity
                 onPress={handleToggleMic}
                 activeOpacity={0.85}
                 disabled={state === 'processing' || state === 'saving'}
+                style={{ alignItems: 'center', justifyContent: 'center' }}
               >
-                <Animated.View style={[styles.micGlow, glowAnimatedStyle]} />
+                <Animated.View style={[styles.auraOuter, aura2AnimatedStyle]} />
+                <Animated.View style={[styles.auraInner, aura1AnimatedStyle]} />
                 <LinearGradient
                   colors={state === 'recording' ? ['#FF453A', '#B30006'] : ['#2C2C2E', '#1C1C1E']}
                   style={[
@@ -1663,31 +1762,17 @@ export default function VoiceDictationOverlay({
             setShowRecurrenceModal(false);
           }}
         />
-
-        {/* Location Picker Modal */}
-        {showLocationPicker && (
-          <LocationPickerModal
-            visible={showLocationPicker}
-            onClose={() => setShowLocationPicker(false)}
-            initialValue={currentTask?.locationReminder || null}
-            onSelect={(trigger) => {
-              updateActiveTask({
-                locationReminder: trigger,
-                locationName: trigger ? trigger.placeName : undefined,
-              });
-              setShowLocationPicker(false);
-            }}
-          />
-        )}
       </View>
+      </Animated.View>
     </Modal>
   );
 }
 
+
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: '#09090B',
+    backgroundColor: '#0C0C0E',
   },
   topHeader: {
     flexDirection: 'row',
@@ -1760,7 +1845,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    backgroundColor: '#16161A',
     overflow: 'hidden',
   },
   cardHeaderRow: {
@@ -2045,14 +2130,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
-  micGlow: {
+  auraOuter: {
     position: 'absolute',
-    width: 78,
-    height: 78,
-    borderRadius: 39,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#A599FF',
+  },
+  auraInner: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: '#FF453A',
-    top: -5,
-    left: -5,
   },
   micOrb: {
     width: 68,

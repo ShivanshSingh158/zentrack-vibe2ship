@@ -105,6 +105,7 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   calendarCard: {
     backgroundColor: colors.surface,
     borderRadius: RADIUS.lg,
+    overflow: 'hidden',
     width: '100%',
     maxWidth: 360,
     padding: 16,

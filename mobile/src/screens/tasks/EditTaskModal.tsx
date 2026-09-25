@@ -31,10 +31,7 @@ import NLPTaskInput from '../../components/Tasks/NLPTaskInput';
 import RecurrencePickerModal from '../../components/Tasks/RecurrencePickerModal';
 import UniversalCalendarModal from '../../components/UniversalCalendarModal';
 import AnimatedPressable from '../../components/AnimatedPressable';
-import { LocationPickerModal } from '../../components/Tasks/LocationPickerModal';
-import { saveTaskLocationReminder, removeTaskLocationReminder } from '../../services/geofenceService';
 import { scheduleSingleTaskReminder } from '../../services/notifications';
-import type { TaskLocationTrigger } from '../../types/locationReminder.types';
 import { parseNLTask, ParsedTask, NLPToken, parseLocalDate, toYMD, cleanTaskTitle } from '../../utils/dateUtils';
 import { isSilenceOrNoise } from '../../services/voiceEngine';
 import { handleSyncError } from '../../utils/errorUtils';
@@ -79,8 +76,6 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [subtasks, setSubtasks] = useState<{ id: string; title: string; completed: boolean }[]>([]);
-  const [locationTrigger, setLocationTrigger] = useState<TaskLocationTrigger | null>(null);
-  const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [isReminder, setIsReminder] = useState(false);
 
   // NLP States
@@ -127,7 +122,6 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     setRecurrenceRule(currentTask.recurrenceRule || null);
     setSubtasks(currentTask.subtasks || []);
     setSelectedTags(currentTask.tags || []);
-    setLocationTrigger(currentTask.locationReminder || null);
     setIsReminder(!!currentTask.isReminder);
     setNlpParsed(null);
     setNlpDuration(null);
@@ -346,7 +340,6 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
       recurrenceRule: finalRecurrence || undefined,
       tags: selectedTags,
       subtasks,
-      locationReminder: locationTrigger || undefined,
       isReminder: finalIsReminder || undefined,
     };
 
@@ -354,7 +347,6 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
       ...updatePayload,
       timeSlot: ts || null,
       recurrenceRule: finalRecurrence || null,
-      locationReminder: locationTrigger || null,
       isReminder: finalIsReminder || false,
     };
 
@@ -365,20 +357,6 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
         id: currentTask.id,
         ...updatePayload,
       } as any).catch(console.warn);
-    }
-
-    if (locationTrigger) {
-      saveTaskLocationReminder({
-        taskId: currentTask.id,
-        taskTitle: finalTitle,
-        placeName: locationTrigger.placeName,
-        latitude: locationTrigger.latitude,
-        longitude: locationTrigger.longitude,
-        radius: locationTrigger.radius,
-        triggerType: locationTrigger.triggerType,
-      }).catch(console.warn);
-    } else {
-      removeTaskLocationReminder(currentTask.id).catch(console.warn);
     }
 
     if (currentTask.isRecurring || finalRecurrence) {
@@ -507,20 +485,6 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
               </Text>
             </AnimatedPressable>
 
-            {/* Location Reminder Quick Chip */}
-            <AnimatedPressable
-              style={[
-                styles.quickChip,
-                !!locationTrigger && { backgroundColor: 'rgba(139, 92, 246, 0.12)', borderColor: 'rgba(167, 139, 250, 0.4)' }
-              ]}
-              onPress={() => setShowLocationPicker(true)}
-            >
-              <Ionicons name="location-outline" size={13} color={locationTrigger ? '#A78BFA' : colors.textMuted} />
-              <Text style={[styles.quickChipText, locationTrigger && { color: '#A78BFA', fontWeight: '600' }]}>
-                {locationTrigger ? `${locationTrigger.placeName} (${locationTrigger.radius}m)` : 'Location'}
-              </Text>
-            </AnimatedPressable>
-
             {/* Reminder Mode Quick Chip */}
             <AnimatedPressable
               style={[
@@ -627,14 +591,6 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
         </AnimatedPressable>
       </View>
       <RecurrencePickerModal visible={showRecurrenceModal} onClose={() => setShowRecurrenceModal(false)} initialRule={recurrenceRule} onSave={setRecurrenceRule} />
-      {showLocationPicker && (
-        <LocationPickerModal
-          visible={showLocationPicker}
-          onClose={() => setShowLocationPicker(false)}
-          initialValue={locationTrigger}
-          onSelect={setLocationTrigger}
-        />
-      )}
     </BottomSheet>
   );
 }

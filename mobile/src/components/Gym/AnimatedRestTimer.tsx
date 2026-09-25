@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, Animated, PanResponder, InteractionManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Svg, Circle } from 'react-native-svg';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
 import { useTheme } from "../../contexts/ThemeContext";
 
@@ -30,6 +31,28 @@ export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(fu
   const styles = useMemo(() => makeAnimatedRestTimerStyles(colors, isDark), [colors, isDark]);
   const [isExpanded, setIsExpanded] = useState(false);
   const lastBeepSecRef = useRef<number | null>(null);
+
+  // Gentle breathing pulse animation for the floating rest pill
+  const breatheAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breatheAnim, {
+          toValue: 1.04,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(breatheAnim, {
+          toValue: 1.0,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [breatheAnim]);
 
   // Draggable position state (PanResponder)
   const pan = useRef(new Animated.ValueXY()).current;
@@ -123,6 +146,10 @@ export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(fu
     setIsExpanded(prev => !prev);
   };
 
+  const progress = durationSecs > 0 ? Math.max(0, Math.min(1, remSecs / durationSecs)) : 0;
+  const circumference = 53.4; // 2 * Math.PI * 8.5
+  const strokeDashoffset = circumference * (1 - progress);
+
   return (
     <Animated.View
       {...panResponder.panHandlers}
@@ -137,14 +164,55 @@ export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(fu
       ]}
     >
       {!isExpanded ? (
-        <TouchableOpacity
-          onPress={toggleExpand}
-          activeOpacity={0.8}
-          style={styles.collapsedBadge}
-        >
-          <Ionicons name="timer-outline" size={15} color={colors.accentPrimary} style={{ marginRight: 5 }} />
-          <Text style={styles.collapsedTimeText}>{timeDisplay}</Text>
-        </TouchableOpacity>
+        <Animated.View style={{ transform: [{ scale: breatheAnim }] }}>
+          <TouchableOpacity
+            onPress={toggleExpand}
+            activeOpacity={0.85}
+            style={styles.collapsedBadge}
+          >
+            {/* Circular SVG Progress Ring */}
+            <View style={{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center', marginRight: 4 }}>
+              <Svg width={22} height={22} style={{ transform: [{ rotate: '-90deg' }] }}>
+                <Circle
+                  cx={11}
+                  cy={11}
+                  r={8.5}
+                  stroke={isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'}
+                  strokeWidth={2.4}
+                  fill="none"
+                />
+                <Circle
+                  cx={11}
+                  cy={11}
+                  r={8.5}
+                  stroke={colors.accentPrimary || '#a599ff'}
+                  strokeWidth={2.4}
+                  strokeDasharray={`${circumference} ${circumference}`}
+                  strokeDashoffset={strokeDashoffset}
+                  strokeLinecap="round"
+                  fill="none"
+                />
+              </Svg>
+              <View style={{ position: 'absolute' }}>
+                <Ionicons name="timer-outline" size={10} color={colors.accentPrimary || '#a599ff'} />
+              </View>
+            </View>
+
+            <Text style={styles.collapsedTimeText}>{timeDisplay}</Text>
+
+            {/* Quick +30s Bump Pill */}
+            <TouchableOpacity
+              onPress={() => {
+                hapticLight();
+                onAdd();
+              }}
+              style={styles.quickAddPill}
+              hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }}
+            >
+              <Text style={styles.quickAddText}>+30s</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Animated.View>
       ) : (
         <View style={styles.expandedCapsule}>
           <View style={styles.dragGrip}>

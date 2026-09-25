@@ -1,11 +1,15 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withTiming, 
-  withSpring, 
-  Easing 
+﻿import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, LayoutChangeEvent } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  withSequence,
+  FadeIn,
+  FadeOut,
+  ZoomIn,
+  Easing,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -24,19 +28,19 @@ export const SPOTIFY_TAB_CONFIG: Record<string, {
   inactiveIcon: any;
   iconSet?: 'ionicons' | 'mci';
 }> = {
-  Home:       { name: 'Home',       activeIcon: 'home',             inactiveIcon: 'home-outline' },
-  Tasks:      { name: 'Tasks',      activeIcon: 'checkmark-circle', inactiveIcon: 'checkmark-circle-outline' },
-  Gym:        { name: 'Gym',        activeIcon: 'arm-flex',         inactiveIcon: 'arm-flex-outline', iconSet: 'mci' },
-  Calendar:   { name: 'Cal',        activeIcon: 'calendar-number',  inactiveIcon: 'calendar-number-outline' },
-  Habits:     { name: 'Habits',     activeIcon: 'sync',             inactiveIcon: 'sync-outline' },
-  Attendance:  { name: 'Attend',     activeIcon: 'id-card',          inactiveIcon: 'id-card-outline' },
-  Assignments: { name: 'Assign',     activeIcon: 'clipboard',        inactiveIcon: 'clipboard-outline' },
-  Grades:      { name: 'Grades',     activeIcon: 'calculator',       inactiveIcon: 'calculator-outline' },
-  Learning:   { name: 'Learn',      activeIcon: 'library',          inactiveIcon: 'library-outline' },
-  Notes:      { name: 'Notes',      activeIcon: 'folder',           inactiveIcon: 'folder-outline' },
-  Analytics:  { name: 'Stats',      activeIcon: 'bar-chart',        inactiveIcon: 'bar-chart-outline' },
-  Sara:       { name: 'SARA',       activeIcon: 'planet',           inactiveIcon: 'planet-outline' },
-  More:       { name: 'More',       activeIcon: 'apps',             inactiveIcon: 'apps-outline' },
+  Home:        { name: 'Home',   activeIcon: 'home',             inactiveIcon: 'home-outline' },
+  Tasks:       { name: 'Tasks',  activeIcon: 'checkmark-circle', inactiveIcon: 'checkmark-circle-outline' },
+  Gym:         { name: 'Gym',    activeIcon: 'arm-flex',         inactiveIcon: 'arm-flex-outline', iconSet: 'mci' },
+  Calendar:    { name: 'Cal',    activeIcon: 'calendar-number',  inactiveIcon: 'calendar-number-outline' },
+  Habits:      { name: 'Habits', activeIcon: 'sync',             inactiveIcon: 'sync-outline' },
+  Attendance:  { name: 'Attend', activeIcon: 'id-card',          inactiveIcon: 'id-card-outline' },
+  Assignments: { name: 'Assign', activeIcon: 'clipboard',        inactiveIcon: 'clipboard-outline' },
+  Grades:      { name: 'Grades', activeIcon: 'calculator',       inactiveIcon: 'calculator-outline' },
+  Learning:    { name: 'Learn',  activeIcon: 'library',          inactiveIcon: 'library-outline' },
+  Notes:       { name: 'Notes',  activeIcon: 'folder',           inactiveIcon: 'folder-outline' },
+  Analytics:   { name: 'Stats',  activeIcon: 'bar-chart',        inactiveIcon: 'bar-chart-outline' },
+  Sara:        { name: 'SARA',   activeIcon: 'planet',           inactiveIcon: 'planet-outline' },
+  More:        { name: 'More',   activeIcon: 'apps',             inactiveIcon: 'apps-outline' },
 };
 
 const DEFAULT_TAB_CONFIG = {
@@ -45,7 +49,7 @@ const DEFAULT_TAB_CONFIG = {
   inactiveIcon: 'ellipse-outline' as keyof typeof Ionicons.glyphMap,
 };
 
-// ─── Individual Tab Item Component ────────────────────────────────────────────
+// ─── Individual Tab Item ──────────────────────────────────────────────────────
 interface TabItemProps {
   route: any;
   isFocused: boolean;
@@ -70,18 +74,48 @@ const TabItem = React.memo(function TabItem({
     name: route.name,
   };
 
-  const scale = useSharedValue(isFocused ? 1.05 : 1);
+  // ── Icon bounce: WhatsApp-grade overshoot sequence ────────────────────────
+  const scale      = useSharedValue(isFocused ? 1.1 : 1);
+  const iconTransY = useSharedValue(0);
+  const labelOpacity = useSharedValue(isFocused ? 1 : 0.78);
+
+  const isFirstRender = useRef(true);
 
   useEffect(() => {
-    scale.value = withSpring(isFocused ? 1.05 : 1, {
-      damping: 22,
-      stiffness: 480,
-      mass: 0.5,
-    });
+    if (isFirstRender.current) {
+      // On first render don't animate — just snap to final state
+      isFirstRender.current = false;
+      return;
+    }
+
+    if (isFocused) {
+      // Overshoot → settle: 1.0 → 1.18 (80ms) → spring to 1.1
+      scale.value = withSequence(
+        withTiming(1.18, { duration: 80, easing: Easing.out(Easing.quad) }),
+        withSpring(1.1, { damping: 14, stiffness: 320, mass: 0.6 }),
+      );
+      // Micro pop upward then spring back
+      iconTransY.value = withSequence(
+        withTiming(-4, { duration: 80, easing: Easing.out(Easing.quad) }),
+        withSpring(0, { damping: 16, stiffness: 280, mass: 0.5 }),
+      );
+      labelOpacity.value = withTiming(1, { duration: 150, easing: Easing.out(Easing.quad) });
+    } else {
+      scale.value        = withSpring(1, { damping: 18, stiffness: 350, mass: 0.5 });
+      iconTransY.value   = withTiming(0, { duration: 120, easing: Easing.out(Easing.quad) });
+      labelOpacity.value = withTiming(0.78, { duration: 120, easing: Easing.out(Easing.quad) });
+    }
   }, [isFocused]);
 
   const animatedIconStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [
+      { scale: scale.value },
+      { translateY: iconTransY.value },
+    ],
+  }));
+
+  const animatedLabelStyle = useAnimatedStyle(() => ({
+    opacity: labelOpacity.value,
   }));
 
   const handlePress = useCallback(() => {
@@ -95,8 +129,7 @@ const TabItem = React.memo(function TabItem({
     }
   }, [route.key, route.name, isActuallyFocused, navigation]);
 
-  // Signature purple active / crisp white inactive (boosted for readability)
-  const activeColor = colors.accentPrimary || '#a599ff';
+  const activeColor   = colors.accentPrimary || '#a599ff';
   const inactiveColor = isDark ? 'rgba(255, 255, 255, 0.78)' : 'rgba(0, 0, 0, 0.62)';
 
   return (
@@ -109,7 +142,7 @@ const TabItem = React.memo(function TabItem({
       android_ripple={null}
     >
       <View style={styles.tabContent}>
-        {/* Perfectly proportioned 24px icon for 6-tab balance */}
+        {/* Icon with bounce animation */}
         <Animated.View style={[styles.iconBox, animatedIconStyle]}>
           {route.name === 'Calendar' ? (
             <DynamicCalendarIcon
@@ -131,41 +164,100 @@ const TabItem = React.memo(function TabItem({
             />
           )}
 
-          {/* Discrete notification badge */}
+          {/* Discrete notification badge — animated entrance */}
           {badge !== undefined && badge > 0 && (
-            <View
+            <Animated.View
+              key={badge}
+              entering={ZoomIn.duration(200).springify().damping(14)}
+              exiting={FadeOut.duration(120)}
               style={[
                 styles.badge,
                 {
                   backgroundColor: colors.error || '#FF453A',
-                  borderColor: isDark ? '#000000' : '#FFFFFF',
+                  borderColor:     isDark ? '#000000' : '#FFFFFF',
                 },
               ]}
             >
-              <Text style={styles.badgeText}>
-                {badge > 99 ? '99+' : badge}
-              </Text>
-            </View>
+              <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
+            </Animated.View>
           )}
         </Animated.View>
 
-        {/* Clean, well-spaced 10.5px label */}
-        <Text
+        {/* Label with opacity cross-fade */}
+        <Animated.Text
           numberOfLines={1}
           style={[
             styles.tabLabel,
+            animatedLabelStyle,
             {
-              color: isFocused ? activeColor : inactiveColor,
+              color:      isFocused ? activeColor : inactiveColor,
               fontFamily: isFocused ? FONT_FAMILY.bold : FONT_FAMILY.medium,
             },
           ]}
         >
           {config.name}
-        </Text>
+        </Animated.Text>
       </View>
     </Pressable>
   );
 });
+
+// ─── Animated Glowing Pill Indicator ─────────────────────────────────────────
+/**
+ * Renders a gradient pill that slides horizontally between tab positions.
+ * The pill's X position is driven by a shared value so it animates smoothly
+ * between any two tabs — including non-adjacent jumps.
+ */
+interface PillIndicatorProps {
+  activeIndex: number;
+  tabCount:    number;
+  tabWidth:    number;
+  colors:      any;
+}
+
+function PillIndicator({ activeIndex, tabCount, tabWidth, colors }: PillIndicatorProps) {
+  // Pill is 68% of each tab slot, centered within it
+  const PILL_W_RATIO = 0.68;
+  const pillWidth    = tabWidth * PILL_W_RATIO;
+  // centerOffset shifts the pill right so it sits centered within the tab slot
+  const centerOffset = (tabWidth - pillWidth) / 2;
+
+  // Spring target already includes center offset — avoids stale-closure in worklet
+  const pillX = useSharedValue(activeIndex * tabWidth + centerOffset);
+
+  useEffect(() => {
+    pillX.value = withSpring(activeIndex * tabWidth + centerOffset, {
+      damping:   22,
+      stiffness: 300,
+      mass:      0.6,
+    });
+  }, [activeIndex, tabWidth]);
+
+  const pillStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: pillX.value }],
+  }));
+
+  const accent = colors.accentPrimary || '#a599ff';
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.pillContainer,
+        { width: pillWidth },
+        pillStyle,
+      ]}
+    >
+      <LinearGradient
+        // Top-to-bottom: stronger tint at top, fading out at bottom
+        colors={[accent + '40', accent + '18']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={styles.pill}
+      />
+    </Animated.View>
+  );
+}
 
 // ─── Main Navigation Bar ──────────────────────────────────────────────────────
 type TelegramTabBarProps = BottomTabBarProps & { badges?: Record<string, number> };
@@ -177,9 +269,9 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
   badges: passedBadges,
 }: TelegramTabBarProps) {
   const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
-  const { pinnedModules } = usePinnedModules();
-  const hookBadges = useTabBarBadges();
+  const insets             = useSafeAreaInsets();
+  const { pinnedModules }  = usePinnedModules();
+  const hookBadges         = useTabBarBadges();
   const badges = (passedBadges && Object.keys(passedBadges).length > 0) ? passedBadges : hookBadges;
 
   const pinnedKey = (Array.isArray(pinnedModules) && pinnedModules.length > 0)
@@ -188,26 +280,22 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
 
   const effectivePinned = useMemo(() => pinnedKey.split(','), [pinnedKey]);
 
-  // Filter visible routes based on custom style and TabBarNullButton
+  // Filter and order visible routes
   const visibleRoutes = useMemo(() => {
     const unhidden = state.routes.filter((route) => {
       const { options } = descriptors[route.key];
       if (
         options.tabBarItemStyle &&
         (options.tabBarItemStyle as any).display === 'none'
-      ) {
-        return false;
-      }
+      ) return false;
       if (
         options.tabBarButton &&
         (options.tabBarButton as any).name === 'TabBarNullButton'
-      ) {
-        return false;
-      }
+      ) return false;
       return true;
     });
 
-    // Guarantee strict ordering: Home -> pinned modules in user's exact order -> More
+    // Strict ordering: Home → pinned modules (user order) → More
     return unhidden.sort((a, b) => {
       if (a.name === 'Home') return -1;
       if (b.name === 'Home') return 1;
@@ -223,10 +311,10 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
   }, [state.routes, descriptors, effectivePinned]);
 
   const activeRouteIndex = visibleRoutes.findIndex(
-    (route) => route.key === state.routes[state.index].key
+    (route) => route.key === state.routes[state.index].key,
   );
   const moreRouteIndex = visibleRoutes.findIndex(
-    (route) => route.name === 'More'
+    (route) => route.name === 'More',
   );
   const activeIndex =
     activeRouteIndex >= 0
@@ -235,46 +323,56 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
       ? moreRouteIndex
       : 0;
 
-  // Screen options hide (only when a full-screen modal explicitly requests tabBarStyle: { display: 'none' })
+  // Store raw row width; tabWidth is computed in render so it always uses
+  // the CURRENT visibleRoutes.length — avoids stale-closure drift when
+  // the route count changes after layout has already fired.
+  const [tabsRowWidth, setTabsRowWidth] = useState(0);
+  const onTabsRowLayout = useCallback((e: LayoutChangeEvent) => {
+    setTabsRowWidth(e.nativeEvent.layout.width);
+  }, []); // No dependency — raw width never goes stale
+
+  // Derived in render: guaranteed to reflect current tab count
+  const tabWidth = tabsRowWidth > 0
+    ? tabsRowWidth / Math.max(visibleRoutes.length, 1)
+    : 0;
+
+  // Hide animation (slide down when a full-screen modal requests it)
   const focusedOptions = descriptors[state.routes[state.index].key]?.options || {};
   const isScreenOptionsHidden =
     focusedOptions.tabBarStyle &&
     (focusedOptions.tabBarStyle as any).display === 'none';
 
-  const shouldHide = Boolean(isScreenOptionsHidden);
-  const translateY = useSharedValue(shouldHide ? 110 : 0);
-  const tabOpacity = useSharedValue(shouldHide ? 0 : 1);
+  const shouldHide   = Boolean(isScreenOptionsHidden);
+  const translateY   = useSharedValue(shouldHide ? 110 : 0);
+  const tabOpacity   = useSharedValue(shouldHide ? 0 : 1);
 
   useEffect(() => {
     translateY.value = withTiming(shouldHide ? 110 : 0, {
-      duration: 150,
-      easing: Easing.out(Easing.cubic),
+      duration: 220,
+      easing:   Easing.out(Easing.cubic),
     });
     tabOpacity.value = withTiming(shouldHide ? 0 : 1, {
-      duration: 150,
-      easing: Easing.out(Easing.cubic),
+      duration: 200,
+      easing:   Easing.out(Easing.quad),
     });
   }, [shouldHide]);
 
   const containerAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
-    opacity: tabOpacity.value,
+    opacity:   tabOpacity.value,
   }));
 
-  const bottomPadding = insets.bottom > 0 ? insets.bottom : 8;
-  // Total height of tabs row + bottom safe area
-  const tabBarHeight = 48 + 6 + bottomPadding; // paddingTop + tabsRow + bottomPadding
-  // Gradient starts 64px above the tab bar for a gentle, Spotify-style fade
+  const bottomPadding  = insets.bottom > 0 ? insets.bottom : 8;
+  const tabBarHeight   = 48 + 6 + bottomPadding;
   const gradientHeight = tabBarHeight + 64;
 
-  // Dark / light adaptive gradient stops — boosted for always-visible nav
   const gradientColors = isDark
     ? [
-        'rgba(0,0,0,0)',         // fully transparent at top
-        'rgba(0,0,0,0.30)',      // gentle start at 38%
-        'rgba(0,0,0,0.68)',      // solid mid-fade at 65%
-        'rgba(0,0,0,0.90)',      // very strong at 84%
-        'rgba(0,0,0,0.98)',      // near-solid behind icons
+        'rgba(0,0,0,0)',
+        'rgba(0,0,0,0.30)',
+        'rgba(0,0,0,0.68)',
+        'rgba(0,0,0,0.90)',
+        'rgba(0,0,0,0.98)',
       ] as const
     : [
         'rgba(244,243,248,0)',
@@ -285,7 +383,7 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
       ] as const;
 
   const currentRouteName = state.routes[state.index]?.name;
-  const isMoreActive = currentRouteName === 'More';
+  const isMoreActive     = currentRouteName === 'More';
 
   return (
     <Animated.View
@@ -296,7 +394,7 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
         containerAnimatedStyle,
       ]}
     >
-      {/* ── Spotify-style gradient fade (hidden on More screen) ── */}
+      {/* Spotify-style gradient fade (hidden on More screen) */}
       {!isMoreActive && (
         <LinearGradient
           colors={gradientColors}
@@ -306,17 +404,22 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
         />
       )}
 
-      {/* ── Tab bar sits at the bottom of the gradient block ── */}
-      <View
-        style={[
-          styles.dockedWrapper,
-          { paddingBottom: bottomPadding },
-        ]}
-      >
-        <View style={styles.tabsRow}>
+      {/* Tab bar row */}
+      <View style={[styles.dockedWrapper, { paddingBottom: bottomPadding }]}>
+        {/* Sliding pill indicator — rendered behind icons */}
+        {tabWidth > 0 && (
+          <PillIndicator
+            activeIndex={activeIndex}
+            tabCount={visibleRoutes.length}
+            tabWidth={tabWidth}
+            colors={colors}
+          />
+        )}
+
+        <View style={styles.tabsRow} onLayout={onTabsRowLayout}>
           {visibleRoutes.map((route, index) => {
-            const isVisuallyFocused = activeIndex === index;
-            const isActuallyFocused = state.routes[state.index].key === route.key;
+            const isVisuallyFocused  = activeIndex === index;
+            const isActuallyFocused  = state.routes[state.index].key === route.key;
 
             return (
               <TabItem
@@ -339,75 +442,92 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  // Outer container — tall enough to include gradient bleed above the tab icons
   outerWrapper: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    zIndex: 99,
-    // No background — the LinearGradient handles it
+    position:        'absolute',
+    bottom:          0,
+    left:            0,
+    right:           0,
+    zIndex:          99,
     backgroundColor: 'transparent',
   },
-  // Tab bar itself, pinned to the bottom of outerWrapper
   dockedWrapper: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingTop: 6,
+    position:        'absolute',
+    bottom:          0,
+    left:            0,
+    right:           0,
+    paddingTop:      6,
     backgroundColor: 'transparent',
   },
   tabsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    height: 48,
+    flexDirection:   'row',
+    alignItems:      'center',
+    justifyContent:  'space-between',
+    height:          48,
     backgroundColor: 'transparent',
-    paddingHorizontal: 2,
+    // No paddingHorizontal — removing it eliminates the coordinate-space
+    // mismatch between the pill (absolute in dockedWrapper) and the tabs.
   },
   tabButton: {
-    flex: 1,
-    flexBasis: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100%',
+    flex:            1,
+    flexBasis:       0,
+    alignItems:      'center',
+    justifyContent:  'center',
+    height:          '100%',
     backgroundColor: 'transparent',
     paddingHorizontal: 0,
   },
   tabContent: {
-    width: '100%',
-    alignItems: 'center',
+    width:          '100%',
+    alignItems:     'center',
     justifyContent: 'center',
   },
   iconBox: {
-    width: 26,
-    height: 26,
-    alignItems: 'center',
+    width:          26,
+    height:         26,
+    alignItems:     'center',
     justifyContent: 'center',
   },
   tabLabel: {
-    fontSize: 10,
-    marginTop: 2,
-    letterSpacing: 0,
-    textAlign: 'center',
+    fontSize:           10,
+    marginTop:          2,
+    letterSpacing:      0,
+    textAlign:          'center',
     includeFontPadding: false,
   },
   badge: {
-    position: 'absolute',
-    top: -3,
-    right: -8,
-    minWidth: 15,
-    height: 15,
-    borderRadius: 7.5,
-    alignItems: 'center',
-    justifyContent: 'center',
+    position:         'absolute',
+    top:              -3,
+    right:            -8,
+    minWidth:         15,
+    height:           15,
+    borderRadius:     7.5,
+    alignItems:       'center',
+    justifyContent:   'center',
     paddingHorizontal: 3,
-    borderWidth: 1.5,
+    borderWidth:      1.5,
   },
   badgeText: {
-    color: '#FFFFFF',
-    fontSize: 8.5,
+    color:      '#FFFFFF',
+    fontSize:   8.5,
     fontFamily: FONT_FAMILY.bold,
   },
+  // \u2500\u2500 Sliding pill indicator \u2500\u2500
+  pillContainer: {
+    position:     'absolute',
+    // dockedWrapper paddingTop:6 + tabsRow height:48.
+    // Tab content (icon 26px + gap 2px + label ~12px) centers in 48px
+    // occupying ~px4-44 within tabsRow = px10-50 within dockedWrapper.
+    // top:8 + height:44 = covers px8-52, giving 4px top inset and full label coverage.
+    top:          8,
+    left:         0,
+    height:       44,
+    zIndex:       0,
+    overflow:     'hidden',
+    borderRadius: 12,
+  },
+  pill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 12,
+  },
 });
+

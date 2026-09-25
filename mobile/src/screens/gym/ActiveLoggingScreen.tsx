@@ -412,6 +412,7 @@ export default function ActiveLoggingScreen() {
   const [overloadSuggestion, setOverloadSuggestion] = useState<any | null>(null);
   const [lastTimeData, setLastTimeData] = useState<string | null>(null);
   const interactionsSettledRef = useRef(false);
+  const lastBannerExKeyRef = useRef<string>('');
 
   // Debounce ref for widget sync — prevents bridge calls on every rest-timer tick
   const widgetSyncDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -531,31 +532,49 @@ export default function ActiveLoggingScreen() {
     );
   }, [exercise?.supersetGroup, activeExercises, safeIdx]);
 
-  // ── FIX 2 (continued): Compute overloadSuggestion + lastTimeData after interactions settle.
-  // These functions scan the full gymLogs history (O(N×M) across sessions × exercises).
-  // Deferring via InteractionManager ensures the push slide animation completes at 60fps
-  // before any heavy computation starts. The banner simply renders null until then.
+  const targetDateStr = date || todayStr();
+  // Filter historical gym logs strictly BEFORE targetDateStr so today's live sets don't churn history
+  const pastGymLogs = useMemo(() => {
+    if (!gymLogs || gymLogs.length === 0) return [];
+    return gymLogs.filter(l => l.date < targetDateStr);
+  }, [gymLogs, targetDateStr]);
+
+  // ── Compute overloadSuggestion + lastTimeData without layout collapse flickers.
+  // 1. Only wipe banner to null if user genuinely switched to a DIFFERENT exercise.
+  // 2. Evaluates against past completed sessions (before today) so logging sets today never triggers recalculations.
+  // 3. Fallback baseline weight uses previous session weight so suggestion displays on set 1 without popping in late.
   useEffect(() => {
-    if (!exercise || !gymLogs) return;
-    interactionsSettledRef.current = false;
-    setOverloadSuggestion(null);
-    setLastTimeData(null);
+    if (!exercise) return;
+    const currentExId = exercise.exerciseId || exercise.name || '';
+    const currentExKey = `${currentExId}-${activeExIndex}`;
+    const isDifferentExercise = currentExKey !== lastBannerExKeyRef.current;
+
+    if (isDifferentExercise) {
+      lastBannerExKeyRef.current = currentExKey;
+      interactionsSettledRef.current = false;
+      setOverloadSuggestion(null);
+      setLastTimeData(null);
+    }
 
     const task = InteractionManager.runAfterInteractions(() => {
       interactionsSettledRef.current = true;
-      // Overload suggestion
-      const curWeight = calculateExerciseMaxWeight(exercise as any);
+      // Overload suggestion: evaluate against past completed sessions before today
+      const prevSession = getPreviousExerciseSession(exercise.name, pastGymLogs, targetDateStr);
+      const curWeight = calculateExerciseMaxWeight(exercise as any) ||
+        prevSession?.lastWeight ||
+        Number(exercise.lastSessionSets?.[0]?.weight) ||
+        0;
+
       const suggestion = getOverloadSuggestion(
         exercise,
         curWeight,
         exercise.targetSets || 3,
         String(exercise.targetReps || '8'),
-        gymLogs
+        pastGymLogs
       );
       setOverloadSuggestion(suggestion);
 
       // Last-session stats banner
-      const prevSession = getPreviousExerciseSession(exercise.name, gymLogs, date || todayStr());
       if (prevSession && prevSession.sets.length > 0) {
         const weightPart = prevSession.lastWeight ? `@ ${prevSession.lastWeight}kg` : '';
         const repsPart = prevSession.avgReps ? `${prevSession.avgReps} reps` : '';
@@ -566,7 +585,7 @@ export default function ActiveLoggingScreen() {
     });
 
     return () => task.cancel();
-  }, [exercise?.exerciseId, exercise?.name, activeExIndex, gymLogs, date]);
+  }, [exercise?.exerciseId, exercise?.name, activeExIndex, pastGymLogs, targetDateStr]);
 
   // ── FIX 1 (continued): Sync setInputs when exercise changes or setsLog mutates.
   // This replaces the old 'initialize from scratch' useEffect with a lightweight
@@ -851,7 +870,7 @@ export default function ActiveLoggingScreen() {
     if (repReps) handleTextChange(targetIdx, 'reps', repReps);
   }, [exercise, activeSetIndex, setInputs, overloadSuggestion, handleTextChange]);
 
-  const handleNextExercise = useCallback(() => {
+  const handleNextExercise = useCallback(async () => {
     Keyboard.dismiss();
     if (activeExIndex < exercises.length - 1) {
       hapticMedium();
@@ -859,7 +878,7 @@ export default function ActiveLoggingScreen() {
     } else {
       hapticSuccess();
       clearRestTimer();
-      endWorkout(true);
+      await endWorkout(true);
       navigation.replace('WorkoutSummary', { date });
     }
   }, [activeExIndex, exercises.length, clearRestTimer, endWorkout, navigation, date]);

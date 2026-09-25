@@ -118,7 +118,7 @@ export interface StorageNode {
   id?: string; userId: string; type: "folder" | "file" | "note"; name: string;
   parentId: string | null; fileType?: "pdf" | "docx" | "image" | "other";
   size?: number; url?: string; content?: string; createdAt: any; updatedAt: any;
-  pinned?: boolean; tags?: string[];
+  pinned?: boolean; tags?: string[]; locationPath?: string;
 }
 
 export interface Note { id: string; title: string; content: string; tags?: string[]; createdAt?: any; userId: string; }

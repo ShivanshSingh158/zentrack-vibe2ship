@@ -659,24 +659,9 @@ export function parseNLTask(rawInput: string): ParsedTask {
     }
   }
 
-  // ── 0c. LOCATION TRIGGER ("at gym", "in college", "at library", "at home", etc.) ───
-  let locationReminder: any = null;
+  // ── 0c. LOCATION TRIGGER REMOVED PER USER PREFERENCE ───
+  let locationReminder: any = undefined;
   let locationName: string | undefined = undefined;
-  {
-    const locRe = /\b(?:at|in|near)\s+(?:the\s+)?(gym|fitness\s+center|sports\s+complex|campus|college|university|school|classroom|lecture\s+hall|library|hostel|lab|laboratory|office|work|workplace|home|house|canteen|cafeteria|market|supermarket|grocery\s+store|mall|store|pharmacy|medical\s+store|clinic|hospital|bank|post\s+office|airport|station)\b/i;
-    const lm = text.match(locRe);
-    if (lm) {
-      const rawLoc = lm[1].trim();
-      const capitalized = rawLoc.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-      locationName = capitalized;
-      locationReminder = {
-        placeName: capitalized,
-        triggerType: 'arrive',
-        radius: 150,
-      };
-      registerToken('location', lm[0], `📍 ${capitalized}`);
-    }
-  }
 
   // ── 0d. REMINDER INTENT ("remind", "remind me to", "with alarm", "with reminder", etc.) ───
   let isReminder = false;

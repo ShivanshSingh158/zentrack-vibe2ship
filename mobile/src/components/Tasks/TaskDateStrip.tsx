@@ -1,5 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withSequence,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import AnimatedPressable from '../AnimatedPressable';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -51,6 +60,72 @@ const generateDates = (baseDateStr: string) => {
   return dates;
 };
 
+const DatePillItem = React.memo(function DatePillItem({
+  dateObj,
+  taskDates,
+  onSelectDate,
+  colors,
+  styles,
+}: {
+  dateObj: DateObj;
+  taskDates?: Set<string>;
+  onSelectDate: (dateStr: string) => void;
+  colors: any;
+  styles: any;
+}) {
+  const isActive = dateObj.active;
+  const numScale = useSharedValue(isActive ? 1.08 : 1);
+
+  React.useEffect(() => {
+    if (isActive) {
+      numScale.value = withSequence(
+        withTiming(1.08, { duration: 100, easing: Easing.out(Easing.cubic) }),
+        withSpring(1.0, { damping: 26, stiffness: 260 })
+      );
+    } else {
+      numScale.value = withTiming(1, { duration: 140, easing: Easing.out(Easing.cubic) });
+    }
+  }, [isActive]);
+
+  const animNumStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: numScale.value }],
+  }));
+
+  const handlePress = useCallback(() => {
+    Haptics.selectionAsync();
+    onSelectDate(dateObj.dateStr);
+  }, [onSelectDate, dateObj.dateStr]);
+
+  return (
+    <AnimatedPressable
+      style={[styles.dateItem, isActive && styles.dateItemActive]}
+      scaleTo={0.95}
+      onPress={handlePress}
+    >
+      <Text style={[styles.dateDay, isActive && styles.dateDayActive, dateObj.isToday && !isActive && { color: colors.accentPrimary }]}>
+        {dateObj.dayShort}
+      </Text>
+      <Animated.Text
+        style={[
+          styles.dateNum,
+          isActive && styles.dateNumActive,
+          dateObj.isToday && !isActive && { color: colors.accentPrimary },
+          animNumStyle,
+        ]}
+      >
+        {dateObj.dateNum}
+      </Animated.Text>
+      {/* Dot indicator */}
+      <View style={[
+        styles.dot, 
+        isActive ? styles.dotActive : null, 
+        taskDates?.has(dateObj.dateStr) ? styles.dotVisible : null,
+        dateObj.isToday && !isActive && { backgroundColor: colors.accentPrimary }
+      ]} />
+    </AnimatedPressable>
+  );
+});
+
 export const TaskDateStrip = React.memo(function TaskDateStrip({ selectedDate, onSelectDate, taskDates, style }: TaskDateStripProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
@@ -69,30 +144,16 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({ selectedDate, o
       
       {/* Dates Row */}
       <View style={styles.dateRow}>
-        {dates.map((d, i) => {
-          const isActive = d.active;
-          return (
-            <AnimatedPressable
-              key={i}
-              style={[styles.dateItem, isActive && styles.dateItemActive]}
-              onPress={() => onSelectDate(d.dateStr)}
-            >
-              <Text style={[styles.dateDay, isActive && styles.dateDayActive, d.isToday && !isActive && { color: colors.accentPrimary }]}>
-                {d.dayShort}
-              </Text>
-              <Text style={[styles.dateNum, isActive && styles.dateNumActive, d.isToday && !isActive && { color: colors.accentPrimary }]}>
-                {d.dateNum}
-              </Text>
-              {/* Dot indicator */}
-              <View style={[
-                styles.dot, 
-                isActive ? styles.dotActive : null, 
-                taskDates?.has(d.dateStr) ? styles.dotVisible : null,
-                d.isToday && !isActive && { backgroundColor: colors.accentPrimary }
-              ]} />
-            </AnimatedPressable>
-          );
-        })}
+        {dates.map((d, i) => (
+          <DatePillItem
+            key={i}
+            dateObj={d}
+            taskDates={taskDates}
+            onSelectDate={onSelectDate}
+            colors={colors}
+            styles={styles}
+          />
+        ))}
       </View>
     </View>
   );

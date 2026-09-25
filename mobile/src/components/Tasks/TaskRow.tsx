@@ -10,6 +10,7 @@ import Animated, {
   Easing,
   FadeInDown,
   FadeOut,
+  SlideOutLeft,
   LinearTransition,
   runOnJS,
 } from 'react-native-reanimated';
@@ -24,7 +25,7 @@ const today = new Date().toISOString().slice(0, 10);
 
 // Module-level constant — avoids creating a new animation config object on every
 // renderItem call. Reanimated uses reference equality to bail out no-op updates.
-const TASK_ENTER_ANIM = FadeInDown.duration(220).springify().damping(20).stiffness(200);
+const TASK_ENTER_ANIM = FadeInDown.duration(180).easing(Easing.bezier(0.16, 1, 0.3, 1));
 
 interface TaskRowProps {
   task: Task;
@@ -33,6 +34,7 @@ interface TaskRowProps {
   onReschedule: () => void;
   onPress: () => void;
   onLongPress: () => void;
+  onDelete?: (task: Task) => void;
   isOverdue: boolean;
   isBulkEdit?: boolean;
   isSelected?: boolean;
@@ -111,17 +113,173 @@ const getFormatSubtext = (task: Task, isOverdue: boolean, priorityColor: string 
   return null;
 };
 
-const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart, onReschedule, onPress, onLongPress, isOverdue, isBulkEdit, isSelected, onToggleSelect, onUpdateTask, onAddSubtask }: TaskRowProps) {
+const PARTICLE_COLORS = ['#5eda9e', '#a599ff', '#ff9f4d', '#38bdf8', '#ff6961', '#facc15'];
+const PARTICLE_ANGLES = [0, 60, 120, 180, 240, 300];
+
+const ParticleDot = React.memo(function ParticleDot({
+  angle,
+  color,
+  progress,
+}: {
+  angle: number;
+  color: string;
+  progress: { value: number };
+}) {
+  const rad = (angle * Math.PI) / 180;
+  const dist = 18;
+  const targetX = Math.cos(rad) * dist;
+  const targetY = Math.sin(rad) * dist;
+
+  const style = useAnimatedStyle(() => {
+    'worklet';
+    const p = progress.value;
+    if (p <= 0.01) return { opacity: 0 };
+    return {
+      opacity: 1 - p,
+      transform: [
+        { translateX: targetX * p },
+        { translateY: targetY * p },
+        { scale: Math.max(0.2, 1.25 - p * 0.7) },
+      ],
+    };
+  });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        {
+          position: 'absolute',
+          width: 4,
+          height: 4,
+          borderRadius: 2,
+          backgroundColor: color,
+          top: 8,
+          left: 8,
+        },
+        style,
+      ]}
+    />
+  );
+});
+
+interface SubtaskRowItemProps {
+  subtask: { id: string; title: string; completed: boolean };
+  index: number;
+  totalSubtasks: number;
+  allSubtasks: { id: string; title: string; completed: boolean }[];
+  taskId?: string;
+  onUpdateTask?: (taskId: string, updates: Partial<Task>) => void;
+  onCompleteParent: () => void;
+  isDark: boolean;
+  styles: any;
+}
+
+const SubtaskRowItem = React.memo(function SubtaskRowItem({
+  subtask,
+  index,
+  totalSubtasks,
+  allSubtasks,
+  taskId,
+  onUpdateTask,
+  onCompleteParent,
+  isDark,
+  styles,
+}: SubtaskRowItemProps) {
+  const checkScale = useSharedValue(1);
+
+  const animCheckStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: checkScale.value }],
+  }));
+
+  const handleToggle = useCallback(() => {
+    if (!onUpdateTask || !taskId) return;
+    Haptics.selectionAsync();
+
+    // Apple iOS crisp tactile tap
+    checkScale.value = withSequence(
+      withTiming(0.85, { duration: 60, easing: Easing.out(Easing.quad) }),
+      withTiming(1.08, { duration: 80, easing: Easing.out(Easing.cubic) }),
+      withTiming(1, { duration: 60, easing: Easing.out(Easing.cubic) })
+    );
+
+    const willBeCompleted = !subtask.completed;
+    const newSubtasks = allSubtasks.map((st, i) =>
+      i === index ? { ...st, completed: willBeCompleted } : st
+    );
+    const newCompletedCount = newSubtasks.filter(s => s.completed).length;
+
+    if (newCompletedCount === totalSubtasks && willBeCompleted) {
+      onUpdateTask(taskId, { subtasks: newSubtasks });
+      setTimeout(() => {
+        onCompleteParent();
+      }, 300);
+    } else {
+      onUpdateTask(taskId, { subtasks: newSubtasks });
+    }
+  }, [onUpdateTask, taskId, allSubtasks, index, subtask, totalSubtasks, onCompleteParent, checkScale]);
+
+  return (
+    <TouchableOpacity
+      style={styles.subtaskItem}
+      activeOpacity={0.7}
+      onPress={handleToggle}
+    >
+      <Animated.View
+        style={[
+          styles.subtaskCheckbox,
+          subtask.completed && styles.subtaskCheckboxDone,
+          animCheckStyle,
+        ]}
+      >
+        {subtask.completed && (
+          <Ionicons name="checkmark" size={10} color={isDark ? '#000000' : '#FFFFFF'} />
+        )}
+      </Animated.View>
+      <Text style={[styles.subtaskTitle, subtask.completed && styles.subtaskTitleDone]}>
+        {subtask.title}
+      </Text>
+    </TouchableOpacity>
+  );
+});
+
+const TaskRow = React.memo(function TaskRow({
+  task,
+  onComplete,
+  onCompleteStart,
+  onReschedule,
+  onPress,
+  onLongPress,
+  onDelete,
+  isOverdue,
+  isBulkEdit,
+  isSelected,
+  onToggleSelect,
+  onUpdateTask,
+  onAddSubtask,
+}: TaskRowProps) {
   const { colors, isDark } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
   const swipeableRef = useRef<Swipeable>(null);
   const checkScale = useSharedValue(1);
+  const burstProgress = useSharedValue(0);
   const rowTranslateX = useSharedValue(0);
   const rowOpacity = useSharedValue(1);
   const [isCompleting, setIsCompleting] = React.useState(false);
   const isDone = task.status === 'completed' || isCompleting;
+  const isRowSelected = Boolean(isBulkEdit && isSelected);
   const [isExpanded, setIsExpanded] = React.useState(false);
+
+  // Chevron 180° rotation worklet
+  const chevronRotation = useSharedValue(isExpanded ? 180 : 0);
+  React.useEffect(() => {
+    chevronRotation.value = withTiming(isExpanded ? 180 : 0, { duration: 180, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
+  }, [isExpanded]);
+
+  const animatedChevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${chevronRotation.value}deg` }],
+  }));
 
   // Animated strikethrough, dissolve & card recession
   const strikeProgress = useSharedValue(isDone ? 1 : 0);
@@ -238,20 +396,25 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
   }));
 
   const handleComplete = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     if (!isDone) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       if (onCompleteStart) onCompleteStart();
       setIsCompleting(true);
+      burstProgress.value = withSequence(
+        withTiming(1, { duration: 320, easing: Easing.out(Easing.cubic) }),
+        withTiming(0, { duration: 0 })
+      );
       checkScale.value = withSequence(
-        withTiming(0.8, { duration: 100 }),
-        withTiming(1.2, { duration: 150 }),
-        withTiming(1.0, { duration: 100 }, () => { runOnJS(onComplete)(); })
+        withTiming(0.8, { duration: 85 }),
+        withTiming(1.25, { duration: 140 }),
+        withTiming(1.0, { duration: 90 }, () => { runOnJS(onComplete)(); })
       );
     } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setIsCompleting(false);
       onComplete();
     }
-  }, [onComplete, onCompleteStart, isDone, checkScale]);
+  }, [onComplete, onCompleteStart, isDone, checkScale, burstProgress]);
 
   const handleLongPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -274,18 +437,40 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
     );
   }, [colors, styles]);
 
-  const renderRightActions = useCallback(() => (
-    <View style={styles.actionRightContainer}>
-      <TouchableOpacity style={[styles.actionRight, { backgroundColor: colors.accentPrimary }]} onPress={onReschedule}>
-        <Ionicons name="calendar-outline" size={20} color="#fff" />
-      </TouchableOpacity>
-      {onAddSubtask && (
-         <TouchableOpacity style={[styles.actionRight, { backgroundColor: isDark ? '#3A3A3C' : '#6B7280' }]} onPress={onAddSubtask}>
-          <Ionicons name="list-outline" size={20} color="#fff" />
+  const renderRightActions = useCallback((progress: any, _dragX: any) => {
+    const scale = progress.interpolate({
+      inputRange: [0, 0.6, 1],
+      outputRange: [0.7, 0.9, 1.1],
+      extrapolate: 'clamp',
+    });
+
+    return (
+      <View style={styles.actionRightContainer}>
+        {onDelete && (
+          <TouchableOpacity
+            style={[styles.actionRight, { backgroundColor: '#FF453A' }]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              swipeableRef.current?.close();
+              onDelete(task);
+            }}
+          >
+            <RNAnimated.View style={{ transform: [{ scale }] }}>
+              <Ionicons name="trash-outline" size={20} color="#fff" />
+            </RNAnimated.View>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={[styles.actionRight, { backgroundColor: colors.accentPrimary }]} onPress={onReschedule}>
+          <Ionicons name="calendar-outline" size={20} color="#fff" />
         </TouchableOpacity>
-      )}
-    </View>
-  ), [onReschedule, onAddSubtask, colors, isDark, styles]);
+        {onAddSubtask && (
+          <TouchableOpacity style={[styles.actionRight, { backgroundColor: isDark ? '#3A3A3C' : '#6B7280' }]} onPress={onAddSubtask}>
+            <Ionicons name="list-outline" size={20} color="#fff" />
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }, [onDelete, task, onReschedule, onAddSubtask, colors, isDark, styles]);
 
   const handleSwipeOpen = useCallback((direction: string) => {
     if (direction === 'left') {
@@ -300,7 +485,7 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
       renderLeftActions={renderLeftActions}
       renderRightActions={renderRightActions}
       onSwipeableWillOpen={(direction) => {
-        if (direction === 'left') {
+        if (direction === 'left' || direction === 'right') {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         }
       }}
@@ -309,34 +494,51 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
     >
       <Animated.View
         entering={TASK_ENTER_ANIM}
-        exiting={FadeOut.duration(160)}
+        exiting={SlideOutLeft.duration(200)}
         layout={LinearTransition.springify().damping(20).stiffness(200)}
         style={animatedRowStyle}
       >
         <View
-          style={[styles.row, isSelected && { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.08)' : 'rgba(108, 92, 231, 0.08)' }]}
+          style={[styles.row, isRowSelected && { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.08)' : 'rgba(108, 92, 231, 0.08)' }]}
         >
+          {/* 1. Dedicated Circular Checkbox Touch Target */}
           <TouchableOpacity
-            style={styles.leftHalf}
+            style={styles.checkArea}
             onPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleComplete}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            activeOpacity={0.7}
+          >
+            {/* WhatsApp-Style Celebration Micro-Burst */}
+            {PARTICLE_ANGLES.map((ang, idx) => (
+              <ParticleDot
+                key={idx}
+                angle={ang}
+                color={PARTICLE_COLORS[idx % PARTICLE_COLORS.length]}
+                progress={burstProgress}
+              />
+            ))}
+
+            <Animated.View style={[
+              styles.checkbox, 
+              isDone && !isBulkEdit && styles.checkboxDone, 
+              isRowSelected && styles.checkboxSelected,
+              animatedCheckStyle
+            ]}>
+              {isRowSelected ? (
+                 <Ionicons name="checkmark" size={12} color={isDark ? '#000000' : '#FFFFFF'} />
+              ) : (
+                 isDone && <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+              )}
+            </Animated.View>
+          </TouchableOpacity>
+
+          {/* 2. Unified Row Body (Tapping opens edit modal, holding opens context menu) */}
+          <TouchableOpacity
+            style={styles.rowBody}
+            onPress={isBulkEdit && onToggleSelect ? onToggleSelect : onPress}
             onLongPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleLongPress}
             activeOpacity={0.75}
           >
-            <View style={styles.checkArea}>
-              <Animated.View style={[
-                styles.checkbox, 
-                isDone && !isBulkEdit && styles.checkboxDone, 
-                isSelected && styles.checkboxSelected,
-                animatedCheckStyle
-              ]}>
-                {isBulkEdit ? (
-                   isSelected && <Ionicons name="checkmark" size={12} color={isDark ? '#000000' : '#FFFFFF'} />
-                ) : (
-                   isDone && <Ionicons name="checkmark" size={12} color={isDark ? '#000000' : '#FFFFFF'} />
-                )}
-              </Animated.View>
-            </View>
-
             <View style={styles.content}>
               {/* Title with Animated Strikethrough Line */}
               <View style={styles.titleWrapper}>
@@ -362,7 +564,9 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
                   <Text style={styles.subtaskProgressText}>
                     {completedSubtasks}/{totalSubtasks} subtasks
                   </Text>
-                  <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={12} color={colors.textTertiary} style={{ marginLeft: 4 }} />
+                  <Animated.View style={[{ marginLeft: 4 }, animatedChevronStyle]}>
+                    <Ionicons name="chevron-down" size={12} color={colors.textTertiary} />
+                  </Animated.View>
                 </TouchableOpacity>
               )}
 
@@ -380,81 +584,60 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
                 </View>
               )}
             </View>
-          </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.rightHalf}
-            onPress={isBulkEdit && onToggleSelect ? onToggleSelect : onPress}
-            onLongPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleLongPress}
-            activeOpacity={0.75}
-          >
-            {/* Live Now Pulsing Status Chip */}
-            {isLiveNow && !isDone && (
-              <View style={styles.liveNowPill}>
-                <Animated.View style={[styles.liveDot, animatedPulseStyle]} />
-                <Text style={styles.liveNowText}>In Progress • {liveNowInfo?.remainingMins}m left</Text>
-              </View>
-            )}
+            <View style={styles.rightSide}>
+              {/* Live Now Pulsing Status Chip */}
+              {isLiveNow && !isDone && (
+                <View style={styles.liveNowPill}>
+                  <Animated.View style={[styles.liveDot, animatedPulseStyle]} />
+                  <Text style={styles.liveNowText}>In Progress • {liveNowInfo?.remainingMins}m left</Text>
+                </View>
+              )}
 
-            {/* Overdue Radar Badge */}
-            {isOverdue && !isDone && !isLiveNow && (
-              <View style={styles.overdueRadarPill}>
-                <Animated.View style={[styles.overdueDot, animatedPulseStyle]} />
-                <Text style={styles.overdueRadarText}>{overdueText}</Text>
-              </View>
-            )}
+              {/* Overdue Radar Badge */}
+              {isOverdue && !isDone && !isLiveNow && (
+                <View style={styles.overdueRadarPill}>
+                  <Animated.View style={[styles.overdueDot, animatedPulseStyle]} />
+                  <Text style={styles.overdueRadarText}>{overdueText}</Text>
+                </View>
+              )}
 
-            {subtextData && !isDone && !isOverdue && !isLiveNow && (
-              <View style={styles.subtextRowRight}>
-                <Ionicons name={subtextData.icon} size={12} color={subtextData.color} style={{ marginRight: 4 }} />
-                <Text style={[styles.subtext, { color: subtextData.color, fontFamily: priorityColor ? 'Inter_600SemiBold' : 'Inter_500Medium' }]}>
-                  {subtextData.text}
-                </Text>
-                {subtextData.icon === 'time-outline' && (
-                   <Ionicons name="repeat" size={10} color={subtextData.color} style={{ marginLeft: 6, opacity: 0.7 }} />
-                )}
-              </View>
-            )}
+              {subtextData && !isDone && !isOverdue && !isLiveNow && (
+                <View style={styles.subtextRowRight}>
+                  <Ionicons name={subtextData.icon} size={12} color={subtextData.color} style={{ marginRight: 4 }} />
+                  <Text style={[styles.subtext, { color: subtextData.color, fontFamily: priorityColor ? 'Inter_600SemiBold' : 'Inter_500Medium' }]}>
+                    {subtextData.text}
+                  </Text>
+                  {subtextData.icon === 'time-outline' && (
+                     <Ionicons name="repeat" size={10} color={subtextData.color} style={{ marginLeft: 6, opacity: 0.7 }} />
+                  )}
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
         </View>
 
         {/* ── Subtask Smooth Accordion Fold ── */}
         {isExpanded && hasSubtasks && !isDone && (
           <Animated.View
-            entering={FadeInDown.duration(200).springify().damping(18)}
-            exiting={FadeOut.duration(140)}
-            layout={LinearTransition.springify().damping(18).stiffness(180)}
+            entering={FadeInDown.duration(180).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+            exiting={FadeOut.duration(120)}
+            layout={LinearTransition.duration(160).easing(Easing.bezier(0.25, 0.1, 0.25, 1))}
             style={styles.subtaskList}
           >
             {task.subtasks!.map((st, idx) => (
-              <TouchableOpacity 
-                key={st.id || idx} 
-                style={styles.subtaskItem}
-                activeOpacity={0.7}
-                onPress={() => {
-                  if (!onUpdateTask || !task.id) return;
-                  Haptics.selectionAsync();
-                  const newSubtasks = [...task.subtasks!];
-                  newSubtasks[idx] = { ...st, completed: !st.completed };
-                  const newCompletedCount = newSubtasks.filter(s => s.completed).length;
-                  
-                  if (newCompletedCount === totalSubtasks && !st.completed) {
-                    onUpdateTask(task.id, { subtasks: newSubtasks });
-                    setTimeout(() => {
-                      handleComplete();
-                    }, 300);
-                  } else {
-                    onUpdateTask(task.id, { subtasks: newSubtasks });
-                  }
-                }}
-              >
-                <View style={[styles.subtaskCheckbox, st.completed && styles.subtaskCheckboxDone]}>
-                  {st.completed && <Ionicons name="checkmark" size={10} color={isDark ? '#000000' : '#FFFFFF'} />}
-                </View>
-                <Text style={[styles.subtaskTitle, st.completed && styles.subtaskTitleDone]}>
-                  {st.title}
-                </Text>
-              </TouchableOpacity>
+              <SubtaskRowItem
+                key={st.id || idx}
+                subtask={st}
+                index={idx}
+                totalSubtasks={totalSubtasks}
+                allSubtasks={task.subtasks!}
+                taskId={task.id}
+                onUpdateTask={onUpdateTask}
+                onCompleteParent={handleComplete}
+                isDark={isDark}
+                styles={styles}
+              />
             ))}
           </Animated.View>
         )}
@@ -473,7 +656,8 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
     prev.task.tags === next.task.tags &&
     prev.isOverdue === next.isOverdue &&
     prev.isBulkEdit === next.isBulkEdit &&
-    prev.isSelected === next.isSelected
+    prev.isSelected === next.isSelected &&
+    prev.onDelete === next.onDelete
   );
 });
 
@@ -482,31 +666,33 @@ export default TaskRow;
 const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   row: {
     flexDirection: 'row',
-    alignItems: 'stretch',
+    alignItems: 'flex-start',
     borderBottomWidth: 1,
     borderBottomColor: isDark ? '#18181b' : colors.border,
     backgroundColor: isDark ? '#000000' : colors.surface,
+    paddingVertical: 10,
+    paddingLeft: 4,
+    paddingRight: 4,
   },
-  leftHalf: {
+  rowBody: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingVertical: 10,
-    paddingLeft: 4,
-    paddingRight: 8,
+    justifyContent: 'space-between',
   },
-  rightHalf: {
+  rightSide: {
     alignItems: 'flex-end',
     justifyContent: 'flex-start',
-    paddingVertical: 10,
-    paddingRight: 4,
     paddingLeft: 8,
+    paddingRight: 4,
     minWidth: 80,
   },
   checkArea: {
-    paddingRight: 14,
+    paddingRight: 12,
+    paddingTop: 1,
     height: 20,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   checkbox: {
     width: 20,

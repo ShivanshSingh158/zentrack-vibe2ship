@@ -28,9 +28,6 @@ import VoiceDictationOverlay from '../../components/Tasks/VoiceDictationOverlay'
 import RecurrencePickerModal from '../../components/Tasks/RecurrencePickerModal';
 import UniversalCalendarModal from '../../components/UniversalCalendarModal';
 import AnimatedPressable from '../../components/AnimatedPressable';
-import { LocationPickerModal } from '../../components/Tasks/LocationPickerModal';
-import { saveTaskLocationReminder } from '../../services/geofenceService';
-import type { TaskLocationTrigger } from '../../types/locationReminder.types';
 import { parseNLTask, ParsedTask, NLPToken, parseLocalDate, toYMD, cleanTaskTitle, formatRecurrenceLabel } from '../../utils/dateUtils';
 import { isSilenceOrNoise } from '../../services/voiceEngine';
 import {
@@ -114,10 +111,6 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   const [taskDate, setTaskDate] = useState(selectedDate);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
-  // Location Reminder
-  const [locationTrigger, setLocationTrigger] = useState<TaskLocationTrigger | null>(null);
-  const [showLocationPicker, setShowLocationPicker] = useState(false);
-
   // Reminder / Alarm Mode
   const [isReminder, setIsReminder] = useState(false);
 
@@ -165,9 +158,6 @@ export const NewTaskModal = React.memo(function NewTaskModal({
         setSubtasks(parsed.subtasks);
         setShowSubtasks(true);
       }
-      if (parsed.locationReminder) {
-        setLocationTrigger(parsed.locationReminder);
-      }
     }, 300);
   }, [priority]);
 
@@ -181,7 +171,6 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     if (type === 'reminder')   { setIsReminder(false); }
     if (type === 'tag')        { removeSelectedTag(display.replace(/^#/, '')); }
     if (type === 'subtask')    { setSubtasks([]); setShowSubtasks(false); }
-    if (type === 'location')   { setLocationTrigger(null); }
     // Splice the matched span out of the raw title and re-parse
     const cleaned = (title.slice(0, start) + title.slice(end)).replace(/\s{2,}/g, ' ').trim();
     setTitle(cleaned);
@@ -245,7 +234,6 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     setSubtasks([]); setSubtaskInput(''); setShowSubtasks(false);
     setIsCalendarOpen(false); setNlpParsed(null); setNlpDuration(null);
     setSelectedTags([]); setNewTagInput(''); setShowTagInput(false);
-    setLocationTrigger(null);
     setIsReminder(false);
     setOneTimeDates(undefined);
   }, []);
@@ -290,7 +278,6 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       }
       if (pt.isReminder) setIsReminder(true);
       if (pt.durationMinutes) setNlpDuration(pt.durationMinutes);
-      if (pt.locationReminder) setLocationTrigger(pt.locationReminder);
     }
   };
 
@@ -454,25 +441,12 @@ export const NewTaskModal = React.memo(function NewTaskModal({
         estimatedMinutes: est, isRecurring: false, recurrenceRule: undefined,
         recurringSourceId: undefined, subject: undefined, tags: selectedTags,
         order: listCount, subtasks: subtaskObjects,
-        locationReminder: locationTrigger || undefined,
         isReminder: finalIsReminder || undefined,
       };
 
       optimisticAddTask(taskPayload);
       if (finalIsReminder || ts) {
         scheduleSingleTaskReminder(taskPayload).catch(console.warn);
-      }
-
-      if (locationTrigger) {
-        saveTaskLocationReminder({
-          taskId,
-          taskTitle: finalTitle,
-          placeName: locationTrigger.placeName,
-          latitude: locationTrigger.latitude,
-          longitude: locationTrigger.longitude,
-          radius: locationTrigger.radius,
-          triggerType: locationTrigger.triggerType,
-        }).catch(console.warn);
       }
 
       resetAndClose();
@@ -486,7 +460,6 @@ export const NewTaskModal = React.memo(function NewTaskModal({
             estimatedMinutes: est, isRecurring: false, recurrenceRule: null,
             recurringSourceId: null, subject: null, tags: selectedTags,
             order: listCount, subtasks: subtaskObjects,
-            locationReminder: locationTrigger || null,
             isReminder: finalIsReminder || false,
             createdAt: serverTimestamp(),
           };
@@ -627,20 +600,6 @@ export const NewTaskModal = React.memo(function NewTaskModal({
               <Ionicons name="pricetag-outline" size={13} color={showTagInput || selectedTags.length > 0 ? '#38bdf8' : '#8e8e93'} />
               <Text style={[styles.quickChipText, (showTagInput || selectedTags.length > 0) && { color: '#38bdf8', fontWeight: '500' }]}>
                 {selectedTags.length > 0 ? `${selectedTags.length} label${selectedTags.length > 1 ? 's' : ''}` : 'Labels'}
-              </Text>
-            </AnimatedPressable>
-
-            {/* Location Reminder Quick Chip */}
-            <AnimatedPressable
-              style={[
-                styles.quickChip,
-                !!locationTrigger && { backgroundColor: 'rgba(139, 92, 246, 0.12)', borderColor: 'rgba(167, 139, 250, 0.4)' }
-              ]}
-              onPress={() => setShowLocationPicker(true)}
-            >
-              <Ionicons name="location-outline" size={13} color={locationTrigger ? '#A78BFA' : '#8e8e93'} />
-              <Text style={[styles.quickChipText, locationTrigger && { color: '#A78BFA', fontWeight: '600' }]}>
-                {locationTrigger ? `${locationTrigger.placeName} (${locationTrigger.radius}m)` : 'Location'}
               </Text>
             </AnimatedPressable>
 
@@ -804,6 +763,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
 
         <AnimatedPressable
           style={[styles.addTaskBtnFull, !title.trim() && styles.addTaskBtnDisabled]}
+          scaleTo={0.93}
           onPress={() => handleSave()}
           disabled={!title.trim() || saving}
         >
@@ -827,14 +787,6 @@ export const NewTaskModal = React.memo(function NewTaskModal({
         initialRule={recurrenceRule}
         onSave={setRecurrenceRule}
       />
-      {showLocationPicker && (
-        <LocationPickerModal
-          visible={showLocationPicker}
-          onClose={() => setShowLocationPicker(false)}
-          initialValue={locationTrigger}
-          onSelect={setLocationTrigger}
-        />
-      )}
       <VoiceDictationOverlay 
         visible={showDictationOverlay}
         onClose={() => setShowDictationOverlay(false)}

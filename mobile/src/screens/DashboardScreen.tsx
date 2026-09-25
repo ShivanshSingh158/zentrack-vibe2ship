@@ -36,6 +36,7 @@ import { areItemsEqual } from '../utils/schemaGuards';
 import DashboardSkeleton from '../components/Dashboard/DashboardSkeleton';
 import { LinearGradient } from 'expo-linear-gradient';
 import VoiceDictationOverlay from '../components/Tasks/VoiceDictationOverlay';
+import UserAvatar from '../components/ui/UserAvatar';
 
 export default function DashboardScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
@@ -65,14 +66,6 @@ export default function DashboardScreen() {
 
   // ── Voice Task Dictation State (FAB replaces previous Sara button) ──
   const [isVoiceDictationOpen, setIsVoiceDictationOpen] = useState(false);
-  // ── Avatar photo load error: falls back to letter if Google URL fails ──
-  const [avatarPhotoError, setAvatarPhotoError] = useState(false);
-  // Reset error state when photoURL changes (e.g. re-auth)
-  const prevPhotoURL = useRef(data.user?.photoURL);
-  if (prevPhotoURL.current !== data.user?.photoURL) {
-    prevPhotoURL.current = data.user?.photoURL;
-    if (avatarPhotoError) setAvatarPhotoError(false);
-  }
   // ── One-time entrance animation guard — prevents FadeInDown re-firing on
   //    every Firestore update that causes a parent re-render.
   const hasAnimatedRef = useRef(false);
@@ -348,14 +341,13 @@ export default function DashboardScreen() {
                   >
                     {menuOpen ? (
                       <Ionicons name="close" size={16} color={colors.textPrimary} />
-                    ) : data.user?.photoURL && !avatarPhotoError ? (
-                      <Image
-                        source={{ uri: data.user.photoURL }}
-                        style={{ width: 28, height: 28, borderRadius: 14 }}
-                        onError={() => setAvatarPhotoError(true)}
-                      />
                     ) : (
-                      <Text style={s.headerPillAvatarText}>{data.avatarLetter}</Text>
+                      <UserAvatar
+                        size={28}
+                        uid={data.user?.uid}
+                        photoURL={data.user?.photoURL}
+                        fallbackLetter={data.avatarLetter}
+                      />
                     )}
                   </AnimatedPressable>
                 </Animated.View>

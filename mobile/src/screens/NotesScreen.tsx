@@ -19,11 +19,13 @@ import {
   Alert,
   InteractionManager,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import { FlashList } from '@shopify/flash-list';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, { SlideInDown, FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
 import * as DocumentPicker from 'expo-document-picker';
 
 import { db } from '../services/firebase';
@@ -33,25 +35,26 @@ import { useTheme } from '../contexts/ThemeContext';
 import type { StorageNode } from '../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { uploadFileToCloudinary } from '../services/cloudinary';
+import { compressPdfWithILovePDF } from '../services/ilovepdfCompress';
 import { cacheLocalFile } from '../services/vaultCacheService';
-import { safeAdd, safeUpdate, safeDelete } from '../utils/safeWrite';
+import { safeAdd, safeUpdate, safeDelete, safeWrite } from '../utils/safeWrite';
 import { handleSyncError } from '../utils/errorUtils';
 import { feedback } from '../utils/haptics';
 
 import EmptyState from '../components/ui/EmptyState';
 import StorageNodeRow from '../components/Notes/StorageNodeRow';
-import StorageItemActionSheet from '../components/Notes/StorageItemActionSheet';
+import StorageContextMenuModal from '../components/Notes/StorageContextMenuModal';
+import CategoryFilterTabs, { FilterCategory } from '../components/Notes/CategoryFilterTabs';
+import SpeedDialFab from '../components/Notes/SpeedDialFab';
 import NewFolderModal from '../components/Notes/NewFolderModal';
 import RenameNodeModal from '../components/Notes/RenameNodeModal';
 import MoveNodeModal from '../components/Notes/MoveNodeModal';
 import BatchActionBar from '../components/Notes/BatchActionBar';
+import SortMenuModal, { SortMode } from '../components/Notes/SortMenuModal';
 
 // ── Lazy-loaded Heavy Modals: Skips parsing ~1,100 LOC until opened ──
 const NoteEditorModal = React.lazy(() => import('../components/Notes/NoteEditorModal'));
 const VaultDocumentViewer = React.lazy(() => import('../components/Vault/VaultDocumentViewer'));
-
-const FILTER_CATEGORIES = ['All', 'Documents', 'Images', 'Notes'] as const;
-type FilterCategory = typeof FILTER_CATEGORIES[number];
 
 export default function NotesScreen() {
   const { colors, isDark } = useTheme();
@@ -77,12 +80,25 @@ export default function NotesScreen() {
 
   // Navigation State
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [isFolderSearchOpen, setIsFolderSearchOpen] = useState(false);
+  const isInsideFolder = !!currentFolderId;
+
+  useEffect(() => {
+    setIsFolderSearchOpen(false);
+  }, [currentFolderId]);
 
   // Search & Filter State with 150ms debouncing
   const [rawSearchQuery, setRawSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const insets = useSafeAreaInsets();
   const [filterMode, setFilterMode] = useState<FilterCategory>('All');
-  const [sortMode] = useState<'newest' | 'oldest' | 'az'>('newest');
+  // Per-folder sort: key = folderId (null = Home/root). Each folder remembers its own sort.
+  const [sortModeMap, setSortModeMap] = useState<Record<string, SortMode>>({});
+  const folderKey = currentFolderId ?? '__root__';
+  const currentSortMode: SortMode = sortModeMap[folderKey] ?? 'newest';
+  const setCurrentSortMode = (mode: SortMode) =>
+    setSortModeMap(prev => ({ ...prev, [folderKey]: mode }));
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -94,29 +110,33 @@ export default function NotesScreen() {
   // Selection Mode State
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isCreatingFolderWithSelection, setIsCreatingFolderWithSelection] = useState(false);
 
   // Upload State
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadSize, setUploadSize] = useState('0 MB');
   const [uploadFileName, setUploadFileName] = useState('');
+  const [uploadStep, setUploadStep] = useState(''); // e.g. 'Compressing PDF...'
+  // Instant banner shown the moment a large file is detected (before compression starts)
+  const [largePdfBanner, setLargePdfBanner] = useState<{ name: string; sizeMb: string } | null>(null);
+  const largePdfBannerTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showLargePdfBanner = (name: string, sizeMb: string) => {
+    if (largePdfBannerTimer.current) clearTimeout(largePdfBannerTimer.current);
+    setLargePdfBanner({ name, sizeMb });
+    largePdfBannerTimer.current = setTimeout(() => setLargePdfBanner(null), 4000);
+  };
+  React.useEffect(() => () => { if (largePdfBannerTimer.current) clearTimeout(largePdfBannerTimer.current); }, []);
 
   // Modals & Sheets State
-  const [showFabMenu, setShowFabMenu] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [editorNote, setEditorNote] = useState<StorageNode | null | 'new'>(null);
   const [viewerNode, setViewerNode] = useState<StorageNode | null>(null);
-  const [actionItem, setActionItem] = useState<StorageNode | null>(null);
+  const [contextMenuNode, setContextMenuNode] = useState<StorageNode | null>(null);
+  const [contextMenuAnchor, setContextMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const [renameTarget, setRenameTarget] = useState<StorageNode | null>(null);
   const [moveTarget, setMoveTarget] = useState<StorageNode | null>(null);
   const [isBatchMoving, setIsBatchMoving] = useState(false);
-
-  // Route Param Listener for upload action
-  useEffect(() => {
-    if (route.params?.openUpload) {
-      setShowFabMenu(true);
-    }
-  }, [route.params?.openUpload, route.params?.timestamp]);
 
   // Storage Stats Computation
   const storageStats = useMemo(() => {
@@ -137,16 +157,62 @@ export default function NotesScreen() {
     };
   }, [storageNodes]);
 
-  // Filtered and Sorted items in current folder
-  const currentItems = useMemo(() => {
-    let items = storageNodes.filter(n => (n.parentId ?? null) === currentFolderId);
+  // Fast folder lookup map for resolving breadcrumbs and location paths
+  const folderNameMap = useMemo(() => {
+    const map = new Map<string, { name: string; parentId: string | null }>();
+    for (let i = 0; i < storageNodes.length; i++) {
+      const n = storageNodes[i];
+      if (n.id && n.type === 'folder') {
+        map.set(n.id, { name: n.name, parentId: n.parentId ?? null });
+      }
+    }
+    return map;
+  }, [storageNodes]);
 
-    if (debouncedSearchQuery) {
-      items = items.filter(n => {
-        const nameMatch = n.name.toLowerCase().includes(debouncedSearchQuery);
+  const getFolderPath = useCallback((parentId: string | null): string => {
+    if (!parentId) return 'Home';
+    const parts: string[] = [];
+    let curr: string | null = parentId;
+    let depth = 0;
+    while (curr && depth < 5) {
+      const folder = folderNameMap.get(curr);
+      if (folder) {
+        parts.unshift(folder.name);
+        curr = folder.parentId;
+      } else {
+        break;
+      }
+      depth++;
+    }
+    return parts.length > 0 ? parts.join(' > ') : 'Home';
+  }, [folderNameMap]);
+
+  const isSearching = Boolean(debouncedSearchQuery && debouncedSearchQuery.trim().length > 0);
+  const normalizedQuery = useMemo(() => (debouncedSearchQuery || '').trim().toLowerCase(), [debouncedSearchQuery]);
+
+  // Filtered and Sorted items in current folder OR global vault search across whole files
+  const currentItems = useMemo(() => {
+    let items: StorageNode[];
+
+    if (isSearching) {
+      // Global Vault Search: Search across ALL storage nodes in the entire vault
+      items = storageNodes.filter(n => {
+        const nameMatch = n.name.toLowerCase().includes(normalizedQuery);
         if (nameMatch) return true;
-        return !!n.content && n.content.toLowerCase().includes(debouncedSearchQuery);
+        const contentMatch = !!n.content && n.content.toLowerCase().includes(normalizedQuery);
+        if (contentMatch) return true;
+        const tagMatch = !!n.tags && n.tags.some(t => t.toLowerCase().includes(normalizedQuery));
+        return tagMatch;
       });
+
+      // Annotate items with their folder location path
+      items = items.map(n => ({
+        ...n,
+        locationPath: getFolderPath(n.parentId ?? null),
+      }));
+    } else {
+      // Normal Folder Browsing: Only show items in current folder
+      items = storageNodes.filter(n => (n.parentId ?? null) === currentFolderId);
     }
 
     if (filterMode === 'Documents') {
@@ -161,14 +227,77 @@ export default function NotesScreen() {
       if (a.pinned && !b.pinned) return -1;
       if (!a.pinned && b.pinned) return 1;
 
+      if (isSearching) {
+        const aExact = a.name.toLowerCase() === normalizedQuery;
+        const bExact = b.name.toLowerCase() === normalizedQuery;
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+
+        const aStarts = a.name.toLowerCase().startsWith(normalizedQuery);
+        const bStarts = b.name.toLowerCase().startsWith(normalizedQuery);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+      }
+
       if (a.type === 'folder' && b.type !== 'folder') return -1;
       if (a.type !== 'folder' && b.type === 'folder') return 1;
 
-      if (sortMode === 'newest') return (b.createdAt || 0) - (a.createdAt || 0);
-      if (sortMode === 'oldest') return (a.createdAt || 0) - (b.createdAt || 0);
+      if (currentSortMode === 'newest') return (b.createdAt || 0) - (a.createdAt || 0);
+      if (currentSortMode === 'oldest') return (a.createdAt || 0) - (b.createdAt || 0);
+      if (currentSortMode === 'za') return b.name.localeCompare(a.name);
+      if (currentSortMode === 'size_desc') return (b.size || 0) - (a.size || 0);
+      if (currentSortMode === 'size_asc') return (a.size || 0) - (b.size || 0);
+      if (currentSortMode === 'modified') return (b.updatedAt || 0) - (a.updatedAt || 0);
       return a.name.localeCompare(b.name);
     });
-  }, [storageNodes, currentFolderId, debouncedSearchQuery, filterMode, sortMode]);
+  }, [
+    storageNodes,
+    currentFolderId,
+    isSearching,
+    normalizedQuery,
+    getFolderPath,
+    filterMode,
+    currentSortMode,
+  ]);
+
+  // Dynamic Category Counts for current folder or global search
+  const categoryCounts = useMemo<Record<FilterCategory, number>>(() => {
+    let all = 0;
+    let docs = 0;
+    let imgs = 0;
+    let nts = 0;
+
+    let targetNodes: StorageNode[];
+    if (isSearching) {
+      targetNodes = storageNodes.filter(n => {
+        const nameMatch = n.name.toLowerCase().includes(normalizedQuery);
+        if (nameMatch) return true;
+        const contentMatch = !!n.content && n.content.toLowerCase().includes(normalizedQuery);
+        if (contentMatch) return true;
+        const tagMatch = !!n.tags && n.tags.some(t => t.toLowerCase().includes(normalizedQuery));
+        return tagMatch;
+      });
+    } else {
+      targetNodes = storageNodes.filter(n => (n.parentId ?? null) === currentFolderId);
+    }
+
+    for (let i = 0; i < targetNodes.length; i++) {
+      const n = targetNodes[i];
+      all++;
+      if (n.type === 'file') {
+        if (n.fileType === 'image') imgs++;
+        else docs++;
+      } else if (n.type === 'note') {
+        nts++;
+      }
+    }
+    return {
+      All: all,
+      Documents: docs,
+      Images: imgs,
+      Notes: nts,
+    };
+  }, [storageNodes, currentFolderId, isSearching, normalizedQuery]);
 
   // Folders for Move dialog
   const availableMoveFolders = useMemo(() => {
@@ -178,18 +307,12 @@ export default function NotesScreen() {
   // Breadcrumbs path
   const breadcrumbs = useMemo(() => {
     if (!currentFolderId) return [];
-    const nodeMap = new Map<string, StorageNode>();
-    for (let i = 0; i < storageNodes.length; i++) {
-      const node = storageNodes[i];
-      if (node.id) nodeMap.set(node.id, node);
-    }
-
     const crumbs: { id: string | null; name: string }[] = [];
     let curr: string | null | undefined = currentFolderId;
     while (curr) {
-      const node = nodeMap.get(curr);
+      const node = folderNameMap.get(curr);
       if (node) {
-        crumbs.unshift({ id: node.id!, name: node.name });
+        crumbs.unshift({ id: curr, name: node.name });
         curr = node.parentId;
       } else {
         break;
@@ -197,17 +320,18 @@ export default function NotesScreen() {
     }
     crumbs.unshift({ id: null, name: 'Home' });
     return crumbs;
-  }, [storageNodes, currentFolderId]);
+  }, [folderNameMap, currentFolderId]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
   const handleCreateFolder = useCallback(async (folderName: string) => {
     if (!user) return;
     const now = Date.now();
-    const tempId = `folder_temp_${now}`;
+    const newDocRef = doc(collection(db, 'storage_nodes'));
+    const folderId = newDocRef.id;
 
     const folderData: StorageNode = {
-      id: tempId,
+      id: folderId,
       userId: user.uid,
       type: 'folder',
       name: folderName,
@@ -219,27 +343,46 @@ export default function NotesScreen() {
     // 0ms Optimistic UI update
     optimisticAddStorageNode(folderData);
     setShowNewFolder(false);
-    feedback.success();
 
-    const firestorePayload = {
-      userId: user.uid,
-      type: 'folder' as const,
-      name: folderName,
-      parentId: currentFolderId,
-      createdAt: now,
-      updatedAt: now,
-    };
+    const isWithSelection = isCreatingFolderWithSelection;
+    setIsCreatingFolderWithSelection(false);
 
-    safeAdd(
+    safeWrite(
+      () => setDoc(newDocRef, folderData),
       'storage_nodes',
-      firestorePayload,
-      () => addDoc(collection(db, 'storage_nodes'), firestorePayload)
+      'set',
+      folderData,
+      folderId
     ).catch(handleSyncError);
-  }, [user, currentFolderId, optimisticAddStorageNode]);
+
+    // If created with selection, immediately move all selected items into this new folder!
+    if (isWithSelection && selectedIds.size > 0) {
+      const idsToMove = Array.from(selectedIds);
+      for (const id of idsToMove) {
+        optimisticUpdateStorageNode(id, { parentId: folderId, updatedAt: now });
+        safeUpdate(
+          id,
+          'storage_nodes',
+          { parentId: folderId, updatedAt: now },
+          () => updateDoc(doc(db, 'storage_nodes', id), { parentId: folderId, updatedAt: now })
+        ).catch(handleSyncError);
+      }
+      setSelectionMode(false);
+      setSelectedIds(new Set());
+    }
+
+    feedback.success();
+  }, [
+    user,
+    currentFolderId,
+    optimisticAddStorageNode,
+    optimisticUpdateStorageNode,
+    isCreatingFolderWithSelection,
+    selectedIds,
+  ]);
 
   const handleFileUpload = useCallback(async () => {
     if (!user) return;
-    setShowFabMenu(false);
 
     try {
       const res = await DocumentPicker.getDocumentAsync({
@@ -249,71 +392,198 @@ export default function NotesScreen() {
           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ],
         copyToCacheDirectory: true,
+        multiple: true,
       });
 
-      if (res.canceled || !res.assets?.[0]) return;
-      const file = res.assets[0];
+      if (res.canceled || !res.assets || res.assets.length === 0) return;
 
-      setUploading(true);
-      setUploadProgress(0);
-      setUploadSize((file.size ? (file.size / (1024 * 1024)).toFixed(1) : '1.0') + ' MB');
-      setUploadFileName(file.name || 'Document');
-
-      const mime = file.mimeType || 'application/octet-stream';
-      let ftype: 'pdf' | 'docx' | 'image' | 'other' = 'other';
-      if (mime.includes('pdf') || file.name?.toLowerCase().endsWith('.pdf')) ftype = 'pdf';
-      else if (mime.includes('image') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name || '')) ftype = 'image';
-      else if (mime.includes('word') || /\.(doc|docx)$/i.test(file.name || '')) ftype = 'docx';
-
-      const uploadRes = await uploadFileToCloudinary(file.uri, mime, file.name, (p) => setUploadProgress(p));
-
-      // Pre-cache local file into vault cache
-      try {
-        await cacheLocalFile(file.uri, uploadRes.url, file.name);
-      } catch (cacheErr) {
-        console.warn('[NotesScreen] Pre-cache non-fatal warning:', cacheErr);
+      let pickedFiles = res.assets;
+      if (pickedFiles.length > 10) {
+        Alert.alert(
+          'Batch Upload Limit',
+          `You selected ${pickedFiles.length} files. Uploading the first 10 files at once.`
+        );
+        pickedFiles = pickedFiles.slice(0, 10);
       }
 
-      const now = Date.now();
-      const docPayload: StorageNode = {
-        id: `file_temp_${now}`,
-        userId: user.uid,
-        type: 'file',
-        fileType: ftype,
-        name: file.name || 'Uploaded Document',
-        url: uploadRes.url,
-        size: uploadRes.size || file.size || 0,
-        parentId: currentFolderId,
-        createdAt: now,
-        updatedAt: now,
-      };
+      // ── Size thresholds ───────────────────────────────────────────────────────
+      const CLOUDINARY_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
-      // 0ms Optimistic UI update
-      optimisticAddStorageNode(docPayload);
-      feedback.success();
-
-      const firestorePayload = {
-        userId: user.uid,
-        type: 'file' as const,
-        fileType: ftype,
-        name: file.name || 'Uploaded Document',
-        url: uploadRes.url,
-        size: uploadRes.size || file.size || 0,
-        parentId: currentFolderId,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      await safeAdd('storage_nodes', firestorePayload, () =>
-        addDoc(collection(db, 'storage_nodes'), firestorePayload)
+      // Large non-PDF files (images/docx) can't be compressed here — block them.
+      const largeNonPdf = pickedFiles.filter(
+        f => f.size != null && f.size > CLOUDINARY_MAX_BYTES &&
+             !f.mimeType?.includes('pdf') && !f.name?.toLowerCase().endsWith('.pdf')
       );
+      if (largeNonPdf.length > 0) {
+        const names = largeNonPdf
+          .map(f => `  • ${f.name || 'Unknown'} (${f.size ? (f.size / 1024 / 1024).toFixed(1) : '?'} MB)`)
+          .join('\n');
+        Alert.alert(
+          '📁 File Too Large',
+          `These files exceed the 10 MB upload limit and cannot be auto-compressed:\n\n${names}\n\nPlease resize the file and try again.`,
+          [{ text: 'OK' }]
+        );
+        pickedFiles = pickedFiles.filter(
+          f => f.size == null || f.size <= CLOUDINARY_MAX_BYTES ||
+               f.mimeType?.includes('pdf') || f.name?.toLowerCase().endsWith('.pdf')
+        );
+        if (pickedFiles.length === 0) return;
+      }
+      // ────────────────────────────────────────────────────────────────────
+
+      setUploading(true);
+      const total = pickedFiles.length;
+      let successCount = 0;
+      const failedNames: string[] = [];
+
+      for (let i = 0; i < total; i++) {
+        const file = pickedFiles[i];
+        const fileNumber = i + 1;
+
+        setUploadProgress(0);
+        setUploadStep('');
+        setUploadSize((file.size ? (file.size / (1024 * 1024)).toFixed(1) : '1.0') + ' MB');
+        setUploadFileName(
+          total > 1
+            ? `(${fileNumber}/${total}) ${file.name || 'Document'}`
+            : (file.name || 'Document')
+        );
+
+        const mime = file.mimeType || 'application/octet-stream';
+        const isPdf = mime.includes('pdf') || file.name?.toLowerCase().endsWith('.pdf');
+        let ftype: 'pdf' | 'docx' | 'image' | 'other' = 'other';
+        if (isPdf) ftype = 'pdf';
+        else if (mime.includes('image') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name || '')) ftype = 'image';
+        else if (mime.includes('word') || /\.(doc|docx)$/i.test(file.name || '')) ftype = 'docx';
+
+        try {
+          // ── Auto-compress large PDFs via iLovePDF before uploading ───────────
+          let uploadUri  = file.uri;
+          let uploadSize = file.size;
+          let compressedTempUri: string | null = null;
+
+          const isLargePdf = isPdf && file.size != null && file.size > CLOUDINARY_MAX_BYTES;
+          if (isLargePdf) {
+            // Instant feedback — banner appears before compression even starts
+            showLargePdfBanner(
+              file.name || 'document.pdf',
+              (file.size! / 1024 / 1024).toFixed(0)
+            );
+            setUploadStep('Compressing PDF...');
+            try {
+              compressedTempUri = await compressPdfWithILovePDF(
+                file.uri,
+                file.name || 'document.pdf',
+                (step) => setUploadStep(step),
+              );
+              // Get size of compressed file for accurate Cloudinary timeout
+              const info = await FileSystem.getInfoAsync(compressedTempUri);
+              uploadUri  = compressedTempUri;
+              uploadSize = (info as any).size ?? uploadSize;
+              setUploadSize(`${(uploadSize! / 1024 / 1024).toFixed(1)} MB (compressed)`);
+            } catch (compressErr: any) {
+              // Compression failed for a file that's too large for Cloudinary.
+              // DO NOT attempt to upload the original — it will also fail (>10 MB).
+              // Instead, surface a clear error to the user.
+              console.warn('[NotesScreen] iLovePDF compression failed:', compressErr.message);
+              setUploadStep('');
+              throw new Error(
+                `Could not compress "${file.name || 'PDF'}" (${((file.size ?? 0) / 1024 / 1024).toFixed(0)} MB). ` +
+                `Reason: ${compressErr.message}. ` +
+                `Please check your internet connection and try again, or manually compress the PDF to under 10 MB.`
+              );
+            }
+            setUploadStep('');
+          }
+          // ────────────────────────────────────────────────────────────────────
+
+          const uploadRes = await uploadFileToCloudinary(
+            uploadUri,
+            mime,
+            file.name,
+            (p) => setUploadProgress(p),
+            uploadSize
+          );
+
+          // Clean up temp compressed file if created
+          if (compressedTempUri) {
+            FileSystem.deleteAsync(compressedTempUri, { idempotent: true }).catch(() => {});
+          }
+
+          // Pre-cache local file into vault cache
+          try {
+            await cacheLocalFile(file.uri, uploadRes.url, file.name);
+          } catch (cacheErr) {
+            console.warn('[NotesScreen] Pre-cache non-fatal warning:', cacheErr);
+          }
+
+          const now = Date.now();
+          const docPayload: StorageNode = {
+            id: `file_temp_${now}_${i}`,
+            userId: user.uid,
+            type: 'file',
+            fileType: ftype,
+            name: file.name || 'Uploaded Document',
+            url: uploadRes.url,
+            size: uploadRes.size || file.size || 0,
+            parentId: currentFolderId,
+            createdAt: now,
+            updatedAt: now,
+          };
+
+          // 0ms Optimistic UI update immediately as each file finishes
+          optimisticAddStorageNode(docPayload);
+          feedback.tap();
+          successCount++;
+
+          const firestorePayload = {
+            userId: user.uid,
+            type: 'file' as const,
+            fileType: ftype,
+            name: file.name || 'Uploaded Document',
+            url: uploadRes.url,
+            size: uploadRes.size || file.size || 0,
+            parentId: currentFolderId,
+            createdAt: now,
+            updatedAt: now,
+          };
+
+          await safeAdd('storage_nodes', firestorePayload, () =>
+            addDoc(collection(db, 'storage_nodes'), firestorePayload)
+          );
+        } catch (fileErr: any) {
+          console.error(`[NotesScreen] Upload error for ${file.name}:`, fileErr);
+          failedNames.push(file.name || `File ${fileNumber}`);
+        }
+      }
+
+      if (successCount > 0) {
+        feedback.success();
+      }
+
+      if (failedNames.length > 0) {
+        Alert.alert(
+          'Upload Notice',
+          `Successfully uploaded ${successCount} of ${total} files.\nFailed: ${failedNames.join(', ')}`
+        );
+      }
     } catch (e: any) {
-      console.error('[NotesScreen] Upload error:', e);
-      Alert.alert('Upload Issue', e?.message || 'There was an error uploading the file.');
+      console.error('[NotesScreen] Batch upload error:', e);
+      Alert.alert('Upload Issue', e?.message || 'There was an error selecting files.');
     } finally {
       setUploading(false);
+      setUploadFileName('');
+      setUploadProgress(0);
+      setUploadStep('');
     }
   }, [user, currentFolderId, optimisticAddStorageNode]);
+
+  // Route Param Listener for upload action
+  useEffect(() => {
+    if (route.params?.openUpload) {
+      handleFileUpload();
+    }
+  }, [route.params?.openUpload, route.params?.timestamp, handleFileUpload]);
 
   const handlePin = useCallback((item: StorageNode) => {
     const updatedPinned = !item.pinned;
@@ -439,9 +709,16 @@ export default function NotesScreen() {
     setIsBatchMoving(true);
   }, [selectedIds.size]);
 
+  const handleBatchNewFolderOpen = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    setIsCreatingFolderWithSelection(true);
+    setShowNewFolder(true);
+  }, [selectedIds.size]);
+
   const handleExitSelection = useCallback(() => {
     setSelectionMode(false);
     setSelectedIds(new Set());
+    setIsCreatingFolderWithSelection(false);
   }, []);
 
   // ── Row Callbacks ─────────────────────────────────────────────────────────
@@ -455,21 +732,36 @@ export default function NotesScreen() {
         return next;
       });
     } else {
-      if (item.type === 'folder') setCurrentFolderId(item.id!);
+      if (item.type === 'folder') {
+        setCurrentFolderId(item.id!);
+        if (isSearching) {
+          setRawSearchQuery('');
+        }
+      }
       else if (item.type === 'note') setEditorNote(item);
       else if (item.type === 'file') setViewerNode(item);
     }
-  }, [selectionMode]);
+  }, [selectionMode, isSearching]);
 
-  const handleRowLongPress = useCallback((item: StorageNode) => {
-    if (!selectionMode) {
-      setSelectionMode(true);
-      setSelectedIds(new Set([item.id!]));
+  const handleRowLongPress = useCallback((item: StorageNode, anchor?: { pageX: number; pageY: number }) => {
+    if (selectionMode) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        if (next.has(item.id!)) next.delete(item.id!);
+        else next.add(item.id!);
+        return next;
+      });
+    } else {
+      feedback.commit();
+      setContextMenuAnchor(anchor ? { x: anchor.pageX, y: anchor.pageY } : null);
+      setContextMenuNode(item);
     }
   }, [selectionMode]);
 
-  const handleRowMenuPress = useCallback((item: StorageNode) => {
-    setActionItem(item);
+  const handleRowMenuPress = useCallback((item: StorageNode, anchor?: { pageX: number; pageY: number }) => {
+    feedback.tap();
+    setContextMenuAnchor(anchor ? { x: anchor.pageX, y: anchor.pageY } : null);
+    setContextMenuNode(item);
   }, []);
 
   const renderItem = useCallback(({ item }: any) => {
@@ -481,12 +773,15 @@ export default function NotesScreen() {
         isSelectionMode={selectionMode}
         isUploading={uploading && item.id === 'uploading-temp'}
         uploadProgress={uploadProgress}
-        uploadSize={uploadSize}
+        uploadSize={uploadStep || uploadSize}
         colors={colors}
         isDark={isDark}
+        compact={isInsideFolder}
         onPress={handleRowPress}
         onLongPress={handleRowLongPress}
         onMenuPress={handleRowMenuPress}
+        onPin={handlePin}
+        onDelete={handleDelete}
       />
     );
   }, [
@@ -495,38 +790,176 @@ export default function NotesScreen() {
     uploading,
     uploadProgress,
     uploadSize,
+    uploadStep,
     colors,
     isDark,
+    isInsideFolder,
     handleRowPress,
     handleRowLongPress,
     handleRowMenuPress,
+    handlePin,
+    handleDelete,
   ]);
+
+  const handleBackFolder = useCallback(() => {
+    if (isSearching) {
+      setRawSearchQuery('');
+      return;
+    }
+    if (breadcrumbs.length > 2) {
+      setCurrentFolderId(breadcrumbs[breadcrumbs.length - 2].id);
+    } else {
+      setCurrentFolderId(null);
+    }
+  }, [breadcrumbs, isSearching]);
 
   const keyExtractor = useCallback((item: any) => item.id!, []);
 
   return (
     <SafeAreaView style={styles.root}>
       {/* Header */}
-      <View style={styles.vaultHeader}>
-        {currentFolderId ? (
-          <TouchableOpacity
-            style={styles.vaultHeaderBtn}
-            onPress={() => setCurrentFolderId(null)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="chevron-back" size={24} color={colors.accentPrimary} />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 32 }} />
-        )}
-        <Text style={styles.vaultHeaderTitle}>
-          {currentFolderId ? breadcrumbs[breadcrumbs.length - 1]?.name || 'Vault' : 'Vault'}
+      <View style={[styles.vaultHeader, breadcrumbs.length > 1 && !isSearching && { paddingBottom: SPACE.sm }]}>
+        <View style={styles.vaultHeaderLeft}>
+          {selectionMode ? (
+            <TouchableOpacity
+              style={styles.vaultHeaderBtn}
+              onPress={handleExitSelection}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={[styles.vaultHeaderCancelText, { color: colors.textSecondary }]}>Cancel</Text>
+            </TouchableOpacity>
+          ) : currentFolderId || isSearching ? (
+            <TouchableOpacity
+              style={styles.vaultHeaderBtn}
+              onPress={isSearching ? () => setRawSearchQuery('') : handleBackFolder}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="chevron-back" size={24} color={colors.accentPrimary} />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 28 }} />
+          )}
+        </View>
+
+        <Text style={styles.vaultHeaderTitle} numberOfLines={1}>
+          {selectionMode
+            ? selectedIds.size > 0
+              ? `${selectedIds.size} Selected`
+              : 'Select Items'
+            : isSearching
+            ? 'Vault Search'
+            : currentFolderId
+            ? breadcrumbs[breadcrumbs.length - 1]?.name || 'Vault'
+            : 'Vault'}
         </Text>
-        <View style={{ width: 32 }} />
+
+        <View style={styles.vaultHeaderRight}>
+          {selectionMode ? (
+            <TouchableOpacity
+              style={styles.vaultHeaderDoneBtn}
+              onPress={handleExitSelection}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={[styles.vaultHeaderDoneText, { color: colors.accentPrimary }]}>Done</Text>
+            </TouchableOpacity>
+          ) : (
+            <>
+              {currentFolderId && !isSearching && (
+                <TouchableOpacity
+                  style={styles.vaultHeaderBtn}
+                  onPress={() => {
+                    feedback.tap();
+                    setIsFolderSearchOpen(prev => !prev);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons
+                    name={isFolderSearchOpen ? "close-circle" : "search-outline"}
+                    size={20}
+                    color={isFolderSearchOpen ? colors.accentPrimary : colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              )}
+
+              {/* Sort Menu Button */}
+              <TouchableOpacity
+                style={styles.vaultHeaderBtn}
+                onPress={() => {
+                  feedback.tap();
+                  setShowSortMenu(true);
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons
+                  name="swap-vertical"
+                  size={20}
+                  color={currentSortMode !== 'newest' ? colors.accentPrimary : colors.textSecondary}
+                />
+              </TouchableOpacity>
+
+              {/* Multi-Select Trigger Button */}
+              <TouchableOpacity
+                style={styles.vaultHeaderBtn}
+                onPress={() => {
+                  feedback.tap();
+                  setSelectionMode(true);
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={21}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
       </View>
 
+      {/* Breadcrumb Trail (when inside folders and NOT searching) */}
+      {breadcrumbs.length > 1 && !isSearching && (
+        <View style={styles.breadcrumbBar}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.breadcrumbContent}
+          >
+            {breadcrumbs.map((crumb, idx) => {
+              const isLast = idx === breadcrumbs.length - 1;
+              return (
+                <React.Fragment key={crumb.id || 'root'}>
+                  {idx > 0 && (
+                    <Ionicons name="chevron-forward" size={12} color={colors.textMuted} />
+                  )}
+                  <TouchableOpacity
+                    disabled={isLast}
+                    onPress={() => {
+                      feedback.tap();
+                      setCurrentFolderId(crumb.id);
+                    }}
+                    style={[styles.crumbPill, isLast && styles.crumbPillActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.crumbText,
+                        { color: isLast ? colors.accentPrimary : colors.textSecondary },
+                        isLast && { fontFamily: FONT_FAMILY.bold },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {crumb.name}
+                    </Text>
+                  </TouchableOpacity>
+                </React.Fragment>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Storage Usage Bar */}
-      {!currentFolderId && (
+      {!currentFolderId && !isSearching && (
         <View style={styles.storageCard}>
           <View style={styles.storageCardHeader}>
             <Text style={styles.storageCardText}>{storageStats.usedText} used</Text>
@@ -539,53 +972,74 @@ export default function NotesScreen() {
       )}
 
       {/* Search & Category Filter Toolbar */}
-      <View style={[styles.toolbarWrap, { borderBottomColor: colors.border }]}>
-        <View style={[styles.searchBox, { backgroundColor: isDark ? '#1c1c1e' : '#FFFFFF', borderColor: colors.border }]}>
-          <Ionicons name="search" size={16} color={colors.textSecondary} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.textPrimary }]}
-            placeholder="Search files and notes..."
-            placeholderTextColor={colors.textMuted}
-            value={rawSearchQuery}
-            onChangeText={setRawSearchQuery}
-          />
-          {rawSearchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setRawSearchQuery('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACE.sm }}>
-          {FILTER_CATEGORIES.map((f) => {
-            const isActive = filterMode === f;
-            return (
-              <TouchableOpacity
-                key={f}
-                style={[
-                  styles.filterPill,
-                  { backgroundColor: isDark ? (colors.surface2 || '#1C1C1E') : '#FFFFFF', borderColor: colors.border },
-                  isActive && { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
-                ]}
-                onPress={() => {
-                  feedback.tap();
-                  setFilterMode(f);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.filterPillText,
-                    { color: colors.textSecondary },
-                    isActive && { color: isDark ? '#000000' : '#FFFFFF', fontFamily: FONT_FAMILY.bold },
-                  ]}
-                >
-                  {f}
-                </Text>
+      <View
+        style={[
+          styles.toolbarWrap,
+          {
+            borderBottomColor: colors.border,
+            paddingTop: isInsideFolder && !isFolderSearchOpen ? 2 : 0,
+            paddingBottom: isInsideFolder && !isFolderSearchOpen ? 8 : SPACE.md,
+          },
+        ]}
+      >
+        {(!isInsideFolder || isFolderSearchOpen) && (
+          <Animated.View
+            entering={FadeIn.duration(160)}
+            exiting={FadeOut.duration(120)}
+            style={[
+              styles.searchBox,
+              {
+                backgroundColor: isDark ? '#1c1c1e' : '#FFFFFF',
+                borderColor: colors.border,
+                marginBottom: isInsideFolder ? 8 : SPACE.md,
+              },
+            ]}
+          >
+            <Ionicons name="search" size={16} color={colors.textSecondary} />
+            <TextInput
+              style={[styles.searchInput, { color: colors.textPrimary }]}
+              placeholder={isInsideFolder ? "Search in folder..." : "Search files and notes..."}
+              placeholderTextColor={colors.textMuted}
+              value={rawSearchQuery}
+              onChangeText={setRawSearchQuery}
+              autoFocus={isFolderSearchOpen}
+            />
+            {rawSearchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setRawSearchQuery('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Ionicons name="close-circle" size={16} color={colors.textMuted} />
               </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+            )}
+          </Animated.View>
+        )}
+
+        <CategoryFilterTabs
+          activeCategory={filterMode}
+          categoryCounts={categoryCounts}
+          onSelectCategory={setFilterMode}
+          colors={colors}
+          isDark={isDark}
+          compact={isInsideFolder}
+        />
       </View>
+
+      {/* ── Large-file instant banner — slides in the moment a >10 MB PDF is picked ── */}
+      {largePdfBanner && (
+        <Animated.View
+          entering={SlideInDown.springify().damping(18).stiffness(200)}
+          exiting={FadeOut.duration(300)}
+          style={[styles.largePdfBanner, { backgroundColor: isDark ? '#1A1D2E' : '#EEF2FF' }]}
+        >
+          <Ionicons name="cloud-upload-outline" size={17} color={colors.accentPrimary} />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={[styles.largePdfBannerTitle, { color: colors.accentPrimary }]}>
+              Large file detected ({largePdfBanner.sizeMb} MB) — auto-compressing
+            </Text>
+            <Text style={[styles.largePdfBannerSub, { color: colors.textSecondary }]} numberOfLines={1}>
+              {largePdfBanner.name}
+            </Text>
+          </View>
+        </Animated.View>
+      )}
 
       {/* Main Virtualized List */}
       <FlashList
@@ -596,12 +1050,16 @@ export default function NotesScreen() {
         }
         renderItem={renderItem}
         keyExtractor={keyExtractor}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={{ paddingHorizontal: SPACE.md, paddingBottom: selectionMode ? 175 : 120 }}
         ListEmptyComponent={
           <EmptyState
             mascot="idle"
-            title="Empty folder"
-            subtitle="Add notes, upload files, or create folders here."
+            title={isSearching ? "No matching files" : "Empty folder"}
+            subtitle={
+              isSearching
+                ? `No files or notes found matching "${rawSearchQuery}".`
+                : "Add notes, upload files, or create folders here."
+            }
           />
         }
       />
@@ -613,81 +1071,71 @@ export default function NotesScreen() {
         totalCount={currentItems.length}
         onToggleSelectAll={handleToggleSelectAll}
         onBatchMove={handleBatchMoveOpen}
+        onNewFolderWithSelection={handleBatchNewFolderOpen}
         onBatchDelete={handleBatchDelete}
         onCancel={handleExitSelection}
         colors={colors}
         isDark={isDark}
       />
 
-      {/* FAB Button (Hidden during selection mode) */}
-      {!selectionMode && (
-        <TouchableOpacity style={styles.fab} onPress={() => setShowFabMenu(true)}>
-          <Ionicons name="add" size={24} color={isDark ? '#000000' : '#FFFFFF'} />
-        </TouchableOpacity>
-      )}
+      {/* Speed Dial Floating Action Button */}
+      <SpeedDialFab
+        visible={!selectionMode}
+        onUploadFile={handleFileUpload}
+        onNewNote={() => setEditorNote('new')}
+        onNewFolder={() => setShowNewFolder(true)}
+        colors={colors}
+        isDark={isDark}
+      />
 
-      {/* FAB Options Action Sheet */}
-      {showFabMenu && (
-        <Modal transparent animationType="slide" visible={showFabMenu} onRequestClose={() => setShowFabMenu(false)}>
-          <View style={styles.actionSheetOverlay}>
-            <Pressable style={{ flex: 1 }} onPress={() => setShowFabMenu(false)} />
-            <View style={[styles.actionSheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={[styles.actionSheetHandle, { backgroundColor: isDark ? colors.border : '#D1D1D6' }]} />
-
-              <TouchableOpacity style={styles.actionSheetItem} onPress={handleFileUpload}>
-                <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)' }]}>
-                  <Ionicons name="cloud-upload" size={20} color={colors.accentPrimary} />
-                </View>
-                <Text style={[styles.actionSheetText, { color: colors.textPrimary }]}>Upload file</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionSheetItem}
-                onPress={() => {
-                  setShowFabMenu(false);
-                  setEditorNote('new');
-                }}
-              >
-                <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)' }]}>
-                  <Ionicons name="document-text" size={20} color={colors.accentPrimary} />
-                </View>
-                <Text style={[styles.actionSheetText, { color: colors.textPrimary }]}>New note</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionSheetItem}
-                onPress={() => {
-                  setShowFabMenu(false);
-                  setShowNewFolder(true);
-                }}
-              >
-                <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(10, 132, 255, 0.15)' : 'rgba(2, 132, 199, 0.10)' }]}>
-                  <Ionicons name="folder-outline" size={20} color={isDark ? '#0A84FF' : '#0284C7'} />
-                </View>
-                <Text style={[styles.actionSheetText, { color: colors.textPrimary }]}>New folder</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-      )}
+      {/* Sleek Floating Options Popover Menu */}
+      <StorageContextMenuModal
+        visible={!!contextMenuNode}
+        item={contextMenuNode}
+        anchorPosition={contextMenuAnchor}
+        onClose={() => {
+          setContextMenuNode(null);
+          setContextMenuAnchor(null);
+        }}
+        onPin={handlePin}
+        onRename={(node) => setRenameTarget(node)}
+        onMove={(node) => setMoveTarget(node)}
+        onDelete={handleDelete}
+        onSelect={(node) => {
+          setSelectionMode(true);
+          setSelectedIds(new Set([node.id!]));
+        }}
+      />
 
       {/* New Folder Modal */}
       <NewFolderModal
         visible={showNewFolder}
-        onClose={() => setShowNewFolder(false)}
+        title={isCreatingFolderWithSelection ? "New Folder with Selection" : "New Folder"}
+        subtitle={
+          isCreatingFolderWithSelection
+            ? `Move ${selectedIds.size} selected item${selectedIds.size > 1 ? 's' : ''} into new folder`
+            : undefined
+        }
+        submitText={isCreatingFolderWithSelection ? "Create & Move" : "Create"}
+        onClose={() => {
+          setShowNewFolder(false);
+          setIsCreatingFolderWithSelection(false);
+        }}
         onCreate={handleCreateFolder}
         colors={colors}
         isDark={isDark}
       />
 
-      {/* Item Action Sheet (3-Dots Menu) */}
-      <StorageItemActionSheet
-        item={actionItem}
-        onClose={() => setActionItem(null)}
-        onPin={handlePin}
-        onRename={(node) => setRenameTarget(node)}
-        onMove={(node) => setMoveTarget(node)}
-        onDelete={handleDelete}
+      {/* iOS Sort Menu Modal */}
+      <SortMenuModal
+        visible={showSortMenu}
+        activeSort={currentSortMode}
+        onSelectSort={setCurrentSortMode}
+        onClose={() => setShowSortMenu(false)}
+        onSelectMultiple={() => {
+          setShowSortMenu(false);
+          setSelectionMode(true);
+        }}
         colors={colors}
         isDark={isDark}
       />
@@ -743,13 +1191,98 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: SPACE.lg,
+    paddingHorizontal: SPACE.md,
     paddingTop: SPACE.sm,
     paddingBottom: SPACE.md,
     backgroundColor: colors.background,
   },
-  vaultHeaderBtn: { padding: SPACE.sm },
-  vaultHeaderTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
+  vaultHeaderLeft: {
+    minWidth: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  vaultHeaderTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 16,
+    color: colors.textPrimary,
+  },
+  vaultHeaderRight: {
+    minWidth: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+  },
+  vaultHeaderBtn: {
+    padding: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  largePdfBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: SPACE.md,
+    marginTop: 6,
+    marginBottom: 2,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.25)',
+    overflow: 'hidden',
+  },
+  largePdfBannerTitle: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+  largePdfBannerSub: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  vaultHeaderCancelText: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 15,
+  },
+  vaultHeaderDoneBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: RADIUS.full,
+    backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)',
+  },
+  vaultHeaderDoneText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 14,
+  },
+
+  breadcrumbBar: {
+    paddingTop: SPACE.xs,
+    paddingBottom: SPACE.md,
+  },
+  breadcrumbContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACE.md,
+    gap: 6,
+  },
+  crumbPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: RADIUS.full,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+  },
+  crumbPillActive: {
+    backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)',
+  },
+  crumbText: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.body,
+  },
 
   storageCard: {
     backgroundColor: colors.surface,
@@ -785,47 +1318,5 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     fontFamily: FONT_FAMILY.body,
     fontSize: FONT_SIZE.sm,
   },
-
-  filterPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-  },
-  filterPillText: { fontFamily: FONT_FAMILY.body, fontSize: 13 },
-
   list: { padding: SPACE.sm, paddingBottom: 110 },
-
-  fab: {
-    position: 'absolute',
-    bottom: 84,
-    right: 16,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.accentPrimary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 20,
-    ...SHADOW.md,
-  },
-
-  actionSheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  actionSheet: {
-    borderTopLeftRadius: RADIUS.lg,
-    borderTopRightRadius: RADIUS.lg,
-    paddingBottom: SPACE.xl,
-    paddingHorizontal: SPACE.md,
-    borderWidth: 1,
-  },
-  actionSheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginVertical: SPACE.md,
-  },
-  actionSheetItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACE.md, gap: SPACE.md },
-  actionSheetIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  actionSheetText: { fontFamily: FONT_FAMILY.bold, fontSize: 16 },
 });

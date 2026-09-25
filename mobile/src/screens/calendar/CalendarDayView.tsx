@@ -11,6 +11,7 @@
  */
 import React, { useMemo, useCallback, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import Animated, { FadeInDown, Easing } from 'react-native-reanimated';
 import { getEventColors, format12Hour, HOUR_HEIGHT, parseTimeTo24h } from './calendarUtils';
 
 interface CalendarDayViewProps {
@@ -103,11 +104,15 @@ export const CalendarDayView = React.memo(function CalendarDayView({
         <View style={styles.unscheduledStrip}>
           <Text style={styles.unscheduledLabel}>UNSCHEDULED</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-            {unscheduledDayEvents.map(evt => {
+            {unscheduledDayEvents.map((evt, idx) => {
               const isCancelled = evt.attendanceStatus === 'cancelled';
               const eventColor = eventColorMap[evt.type] || { bg: colors.accentPrimary, text: colors.textPrimary, border: colors.accentPrimary };
               const badge = getAttendanceBadge(evt.attendanceStatus, isDark ?? true);
               return (
+                <Animated.View
+                  key={evt.id}
+                  entering={FadeInDown.duration(200).delay(Math.min(idx * 40, 280)).easing(Easing.out(Easing.exp))}
+                >
                 <TouchableOpacity
                   key={evt.id}
                   style={[
@@ -148,6 +153,7 @@ export const CalendarDayView = React.memo(function CalendarDayView({
                     </Text>
                   )}
                 </TouchableOpacity>
+                </Animated.View>
               );
             })}
           </ScrollView>
@@ -204,14 +210,15 @@ export const CalendarDayView = React.memo(function CalendarDayView({
 
           {/* Render Absolute Events */}
           <View style={styles.eventsContainer}>
-            {processedEvents.map((event) => {
+          {processedEvents.map((event, idx) => {
               const isCancelled = event.attendanceStatus === 'cancelled';
               const eventColor = eventColorMap[event.type] || { bg: isDark ? '#a599ff40' : 'rgba(108,92,231,0.12)', text: colors.textPrimary, border: colors.accentPrimary };
               const past = isPastEvent(event);
               const badge = getAttendanceBadge(event.attendanceStatus, isDark ?? true);
               return (
-                <TouchableOpacity
-                  key={event.id}
+                <Animated.View
+                  key={`${event.id}`}
+                  entering={FadeInDown.duration(220).delay(Math.min(idx * 40, 320)).easing(Easing.out(Easing.exp))}
                   style={[
                     styles.eventBlock,
                     {
@@ -219,46 +226,57 @@ export const CalendarDayView = React.memo(function CalendarDayView({
                       height: event.height,
                       left: event.left as any,
                       width: event.width as any,
-                      backgroundColor: isDark ? `${eventColor.border}35` : eventColor.bg,
-                      borderLeftColor: eventColor.border,
-                      opacity: (past || isCancelled) ? 0.4 : 1,
                     }
                   ]}
-                  onPress={() => {
-                    if (event.type === 'gym') {
-                      const log = gymLogs?.find((g: any) => g.id === event.id);
-                      if (log) {
-                        setSelectedGymLog(log);
-                        setGymStartTimeInput(event.startTime || '10:00');
-                        setGymEndTimeInput(event.endTime || '11:00');
-                        setShowGymModal(true);
-                      }
-                    } else {
-                      setSelectedEvent(event);
-                      setShowEventModal(true);
-                    }
-                  }}
-                  activeOpacity={0.8}
                 >
-                  <Text
+                  <TouchableOpacity
                     style={[
-                      styles.eventBlockTitle,
-                      { color: isDark ? eventColor.border : colors.textPrimary },
-                      isCancelled && { textDecorationLine: 'line-through' },
+                      {
+                        flex: 1,
+                        backgroundColor: isDark ? `${eventColor.border}35` : eventColor.bg,
+                        borderLeftColor: eventColor.border,
+                        borderLeftWidth: 3,
+                        borderRadius: 6,
+                        padding: 4,
+                        opacity: (past || isCancelled) ? 0.4 : 1,
+                      }
                     ]}
-                    numberOfLines={1}
+                    onPress={() => {
+                      if (event.type === 'gym') {
+                        const log = gymLogs?.find((g: any) => g.id === event.id);
+                        if (log) {
+                          setSelectedGymLog(log);
+                          setGymStartTimeInput(event.startTime || '10:00');
+                          setGymEndTimeInput(event.endTime || '11:00');
+                          setShowGymModal(true);
+                        }
+                      } else {
+                        setSelectedEvent(event);
+                        setShowEventModal(true);
+                      }
+                    }}
+                    activeOpacity={0.8}
                   >
-                    {event.isExtra ? '＋ ' : ''}{event.title}
-                  </Text>
-                  <Text style={[styles.eventBlockLocation, { color: isDark ? eventColor.border : colors.textSecondary }]} numberOfLines={1}>
-                    {format12Hour(event.startTime)} - {format12Hour(event.endTime)}{event.location ? ` • ${event.location}` : ''}
-                  </Text>
-                  {badge && (
-                    <Text style={{ fontSize: 10, color: badge.color, fontWeight: '700', marginTop: 2 }}>
-                      {badge.label}
+                    <Text
+                      style={[
+                        styles.eventBlockTitle,
+                        { color: isDark ? eventColor.border : colors.textPrimary },
+                        isCancelled && { textDecorationLine: 'line-through' },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {event.isExtra ? '＋ ' : ''}{event.title}
                     </Text>
-                  )}
-                </TouchableOpacity>
+                    <Text style={[styles.eventBlockLocation, { color: isDark ? eventColor.border : colors.textSecondary }]} numberOfLines={1}>
+                      {format12Hour(event.startTime)} - {format12Hour(event.endTime)}{event.location ? ` • ${event.location}` : ''}
+                    </Text>
+                    {badge && (
+                      <Text style={{ fontSize: 10, color: badge.color, fontWeight: '700', marginTop: 2 }}>
+                        {badge.label}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </Animated.View>
               );
             })}
           </View>

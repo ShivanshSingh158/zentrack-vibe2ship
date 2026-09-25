@@ -22,6 +22,9 @@ interface NewFolderModalProps {
   visible: boolean;
   onClose: () => void;
   onCreate: (name: string) => void;
+  title?: string;
+  subtitle?: string;
+  submitText?: string;
   colors: any;
   isDark: boolean;
 }
@@ -30,6 +33,9 @@ export const NewFolderModal = React.memo(function NewFolderModal({
   visible,
   onClose,
   onCreate,
+  title = 'New Folder',
+  subtitle,
+  submitText = 'Create',
   colors,
   isDark,
 }: NewFolderModalProps) {
@@ -57,7 +63,10 @@ export const NewFolderModal = React.memo(function NewFolderModal({
         style={styles.modalBg}
       >
         <View style={[styles.modalSheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>New Folder</Text>
+          <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{title}</Text>
+          {!!subtitle && (
+            <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>{subtitle}</Text>
+          )}
           <TextInput
             style={[
               styles.input,
@@ -86,7 +95,7 @@ export const NewFolderModal = React.memo(function NewFolderModal({
               onPress={handleCreate}
             >
               <Text style={[styles.btnTextPrimary, { color: isDark ? '#000000' : '#FFFFFF' }]}>
-                Create
+                {submitText}
               </Text>
             </TouchableOpacity>
           </View>
@@ -112,6 +121,11 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: FONT_SIZE.lg,
+  },
+  modalSubtitle: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 13,
+    marginTop: -4,
   },
   input: {
     borderRadius: RADIUS.md,

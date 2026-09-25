@@ -31,10 +31,11 @@ let _lastAudioLevel = 0;
 
 // VAD constants
 const VAD_POLL_INTERVAL_MS = 100;      // Check RMS every 100ms
-const VAD_SILENCE_THRESHOLD = -45;     // dB below which = silence. -45dB filters room noise/AC/breathing
+const VAD_SILENCE_THRESHOLD = -40;     // dB below which = silence. -40dB reliably separates voice from AC/breathing
 const VAD_SILENCE_DURATION_MS = 1800;  // 1.8s silence → auto-submit. Allows natural mid-sentence pauses
-const VAD_SPEECH_START_FRAMES = 3;     // Need 300ms of real speech before starting (avoids cough/pop)
-const VAD_SPEECH_RESUME_GUARD_MS = 400; // After speech, wait 400ms before starting silence countdown
+const VAD_SPEECH_START_FRAMES = 2;     // Need 200ms of real speech before starting (avoids cough/pop, but responds instantly)
+const VAD_SPEECH_RESUME_GUARD_MS = 200; // After speech, wait 200ms before starting silence countdown (snappier)
+const VAD_WARMUP_DELAY_MS = 200;       // Wait 200ms after recording starts before polling (audio driver stabilisation)
 
 export async function requestMicPermission(): Promise<boolean> {
   const { status } = await Audio.requestPermissionsAsync();
@@ -244,6 +245,16 @@ export async function startVADRecording(
     let hasSpeechStarted = false;
     let speechFrameCount = 0;
     let lastSpeechTime = 0;
+
+    // VAD warm-up: wait for audio driver to stabilise before polling.
+    // Without this, the first ~300ms of dB readings are near-silence
+    // (driver not ready), causing speechFrameCount to never reach threshold.
+    await new Promise(r => setTimeout(r, VAD_WARMUP_DELAY_MS));
+
+    if (!_vadActive) {
+      // Modal was closed during warm-up — bail silently
+      return;
+    }
 
     // Poll RMS amplitude every 100ms
     _vadPollInterval = setInterval(async () => {

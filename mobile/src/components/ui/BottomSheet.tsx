@@ -1,16 +1,29 @@
 import React, { useEffect, useCallback, useState } from 'react';
-import { StyleSheet, Pressable, ViewStyle, StyleProp, BackHandler, Keyboard } from 'react-native';
+import {
+  StyleSheet,
+  Pressable,
+  ViewStyle,
+  StyleProp,
+  BackHandler,
+  Keyboard,
+  Dimensions,
+} from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  withSpring,
   runOnJS,
   useAnimatedKeyboard,
   Easing,
 } from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { Portal } from '../../contexts/PortalContext';
 import { useTheme } from "../../contexts/ThemeContext";
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 interface BottomSheetProps {
   visible: boolean;
@@ -36,7 +49,7 @@ export default function BottomSheet({
   const insets = useSafeAreaInsets();
 
   const [mounted, setMounted] = useState(visible);
-  const translateY = useSharedValue(600);
+  const translateY = useSharedValue(SCREEN_HEIGHT);
   const backdropOpacity = useSharedValue(0);
 
   const safeBottom = Math.max(insets.bottom, 16);
@@ -69,13 +82,23 @@ export default function BottomSheet({
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
-    translateY.value = withTiming(600, { duration: 180, easing: Easing.inOut(Easing.cubic) });
-    backdropOpacity.value = withTiming(0, { duration: 160, easing: Easing.inOut(Easing.cubic) }, (finished) => {
-      if (finished) {
-        runOnJS(setMounted)(false);
-        runOnJS(onClose)();
-      }
+    backdropOpacity.value = withTiming(0, {
+      duration: 200,
+      easing: Easing.bezier(0.25, 0.1, 0.25, 1),
     });
+    translateY.value = withTiming(
+      SCREEN_HEIGHT,
+      {
+        duration: 210,
+        easing: Easing.bezier(0.32, 0, 0.67, 0),
+      },
+      (finished) => {
+        if (finished) {
+          runOnJS(setMounted)(false);
+          runOnJS(onClose)();
+        }
+      }
+    );
   }, [onClose]);
 
   // Android hardware back button handler
@@ -92,10 +115,18 @@ export default function BottomSheet({
   useEffect(() => {
     if (visible) {
       setMounted(true);
-      // Instant, smooth fluid entrance with ZERO bounce
-      translateY.value = 600;
-      translateY.value = withTiming(0, { duration: 200, easing: Easing.out(Easing.cubic) });
-      backdropOpacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      // Apple iOS Critically Damped Spring: fluid glide, zero rubber-band bounce
+      translateY.value = SCREEN_HEIGHT;
+      translateY.value = withSpring(0, {
+        damping: 32,
+        stiffness: 280,
+        mass: 0.85,
+      });
+      backdropOpacity.value = withTiming(1, {
+        duration: 200,
+        easing: Easing.bezier(0.16, 1, 0.3, 1),
+      });
     } else if (mounted) {
       handleClose();
     }
@@ -107,9 +138,19 @@ export default function BottomSheet({
 
   return (
     <Portal name={portalId}>
-      <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}>
-        <Pressable style={{ flex: 1 }} onPress={handleClose} />
+      {/* Frosted Glass Blur Backdrop */}
+      <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
+        <BlurView
+          intensity={isDark ? 30 : 20}
+          tint={isDark ? 'dark' : 'light'}
+          style={StyleSheet.absoluteFill}
+        />
+        <Pressable
+          style={[StyleSheet.absoluteFill, styles.backdrop]}
+          onPress={handleClose}
+        />
       </Animated.View>
+
       <Animated.View
         style={[
           styles.sheet,
@@ -117,10 +158,8 @@ export default function BottomSheet({
           contentStyle,
           sheetStyle,
         ]}
-        renderToHardwareTextureAndroid={true}
-        shouldRasterizeIOS={true}
       >
-        <Pressable onPress={handleClose} hitSlop={{ top: 10, bottom: 10 }}>
+        <Pressable onPress={handleClose} hitSlop={{ top: 12, bottom: 12, left: 24, right: 24 }}>
           <Animated.View style={styles.handle} />
         </Pressable>
         {children}
@@ -131,7 +170,7 @@ export default function BottomSheet({
 
 const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   backdrop: {
-    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(0, 0, 0, 0.35)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.55)' : 'rgba(0, 0, 0, 0.25)',
   },
   sheet: {
     position: 'absolute',
@@ -141,27 +180,28 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     backgroundColor: isDark ? '#000000' : '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    overflow: 'hidden',
     paddingHorizontal: 20,
     paddingTop: 14,
     elevation: 24,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: isDark ? 0.7 : 0.15,
-    shadowRadius: 16,
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: isDark ? 0.65 : 0.15,
+    shadowRadius: 20,
     borderWidth: 1,
     borderColor: isDark ? '#1c1c20' : colors.border,
     borderBottomWidth: 0,
   },
   fullHeight: {
-    height: '90%',
+    height: '92%',
   },
   wrapContent: {
-    maxHeight: '90%',
+    maxHeight: '92%',
   },
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.15)',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.18)',
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 14,

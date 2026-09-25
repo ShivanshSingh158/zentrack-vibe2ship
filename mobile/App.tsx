@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 import { OfflineIndicator } from './src/components/OfflineIndicator';
 import * as Notifications from 'expo-notifications';
-import { requestNotificationPermissions, registerBackgroundNotificationFetch } from './src/services/notifications';
+import { requestNotificationPermissions, registerBackgroundNotificationFetch, cancelClassNotificationsImmediately, clearScheduleCache } from './src/services/notifications';
 import * as SplashScreen from 'expo-splash-screen';
 import { enableScreens, enableFreeze } from 'react-native-screens';
 
@@ -501,6 +501,10 @@ export default function App() {
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
         const logDate     = (data?.date || formatLocalDateStr()) as string;
+        const rawIdx      = typeof data?.sessionIdx === 'number'
+          ? data.sessionIdx
+          : (identifier.startsWith('class_') && identifier.split('_')[2] ? parseInt(identifier.split('_')[2], 10) : 0);
+        const safeSessionIdx = isNaN(rawIdx) ? 0 : rawIdx;
         const uid         = auth.currentUser?.uid;
         let success = false;
         if (subjectId && uid) {
@@ -508,7 +512,7 @@ export default function App() {
             const logType     = isLab ? 'lab' : 'class' as 'class' | 'lab';
             const attendedKey = isLab ? 'labsAttended' : 'classesAttended';
             const totalKey    = isLab ? 'labsTotal'    : 'classesTotal';
-            const logDocId    = buildAttLogId(uid, subjectId, logDate, logType, 0);
+            const logDocId    = buildAttLogId(uid, subjectId, logDate, logType, safeSessionIdx);
             const logRef      = doc(db, COLLECTION.ATTENDANCE_LOGS, logDocId);
 
             const existing = await getDoc(logRef);
@@ -517,6 +521,8 @@ export default function App() {
               const oldAction = existing.data().action as string;
               if (oldAction === 'attended') {
                 // Already logged as present — fire soft confirmation and bail
+                cancelClassNotificationsImmediately(subjectId, subjectName, logDate, safeSessionIdx).catch(() => {});
+                clearScheduleCache();
                 await Notifications.scheduleNotificationAsync({
                   content: {
                     title: 'Already Recorded',
@@ -542,7 +548,7 @@ export default function App() {
                 userId: uid, subjectId, subjectName,
                 type: logType, action: 'attended',
                 date: logDate.slice(0, 10),
-                isExtra: false, timestamp: Date.now(), idx: 0,
+                isExtra: false, timestamp: Date.now(), idx: safeSessionIdx,
               };
               await Promise.all([
                 updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), {
@@ -560,6 +566,8 @@ export default function App() {
           }
         }
         if (success) {
+          cancelClassNotificationsImmediately(subjectId!, subjectName, logDate, safeSessionIdx).catch(() => {});
+          clearScheduleCache();
           await Notifications.scheduleNotificationAsync({
             content: {
               title: 'Attendance Logged',
@@ -580,6 +588,10 @@ export default function App() {
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
         const logDate     = (data?.date || formatLocalDateStr()) as string;
+        const rawIdx      = typeof data?.sessionIdx === 'number'
+          ? data.sessionIdx
+          : (identifier.startsWith('class_') && identifier.split('_')[2] ? parseInt(identifier.split('_')[2], 10) : 0);
+        const safeSessionIdx = isNaN(rawIdx) ? 0 : rawIdx;
         const uid         = auth.currentUser?.uid;
         let success = false;
         if (subjectId && uid) {
@@ -587,7 +599,7 @@ export default function App() {
             const logType     = isLab ? 'lab' : 'class' as 'class' | 'lab';
             const attendedKey = isLab ? 'labsAttended' : 'classesAttended';
             const totalKey    = isLab ? 'labsTotal'    : 'classesTotal';
-            const logDocId    = buildAttLogId(uid, subjectId, logDate, logType, 0);
+            const logDocId    = buildAttLogId(uid, subjectId, logDate, logType, safeSessionIdx);
             const logRef      = doc(db, COLLECTION.ATTENDANCE_LOGS, logDocId);
 
             const existing = await getDoc(logRef);
@@ -596,6 +608,8 @@ export default function App() {
               const oldAction = existing.data().action as string;
               if (oldAction === 'missed') {
                 // Already logged as absent — soft confirmation and bail
+                cancelClassNotificationsImmediately(subjectId, subjectName, logDate, safeSessionIdx).catch(() => {});
+                clearScheduleCache();
                 await Notifications.scheduleNotificationAsync({
                   content: {
                     title: 'Already Recorded',
@@ -621,7 +635,7 @@ export default function App() {
                 userId: uid, subjectId, subjectName,
                 type: logType, action: 'missed',
                 date: logDate.slice(0, 10),
-                isExtra: false, timestamp: Date.now(), idx: 0,
+                isExtra: false, timestamp: Date.now(), idx: safeSessionIdx,
               };
               await Promise.all([
                 updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), {
@@ -638,6 +652,8 @@ export default function App() {
           }
         }
         if (success) {
+          cancelClassNotificationsImmediately(subjectId!, subjectName, logDate, safeSessionIdx).catch(() => {});
+          clearScheduleCache();
           await Notifications.scheduleNotificationAsync({
             content: {
               title: 'Absence Logged',
@@ -658,12 +674,16 @@ export default function App() {
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
         const logDate     = (data?.date || formatLocalDateStr()) as string;
+        const rawIdx      = typeof data?.sessionIdx === 'number'
+          ? data.sessionIdx
+          : (identifier.startsWith('class_') && identifier.split('_')[2] ? parseInt(identifier.split('_')[2], 10) : 0);
+        const safeSessionIdx = isNaN(rawIdx) ? 0 : rawIdx;
         const uid         = auth.currentUser?.uid;
         let success = false;
         if (subjectId && uid) {
           try {
             const logType  = isLab ? 'lab' : 'class' as 'class' | 'lab';
-            const logDocId = buildAttLogId(uid, subjectId, logDate, logType, 0);
+            const logDocId = buildAttLogId(uid, subjectId, logDate, logType, safeSessionIdx);
             const logRef   = doc(db, COLLECTION.ATTENDANCE_LOGS, logDocId);
             // setDoc with merge means: if doc already exists, only update action field.
             // If it existed as 'attended', counters don't change here (user should undo first).
@@ -672,7 +692,7 @@ export default function App() {
               userId: uid, subjectId, subjectName,
               type: logType, action: 'cancelled',
               date: logDate.slice(0, 10),
-              isExtra: false, timestamp: Date.now(), idx: 0,
+              isExtra: false, timestamp: Date.now(), idx: safeSessionIdx,
             }, { merge: true });
             success = true;
           } catch (e) {
@@ -680,6 +700,8 @@ export default function App() {
           }
         }
         if (success) {
+          cancelClassNotificationsImmediately(subjectId!, subjectName, logDate, safeSessionIdx).catch(() => {});
+          clearScheduleCache();
           await Notifications.scheduleNotificationAsync({
             content: {
               title: 'Class Cancelled',

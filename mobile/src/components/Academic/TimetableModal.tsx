@@ -1,11 +1,226 @@
-import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, Modal, FlatList, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useMemo, useCallback } from 'react';
+import { View, Text, Modal, FlatList, StyleSheet, Pressable, ScrollView, Platform } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { FONT_FAMILY, SPACE, RADIUS } from '../../theme/tokens';
+import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
+import Reanimated, {
+  LinearTransition,
+  FadeInDown,
+  FadeOut,
+  SlideInDown,
+  SlideOutDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  Easing,
+} from 'react-native-reanimated';
+import { FONT_FAMILY } from '../../theme/tokens';
 import { AttendanceSubject as Subject } from '../../contexts/MobileDataContext';
 import { useTheme } from "../../contexts/ThemeContext";
 import { DAY_SHORT } from '../../screens/attendance/attendanceConstants';
+
+// ── Apple iOS-Grade Tactile Spring Scale Button ──────────────────────────────
+const SpringScaleButton = React.memo(function SpringScaleButton({
+  onPress,
+  children,
+  style,
+  containerStyle,
+  haptic = 'light',
+  activeScale = 0.96,
+}: {
+  onPress: () => void;
+  children: React.ReactNode;
+  style?: any;
+  containerStyle?: any;
+  haptic?: 'light' | 'medium';
+  activeScale?: number;
+}) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = useCallback(() => {
+    scale.value = withTiming(activeScale, { duration: 70 });
+  }, [activeScale, scale]);
+
+  const handlePressOut = useCallback(() => {
+    scale.value = withTiming(1.0, { duration: 110 });
+  }, [scale]);
+
+  const handlePress = useCallback(() => {
+    if (haptic === 'medium') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } else {
+      Haptics.selectionAsync();
+    }
+    onPress();
+  }, [haptic, onPress]);
+
+  return (
+    <Pressable
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={handlePress}
+      style={containerStyle}
+    >
+      <Reanimated.View style={[style, animStyle]}>
+        {children}
+      </Reanimated.View>
+    </Pressable>
+  );
+});
+
+// ── Apple iOS-Grade Tactile Icon Button ──────────────────────────────────────
+const SpringIconButton = React.memo(function SpringIconButton({
+  onPress,
+  children,
+  style,
+  haptic = 'light',
+}: {
+  onPress: () => void;
+  children: React.ReactNode;
+  style?: any;
+  haptic?: 'light' | 'medium';
+}) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = useCallback(() => {
+    scale.value = withTiming(0.92, { duration: 70 });
+  }, [scale]);
+
+  const handlePressOut = useCallback(() => {
+    scale.value = withTiming(1.0, { duration: 110 });
+  }, [scale]);
+
+  const handlePress = useCallback(() => {
+    if (haptic === 'medium') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } else {
+      Haptics.selectionAsync();
+    }
+    onPress();
+  }, [haptic, onPress]);
+
+  return (
+    <Pressable
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={handlePress}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    >
+      <Reanimated.View style={[style, animStyle]}>
+        {children}
+      </Reanimated.View>
+    </Pressable>
+  );
+});
+
+// ── Structured Apple iOS-Grade Timetable Subject Card ────────────────────────
+const TimetableSubjectRow = React.memo(function TimetableSubjectRow({
+  s,
+  styles,
+  colors,
+  onEdit,
+  onDelete,
+}: {
+  s: Subject;
+  styles: any;
+  colors: any;
+  isDark: boolean;
+  onEdit: (subject: Subject) => void;
+  onDelete: (id: string, name: string) => void;
+}) {
+  const target = s.targetPercentage || 75;
+
+  // Schedule badges
+  const scheduleItems: React.ReactNode[] = [];
+  ['1', '2', '3', '4', '5', '6'].forEach(dKey => {
+    const dayIdx = Number(dKey);
+    const dSched = s.schedule?.[dKey] || s.schedule?.[dayIdx];
+    const classes = Array.isArray(dSched?.classes) ? dSched.classes : [];
+    const labs = Array.isArray(dSched?.labs) ? dSched.labs : [];
+    const cCount = classes.length || (typeof dSched?.classCount === 'number' ? dSched.classCount : 0);
+    const lCount = labs.length || (typeof dSched?.labCount === 'number' ? dSched.labCount : 0);
+    const hasItems = cCount > 0 || lCount > 0;
+
+    if (!hasItems) return;
+
+    const parts: string[] = [];
+    if (cCount > 0) parts.push(`${cCount}C`);
+    if (lCount > 0) parts.push(`${lCount}L`);
+
+    scheduleItems.push(
+      <View key={dKey} style={styles.dayBadge}>
+        <Text style={styles.dayName}>{DAY_SHORT[dayIdx]}:</Text>
+        <Text style={styles.dayVal}>{parts.join(' ')}</Text>
+      </View>
+    );
+  });
+
+  return (
+    <Reanimated.View
+      layout={LinearTransition.springify().damping(22).stiffness(200)}
+      entering={FadeInDown.springify().damping(20).stiffness(200)}
+      exiting={FadeOut.duration(180)}
+      style={styles.subjectCard}
+    >
+      {/* ── Top Row: Full Subject Name + Target Pill + Edit/Delete Actions ── */}
+      <View style={styles.cardHeader}>
+        <View style={styles.titleCol}>
+          <Text style={styles.subjectTitle} numberOfLines={2}>
+            {s.name}
+          </Text>
+          <View style={styles.targetPill}>
+            <Ionicons name="locate-outline" size={11} color={colors.textSecondary || colors.textMuted} />
+            <Text style={styles.targetPillText}>Target: {target}%</Text>
+          </View>
+        </View>
+
+        <View style={styles.cardIconActions}>
+          <SpringIconButton
+            onPress={() => onEdit(s)}
+            style={styles.iconActionBtn}
+            haptic="light"
+          >
+            <Ionicons name="pencil-outline" size={14} color={colors.textSecondary || colors.textMuted} />
+          </SpringIconButton>
+          <SpringIconButton
+            onPress={() => onDelete(s.id!, s.name)}
+            style={[styles.iconActionBtn, styles.deleteBtn]}
+            haptic="medium"
+          >
+            <Ionicons name="trash-outline" size={14} color={colors.error || '#FF453A'} />
+          </SpringIconButton>
+        </View>
+      </View>
+
+      {/* ── Weekly Schedule Strip (Single Line with Horizontal Scroll) ── */}
+      <View style={styles.scheduleStrip}>
+        <View style={styles.scheduleAnchor}>
+          <Ionicons name="calendar-outline" size={13} color={colors.accentPrimary || '#A599FF'} />
+          <Text style={styles.scheduleAnchorText}>Weekly:</Text>
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.scheduleScrollContent}
+        >
+          {scheduleItems.length > 0 ? (
+            scheduleItems
+          ) : (
+            <Text style={styles.noSchedText}>No classes scheduled</Text>
+          )}
+        </ScrollView>
+      </View>
+    </Reanimated.View>
+  );
+});
 
 interface TimetableModalProps {
   visible: boolean;
@@ -27,507 +242,372 @@ export const TimetableModal = React.memo(({
   handleResetSemester,
 }: TimetableModalProps) => {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-  
-  return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.modalRoot} edges={['top', 'bottom']}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerTitleGroup}>
-            <Text style={styles.headerTitle}>Timetable</Text>
-            <View style={styles.countBadge}>
-              <Text style={styles.countBadgeText}>{subjects.length} {subjects.length === 1 ? 'subject' : 'subjects'}</Text>
-            </View>
-          </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              onPress={handleAddSubject}
-              activeOpacity={0.8}
-              style={styles.addBtn}
-            >
-              <Ionicons name="add" size={15} color={isDark ? "#000000" : "#FFFFFF"} />
-              <Text style={styles.addBtnText}>Add</Text>
-            </TouchableOpacity>
 
-            <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.closeBtn}>
-              <Ionicons name="close" size={18} color={colors.textMuted} />
-            </TouchableOpacity>
+  return (
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <View style={styles.modalBg}>
+        {Platform.OS === 'ios' && (
+          <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+        )}
+        <Reanimated.View
+          entering={SlideInDown.duration(280).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+          exiting={SlideOutDown.duration(200).easing(Easing.in(Easing.quad))}
+          style={styles.sheetContainer}
+        >
+          <SafeAreaView style={styles.modalRoot} edges={['top']}>
+            {/* Apple iOS Clean Navigation Header */}
+            <View style={styles.header}>
+              <View style={styles.headerTitleGroup}>
+                <Text style={styles.headerTitle}>Timetable</Text>
+                <View style={styles.countBadge}>
+                  <Text style={styles.countBadgeText}>{subjects.length} {subjects.length === 1 ? 'subject' : 'subjects'}</Text>
+                </View>
+              </View>
+
+          <View style={styles.headerActions}>
+            <SpringScaleButton
+              onPress={handleAddSubject}
+              style={styles.addBtn}
+              haptic="light"
+            >
+              <Ionicons name="add" size={16} color={isDark ? "#000000" : "#FFFFFF"} />
+              <Text style={styles.addBtnText}>Add</Text>
+            </SpringScaleButton>
+
+            <SpringIconButton
+              onPress={onClose}
+              style={styles.closeBtn}
+              haptic="light"
+            >
+              <Ionicons name="close" size={18} color={colors.textPrimary} />
+            </SpringIconButton>
           </View>
         </View>
 
-        {/* Subjects List */}
+        {/* Subjects List with Refined Apple iOS Layout */}
         <FlatList
           data={subjects}
           keyExtractor={s => s.id!}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: Math.max(insets.bottom, 20) + 24 }
+          ]}
           showsVerticalScrollIndicator={false}
-          renderItem={({ item: s }) => {
-            const target = s.targetPercentage || 75;
-            const clsAtt = s.classesAttended || 0;
-            const clsTot = s.classesTotal || 0;
-            const labAtt = s.labsAttended || 0;
-            const labTot = s.labsTotal || 0;
-
-            const totalAtt = clsAtt + labAtt;
-            const totalHeld = clsTot + labTot;
-            const totalPct = totalHeld > 0 ? Math.round((totalAtt / totalHeld) * 100) : null;
-
-            const clsPct = clsTot > 0 ? Math.round((clsAtt / clsTot) * 100) : null;
-            const labPct = labTot > 0 ? Math.round((labAtt / labTot) * 100) : null;
-
-            const clsColor = clsPct !== null ? (clsPct >= target ? '#5eda9e' : clsPct >= target - 5 ? '#fbbf24' : '#ff6961') : colors.border;
-            const labColor = labPct !== null ? (labPct >= target ? '#5eda9e' : labPct >= target - 5 ? '#fbbf24' : '#ff6961') : colors.border;
-            const overallColor = totalPct !== null ? (totalPct >= target ? '#5eda9e' : totalPct >= target - 5 ? '#fbbf24' : '#ff6961') : colors.textMuted;
-
-            // Schedule badges
-            const scheduleItems: React.ReactNode[] = [];
-            ['1', '2', '3', '4', '5', '6'].forEach(dKey => {
-              const dayIdx = Number(dKey);
-              const dSched = s.schedule?.[dKey] || s.schedule?.[dayIdx];
-              const classes = Array.isArray(dSched?.classes) ? dSched.classes : [];
-              const labs = Array.isArray(dSched?.labs) ? dSched.labs : [];
-              const cCount = classes.length || (typeof dSched?.classCount === 'number' ? dSched.classCount : 0);
-              const lCount = labs.length || (typeof dSched?.labCount === 'number' ? dSched.labCount : 0);
-              const hasItems = cCount > 0 || lCount > 0;
-
-              if (!hasItems) return;
-
-              const parts: string[] = [];
-              if (cCount > 0) parts.push(`${cCount}C`);
-              if (lCount > 0) parts.push(`${lCount}L`);
-
-              scheduleItems.push(
-                <View key={dKey} style={styles.dayBadge}>
-                  <Text style={styles.dayName}>{DAY_SHORT[dayIdx]}:</Text>
-                  <Text style={styles.dayVal}>{parts.join(' ')}</Text>
-                </View>
-              );
-            });
-
-            return (
-              <View style={styles.subjectCard}>
-                {/* Header: Squircle Badge + Title + Target Pill + Action Icons */}
-                <View style={styles.cardHeader}>
-                  <View style={styles.cardHeaderLeft}>
-                    <View style={styles.subjectBadge}>
-                      <Ionicons name="school-outline" size={15} color={colors.accentPrimary} />
-                    </View>
-                    <View style={styles.titleCol}>
-                      <View style={styles.titleRow}>
-                        <Text style={styles.subjectTitle} numberOfLines={1}>{s.name}</Text>
-                        <View style={styles.targetPill}>
-                          <Ionicons name="locate-outline" size={10} color={colors.textMuted} />
-                          <Text style={styles.targetPillText}>{target}%</Text>
-                        </View>
-                        {totalPct !== null && (
-                          <View style={[styles.statusPctBadge, { borderColor: overallColor + '40', backgroundColor: overallColor + '18' }]}>
-                            <Text style={[styles.statusPctText, { color: overallColor }]}>{totalPct}%</Text>
-                          </View>
-                        )}
-                      </View>
-                      {totalHeld > 0 && (
-                        <Text style={styles.cardSubtext}>{totalAtt} of {totalHeld} attended</Text>
-                      )}
-                    </View>
-                  </View>
-
-                  <View style={styles.cardIconActions}>
-                    <TouchableOpacity
-                      onPress={() => onEditSubject(s)}
-                      activeOpacity={0.7}
-                      style={styles.iconActionBtn}
-                    >
-                      <Ionicons name="pencil-outline" size={14} color={colors.textMuted} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleDeleteSubject(s.id!, s.name)}
-                      activeOpacity={0.7}
-                      style={[styles.iconActionBtn, styles.deleteBtn]}
-                    >
-                      <Ionicons name="trash-outline" size={14} color={colors.error} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Infused Attendance Progress Rows (Seamlessly integrated, no cutout boxes) */}
-                <View style={styles.infusedBars}>
-                  <View style={styles.infusedRow}>
-                    <View style={[styles.infusedTag, { backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(124,58,237,0.08)', borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(124,58,237,0.2)' }]}>
-                      <Ionicons name="book-outline" size={11} color={colors.accentPrimary} />
-                      <Text style={[styles.infusedTagText, { color: colors.accentPrimary }]}>CLASS</Text>
-                    </View>
-                    <View style={styles.infusedTrack}>
-                      <View style={[styles.infusedFill, { width: `${Math.min(100, clsPct || 0)}%`, backgroundColor: clsColor }]} />
-                    </View>
-                    <View style={styles.infusedStats}>
-                      <Text style={styles.infusedCountText}>{clsAtt}/{clsTot}</Text>
-                      {clsPct !== null && (
-                        <Text style={[styles.infusedPctText, { color: clsColor }]}>{clsPct}%</Text>
-                      )}
-                    </View>
-                  </View>
-
-                  {(labTot > 0 || labAtt > 0) && (
-                    <View style={styles.infusedRow}>
-                      <View style={[styles.infusedTag, { backgroundColor: '#38bdf818', borderColor: '#38bdf835' }]}>
-                        <Ionicons name="flask-outline" size={11} color="#38bdf8" />
-                        <Text style={[styles.infusedTagText, { color: '#38bdf8' }]}>LAB</Text>
-                      </View>
-                      <View style={styles.infusedTrack}>
-                        <View style={[styles.infusedFill, { width: `${Math.min(100, labPct || 0)}%`, backgroundColor: labColor }]} />
-                      </View>
-                      <View style={styles.infusedStats}>
-                        <Text style={styles.infusedCountText}>{labAtt}/{labTot}</Text>
-                        {labPct !== null && (
-                          <Text style={[styles.infusedPctText, { color: labColor }]}>{labPct}%</Text>
-                        )}
-                      </View>
-                    </View>
-                  )}
-                </View>
-
-                {/* Weekly Schedule Strip */}
-                <View style={styles.scheduleStrip}>
-                  <View style={styles.scheduleAnchor}>
-                    <Ionicons name="calendar-outline" size={11} color={colors.textMuted} />
-                    <Text style={styles.scheduleAnchorText}>Weekly:</Text>
-                  </View>
-                  <View style={styles.scheduleBadgesWrap}>
-                    {scheduleItems.length > 0 ? (
-                      scheduleItems
-                    ) : (
-                      <Text style={styles.noSchedText}>No classes scheduled</Text>
-                    )}
-                  </View>
-                </View>
+          renderItem={({ item: s }) => (
+            <TimetableSubjectRow
+              key={s.id}
+              s={s}
+              styles={styles}
+              colors={colors}
+              isDark={isDark}
+              onEdit={onEditSubject}
+              onDelete={handleDeleteSubject}
+            />
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconCircle}>
+                <Ionicons name="calendar-outline" size={32} color={colors.accentPrimary} />
               </View>
-            );
-          }}
+              <Text style={styles.emptyTitle}>No Subjects Configured</Text>
+              <Text style={styles.emptySubtitle}>Tap the "+ Add" button above to set up your weekly classes, labs, and attendance targets.</Text>
+            </View>
+          }
           ListFooterComponent={
             subjects.length > 0 ? (
               <View style={styles.footerRow}>
-                <TouchableOpacity
+                <SpringScaleButton
                   onPress={handleResetSemester}
-                  activeOpacity={0.8}
-                  style={[styles.footerActionBtn, styles.resetBtn]}
+                  containerStyle={{ width: '100%' }}
+                  style={styles.resetBtn}
+                  haptic="medium"
                 >
-                  <Ionicons name="refresh-outline" size={16} color={colors.error} />
-                  <Text style={styles.resetBtnText}>Reset Semester</Text>
-                </TouchableOpacity>
+                  <Ionicons name="refresh-outline" size={16} color="#FF453A" style={{ backgroundColor: 'transparent' }} />
+                  <Text style={styles.resetBtnText}>Reset Semester Attendance</Text>
+                </SpringScaleButton>
               </View>
             ) : null
           }
         />
-      </SafeAreaView>
+          </SafeAreaView>
+        </Reanimated.View>
+      </View>
     </Modal>
   );
 });
 
 const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  modalBg: {
+    flex: 1,
+    backgroundColor: isDark ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.4)',
+  },
+  sheetContainer: {
+    flex: 1,
+    backgroundColor: isDark ? '#000000' : (colors.background || '#F8F9FA'),
+  },
   modalRoot: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: isDark ? '#000000' : (colors.background || '#F8F9FA'),
   },
+
+  // ── Header Bar ────────────────────────────────────────────────────────────
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: SPACE.lg,
-    paddingVertical: SPACE.md,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: isDark ? '#1c1c20' : 'rgba(0, 0, 0, 0.08)',
   },
-  headerTitle: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 20,
-    color: colors.textPrimary,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.accentPrimary,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: RADIUS.lg,
-  },
-  addBtnText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 12,
-    color: isDark ? '#000000' : '#FFFFFF',
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#EAE9F2',
-    borderWidth: isDark ? 0 : 1,
-    borderColor: isDark ? 'transparent' : '#E2E1EA',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 4,
-  },
-
   headerTitleGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+  },
+  headerTitle: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 22,
+    color: colors.textPrimary,
+    letterSpacing: -0.3,
   },
   countBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(124,58,237,0.08)',
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: isDark ? 'rgba(165, 153, 255, 0.12)' : 'rgba(108, 92, 231, 0.08)',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(124,58,237,0.2)',
+    borderColor: isDark ? 'rgba(165, 153, 255, 0.22)' : 'rgba(108, 92, 231, 0.18)',
   },
   countBadgeText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 11,
-    color: colors.accentPrimary,
+    color: colors.accentPrimary || '#A599FF',
   },
-
-  listContent: {
-    padding: SPACE.md,
-    paddingBottom: 40,
-  },
-  subjectCard: {
-    backgroundColor: isDark ? '#141416' : '#FFFFFF',
-    borderRadius: RADIUS.lg,
-    padding: SPACE.md,
-    marginBottom: SPACE.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 10,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  cardHeaderLeft: {
+  headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    flex: 1,
-    minWidth: 0,
   },
-  subjectBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 9,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(124,58,237,0.08)',
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.accentPrimary || '#A599FF',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: colors.accentPrimary || '#A599FF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: isDark ? 0.35 : 0.2,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  addBtnText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 13,
+    color: isDark ? '#000000' : '#FFFFFF',
+  },
+  closeBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(124,58,237,0.2)',
+    borderColor: isDark ? '#1c1c20' : 'rgba(0, 0, 0, 0.06)',
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
+  },
+
+  // ── List & Subject Card ───────────────────────────────────────────────────
+  listContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  subjectCard: {
+    backgroundColor: isDark ? '#000000' : '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: isDark ? '#1c1c20' : 'rgba(0, 0, 0, 0.06)',
+    gap: 12,
+  },
+
+  // ── Card Header Row ───────────────────────────────────────────────────────
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   titleCol: {
     flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 6,
-    flexWrap: 'wrap',
   },
   subjectTitle: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 15,
+    fontSize: 17,
     color: colors.textPrimary,
-    maxWidth: 160,
+    letterSpacing: -0.2,
+    lineHeight: 22,
   },
   targetPill: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 5,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
+    gap: 4,
+    paddingHorizontal: 7.5,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+    backgroundColor: isDark ? '#0d0d10' : '#F1F5F9',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+    borderColor: isDark ? '#1c1c20' : '#E2E8F0',
   },
   targetPillText: {
     fontFamily: FONT_FAMILY.medium,
-    fontSize: 10,
-    color: colors.textMuted,
-  },
-  statusPctBadge: {
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 5,
-    borderWidth: 1,
-  },
-  statusPctText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 10,
-  },
-  cardSubtext: {
-    fontFamily: FONT_FAMILY.medium,
     fontSize: 11,
-    color: colors.textMuted,
+    color: colors.textSecondary || colors.textMuted,
   },
 
+  // ── Header Right: Actions ─────────────────────────────────────────────────
   cardIconActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     flexShrink: 0,
+    paddingTop: 2,
   },
   iconActionBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F5F4FA',
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: isDark ? '#0d0d10' : 'rgba(0, 0, 0, 0.04)',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E1EA',
+    borderColor: isDark ? '#1c1c20' : 'rgba(0, 0, 0, 0.06)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   deleteBtn: {
-    backgroundColor: isDark ? 'rgba(255,105,97,0.08)' : 'rgba(239,68,68,0.08)',
-    borderColor: isDark ? 'rgba(255,105,97,0.2)' : 'rgba(239,68,68,0.2)',
+    backgroundColor: isDark ? 'rgba(255, 69, 58, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+    borderColor: isDark ? 'rgba(255, 69, 58, 0.22)' : 'rgba(239, 68, 68, 0.20)',
   },
 
-  infusedBars: {
-    gap: 8,
-    width: '100%',
-  },
-  infusedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    width: '100%',
-  },
-  infusedTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 5,
-    borderWidth: 1,
-  },
-  infusedTagText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 9,
-    letterSpacing: 0.5,
-  },
-  infusedTrack: {
-    flex: 1,
-    height: 5,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  infusedFill: {
-    height: '100%',
-    borderRadius: 999,
-  },
-  infusedStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    minWidth: 70,
-    justifyContent: 'flex-end',
-  },
-  infusedCountText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 11,
-    color: colors.textPrimary,
-  },
-  infusedPctText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 10,
-  },
-
+  // ── Weekly Schedule Strip (Single Horizontal Line) ────────────────────────
   scheduleStrip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : '#E2E8F0',
-    flexWrap: 'wrap',
+    gap: 8,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: isDark ? '#1c1c20' : 'rgba(0, 0, 0, 0.06)',
   },
   scheduleAnchor: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    flexShrink: 0,
   },
   scheduleAnchorText: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 10,
-    color: colors.textMuted,
+    fontSize: 11.5,
+    color: colors.textSecondary || colors.textMuted,
   },
-  scheduleBadgesWrap: {
+  scheduleScrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    flexWrap: 'wrap',
+    gap: 6,
+    paddingRight: 8,
   },
   dayBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 5,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F1F5F9',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 8,
+    backgroundColor: isDark ? '#0d0d10' : '#F1F5F9',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.07)' : '#E2E8F0',
+    borderColor: isDark ? '#1c1c20' : '#E2E8F0',
   },
   dayName: {
     fontFamily: FONT_FAMILY.medium,
-    fontSize: 9,
-    color: colors.textMuted,
+    fontSize: 11,
+    color: colors.textSecondary || colors.textMuted,
   },
   dayVal: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 9,
+    fontSize: 11,
     color: colors.textPrimary,
   },
   noSchedText: {
     fontFamily: FONT_FAMILY.regular,
-    fontSize: 10,
-    color: colors.textMuted,
+    fontSize: 11,
+    color: colors.textTertiary || colors.textMuted,
     fontStyle: 'italic',
   },
 
+  // ── Footer: Reset Semester Action ─────────────────────────────────────────
   footerRow: {
-    flexDirection: 'row',
-    gap: SPACE.md,
-    marginTop: SPACE.md,
-    marginBottom: SPACE.xl,
+    width: '100%',
+    marginTop: 18,
+    marginBottom: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  footerActionBtn: {
-    flex: 1,
+  resetBtn: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 14,
-    borderRadius: RADIUS.lg,
+    borderRadius: 16,
     borderWidth: 1,
-  },
-  resetBtn: {
-    backgroundColor: isDark ? 'rgba(255,105,97,0.08)' : 'rgba(239,68,68,0.10)',
-    borderColor: isDark ? 'rgba(255,105,97,0.2)' : 'rgba(239,68,68,0.25)',
+    backgroundColor: isDark ? '#221315' : '#FEF2F2',
+    borderColor: isDark ? '#4A1D20' : '#FECACA',
   },
   resetBtnText: {
     fontFamily: FONT_FAMILY.bold,
+    fontSize: 14,
+    color: '#FF453A',
+    letterSpacing: -0.1,
+    backgroundColor: 'transparent',
+  },
+
+  // ── Empty State ───────────────────────────────────────────────────────────
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: isDark ? 'rgba(165, 153, 255, 0.10)' : 'rgba(108, 92, 231, 0.08)',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(165, 153, 255, 0.20)' : 'rgba(108, 92, 231, 0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 18,
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontFamily: FONT_FAMILY.medium,
     fontSize: 13,
-    color: colors.error,
+    color: colors.textSecondary || colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 19,
   },
 });

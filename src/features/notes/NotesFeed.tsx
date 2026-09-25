@@ -136,8 +136,10 @@ export const NotesFeed: React.FC<NotesFeedProps> = ({
   const currentSortLabel = SORT_OPTIONS.find(o => o.value === sortBy)?.label || 'Newest';
 
   const allDocs = nodes.filter(n => n.type !== 'folder');
-  const pinnedDocs = allDocs.filter(n => n.isPinned);
-  const regularDocs = allDocs.filter(n => !n.isPinned);
+  // isPinned: web writes 'isPinned', mobile writes 'pinned' — check both for sync
+  const isPinnedNode = (n: StorageNode) => n.isPinned === true || (n as any).pinned === true;
+  const pinnedDocs   = allDocs.filter(n => isPinnedNode(n));
+  const regularDocs  = allDocs.filter(n => !isPinnedNode(n));
 
   // Subfolders inside currently active folder
   const subfoldersInFolder = React.useMemo(() => {
@@ -195,11 +197,11 @@ export const NotesFeed: React.FC<NotesFeedProps> = ({
             <div className="card-action-cluster" onClick={e => e.stopPropagation()}>
               <button
                 type="button"
-                className={`card-action-btn pin ${node.isPinned ? 'pinned' : ''}`}
+                className={`card-action-btn pin ${isPinnedNode(node) ? 'pinned' : ''}`}
                 onClick={() => onTogglePin(node)}
-                title={node.isPinned ? 'Unpin Note' : 'Pin Note'}
+                title={isPinnedNode(node) ? 'Unpin Note' : 'Pin Note'}
               >
-                <Star size={11} fill={node.isPinned ? '#ff9f4d' : 'none'} color={node.isPinned ? '#ff9f4d' : '#8e8e93'} />
+                <Star size={11} fill={isPinnedNode(node) ? '#ff9f4d' : 'none'} color={isPinnedNode(node) ? '#ff9f4d' : '#8e8e93'} />
               </button>
               <button
                 type="button"

@@ -12,7 +12,7 @@
  */
 import { useCallback, useRef, useMemo } from 'react';
 import {
-  collection, doc, updateDoc, addDoc,
+  collection, doc, updateDoc, addDoc, deleteDoc,
   serverTimestamp, writeBatch,
 } from 'firebase/firestore';
 import NetInfo from '@react-native-community/netinfo';
@@ -22,7 +22,7 @@ import { COLLECTION } from '../../config/constants';
 import { Task } from '../../contexts/MobileDataContext';
 import { awardXP } from '../../services/xpSystem';
 import { handleSyncError } from '../../utils/errorUtils';
-import { safeUpdate, safeWrite } from '../../utils/safeWrite';
+import { safeUpdate, safeWrite, safeDelete } from '../../utils/safeWrite';
 import { setDoc } from 'firebase/firestore';
 
 interface UseTasksFirestoreProps {
@@ -320,8 +320,25 @@ export function useTasksFirestore({
     })();
   }, [setTimeLogTask, checkAndAwardPerfectDay]);
 
+  const deleteTask = useCallback((taskId: string) => {
+    if (!taskId) return;
+    optimisticDeleteTaskRef.current(taskId);
+    (async () => {
+      try {
+        await safeDelete(
+          taskId,
+          COLLECTION.TASKS,
+          () => deleteDoc(doc(db, COLLECTION.TASKS, taskId))
+        );
+      } catch (e) {
+        console.error('[useTasksFirestore] deleteTask error', e);
+      }
+    })();
+  }, []);
+
   return useMemo(() => ({
     completeTask,
+    deleteTask,
     clearCompletedTasks,
     bulkComplete,
     bulkDelete,
@@ -332,6 +349,7 @@ export function useTasksFirestore({
     skipTimeLog,
   }), [
     completeTask,
+    deleteTask,
     clearCompletedTasks,
     bulkComplete,
     bulkDelete,

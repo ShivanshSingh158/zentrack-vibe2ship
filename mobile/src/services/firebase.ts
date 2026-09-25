@@ -40,3 +40,4 @@ export const db = initializeFirestore(app, {
 });
 
 export const googleProvider = new GoogleAuthProvider();
+

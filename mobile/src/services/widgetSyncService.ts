@@ -27,6 +27,7 @@ import { formatLocalDateStr } from '../utils/dateUtils';
 import { readCoreCacheMulti, writeCoreCacheMulti } from '../utils/coreCache';
 import { updateL1Cache, getBootManifestSync } from '../utils/bootManifest';
 import { awardXP } from './xpSystem';
+import { cancelClassNotificationsImmediately, clearScheduleCache } from './notifications';
 import { planDayIndexForDate, resolvePlanDay } from '../hooks/useGymLog';
 import { dismissActiveWorkoutNotification } from './activeWorkoutNotificationService';
 
@@ -896,6 +897,11 @@ export async function handleWidgetClickAction(
           if (status === 'attended') {
             awardXP('ATTENDANCE_LOG').catch(() => {});
           }
+
+          if (payload.subjectId || payload.subjectName) {
+            cancelClassNotificationsImmediately(payload.subjectId, payload.subjectName, dateStr, sessionIdx).catch(() => {});
+          }
+          clearScheduleCache();
         } catch (e) {
           console.warn('[WidgetSync] Background attendance save error:', e);
         }
@@ -991,6 +997,8 @@ export async function handleWidgetClickAction(
               subjectId: payload.subjectId,
               deterministicId,
             });
+
+            clearScheduleCache();
           }
         } catch (e) {
           console.warn('[WidgetSync] Background undo attendance error:', e);
