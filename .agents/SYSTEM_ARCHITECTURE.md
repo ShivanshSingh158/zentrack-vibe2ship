@@ -134,7 +134,10 @@ zentrack-vibe2ship/
 │   │   │   └── EventPopover.tsx    Event detail popover
 │   │   ├── notes/
 │   │   │   ├── NotesModule.tsx     Note-taking with AI panel, rich editor, rotatable/zoomable document & PDF viewer with mouse-wheel zoom & drag-pan engine (~78KB)
-│   │   │   ├── NotesFeed.tsx       Notes and documents list feed with search and filter
+│   │   │   ├── NotesFeed.tsx       Notes and documents list feed with breadcrumb trail, multi-select checkboxes, and search
+│   │   │   ├── CategoryFilterTabs.tsx Category filter strip (All, Documents, Images, Notes) with dynamic count badges
+│   │   │   ├── BatchActionBar.tsx  Floating bottom action bar for multi-item selection (Select All, Move, Delete, New Folder with Selection)
+│   │   │   ├── MoveNodeModal.tsx   Move destination dialog (single and batch move to folders or root)
 │   │   │   ├── NotesSidebar.tsx    Vault folders and storage meter sidebar
 │   │   │   ├── NotesEditor.tsx     Rich text editor component
 │   │   │   └── NotesAIPanel.tsx    AI suggestions panel for notes
