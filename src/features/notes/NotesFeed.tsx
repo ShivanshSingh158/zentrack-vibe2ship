@@ -158,7 +158,7 @@ export const NotesFeed: React.FC<NotesFeedProps> = ({
     if (!scrollEl || !feedEl) return;
 
     const onWheel = (e: WheelEvent) => {
-      if ((e.target as HTMLElement)?.closest('.feed-sort-popover-menu')) {
+      if ((e.target as HTMLElement)?.closest('.feed-sort-popover-menu, .notes-modal-backdrop, .notes-modal-card, .notes-move-modal, .notes-move-folder-list, .notes-batch-action-bar')) {
         return;
       }
       let delta = e.deltaY;
