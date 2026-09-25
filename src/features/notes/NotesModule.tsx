@@ -17,7 +17,8 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import html2pdf from 'html2pdf.js';
 import { startNoteAIChat } from '../../services/gemini';
 import { NotesSidebar } from './NotesSidebar';
-import { NotesFeed } from './NotesFeed';
+import { NotesFeed, type SortMode } from './NotesFeed';
+import { type FilterCategory } from './CategoryFilterTabs';
 import { NotesEditor } from './NotesEditor';
 import { NotesAIPanel, type ChatMessage } from './NotesAIPanel';
 import '../../styles/notes.css';
@@ -35,14 +36,15 @@ export const NotesModule = () => {
 
   // Filters & Tags
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'name-asc' | 'name-desc' | 'size-desc'>('newest');
+  const [filterMode, setFilterMode] = useState<FilterCategory>('All');
+  const [sortBy, setSortBy] = useState<SortMode>('newest');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [isPinnedFilterActive, setIsPinnedFilterActive] = useState(false);
 
   // Bulk Select State
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [isCreatingFolderWithSelection, setIsCreatingFolderWithSelection] = useState(false);
 
   // Modals & Viewer States
   const [isUploading, setIsUploading] = useState(false);
@@ -366,58 +368,166 @@ export const NotesModule = () => {
     };
   }, []);
 
-  // -- Filtering and Sorting --------------------------------------------------
+  // Fast folder lookup map for resolving breadcrumbs and location paths
+  const folderNameMap = useMemo(() => {
+    const map = new Map<string, { name: string; parentId: string | null }>();
+    nodes.forEach(n => {
+      if (n.id && n.type === 'folder') {
+        map.set(n.id, { name: n.name, parentId: n.parentId ?? null });
+      }
+    });
+    return map;
+  }, [nodes]);
+
+  const getFolderPath = useCallback((parentId: string | null): string => {
+    if (!parentId) return 'Home';
+    const parts: string[] = [];
+    let curr: string | null = parentId;
+    let depth = 0;
+    while (curr && depth < 5) {
+      const f = folderNameMap.get(curr);
+      if (f) {
+        parts.unshift(f.name);
+        curr = f.parentId;
+      } else {
+        break;
+      }
+      depth++;
+    }
+    return parts.length > 0 ? parts.join(' > ') : 'Home';
+  }, [folderNameMap]);
+
+  const isSearching = Boolean(searchQuery && searchQuery.trim().length > 0);
+  const normalizedQuery = useMemo(() => (searchQuery || '').trim().toLowerCase(), [searchQuery]);
+
+  // Dynamic Category Counts matching mobile
+  const categoryCounts = useMemo<Record<FilterCategory, number>>(() => {
+    let all = 0;
+    let docs = 0;
+    let imgs = 0;
+    let nts = 0;
+
+    let targetNodes: StorageNode[];
+    if (isSearching) {
+      targetNodes = nodes.filter(n => {
+        if (n.type === 'folder') return false;
+        const nameMatch = n.name.toLowerCase().includes(normalizedQuery);
+        if (nameMatch) return true;
+        const contentMatch = !!n.content && n.content.toLowerCase().includes(normalizedQuery);
+        if (contentMatch) return true;
+        const tagMatch = !!n.tags && n.tags.some(t => t.toLowerCase().includes(normalizedQuery));
+        return tagMatch;
+      });
+    } else {
+      targetNodes = nodes.filter(n => (n.parentId ?? null) === currentFolderId);
+    }
+
+    for (let i = 0; i < targetNodes.length; i++) {
+      const n = targetNodes[i];
+      all++;
+      if (n.type === 'file') {
+        if (n.fileType === 'image') imgs++;
+        else docs++;
+      } else if (n.type === 'note' || !n.type) {
+        nts++;
+      }
+    }
+    return {
+      All: all,
+      Documents: docs,
+      Images: imgs,
+      Notes: nts,
+    };
+  }, [nodes, currentFolderId, isSearching, normalizedQuery]);
+
+  // -- Filtering and Sorting (Faithful Mobile Twin) ---------------------------
   const filteredNodes = useMemo(() => {
-    const isInsideFolder = currentFolderId !== null;
-    let result = nodes;
+    let items: StorageNode[];
 
     if (selectedTag) {
       const tagLower = selectedTag.toLowerCase();
-      result = result
-        .filter(n => n.type !== 'folder')
-        .filter(n =>
+      items = nodes.filter(n =>
+        n.type !== 'folder' && (
           (n.tags && n.tags.some(t => t.toLowerCase() === tagLower)) ||
           (n.content && n.content.toLowerCase().includes('#' + tagLower))
-        );
+        )
+      );
     } else if (isPinnedFilterActive) {
-      // web writes 'isPinned', mobile writes 'pinned' - check both
-      result = result
-        .filter(n => n.type !== 'folder')
-        .filter(n => n.isPinned === true || (n as any).pinned === true);
-    } else if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result
-        .filter(n => n.type !== 'folder')
-        .filter(n =>
-          n.name.toLowerCase().includes(q) ||
-          (n.type === 'note' && n.content?.toLowerCase().includes(q))
-        );
-    } else if (isInsideFolder) {
-      result = result.filter(n => n.parentId === currentFolderId);
-      const sortFn = (a: StorageNode, b: StorageNode): number => {
-        if (sortBy === 'newest')    return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
-        if (sortBy === 'oldest')    return (a.createdAt || 0) - (b.createdAt || 0);
-        if (sortBy === 'name-asc')  return a.name.localeCompare(b.name);
-        if (sortBy === 'name-desc') return b.name.localeCompare(a.name);
-        if (sortBy === 'size-desc') return (b.size || 0) - (a.size || 0);
-        return 0;
-      };
-      const subFolders = result.filter(n => n.type === 'folder').sort(sortFn);
-      const docs       = result.filter(n => n.type !== 'folder').sort(sortFn);
-      return [...subFolders, ...docs];
+      items = nodes.filter(n =>
+        n.type !== 'folder' && (n.isPinned === true || (n as any).pinned === true)
+      );
+    } else if (isSearching) {
+      // Global Vault Search: Search across ALL storage nodes in entire vault
+      items = nodes.filter(n => {
+        if (n.type === 'folder') return false;
+        const nameMatch = n.name.toLowerCase().includes(normalizedQuery);
+        if (nameMatch) return true;
+        const contentMatch = !!n.content && n.content.toLowerCase().includes(normalizedQuery);
+        if (contentMatch) return true;
+        const tagMatch = !!n.tags && n.tags.some(t => t.toLowerCase().includes(normalizedQuery));
+        return tagMatch;
+      });
+
+      // Annotate items with their folder location path
+      items = items.map(n => ({
+        ...n,
+        locationPath: getFolderPath(n.parentId ?? null),
+      }));
     } else {
-      result = result.filter(n => n.type !== 'folder');
+      // Normal Folder Browsing: Only show items in current folder
+      items = nodes.filter(n => (n.parentId ?? null) === currentFolderId);
     }
 
-    return [...result].sort((a, b) => {
-      if (sortBy === 'newest')    return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
-      if (sortBy === 'oldest')    return (a.createdAt || 0) - (b.createdAt || 0);
-      if (sortBy === 'name-asc')  return a.name.localeCompare(b.name);
-      if (sortBy === 'name-desc') return b.name.localeCompare(a.name);
-      if (sortBy === 'size-desc') return (b.size || 0) - (a.size || 0);
-      return 0;
+    // Apply Category Filter
+    if (filterMode === 'Documents') {
+      items = items.filter(n => n.type === 'file' && (n.fileType === 'pdf' || n.fileType === 'docx' || n.fileType === 'other' || n.fileType === 'file'));
+    } else if (filterMode === 'Images') {
+      items = items.filter(n => n.type === 'file' && n.fileType === 'image');
+    } else if (filterMode === 'Notes') {
+      items = items.filter(n => n.type === 'note' || !n.type);
+    }
+
+    return [...items].sort((a, b) => {
+      const aPinned = a.isPinned === true || (a as any).pinned === true;
+      const bPinned = b.isPinned === true || (b as any).pinned === true;
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+
+      if (isSearching) {
+        const aExact = a.name.toLowerCase() === normalizedQuery;
+        const bExact = b.name.toLowerCase() === normalizedQuery;
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+
+        const aStarts = a.name.toLowerCase().startsWith(normalizedQuery);
+        const bStarts = b.name.toLowerCase().startsWith(normalizedQuery);
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+      }
+
+      if (a.type === 'folder' && b.type !== 'folder') return -1;
+      if (a.type !== 'folder' && b.type === 'folder') return 1;
+
+      if (sortBy === 'newest') return (b.createdAt || b.updatedAt || 0) - (a.createdAt || a.updatedAt || 0);
+      if (sortBy === 'oldest') return (a.createdAt || a.updatedAt || 0) - (b.createdAt || b.updatedAt || 0);
+      if (sortBy === 'az') return a.name.localeCompare(b.name);
+      if (sortBy === 'za') return b.name.localeCompare(a.name);
+      if (sortBy === 'size_desc') return (b.size || 0) - (a.size || 0);
+      if (sortBy === 'size_asc') return (a.size || 0) - (b.size || 0);
+      if (sortBy === 'modified') return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
+      return a.name.localeCompare(b.name);
     });
-  }, [nodes, searchQuery, sortBy, currentFolderId, selectedTag, isPinnedFilterActive]);
+  }, [
+    nodes,
+    selectedTag,
+    isPinnedFilterActive,
+    isSearching,
+    normalizedQuery,
+    currentFolderId,
+    filterMode,
+    sortBy,
+    getFolderPath,
+  ]);
 
   // Create New Note
   const handleCreateNote = async () => {
@@ -444,11 +554,11 @@ export const NotesModule = () => {
     }
   };
 
-  // Create New Folder
+  // Create New Folder (With or Without Selection)
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
     try {
-      await addDoc(collection(db, 'storage_nodes'), {
+      const folderDoc = await addDoc(collection(db, 'storage_nodes'), {
         userId: auth.currentUser!.uid,
         type: 'folder',
         name: newFolderName.trim(),
@@ -456,14 +566,97 @@ export const NotesModule = () => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
+      const newFolderId = folderDoc.id;
+
+      // If created with selected items, immediately move them inside this new folder!
+      if (isCreatingFolderWithSelection && selectedIds.length > 0) {
+        const now = Date.now();
+        for (const id of selectedIds) {
+          await updateDoc(doc(db, 'storage_nodes', id), {
+            parentId: newFolderId,
+            updatedAt: now,
+          });
+        }
+        toast.success(`Created folder and moved ${selectedIds.length} items`);
+        setSelectedIds([]);
+        setIsSelectMode(false);
+      } else {
+        toast.success('Folder created');
+      }
+
       setNewFolderName('');
       setNewFolderParentId(null);
+      setIsCreatingFolderWithSelection(false);
       setNewFolderModal(false);
-      toast.success('Folder created');
     } catch (err) {
       console.error(err);
       toast.error('Failed to create folder');
     }
+  };
+
+  // Move Single Node
+  const handleMoveNode = async (node: StorageNode, targetFolderId: string | null) => {
+    if (!node.id) return;
+    try {
+      await updateDoc(doc(db, 'storage_nodes', node.id), {
+        parentId: targetFolderId,
+        updatedAt: Date.now(),
+      });
+      toast.success(`Moved "${node.name}"`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to move item');
+    }
+  };
+
+  // Batch Move Nodes
+  const handleBatchMove = async (targetFolderId: string | null) => {
+    if (selectedIds.length === 0) return;
+    try {
+      const now = Date.now();
+      for (const id of selectedIds) {
+        await updateDoc(doc(db, 'storage_nodes', id), {
+          parentId: targetFolderId,
+          updatedAt: now,
+        });
+      }
+      toast.success(`Moved ${selectedIds.length} items`);
+      setSelectedIds([]);
+      setIsSelectMode(false);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to move selected items');
+    }
+  };
+
+  // Batch Delete Nodes
+  const handleBatchDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedIds.length} items? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      const count = selectedIds.length;
+      for (const id of selectedIds) {
+        await deleteDoc(doc(db, 'storage_nodes', id));
+      }
+      toast.success(`Deleted ${count} items`);
+      setSelectedIds([]);
+      setIsSelectMode(false);
+      if (activeNote && selectedIds.includes(activeNote.id!)) setActiveNote(null);
+      if (viewingFile && selectedIds.includes(viewingFile.id!)) setViewingFile(null);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to delete selected items');
+    }
+  };
+
+  const handleCreateFolderWithSelection = () => {
+    if (selectedIds.length === 0) return;
+    setIsCreatingFolderWithSelection(true);
+    setNewFolderName('');
+    setNewFolderParentId(currentFolderId);
+    setNewFolderModal(true);
   };
 
   // Toggle Note Pin
@@ -837,7 +1030,11 @@ export const NotesModule = () => {
                 setSearchQuery={setSearchQuery}
                 sortBy={sortBy}
                 setSortBy={setSortBy}
+                activeCategory={filterMode}
+                setActiveCategory={setFilterMode}
+                categoryCounts={categoryCounts}
                 isSelectMode={isSelectMode}
+                setIsSelectMode={setIsSelectMode}
                 selectedIds={selectedIds}
                 setSelectedIds={setSelectedIds}
                 activeNoteId={activeNote?.id || viewingFile?.id || null}
@@ -866,6 +1063,10 @@ export const NotesModule = () => {
                 onTogglePin={handleTogglePin}
                 onRename={(node) => setRenameModal({ isOpen: true, node, newName: node.name })}
                 onDelete={(id) => setDeleteConfirm({ isOpen: true, id })}
+                onBatchDelete={handleBatchDelete}
+                onMoveNode={handleMoveNode}
+                onBatchMove={handleBatchMove}
+                onCreateFolderWithSelection={handleCreateFolderWithSelection}
                 onCreateNote={handleCreateNote}
                 onCollapse={() => setIsFeedOpen(false)}
               />
@@ -1323,7 +1524,10 @@ export const NotesModule = () => {
       {/* ── MODALS ── */}
       {/* New Folder Modal */}
       {newFolderModal && (
-        <div className="notes-modal-backdrop" onClick={() => setNewFolderModal(false)}>
+        <div className="notes-modal-backdrop" onClick={() => {
+          setNewFolderModal(false);
+          setIsCreatingFolderWithSelection(false);
+        }}>
           <div className="notes-modal-card" onClick={e => e.stopPropagation()}>
             <div className="notes-modal-header">
               <div className="notes-modal-title-group">
@@ -1331,13 +1535,22 @@ export const NotesModule = () => {
                   <FolderPlus size={18} />
                 </div>
                 <div>
-                  <h3 className="notes-modal-title">Create New Folder</h3>
-                  <p className="notes-modal-subtitle">Organize your notes, documents, and lecture files</p>
+                  <h3 className="notes-modal-title">
+                    {isCreatingFolderWithSelection ? 'New Folder with Selection' : 'Create New Folder'}
+                  </h3>
+                  <p className="notes-modal-subtitle">
+                    {isCreatingFolderWithSelection
+                      ? `Move ${selectedIds.length} selected item${selectedIds.length > 1 ? 's' : ''} into new folder`
+                      : 'Organize your notes, documents, and lecture files'}
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setNewFolderModal(false)}
+                onClick={() => {
+                  setNewFolderModal(false);
+                  setIsCreatingFolderWithSelection(false);
+                }}
                 className="notes-modal-close-btn"
                 aria-label="Close modal"
               >
@@ -1387,7 +1600,10 @@ export const NotesModule = () => {
               <button
                 type="button"
                 className="notes-btn-cancel"
-                onClick={() => setNewFolderModal(false)}
+                onClick={() => {
+                  setNewFolderModal(false);
+                  setIsCreatingFolderWithSelection(false);
+                }}
               >
                 Cancel
               </button>
@@ -1398,7 +1614,7 @@ export const NotesModule = () => {
                 disabled={!newFolderName.trim()}
               >
                 <FolderPlus size={15} />
-                <span>Create Folder</span>
+                <span>{isCreatingFolderWithSelection ? 'Create & Move' : 'Create Folder'}</span>
               </button>
             </div>
           </div>
