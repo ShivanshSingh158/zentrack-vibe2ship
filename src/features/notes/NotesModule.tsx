@@ -550,9 +550,14 @@ export const NotesModule = () => {
         });
       }
       toast.success('Files uploaded successfully');
-    } catch (err) {
-      console.error(err);
-      toast.error('File upload failed');
+    } catch (err: any) {
+      console.error('[NotesModule] File upload error:', err);
+      const msg = err?.message || 'Unknown error';
+      if (msg.includes('not configured')) {
+        toast.error('Cloudinary not configured. Contact admin.');
+      } else {
+        toast.error(`File upload failed: ${msg}`);
+      }
     } finally {
       setIsUploading(false);
       setUploadProgress(null);
