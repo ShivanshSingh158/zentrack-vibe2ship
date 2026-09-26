@@ -436,36 +436,65 @@ export default function DashboardScreen() {
           onClose={() => setQuickProfileVisible(false)}
         >
           <View style={{ paddingBottom: insets.bottom + 12, paddingTop: 4 }}>
-            {/* User Header Profile Card */}
+            {/* User Header Profile Hero Card */}
             <View style={s.profileHeaderCard}>
-              <UserAvatar
-                size={52}
-                uid={data.user?.uid}
-                photoURL={data.user?.photoURL}
-                fallbackLetter={data.avatarLetter}
-              />
-              <View style={{ flex: 1, marginLeft: 14 }}>
-                <Text style={s.profileNameText} numberOfLines={1}>
-                  {data.user?.displayName || 'Zen Pioneer'}
-                </Text>
-                <Text style={s.profileEmailText} numberOfLines={1}>
-                  {data.user?.email || 'ZenTrack Member'}
-                </Text>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setQuickProfileVisible(false);
-                    navigation.navigate('MoreStack', { screen: 'XPConstellation' });
-                  }}
-                  style={s.profileLevelBadge}
-                >
-                  <Ionicons name="sparkles" size={12} color={colors.accentPrimary} />
-                  <Text style={s.profileLevelText}>
-                    {levelInfo.label} • {data.xp} XP
+              <View style={s.profileHeaderTop}>
+                <View style={s.profileAvatarRing}>
+                  <UserAvatar
+                    size={52}
+                    uid={data.user?.uid}
+                    photoURL={data.user?.photoURL}
+                    fallbackLetter={data.avatarLetter}
+                  />
+                </View>
+                <View style={s.profileInfoBox}>
+                  <Text style={s.profileNameText} numberOfLines={1}>
+                    {data.user?.displayName || 'Zen Pioneer'}
                   </Text>
-                </TouchableOpacity>
+                  <Text style={s.profileEmailText} numberOfLines={1}>
+                    {data.user?.email || 'ZenTrack Member'}
+                  </Text>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setQuickProfileVisible(false);
+                      navigation.navigate('MoreStack', { screen: 'XPConstellation' });
+                    }}
+                    style={s.profileLevelPill}
+                  >
+                    <Ionicons name="sparkles" size={12} color={colors.accentPrimary} />
+                    <Text style={s.profileLevelText}>
+                      {levelInfo.label}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={11} color={colors.accentPrimary} style={{ opacity: 0.7 }} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* XP Progress Track */}
+              <View style={s.profileXpTrackContainer}>
+                <View style={s.profileXpTrackLabels}>
+                  <Text style={s.profileXpCurrentText}>
+                    ⚡ {data.xp.toLocaleString()} XP
+                  </Text>
+                  <Text style={s.profileXpNextText}>
+                    Next: {levelInfo.nextLabel} ({levelInfo.nextXP.toLocaleString()} XP)
+                  </Text>
+                </View>
+                <View style={s.profileXpProgressBarBg}>
+                  <View
+                    style={[
+                      s.profileXpProgressBarFill,
+                      { width: `${Math.round(levelInfo.progress * 100)}%` },
+                    ]}
+                  />
+                </View>
               </View>
             </View>
+
+            {/* Section 1 Header */}
+            <Text style={s.profileSectionHeader}>Preferences</Text>
 
             {/* Group 1: Dashboard Preferences */}
             <View style={s.profileGroupCard}>
@@ -482,7 +511,7 @@ export default function DashboardScreen() {
                 <View style={[s.profileRowIconBox, { backgroundColor: colors.accentDim }]}>
                   <Ionicons name="color-palette-outline" size={18} color={colors.accentPrimary} />
                 </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
+                <View style={{ flex: 1, marginLeft: 13 }}>
                   <Text style={s.profileRowTitle}>Customize Dashboard</Text>
                   <Text style={s.profileRowSubtitle}>Reorder or toggle home widgets</Text>
                 </View>
@@ -500,14 +529,15 @@ export default function DashboardScreen() {
                   toggleTheme();
                 }}
               >
-                <View style={[s.profileRowIconBox, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(245,158,11,0.15)' }]}>
-                  <Feather name={isDark ? "sun" : "moon"} size={17} color={isDark ? "#f2f2f7" : "#d97706"} />
+                <View style={[s.profileRowIconBox, { backgroundColor: isDark ? 'rgba(168,85,247,0.15)' : 'rgba(245,158,11,0.15)' }]}>
+                  <Feather name={isDark ? "moon" : "sun"} size={17} color={isDark ? "#c084fc" : "#d97706"} />
                 </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
+                <View style={{ flex: 1, marginLeft: 13 }}>
                   <Text style={s.profileRowTitle}>Appearance</Text>
                   <Text style={s.profileRowSubtitle}>{isDark ? "Obsidian Cosmos (Dark)" : "Frost Quartz (Light)"}</Text>
                 </View>
                 <View style={s.profileThemePill}>
+                  <Feather name={isDark ? "moon" : "sun"} size={11} color={colors.textPrimary} />
                   <Text style={s.profileThemePillText}>{isDark ? "Dark" : "Light"}</Text>
                 </View>
               </TouchableOpacity>
@@ -525,18 +555,24 @@ export default function DashboardScreen() {
                 }}
               >
                 <View style={[s.profileRowIconBox, { backgroundColor: colors.accentAmberDim }]}>
-                  <Text style={{ fontSize: 16 }}>🔥</Text>
+                  <Ionicons name="flame" size={18} color="#f59e0b" />
                 </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
+                <View style={{ flex: 1, marginLeft: 13 }}>
                   <Text style={s.profileRowTitle}>Consistency Streak</Text>
                   <Text style={s.profileRowSubtitle}>{data.appStreak} consecutive days</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                <View style={s.profileStreakBadge}>
+                  <Text style={s.profileStreakBadgeText}>🔥 {data.appStreak}d</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} style={{ marginLeft: 6 }} />
               </TouchableOpacity>
             </View>
 
+            {/* Section 2 Header */}
+            <Text style={s.profileSectionHeader}>System & Account</Text>
+
             {/* Group 2: App Settings & System */}
-            <View style={[s.profileGroupCard, { marginTop: 12 }]}>
+            <View style={s.profileGroupCard}>
               <TouchableOpacity
                 style={s.profileGroupRow}
                 activeOpacity={0.7}
@@ -549,13 +585,18 @@ export default function DashboardScreen() {
                 <View style={[s.profileRowIconBox, { backgroundColor: 'rgba(56,189,248,0.15)' }]}>
                   <Ionicons name="settings-outline" size={18} color={isDark ? "#38bdf8" : "#0284c7"} />
                 </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
+                <View style={{ flex: 1, marginLeft: 13 }}>
                   <Text style={s.profileRowTitle}>All Settings</Text>
                   <Text style={s.profileRowSubtitle}>Preferences, backups, and account</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
               </TouchableOpacity>
             </View>
+
+            {/* Footer */}
+            <Text style={s.profileFooterText}>
+              ZenTrack • Level Up Every Day
+            </Text>
           </View>
         </BottomSheet>
       )}
