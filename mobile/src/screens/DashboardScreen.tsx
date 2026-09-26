@@ -10,7 +10,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { LEVEL_THRESHOLDS } from '../services/xpSystem';
+import { LEVEL_THRESHOLDS, awardXP } from '../services/xpSystem';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -37,6 +37,11 @@ import DashboardSkeleton from '../components/Dashboard/DashboardSkeleton';
 import { LinearGradient } from 'expo-linear-gradient';
 import VoiceDictationOverlay from '../components/Tasks/VoiceDictationOverlay';
 import UserAvatar from '../components/ui/UserAvatar';
+import BottomSheet from '../components/ui/BottomSheet';
+import { safeUpdate } from '../utils/safeWrite';
+import { COLLECTION } from '../config/constants';
+import { db } from '../services/firebase';
+import { doc, updateDoc } from 'firebase/firestore';
 
 export default function DashboardScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
@@ -190,62 +195,32 @@ export default function DashboardScreen() {
     data.setCaptureVisible(true);
   }, [data.setCaptureVisible]);
 
-  // ── Floating Action Menu State & Motion (Smooth Linear / Non-Bouncy) ────────
-  const [menuOpen, setMenuOpen] = useState(false);
-  const rotateVal = useSharedValue(0);
-  const animVal = useSharedValue(0);
+  // ── Quick Profile BottomSheet State (Apple iOS 18 Grouped style) ──────────
+  const [quickProfileVisible, setQuickProfileVisible] = useState(false);
 
-  const closeMenu = useCallback(() => {
-    if (menuOpen) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      rotateVal.value = withTiming(0, { duration: 200, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
-      animVal.value = withTiming(0, { duration: 180, easing: Easing.bezier(0.25, 0.1, 0.25, 1) }, (finished) => {
-        if (finished) runOnJS(setMenuOpen)(false);
-      });
-    }
-  }, [menuOpen, rotateVal, animVal]);
+  // ── 1-Tap Interactive Task Toggle Handler (Instant optimistic UI + safeUpdate) ──
+  const handleToggleTask = useCallback((task: any) => {
+    if (!task?.id) return;
+    const isCompleted = task.status === 'completed' || task.status === 'done';
+    const newStatus = isCompleted ? 'pending' : 'completed';
+    const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
 
-  const toggleMenu = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (menuOpen) {
-      closeMenu();
+    if (newStatus === 'completed') {
+      import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
+      awardXP('TASK_COMPLETE');
     } else {
-      setMenuOpen(true);
-      rotateVal.value = withTiming(180, { duration: 220, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
-      animVal.value = withTiming(1, { duration: 200, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-  }, [menuOpen, closeMenu, rotateVal, animVal]);
 
-  useEffect(() => {
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (menuOpen) {
-        closeMenu();
-        return true;
-      }
-      return false;
-    });
-    return () => backHandler.remove();
-  }, [menuOpen, closeMenu]);
+    data.optimisticUpdateTask?.(task.id, { status: newStatus, completedAt });
 
-  const avatarAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotateVal.value}deg` }],
-  }));
-
-  const layoutBtnStyle = useAnimatedStyle(() => ({
-    opacity: animVal.value,
-    transform: [
-      { translateY: interpolate(animVal.value, [0, 1], [-8, 0]) },
-      { scale: interpolate(animVal.value, [0, 1], [0.8, 1]) },
-    ],
-  }));
-
-  const settingsBtnStyle = useAnimatedStyle(() => ({
-    opacity: animVal.value,
-    transform: [
-      { translateY: interpolate(animVal.value, [0, 1], [-14, 0]) },
-      { scale: interpolate(animVal.value, [0, 1], [0.8, 1]) },
-    ],
-  }));
+    safeUpdate(
+      task.id,
+      COLLECTION.TASKS,
+      { status: newStatus, completedAt },
+      () => updateDoc(doc(db, COLLECTION.TASKS, task.id), { status: newStatus, completedAt })
+    );
+  }, [data.optimisticUpdateTask]);
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
@@ -257,29 +232,22 @@ export default function DashboardScreen() {
       />
       
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView scrollEnabled={!menuOpen} contentContainerStyle={[s.scroll, { paddingBottom }]} showsVerticalScrollIndicator={false}>
-          {/* Tap-outside transparent backdrop to dismiss dropdown */}
-          {menuOpen && (
-            <Pressable
-              style={[StyleSheet.absoluteFillObject, { zIndex: 1 }]}
-              onPress={closeMenu}
-              accessibilityLabel="Close menu"
-            />
-          )}
-
-          <Animated.View entering={FadeInDown.duration(380).springify().damping(24).stiffness(210)} style={[s.greetingContainer, { zIndex: 99999, elevation: 9999 }]}>
+        <ScrollView contentContainerStyle={[s.scroll, { paddingBottom }]} showsVerticalScrollIndicator={false}>
+          <Animated.View entering={FadeInDown.duration(380).springify().damping(24).stiffness(210)} style={s.greetingContainer}>
             <View style={{ flex: 1, paddingRight: 8 }}>
               <Text style={s.greetingGood}>Good</Text>
               <Text style={s.greetingTime}>{data.timeGreeting}</Text>
             </View>
 
             {/* Unified Header Action Pill Capsule */}
-            <View style={[s.headerActionPill, { zIndex: 99999, elevation: 9999 }]}>
+            <View style={s.headerActionPill}>
               {/* Flame streak pill */}
               <AnimatedPressable
                 style={s.headerPillSection}
                 onPress={() => navigation.navigate('MoreStack', { screen: 'StreakDetail' })}
                 haptic="light"
+                accessibilityLabel={`${data.appStreak} day streak`}
+                accessibilityRole="button"
               >
                 <Text style={{ fontSize: 16 }}>🔥</Text>
                 <Text style={s.headerStreakText}>
@@ -322,122 +290,25 @@ export default function DashboardScreen() {
                 />
               </AnimatedPressable>
 
-              {/* Trigger Avatar in-place */}
-              <View
-                style={{ width: 30, height: 34, alignItems: 'center', justifyContent: 'center' }}
-              >
-                {/* Rotating Trigger Avatar / Close Button in-place */}
-                <Animated.View style={avatarAnimatedStyle}>
-                  <AnimatedPressable
-                    style={[
-                      s.headerPillAvatar,
-                      menuOpen && {
-                        backgroundColor: isDark ? '#3a3a3c' : '#d1d1d6',
-                      },
-                    ]}
-                    onPress={toggleMenu}
-                    accessibilityLabel={menuOpen ? "Close menu" : "Open settings and customize menu"}
-                    accessibilityRole="button"
-                  >
-                    {menuOpen ? (
-                      <Ionicons name="close" size={16} color={colors.textPrimary} />
-                    ) : (
-                      <UserAvatar
-                        size={28}
-                        uid={data.user?.uid}
-                        photoURL={data.user?.photoURL}
-                        fallbackLetter={data.avatarLetter}
-                      />
-                    )}
-                  </AnimatedPressable>
-                </Animated.View>
-              </View>
-            </View>
-
-            {/* Speed Dial Menu Buttons anchored directly below avatar */}
-            {menuOpen && (
-              <View
-                pointerEvents="box-none"
-                style={{
-                  position: 'absolute',
-                  top: 52,
-                  right: 3,
-                  width: 36,
-                  alignItems: 'center',
-                  gap: 8,
-                  zIndex: 999999,
-                  elevation: 99999,
+              {/* User Avatar — Tapping opens Apple Quick Profile & Settings Sheet */}
+              <AnimatedPressable
+                style={s.headerPillAvatar}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setQuickProfileVisible(true);
                 }}
+                haptic="light"
+                accessibilityLabel="Open Quick Profile & Settings"
+                accessibilityRole="button"
               >
-                {/* Icon 1: Customize Layout */}
-                <Animated.View style={layoutBtnStyle}>
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderWidth: 1,
-                      borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E1EA',
-                      shadowColor: '#000000',
-                      shadowOffset: { width: 0, height: 4 },
-                      shadowOpacity: isDark ? 0.35 : 0.15,
-                      shadowRadius: 8,
-                      elevation: 12,
-                    }}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      closeMenu();
-                      setTimeout(() => {
-                        data.setLayoutSheetVisible(true);
-                      }, 120);
-                    }}
-                    accessibilityLabel="Customize Dashboard Layout"
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="color-palette-outline" size={18} color={isDark ? '#f2f2f7' : colors.textPrimary} />
-                  </TouchableOpacity>
-                </Animated.View>
-
-                {/* Icon 2: App Settings */}
-                <Animated.View style={settingsBtnStyle}>
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderWidth: 1,
-                      borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E1EA',
-                      shadowColor: '#000000',
-                      shadowOffset: { width: 0, height: 4 },
-                      shadowOpacity: isDark ? 0.35 : 0.15,
-                      shadowRadius: 8,
-                      elevation: 12,
-                    }}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      closeMenu();
-                      setTimeout(() => {
-                        navigation.navigate('MoreStack', { screen: 'Settings' });
-                      }, 120);
-                    }}
-                    accessibilityLabel="App Settings"
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="settings-outline" size={18} color={isDark ? '#38bdf8' : '#0284C7'} />
-                  </TouchableOpacity>
-                </Animated.View>
-              </View>
-            )}
+                <UserAvatar
+                  size={28}
+                  uid={data.user?.uid}
+                  photoURL={data.user?.photoURL}
+                  fallbackLetter={data.avatarLetter}
+                />
+              </AnimatedPressable>
+            </View>
           </Animated.View>
 
           {!data.user && !data.tasksReady ? (
@@ -539,6 +410,7 @@ export default function DashboardScreen() {
                     nowDate={data.nowDate}
                     holidays={data.holidays}
                     userId={data.user?.uid}
+                    onToggleTask={handleToggleTask}
                   />
                 </Animated.View>
               );
@@ -585,6 +457,136 @@ export default function DashboardScreen() {
           onClose={() => setFlashcardModalVisible(false)}
           onSessionComplete={refreshFlashcards}
         />
+      )}
+      {/* ── Apple iOS 18 Quick Profile & Dashboard Sheet ── */}
+      {quickProfileVisible && (
+        <BottomSheet
+          visible={quickProfileVisible}
+          onClose={() => setQuickProfileVisible(false)}
+        >
+          <View style={{ paddingBottom: insets.bottom + 12, paddingTop: 4 }}>
+            {/* User Header Profile Card */}
+            <View style={s.profileHeaderCard}>
+              <UserAvatar
+                size={52}
+                uid={data.user?.uid}
+                photoURL={data.user?.photoURL}
+                fallbackLetter={data.avatarLetter}
+              />
+              <View style={{ flex: 1, marginLeft: 14 }}>
+                <Text style={s.profileNameText} numberOfLines={1}>
+                  {data.user?.displayName || 'Zen Pioneer'}
+                </Text>
+                <Text style={s.profileEmailText} numberOfLines={1}>
+                  {data.user?.email || 'ZenTrack Member'}
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setQuickProfileVisible(false);
+                    navigation.navigate('MoreStack', { screen: 'XPConstellation' });
+                  }}
+                  style={s.profileLevelBadge}
+                >
+                  <Ionicons name="sparkles" size={12} color={colors.accentPrimary} />
+                  <Text style={s.profileLevelText}>
+                    {levelInfo.label} • {data.xp} XP
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Group 1: Dashboard Preferences */}
+            <View style={s.profileGroupCard}>
+              {/* Row 1: Customize Layout */}
+              <TouchableOpacity
+                style={s.profileGroupRow}
+                activeOpacity={0.7}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setQuickProfileVisible(false);
+                  setTimeout(() => data.setLayoutSheetVisible(true), 250);
+                }}
+              >
+                <View style={[s.profileRowIconBox, { backgroundColor: colors.accentDim }]}>
+                  <Ionicons name="color-palette-outline" size={18} color={colors.accentPrimary} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={s.profileRowTitle}>Customize Dashboard</Text>
+                  <Text style={s.profileRowSubtitle}>Reorder or toggle home widgets</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+
+              <View style={s.profileRowDivider} />
+
+              {/* Row 2: Theme Switcher */}
+              <TouchableOpacity
+                style={s.profileGroupRow}
+                activeOpacity={0.7}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  toggleTheme();
+                }}
+              >
+                <View style={[s.profileRowIconBox, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(245,158,11,0.15)' }]}>
+                  <Feather name={isDark ? "sun" : "moon"} size={17} color={isDark ? "#f2f2f7" : "#d97706"} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={s.profileRowTitle}>Appearance</Text>
+                  <Text style={s.profileRowSubtitle}>{isDark ? "Obsidian Cosmos (Dark)" : "Frost Quartz (Light)"}</Text>
+                </View>
+                <View style={s.profileThemePill}>
+                  <Text style={s.profileThemePillText}>{isDark ? "Dark" : "Light"}</Text>
+                </View>
+              </TouchableOpacity>
+
+              <View style={s.profileRowDivider} />
+
+              {/* Row 3: Streak Record */}
+              <TouchableOpacity
+                style={s.profileGroupRow}
+                activeOpacity={0.7}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setQuickProfileVisible(false);
+                  navigation.navigate('MoreStack', { screen: 'StreakDetail' });
+                }}
+              >
+                <View style={[s.profileRowIconBox, { backgroundColor: colors.accentAmberDim }]}>
+                  <Text style={{ fontSize: 16 }}>🔥</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={s.profileRowTitle}>Consistency Streak</Text>
+                  <Text style={s.profileRowSubtitle}>{data.appStreak} consecutive days</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Group 2: App Settings & System */}
+            <View style={[s.profileGroupCard, { marginTop: 12 }]}>
+              <TouchableOpacity
+                style={s.profileGroupRow}
+                activeOpacity={0.7}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setQuickProfileVisible(false);
+                  navigation.navigate('MoreStack', { screen: 'Settings' });
+                }}
+              >
+                <View style={[s.profileRowIconBox, { backgroundColor: 'rgba(56,189,248,0.15)' }]}>
+                  <Ionicons name="settings-outline" size={18} color={isDark ? "#38bdf8" : "#0284c7"} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={s.profileRowTitle}>All Settings</Text>
+                  <Text style={s.profileRowSubtitle}>Preferences, backups, and account</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </BottomSheet>
       )}
 
       {/* Voice Task Floating Action Button (replacing Sara button) */}
