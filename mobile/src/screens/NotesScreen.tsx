@@ -11,7 +11,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   TextInput,
   Modal,
   Pressable,
@@ -42,6 +41,7 @@ import { handleSyncError } from '../utils/errorUtils';
 import { feedback } from '../utils/haptics';
 
 import EmptyState from '../components/ui/EmptyState';
+import AnimatedPressable from '../components/AnimatedPressable';
 import StorageNodeRow from '../components/Notes/StorageNodeRow';
 import StorageContextMenuModal from '../components/Notes/StorageContextMenuModal';
 import CategoryFilterTabs, { FilterCategory } from '../components/Notes/CategoryFilterTabs';
@@ -876,21 +876,25 @@ export default function NotesScreen() {
       <View style={[styles.vaultHeader, breadcrumbs.length > 1 && !isSearching && { paddingBottom: SPACE.sm }]}>
         <View style={styles.vaultHeaderLeft}>
           {selectionMode ? (
-            <TouchableOpacity
+            <AnimatedPressable
+              variant="button"
+              haptic="light"
               style={styles.vaultHeaderBtn}
               onPress={handleExitSelection}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Text style={[styles.vaultHeaderCancelText, { color: colors.textSecondary }]}>Cancel</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           ) : currentFolderId || isSearching ? (
-            <TouchableOpacity
+            <AnimatedPressable
+              variant="button"
+              haptic="light"
               style={styles.vaultHeaderBtn}
               onPress={isSearching ? () => setRawSearchQuery('') : handleBackFolder}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Ionicons name="chevron-back" size={24} color={colors.accentPrimary} />
-            </TouchableOpacity>
+            </AnimatedPressable>
           ) : (
             <View style={{ width: 28 }} />
           )}
@@ -910,20 +914,23 @@ export default function NotesScreen() {
 
         <View style={styles.vaultHeaderRight}>
           {selectionMode ? (
-            <TouchableOpacity
+            <AnimatedPressable
+              variant="button"
+              haptic="light"
               style={styles.vaultHeaderDoneBtn}
               onPress={handleExitSelection}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Text style={[styles.vaultHeaderDoneText, { color: colors.accentPrimary }]}>Done</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           ) : (
             <>
               {currentFolderId && !isSearching && (
-                <TouchableOpacity
+                <AnimatedPressable
+                  variant="button"
+                  haptic="light"
                   style={styles.vaultHeaderBtn}
                   onPress={() => {
-                    feedback.tap();
                     setIsFolderSearchOpen(prev => !prev);
                   }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -933,14 +940,15 @@ export default function NotesScreen() {
                     size={20}
                     color={isFolderSearchOpen ? colors.accentPrimary : colors.textSecondary}
                   />
-                </TouchableOpacity>
+                </AnimatedPressable>
               )}
 
               {/* Sort Menu Button */}
-              <TouchableOpacity
+              <AnimatedPressable
+                variant="button"
+                haptic="light"
                 style={styles.vaultHeaderBtn}
                 onPress={() => {
-                  feedback.tap();
                   setShowSortMenu(true);
                 }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -950,13 +958,14 @@ export default function NotesScreen() {
                   size={20}
                   color={currentSortMode !== 'newest' ? colors.accentPrimary : colors.textSecondary}
                 />
-              </TouchableOpacity>
+              </AnimatedPressable>
 
               {/* Multi-Select Trigger Button */}
-              <TouchableOpacity
+              <AnimatedPressable
+                variant="button"
+                haptic="light"
                 style={styles.vaultHeaderBtn}
                 onPress={() => {
-                  feedback.tap();
                   setSelectionMode(true);
                 }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -966,7 +975,7 @@ export default function NotesScreen() {
                   size={21}
                   color={colors.textSecondary}
                 />
-              </TouchableOpacity>
+              </AnimatedPressable>
             </>
           )}
         </View>
@@ -987,10 +996,11 @@ export default function NotesScreen() {
                   {idx > 0 && (
                     <Ionicons name="chevron-forward" size={12} color={colors.textMuted} />
                   )}
-                  <TouchableOpacity
+                  <AnimatedPressable
+                    variant="subtle"
+                    haptic="selection"
                     disabled={isLast}
                     onPress={() => {
-                      feedback.tap();
                       setCurrentFolderId(crumb.id);
                     }}
                     style={[styles.crumbPill, isLast && styles.crumbPillActive]}
@@ -1005,7 +1015,7 @@ export default function NotesScreen() {
                     >
                       {crumb.name}
                     </Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </React.Fragment>
               );
             })}
@@ -1060,9 +1070,14 @@ export default function NotesScreen() {
               autoFocus={isFolderSearchOpen}
             />
             {rawSearchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setRawSearchQuery('')} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <AnimatedPressable
+                variant="subtle"
+                haptic="light"
+                onPress={() => setRawSearchQuery('')}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
                 <Ionicons name="close-circle" size={16} color={colors.textMuted} />
-              </TouchableOpacity>
+              </AnimatedPressable>
             )}
           </Animated.View>
         )}

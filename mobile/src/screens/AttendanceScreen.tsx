@@ -38,6 +38,7 @@ import BottomSheet from '../components/ui/BottomSheet';
 import type { AttendanceSubject } from '../contexts/MobileDataContext';
 import AttendanceSkeleton from '../components/Academic/AttendanceSkeleton';
 import SubjectContextMenuModal from '../components/Academic/SubjectContextMenuModal';
+import AnimatedPressable from '../components/AnimatedPressable';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -54,7 +55,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { Svg, Circle } from 'react-native-svg';
 
-// â”€â”€ Spring-Compressing Action Chip (WhatsApp-Grade Tactile Micro-Interaction) â”€â”€
+// ── Spring-Compressing Action Chip (Frame-0 Touch Physics) ──
 const SpringChip = React.memo(function SpringChip({
   onPress,
   style,
@@ -66,47 +67,19 @@ const SpringChip = React.memo(function SpringChip({
   children: React.ReactNode;
   hapticType?: 'light' | 'medium' | 'success';
 }) {
-  const scale = useSharedValue(1);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = useCallback(() => {
-    scale.value = withTiming(0.94, { duration: 60 });
-  }, [scale]);
-
-  const handlePressOut = useCallback(() => {
-    scale.value = withTiming(1.0, { duration: 100 });
-  }, [scale]);
-
-  const handlePress = useCallback(() => {
-    if (hapticType === 'success') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } else if (hapticType === 'medium') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    onPress();
-  }, [hapticType, onPress]);
-
   return (
-    <Reanimated.View style={animStyle}>
-      <TouchableOpacity
-        onPress={handlePress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={0.88}
-        style={style}
-      >
-        {children}
-      </TouchableOpacity>
-    </Reanimated.View>
+    <AnimatedPressable
+      onPress={onPress}
+      haptic={hapticType}
+      variant="button"
+      style={style}
+    >
+      {children}
+    </AnimatedPressable>
   );
 });
 
-// â”€â”€ Apple iOS Tactile Header Action Button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Apple iOS Tactile Header Action Button (Frame-0 Touch Physics) ──
 const TactileHeaderBtn = React.memo(function TactileHeaderBtn({
   onPress,
   children,
@@ -118,40 +91,15 @@ const TactileHeaderBtn = React.memo(function TactileHeaderBtn({
   style?: any;
   haptic?: 'light' | 'medium';
 }) {
-  const scale = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = useCallback(() => {
-    scale.value = withTiming(0.94, { duration: 70 });
-  }, [scale]);
-
-  const handlePressOut = useCallback(() => {
-    scale.value = withTiming(1.0, { duration: 110 });
-  }, [scale]);
-
-  const handlePress = useCallback(() => {
-    if (haptic === 'medium') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    onPress();
-  }, [haptic, onPress]);
-
   return (
-    <Reanimated.View style={animStyle}>
-      <TouchableOpacity
-        onPress={handlePress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={0.85}
-        style={style}
-      >
-        {children}
-      </TouchableOpacity>
-    </Reanimated.View>
+    <AnimatedPressable
+      onPress={onPress}
+      haptic={haptic}
+      variant="button"
+      style={style}
+    >
+      {children}
+    </AnimatedPressable>
   );
 });
 
@@ -538,20 +486,6 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
   const getThemeProgressColor = (urgency: string) =>
     urgency === 'danger' ? colors.priorityHigh : urgency === 'warning' ? colors.priorityMed : colors.priorityLow;
 
-  const cardScale = useSharedValue(1);
-
-  const animCardStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: cardScale.value }],
-  }));
-
-  const handlePressIn = useCallback(() => {
-    cardScale.value = withTiming(0.98, { duration: 60 });
-  }, [cardScale]);
-
-  const handlePressOut = useCallback(() => {
-    cardScale.value = withTiming(1.0, { duration: 100 });
-  }, [cardScale]);
-
   const hasLabs = (subject.labsTotal || 0) > 0 || (subject.labsAttended || 0) > 0;
   const hasClasses = (subject.classesTotal || 0) > 0 || (subject.classesAttended || 0) > 0;
 
@@ -620,18 +554,14 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
   }
 
   return (
-    <Reanimated.View
+    <AnimatedPressable
       entering={FadeIn.duration(180)}
-      style={animCardStyle}
+      variant="card"
+      haptic="selection"
+      onPress={handlePress}
+      onLongPress={handleLongPress}
+      style={styles.bySubjectCard}
     >
-      <TouchableOpacity
-        onPress={handlePress}
-        onLongPress={handleLongPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        style={styles.bySubjectCard}
-        activeOpacity={0.88}
-      >
         {/* Top row: Subject name and overall percentage pill */}
         <View style={styles.bySubjectHeaderRow}>
           <Text style={[styles.bySubjectName, { flex: 1, marginRight: 10 }]} numberOfLines={1}>{subject.name}</Text>
@@ -685,8 +615,7 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
           {/* Bottom Status / Bunk Message */}
           {bunkElement}
         </View>
-      </TouchableOpacity>
-    </Reanimated.View>
+    </AnimatedPressable>
   );
 }, (prev, next) => {
   return (
@@ -770,7 +699,7 @@ const UnloggedSessionRow = React.memo(function UnloggedSessionRow({
       exiting={SlideOutRight.duration(200).easing(Easing.bezier(0.16, 1, 0.3, 1))}
       style={styles.unloggedCard}
     >
-      <TouchableOpacity activeOpacity={0.7} onPress={handlePressCard}>
+      <AnimatedPressable variant="row" haptic="light" onPress={handlePressCard}>
         <View style={styles.unloggedHeaderRow}>
           <Text style={styles.unloggedSubjectName} numberOfLines={1}>
             {item.subject.name}
@@ -793,7 +722,7 @@ const UnloggedSessionRow = React.memo(function UnloggedSessionRow({
             â±ï¸ {item.timeStr}
           </Text>
         </View>
-      </TouchableOpacity>
+      </AnimatedPressable>
 
       {/* Quick 1-Tap Logging Actions with Spring Compressing Chips */}
       <View style={styles.unloggedActionsRow}>

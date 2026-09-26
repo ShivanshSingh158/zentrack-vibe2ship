@@ -25,6 +25,7 @@ import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../../theme/token
 import { timeAgo } from '../../utils/dateUtils';
 import { feedback } from '../../utils/haptics';
 import UploadProgressRing from './UploadProgressRing';
+import AnimatedPressable from '../AnimatedPressable';
 
 const ROW_ENTER_ANIM = FadeInDown.duration(160);
 
@@ -249,10 +250,9 @@ export const StorageNodeRow = React.memo(function StorageNodeRow({
         friction={2}
         overshootFriction={8}
       >
-        <TouchableOpacity
-          activeOpacity={0.88}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
+        <AnimatedPressable
+          variant="row"
+          haptic="selection"
           style={[
             styles.listItem,
             compact && styles.listItemCompact,
@@ -331,16 +331,18 @@ export const StorageNodeRow = React.memo(function StorageNodeRow({
           ) : (
             !item.uploading &&
             !isUploading && (
-              <TouchableOpacity
+              <AnimatedPressable
+                variant="subtle"
+                haptic="light"
                 onPress={handleMenuPress}
                 style={[styles.menuBtn, compact && styles.menuBtnCompact]}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <Ionicons name="ellipsis-horizontal" size={compact ? 18 : 20} color={colors.textMuted} />
-              </TouchableOpacity>
+              </AnimatedPressable>
             )
           )}
-        </TouchableOpacity>
+        </AnimatedPressable>
       </Swipeable>
     </Animated.View>
   );

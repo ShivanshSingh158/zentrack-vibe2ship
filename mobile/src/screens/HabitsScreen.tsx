@@ -458,8 +458,9 @@ const HabitCard = React.memo(function HabitCard({
         </TouchableOpacity>
 
         {/* Title & Streak Badge (Tap to open Detail) */}
-        <TouchableOpacity
-          activeOpacity={0.7}
+        <AnimatedPressable
+          variant="row"
+          haptic="selection"
           onPress={() => onOpenDetail && onOpenDetail(habit)}
           onLongPress={handleLongPress}
           style={{ flex: 1, marginLeft: 12, marginRight: 8 }}
@@ -505,12 +506,13 @@ const HabitCard = React.memo(function HabitCard({
               )}
             </View>
           )}
-        </TouchableOpacity>
+        </AnimatedPressable>
 
-        {/* Big iOS Action Check Ring (Toggles TODAY) */}
+        {/* Big iOS Action Check Ring (Toggles TODAY with Frame-0 Spring Compression) */}
         {!isNegative ? (
-          <TouchableOpacity
-            activeOpacity={0.7}
+          <AnimatedPressable
+            variant="button"
+            haptic="success"
             onPress={handlePress}
             style={[
               styles.actionCheckRing,
@@ -527,10 +529,11 @@ const HabitCard = React.memo(function HabitCard({
                 color={isCompleted ? (isDark ? '#000000' : '#FFFFFF') : colors.textMuted}
               />
             </Reanimated.View>
-          </TouchableOpacity>
+          </AnimatedPressable>
         ) : (
-          <TouchableOpacity
-            activeOpacity={0.7}
+          <AnimatedPressable
+            variant="button"
+            haptic="medium"
             onPress={handlePress}
             style={[
               styles.actionCheckRing,
@@ -545,7 +548,7 @@ const HabitCard = React.memo(function HabitCard({
               size={16}
               color={isCompleted ? '#FFFFFF' : (isDark ? '#5EDA9E' : '#059669')}
             />
-          </TouchableOpacity>
+          </AnimatedPressable>
         )}
       </View>
 
@@ -558,9 +561,10 @@ const HabitCard = React.memo(function HabitCard({
             const isCurrentDay = item.isToday;
 
             return (
-              <TouchableOpacity
+              <AnimatedPressable
                 key={idx}
-                activeOpacity={0.7}
+                variant="subtle"
+                haptic="selection"
                 onPress={() => onToggleHistoricalDate && onToggleHistoricalDate(habit, item.dateStr)}
                 style={styles.weekDayColumn}
               >
@@ -591,7 +595,7 @@ const HabitCard = React.memo(function HabitCard({
                   {isDone && <Ionicons name="checkmark" size={11} color={isDark ? '#000000' : '#FFFFFF'} />}
                   {isFreeze && <Ionicons name="snow" size={10} color="#FFFFFF" />}
                 </View>
-              </TouchableOpacity>
+              </AnimatedPressable>
             );
           })}
         </View>
