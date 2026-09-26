@@ -1,12 +1,12 @@
-import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Pressable } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../contexts/ThemeContext';
 import VoiceDictationOverlay from '../Tasks/VoiceDictationOverlay';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
-import { WEEKDAY_TO_PLAN } from '../../data/gymPlan';
+import { WEEKDAY_TO_PLAN, GYM_PLAN } from '../../data/gymPlan';
 import { getCustomPlanDay } from '../../hooks/useGymLog';
 import { parseTimeToMins, getEndTimeMins, formatTimeStr } from '../../utils/timeUtils';
 
@@ -21,7 +21,6 @@ interface AgendaWidgetProps {
   holidays?: string[];
   /** Pass data.user?.uid from DashboardScreen — avoids subscribing to the full CoreDataContext */
   userId?: string;
-  onToggleTask?: (task: any) => void;
 }
 
 export const AgendaWidget = React.memo(function AgendaWidget({
@@ -34,7 +33,6 @@ export const AgendaWidget = React.memo(function AgendaWidget({
   nowDate,
   holidays = [],
   userId,
-  onToggleTask,
 }: AgendaWidgetProps) {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation<any>();
@@ -101,7 +99,11 @@ export const AgendaWidget = React.memo(function AgendaWidget({
     return { todayTasks, todayClasses, todayGym, shouldShowGymInAgenda, plannedDay };
   }, [tasks, gymLogs, userGymPlan, attendance, attendanceLogs, todayStr, nowDate, holidays]);
 
+
   // ── Memoized Agenda Items Generation & Sorting ───────────────────────────
+  // parseTimeToMins, getEndTimeMins, formatTimeStr are imported from
+  // utils/timeUtils.ts — stable module-level references, not inline functions,
+  // so this memo only re-runs when the actual data changes.
   const agendaItems = useMemo(() => {
     const items: any[] = [];
 
@@ -129,7 +131,6 @@ export const AgendaWidget = React.memo(function AgendaWidget({
       if (!gymTitle.toLowerCase().includes('rest')) {
         items.push({
           id: 'gym-item',
-          type: 'gym',
           title: gymTitle,
           timeStr: gymTimeStr,
           timeMins: isGymCompleted ? -1 : gymTimeMins,
@@ -137,7 +138,7 @@ export const AgendaWidget = React.memo(function AgendaWidget({
           isMissed: false,
           isCancelled: false,
           icon: isGymCompleted ? 'checkmark-circle' : 'barbell-outline',
-          iconColor: isGymCompleted ? colors.accentGreen : colors.accentPrimary,
+          iconColor: isGymCompleted ? colors.accentGreen : colors.textPrimary,
           onPress: () => navigation.navigate('Gym')
         });
       }
@@ -164,7 +165,6 @@ export const AgendaWidget = React.memo(function AgendaWidget({
 
       items.push({
         id: c.id,
-        type: c.type || 'class',
         title: c.title,
         timeStr: formatTimeStr(c.time),
         timeMins: parseTimeToMins(c.time),
@@ -205,9 +205,6 @@ export const AgendaWidget = React.memo(function AgendaWidget({
 
       items.push({
         id: t.id,
-        taskId: t.id,
-        type: 'task',
-        rawTask: t,
         title: t.title,
         timeStr: t.timeSlot ? formatTimeStr(t.timeSlot) : '',
         timeMins: t.timeSlot ? parseTimeToMins(t.timeSlot) : 9999,
@@ -215,7 +212,6 @@ export const AgendaWidget = React.memo(function AgendaWidget({
         isMissed: false,
         isOverdue,
         isCancelled,
-        priority: t.priority,
         icon,
         iconColor,
         onPress: () => navigation.navigate('Tasks')
@@ -235,265 +231,105 @@ export const AgendaWidget = React.memo(function AgendaWidget({
     return items;
   }, [shouldShowGymInAgenda, todayGym, plannedDay, todayClasses, todayTasks, nowMins, colors, navigation]);
 
-  const { totalCount, completedCount, remainingCount } = useMemo(() => {
-    const total = agendaItems.length;
-    const completed = agendaItems.filter(i => i.isCompleted).length;
-    return { totalCount: total, completedCount: completed, remainingCount: total - completed };
-  }, [agendaItems]);
+  if (agendaItems.length === 0) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Image
+          source={require('../../../assets/images/sara-running.png')}
+          style={styles.emptyMascot}
+          resizeMode="contain"
+        />
+        <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
+          Rest & Recharge
+        </Text>
+        <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
+          No tasks or sessions scheduled for today. Recovery is where growth happens—take a breather or start an activity!
+        </Text>
 
-  const handleTaskCheckboxPress = useCallback((item: any) => {
-    if (item.rawTask && onToggleTask) {
-      onToggleTask(item.rawTask);
-    } else {
-      item.onPress?.();
-    }
-  }, [onToggleTask]);
+        <View style={styles.emptyActionsRow}>
+          <TouchableOpacity
+            style={[styles.emptyActionBtn, { backgroundColor: colors.accentPrimary }]}
+            activeOpacity={0.8}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.navigate('Tasks');
+            }}
+          >
+            <Ionicons name="add" size={16} color={isDark ? '#000000' : '#FFFFFF'} />
+            <Text style={[styles.emptyActionTextPrimary, { color: isDark ? '#000000' : '#FFFFFF' }]}>Add Task</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.emptyActionBtn, styles.emptyVoiceBtn]}
+            activeOpacity={0.8}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              setIsVoiceDictationOpen(true);
+            }}
+          >
+            <Ionicons name="mic" size={16} color="#FFFFFF" />
+            <Text style={styles.emptyVoiceText}>Voice</Text>
+          </TouchableOpacity>
+        </View>
+
+        {isVoiceDictationOpen && (
+          <VoiceDictationOverlay
+            visible={isVoiceDictationOpen}
+            onClose={() => setIsVoiceDictationOpen(false)}
+            selectedDate={todayStr}
+            userId={userId}
+          />
+        )}
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.container}>
-      {/* ── Header: Subhead tracking + Count Pill ── */}
-      <View style={styles.headerRow}>
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={() => navigation.navigate('Tasks')}
-          style={styles.headerTitleRow}
-        >
-          <Ionicons name="calendar-outline" size={13} color={colors.accentPrimary} style={{ marginRight: 6 }} />
-          <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>
-            TODAY'S AGENDA
-          </Text>
-        </TouchableOpacity>
+    <View style={{ marginTop: 16 }}>
+      <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>TODAY'S AGENDA</Text>
+      {agendaItems.map(item => {
+        let textColor = colors.textPrimary;
+        let timeColor = colors.textTertiary;
+        
+        if (item.isCompleted || item.isMissed || item.isCancelled) {
+          textColor = colors.textTertiary;
+          timeColor = colors.textTertiary;
+        } else if (item.isOverdue) {
+          textColor = colors.textPrimary;
+          timeColor = colors.accentAmber;
+        }
 
-        {totalCount > 0 && (
-          <View style={[
-            styles.countPill,
-            { backgroundColor: remainingCount === 0 ? 'rgba(94,218,158,0.12)' : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }
-          ]}>
-            {remainingCount === 0 ? (
-              <>
-                <Ionicons name="checkmark-circle" size={12} color={colors.accentGreen} style={{ marginRight: 4 }} />
-                <Text style={[styles.countPillText, { color: colors.accentGreen }]}>All Done</Text>
-              </>
-            ) : (
-              <Text style={[styles.countPillText, { color: isDark ? colors.textSecondary : colors.textPrimary }]}>
-                {remainingCount} Left
+        const shouldStrike = item.isCompleted || item.isMissed || item.isCancelled;
+
+        return (
+          <TouchableOpacity key={item.id} style={[styles.agendaRow, { borderBottomColor: colors.border }]} activeOpacity={0.7} onPress={item.onPress}>
+            <Ionicons
+              name={item.icon}
+              size={18}
+              color={item.iconColor}
+              style={{ marginRight: 10 }}
+            />
+            <Text style={[
+              styles.agendaRowText,
+              { color: textColor },
+              shouldStrike && { textDecorationLine: 'line-through' },
+              { flex: 1 },
+            ]} numberOfLines={1}>
+              {item.title}
+            </Text>
+            {(!!item.timeStr || item.isOverdue) && (
+              <Text style={[
+                styles.agendaRowTime, 
+                { color: timeColor },
+                shouldStrike && { textDecorationLine: 'line-through' }
+              ]}>
+                {item.isOverdue ? (item.timeStr ? `${item.timeStr} • Overdue` : 'Overdue') : item.timeStr}
               </Text>
             )}
-          </View>
-        )}
-      </View>
+          </TouchableOpacity>
+        );
+      })}
 
-      {/* ── Grouped Inset Card (Apple iOS 18 Squircle Surface) ── */}
-      <View style={[
-        styles.groupedCard,
-        {
-          backgroundColor: isDark ? '#0d0d10' : '#FFFFFF',
-          borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E5E5EA',
-        }
-      ]}>
-        {agendaItems.length === 0 ? (
-          <View style={styles.emptyCardContent}>
-            <View style={[styles.emptyIconCircle, { backgroundColor: 'rgba(94,218,158,0.12)' }]}>
-              <Ionicons name="sparkles" size={24} color={colors.accentGreen} />
-            </View>
-            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
-              All Caught Up
-            </Text>
-            <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
-              No tasks or sessions scheduled for today. Take a breather or start an activity!
-            </Text>
-
-            <View style={styles.emptyActionsRow}>
-              <TouchableOpacity
-                style={[styles.quickActionBtn, { backgroundColor: colors.accentPrimary }]}
-                activeOpacity={0.8}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  navigation.navigate('Tasks', { openAddTask: true });
-                }}
-              >
-                <Ionicons name="add" size={15} color={isDark ? '#000000' : '#FFFFFF'} />
-                <Text style={[styles.quickActionTextPrimary, { color: isDark ? '#000000' : '#FFFFFF' }]}>
-                  Add Task
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.quickActionBtn, styles.emptyVoiceBtn]}
-                activeOpacity={0.8}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setIsVoiceDictationOpen(true);
-                }}
-              >
-                <Ionicons name="mic" size={15} color="#FFFFFF" />
-                <Text style={styles.quickVoiceText}>Voice</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <>
-            {agendaItems.map((item, index) => {
-              const isLast = index === agendaItems.length - 1;
-              const isTask = item.type === 'task';
-              const shouldStrike = item.isCompleted || item.isMissed || item.isCancelled;
-
-              let textColor = colors.textPrimary;
-              let timeColor = colors.textTertiary;
-              if (shouldStrike) {
-                textColor = colors.textTertiary;
-                timeColor = colors.textTertiary;
-              } else if (item.isOverdue) {
-                textColor = colors.textPrimary;
-                timeColor = colors.accentAmber;
-              }
-
-              return (
-                <View key={item.id}>
-                  <View style={styles.itemRowContainer}>
-                    {/* Left: Interactive Checkbox for Tasks, or Category Icon Squircle */}
-                    {isTask ? (
-                      <Pressable
-                        hitSlop={10}
-                        onPress={() => handleTaskCheckboxPress(item)}
-                        style={styles.checkboxTouch}
-                        accessibilityRole="checkbox"
-                        accessibilityState={{ checked: item.isCompleted }}
-                        accessibilityLabel={`Mark ${item.title} as ${item.isCompleted ? 'pending' : 'complete'}`}
-                      >
-                        {item.isCompleted ? (
-                          <View style={[styles.checkboxCompleted, { backgroundColor: colors.accentGreen }]}>
-                            <Ionicons name="checkmark" size={12} color="#FFFFFF" />
-                          </View>
-                        ) : (
-                          <View style={[
-                            styles.checkboxPending,
-                            { borderColor: isDark ? 'rgba(255,255,255,0.30)' : 'rgba(0,0,0,0.22)' }
-                          ]} />
-                        )}
-                      </Pressable>
-                    ) : (
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={item.onPress}
-                        style={[
-                          styles.categoryIconBadge,
-                          {
-                            backgroundColor: item.type === 'gym'
-                              ? (item.isCompleted ? 'rgba(94,218,158,0.12)' : 'rgba(165,153,255,0.12)')
-                              : item.type === 'lab'
-                                ? (item.isCompleted ? 'rgba(94,218,158,0.12)' : 'rgba(255,159,77,0.12)')
-                                : (item.isCompleted ? 'rgba(94,218,158,0.12)' : 'rgba(99,102,241,0.12)')
-                          }
-                        ]}
-                      >
-                        <Ionicons
-                          name={item.icon}
-                          size={15}
-                          color={item.iconColor}
-                        />
-                      </TouchableOpacity>
-                    )}
-
-                    {/* Middle: Title & Time */}
-                    <TouchableOpacity
-                      style={styles.itemContentTouch}
-                      activeOpacity={0.65}
-                      onPress={item.onPress}
-                    >
-                      <Text
-                        style={[
-                          styles.itemTitle,
-                          { color: textColor },
-                          shouldStrike && styles.strikethroughText
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {item.title}
-                      </Text>
-
-                      {(!!item.timeStr || item.isOverdue) && (
-                        <View style={styles.timeRow}>
-                          <Text
-                            style={[
-                              styles.itemTime,
-                              { color: timeColor },
-                              shouldStrike && styles.strikethroughText
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {item.isOverdue
-                              ? (item.timeStr ? `${item.timeStr} • Overdue` : 'Overdue')
-                              : item.timeStr}
-                          </Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-
-                    {/* Right: Chevron arrow */}
-                    <TouchableOpacity
-                      activeOpacity={0.6}
-                      onPress={item.onPress}
-                      style={styles.chevronTouch}
-                      hitSlop={8}
-                    >
-                      <Ionicons
-                        name="chevron-forward"
-                        size={15}
-                        color={isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.20)'}
-                      />
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Indented Divider (starts where title begins) */}
-                  {!isLast && (
-                    <View style={[
-                      styles.rowDivider,
-                      { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }
-                    ]} />
-                  )}
-                </View>
-              );
-            })}
-
-            {/* Quick Action Footer inside Card */}
-            <View style={[
-              styles.cardFooter,
-              { borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }
-            ]}>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  navigation.navigate('Tasks', { openAddTask: true });
-                }}
-                style={styles.footerActionBtn}
-              >
-                <Ionicons name="add" size={15} color={colors.accentPrimary} />
-                <Text style={[styles.footerActionText, { color: colors.accentPrimary }]}>
-                  Add task
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setIsVoiceDictationOpen(true);
-                }}
-                style={styles.footerActionBtn}
-              >
-                <Ionicons name="mic" size={14} color="#FF453A" />
-                <Text style={[styles.footerActionText, { color: '#FF453A' }]}>
-                  Voice
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
-      </View>
-
-      {/* Voice Dictation Sheet */}
       {isVoiceDictationOpen && (
         <VoiceDictationOverlay
           visible={isVoiceDictationOpen}
@@ -507,143 +343,37 @@ export const AgendaWidget = React.memo(function AgendaWidget({
 });
 
 const styles = StyleSheet.create({
-  container: {
-    marginTop: 18,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
-    marginBottom: 8,
-  },
-  headerTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   sectionLabel: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 11,
-    letterSpacing: 0.8,
+    fontSize: 10,
+    letterSpacing: 1,
+    marginBottom: 4,
+    marginLeft: 4,
   },
-  countPill: {
+  agendaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
+    paddingVertical: SPACE.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  countPillText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 10.5,
-    letterSpacing: 0.2,
-  },
-  groupedCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  itemRowContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  checkboxTouch: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  checkboxPending: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 1.8,
-  },
-  checkboxCompleted: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  categoryIconBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  itemContentTouch: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingRight: 8,
-  },
-  itemTitle: {
-    fontFamily: FONT_FAMILY.medium,
+  agendaRowText: {
+    fontFamily: FONT_FAMILY.regular,
     fontSize: 14,
-    letterSpacing: -0.1,
   },
-  strikethroughText: {
-    textDecorationLine: 'line-through',
-  },
-  timeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  itemTime: {
+  agendaRowTime: {
     fontFamily: FONT_FAMILY.regular,
     fontSize: 12,
   },
-  chevronTouch: {
-    paddingLeft: 4,
-    paddingVertical: 4,
-  },
-  rowDivider: {
-    height: StyleSheet.hairlineWidth,
-    marginLeft: 50,
-  },
-  cardFooter: {
-    flexDirection: 'row',
+  emptyContainer: {
+    marginTop: 18,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
   },
-  footerActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-  },
-  footerActionText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontWeight: '600',
-    fontSize: 12.5,
-  },
-  emptyCardContent: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-  },
-  emptyIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
+  emptyMascot: {
+    width: 110,
+    height: 110,
+    marginBottom: 8,
+    opacity: 0.95,
   },
   emptyTitle: {
     fontFamily: FONT_FAMILY.bold,
@@ -656,25 +386,27 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     textAlign: 'center',
     lineHeight: 18,
-    paddingHorizontal: 16,
-    marginBottom: 16,
+    paddingHorizontal: 20,
+    marginBottom: 14,
   },
   emptyActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 12,
   },
-  quickActionBtn: {
+  emptyActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 18,
+    gap: 5,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 22,
   },
-  quickActionTextPrimary: {
+  emptyActionTextPrimary: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 12.5,
+    fontSize: 13,
+    color: '#000000',
   },
   emptyVoiceBtn: {
     backgroundColor: '#FF453A',
@@ -682,11 +414,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.35,
     shadowRadius: 6,
-    elevation: 3,
+    elevation: 4,
   },
-  quickVoiceText: {
+  emptyVoiceText: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 12.5,
+    fontSize: 13,
     color: '#FFFFFF',
   },
 });
+

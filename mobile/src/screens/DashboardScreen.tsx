@@ -10,7 +10,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { LEVEL_THRESHOLDS, awardXP } from '../services/xpSystem';
+import { LEVEL_THRESHOLDS } from '../services/xpSystem';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -38,10 +38,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import VoiceDictationOverlay from '../components/Tasks/VoiceDictationOverlay';
 import UserAvatar from '../components/ui/UserAvatar';
 import BottomSheet from '../components/ui/BottomSheet';
-import { safeUpdate } from '../utils/safeWrite';
-import { COLLECTION } from '../config/constants';
-import { db } from '../services/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
 
 export default function DashboardScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
@@ -197,30 +193,6 @@ export default function DashboardScreen() {
 
   // ── Quick Profile BottomSheet State (Apple iOS 18 Grouped style) ──────────
   const [quickProfileVisible, setQuickProfileVisible] = useState(false);
-
-  // ── 1-Tap Interactive Task Toggle Handler (Instant optimistic UI + safeUpdate) ──
-  const handleToggleTask = useCallback((task: any) => {
-    if (!task?.id) return;
-    const isCompleted = task.status === 'completed' || task.status === 'done';
-    const newStatus = isCompleted ? 'pending' : 'completed';
-    const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
-
-    if (newStatus === 'completed') {
-      import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
-      awardXP('TASK_COMPLETE');
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-
-    data.optimisticUpdateTask?.(task.id, { status: newStatus, completedAt });
-
-    safeUpdate(
-      task.id,
-      COLLECTION.TASKS,
-      { status: newStatus, completedAt },
-      () => updateDoc(doc(db, COLLECTION.TASKS, task.id), { status: newStatus, completedAt })
-    );
-  }, [data.optimisticUpdateTask]);
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
@@ -410,7 +382,6 @@ export default function DashboardScreen() {
                     nowDate={data.nowDate}
                     holidays={data.holidays}
                     userId={data.user?.uid}
-                    onToggleTask={handleToggleTask}
                   />
                 </Animated.View>
               );
