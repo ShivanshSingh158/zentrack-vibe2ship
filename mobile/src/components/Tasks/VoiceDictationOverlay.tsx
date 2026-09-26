@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -22,13 +22,18 @@ import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  startVADRecording,
-  stopAndGetBase64,
-  cancelVoiceRecording,
   isSilenceOrNoise,
-  VoiceState
+  VoiceState,
+  startVADRecording,
+  stopAndTranscribe,
+  cancelVoiceRecording,
 } from '../../services/voiceEngine';
-import { transcribeAudioViaProxy } from '../../services/geminiProxy';
+import {
+  startNativeStt,
+  stopNativeStt,
+  abortNativeStt,
+  isNativeSttAvailable,
+} from '../../services/nativeStt';
 import {
   parseNLTasks,
   parseNLTask,
@@ -143,15 +148,15 @@ function SoundWaveBars({ active }: { active: boolean }) {
 
   return (
     <View style={visualizerStyles.waveContainer}>
-      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#FF6961' }, style1]} />
-      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#FF453A' }, style2]} />
-      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#E056FD' }, style3]} />
-      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#A599FF' }, style4]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#818CF8' }, style1]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#A599FF' }, style2]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#C084FC' }, style3]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#DDD6FE' }, style4]} />
       <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#FFFFFF' }, style5]} />
-      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#A599FF' }, style6]} />
-      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#E056FD' }, style7]} />
-      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#FF453A' }, style8]} />
-      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#FF6961' }, style9]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#DDD6FE' }, style6]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#C084FC' }, style7]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#A599FF' }, style8]} />
+      <Animated.View style={[visualizerStyles.bar, { backgroundColor: '#818CF8' }, style9]} />
     </View>
   );
 }
@@ -233,6 +238,8 @@ export default function VoiceDictationOverlay({
 
   const [offlineNLPMode, setOfflineNLPMode] = useState(false);
   const nlpDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guard: prevents handleParsedSpokenText from firing more than once per recording
+  const hasProcessedRef = useRef(false);
 
   const glowScale = useSharedValue(1);
   const glowOpacity = useSharedValue(0.4);
@@ -256,6 +263,76 @@ export default function VoiceDictationOverlay({
     d.setDate(d.getDate() + 1);
     return toYMD(d);
   })();
+
+  // Real-time live NLP token detection as user rambles
+  const liveTokens = useMemo(() => {
+    if (!rawTranscript || rawTranscript.trim().length < 2) return [];
+    try {
+      const allParsed = parseNLTasks(normalizeVoiceTranscript(rawTranscript));
+      const first = allParsed[0];
+      const tokens: { icon: string; label: string; color: string; bgColor: string }[] = [];
+
+      if (allParsed.length > 1) {
+        tokens.push({
+          icon: 'list-circle-outline',
+          label: `${allParsed.length} Tasks Detected`,
+          color: '#34D399',
+          bgColor: 'rgba(52, 211, 153, 0.15)',
+        });
+      }
+
+      if (first?.date) {
+        tokens.push({
+          icon: 'calendar-outline',
+          label: first.date === today ? 'Today' : first.date === tomorrowStr ? 'Tomorrow' : formatDisplayDate(first.date),
+          color: '#60A5FA',
+          bgColor: 'rgba(96, 165, 250, 0.15)',
+        });
+      }
+
+      if (first?.timeSlot) {
+        tokens.push({
+          icon: 'time-outline',
+          label: formatTimeDisplay(first.timeSlot),
+          color: '#34D399',
+          bgColor: 'rgba(52, 211, 153, 0.15)',
+        });
+      }
+
+      if (first?.priority && first.priority !== 'low') {
+        tokens.push({
+          icon: 'flag',
+          label: first.priority.toUpperCase(),
+          color: first.priority === 'high' ? '#F87171' : '#FBBF24',
+          bgColor: first.priority === 'high' ? 'rgba(248, 113, 113, 0.15)' : 'rgba(251, 191, 36, 0.15)',
+        });
+      }
+
+      if (first?.subtasks && first.subtasks.length > 0) {
+        tokens.push({
+          icon: 'checkbox-outline',
+          label: `${first.subtasks.length} Subtasks`,
+          color: '#C084FC',
+          bgColor: 'rgba(192, 132, 252, 0.15)',
+        });
+      }
+
+      if (first?.tags && first.tags.length > 0) {
+        first.tags.forEach(t => {
+          tokens.push({
+            icon: 'pricetag-outline',
+            label: `#${t}`,
+            color: '#A599FF',
+            bgColor: 'rgba(165, 153, 255, 0.15)',
+          });
+        });
+      }
+
+      return tokens;
+    } catch {
+      return [];
+    }
+  }, [rawTranscript, tomorrowStr]);
 
   // Load tag library for quick chips
   useEffect(() => {
@@ -306,10 +383,9 @@ export default function VoiceDictationOverlay({
         true
       );
       resetState();
-      // 100ms delay: allows the modal fade-in animation to complete and the iOS
-      // audio session to initialize before VAD polling begins. Without this,
-      // startVADRecording fires before the audio driver is ready on iOS,
-      // causing the first recording attempt to silently fail.
+      // 100ms delay: allows the modal fade-in animation to complete before
+      // native speech recognition starts. Without this, the recognizer
+      // can fail to initialize on some devices.
       const armTimer = setTimeout(() => {
         handleStartRecording();
       }, 100);
@@ -374,6 +450,7 @@ export default function VoiceDictationOverlay({
   }, [visible, state]);
 
   const cleanup = () => {
+    abortNativeStt();
     cancelVoiceRecording().catch(() => {});
     setState('idle');
     setErrorMsg('');
@@ -392,6 +469,7 @@ export default function VoiceDictationOverlay({
     setTasks([]);
     setActiveTaskIdx(0);
     setOfflineNLPMode(false);
+    hasProcessedRef.current = false; // reset guard for new recording
     if (nlpDebounceRef.current) clearTimeout(nlpDebounceRef.current);
     closeAllModals();
   };
@@ -550,81 +628,137 @@ export default function VoiceDictationOverlay({
     handleParsedSpokenText(tmplText);
   };
 
-  // ─── High-Speed Direct Voice Extraction (Fast STT + Instant Local NLP) ─────
-  const handleAudioPayload = async (base64Audio: string) => {
-    setState('processing');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    try {
-      // 1. Fast Single-Shot Transcription via Gemini Proxy (8s strict timeout)
-      const transcribedText = await transcribeAudioViaProxy(base64Audio, 8000);
-      if (!transcribedText || isSilenceOrNoise(transcribedText)) {
-        setErrorMsg("Weak network or no speech detected. Tap mic to retry or type below.");
-        setState('idle');
-        return;
-      }
-
-      // 2. Instant (0ms) Deterministic Local NLP Parser: title, date, time, priority, recurrence, tags
-      handleParsedSpokenText(transcribedText.trim());
-
-    } catch (err) {
-      console.warn('[VoiceDictation] Audio processing error:', err);
-      setErrorMsg('Network is weak. Type your task below with instant local NLP.');
-      setState('idle');
+  // ─── Recording Controls (Native OS SpeechRecognizer + Gemini VAD Fallback) ──
+  const handleStartRecording = async (clearPrevious: boolean = true) => {
+    if (clearPrevious) {
+      resetState();
+    } else {
+      setErrorMsg('');
     }
-  };
 
-  // ─── Recording Controls ───────────────────────────────────────────────────
-  const handleStartRecording = async () => {
-    resetState();
-    await startVADRecording(
-      {
-        onStateChange: (newState) => {
-          if (newState === 'recording' || newState === 'idle') {
+    const nativeAvailable = await isNativeSttAvailable();
+    if (!nativeAvailable) {
+      console.log('[VoiceDictationOverlay] Native STT module unlinked in current binary, falling back to Gemini VAD');
+      setState('recording');
+      try {
+        await startVADRecording({
+          onStateChange: (newState) => {
             setState(newState);
-          }
-        },
-        onAudioReady: (base64) => {
-          handleAudioPayload(base64);
-        },
-        onTranscript: async (spokenText) => {
-          if (!spokenText || isSilenceOrNoise(spokenText)) {
-            setErrorMsg('No clear speech detected. Please tap the mic and try again.');
+          },
+          onTranscript: (text) => {
+            if (!text || !text.trim()) return;
+            if (isSilenceOrNoise(text)) {
+              setErrorMsg('No clear speech detected. Please tap the mic and try again.');
+              setState('idle');
+              return;
+            }
+            setState('processing');
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setRawTranscript(text.trim());
+            handleParsedSpokenText(text.trim());
+          },
+          onError: (err) => {
+            setErrorMsg(err);
             setState('idle');
-            return;
-          }
-          setState('processing');
-          handleParsedSpokenText(spokenText.trim());
-        },
-        onError: (err) => {
-          setErrorMsg(err);
-          setState('idle');
-        },
-      },
-      () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          },
+        });
+      } catch (err: any) {
+        setErrorMsg(err?.message || 'Microphone error');
+        setState('idle');
       }
-    );
-  };
-
-  const handleStopAndProcess = async () => {
-    setState('processing');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    const base64 = await stopAndGetBase64();
-    if (!base64) {
-      setState('idle');
       return;
     }
 
-    await handleAudioPayload(base64);
+    setState('recording');
+    await startNativeStt(
+      {
+        onStateChange: (newState) => {
+          if (newState === 'listening') {
+            setState('recording');
+          } else if (newState === 'idle') {
+            // Check if we captured spoken words: if so, auto-parse instead of dropping back to idle!
+            setRawTranscript((currentTranscript) => {
+              if (currentTranscript && currentTranscript.trim().length > 1 && !hasProcessedRef.current) {
+                hasProcessedRef.current = true;
+                setState('processing');
+                handleParsedSpokenText(currentTranscript.trim());
+              } else {
+                setState((prev) => (prev === 'processing' || prev === 'preview' || prev === 'saving' || prev === 'success' ? prev : 'idle'));
+              }
+              return currentTranscript;
+            });
+          }
+        },
+        onResult: (text, isFinal) => {
+          if (!text || !text.trim()) return;
+          // Show interim and final text live as user speaks!
+          setRawTranscript(text);
+          if (isFinal && !hasProcessedRef.current) {
+            if (isSilenceOrNoise(text)) {
+              setErrorMsg('No clear speech detected. Please tap the mic and try again.');
+              setState('idle');
+              return;
+            }
+            hasProcessedRef.current = true;
+            setState('processing');
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            handleParsedSpokenText(text.trim());
+          }
+        },
+        onError: (err) => {
+          // If we already have captured speech, don't show error, just process!
+          setRawTranscript((currentTranscript) => {
+            if (currentTranscript && currentTranscript.trim().length > 1) {
+              setState('processing');
+              handleParsedSpokenText(currentTranscript.trim());
+            } else {
+              setErrorMsg(err);
+              setState('idle');
+            }
+            return currentTranscript;
+          });
+        },
+      },
+    );
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleStopAndProcess = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    stopNativeStt();
+
+    // Trigger voiceEngine stop in case Gemini VAD fallback was active
+    try {
+      await stopAndTranscribe({
+        onStateChange: (s) => setState(s),
+        onTranscript: (t) => {
+          if (t && t.trim() && !isSilenceOrNoise(t)) {
+            setRawTranscript(t.trim());
+            handleParsedSpokenText(t.trim());
+          }
+        },
+        onError: (err) => {
+          if (!rawTranscript || rawTranscript.trim().length <= 1) {
+            setErrorMsg(err);
+            setState('idle');
+          }
+        },
+      });
+    } catch (_) {}
+
+    // Immediate fallback: if rawTranscript has content and nothing has been parsed yet, commit directly
+    if (rawTranscript && rawTranscript.trim().length > 1 && state !== 'preview' && state !== 'saving' && !hasProcessedRef.current) {
+      hasProcessedRef.current = true;
+      setState('processing');
+      handleParsedSpokenText(rawTranscript.trim());
+    }
   };
 
   const handleToggleMic = () => {
     if (state === 'recording') {
       handleStopAndProcess();
     } else {
-      handleStartRecording();
+      handleStartRecording(true);
     }
   };
 
@@ -954,450 +1088,311 @@ export default function VoiceDictationOverlay({
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       {/* orbMorphStyle wraps the entire content — drives the open/close morph */}
       <Animated.View style={orbMorphStyle}>
-      <View style={[styles.backdrop, { paddingTop: insets.top }]}>
-        {/* Solid Deep Obsidian Canvas — 100% blocks underlying screen bleed */}
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0C0C0E' }]} />
+        <View style={[styles.backdrop, { paddingTop: insets.top }]}>
+          {/* Deep Obsidian Canvas Background */}
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#090B10' }]} />
 
-        {/* Ambient Subtle Siri/Apple Intelligence Aura */}
-        <LinearGradient
-          colors={['rgba(165, 153, 255, 0.08)', 'rgba(255, 69, 58, 0.04)', 'transparent', '#0C0C0E']}
-          style={StyleSheet.absoluteFillObject}
-          locations={[0, 0.22, 0.65, 1]}
-        />
+          {/* Ambient Subtle Violet Cosmic Glow */}
+          <LinearGradient
+            colors={['rgba(165, 153, 255, 0.08)', 'rgba(99, 102, 241, 0.03)', 'transparent', '#090B10']}
+            style={StyleSheet.absoluteFillObject}
+            locations={[0, 0.25, 0.6, 1]}
+          />
 
-        {/* Top Header Bar */}
-        <View style={styles.topHeader}>
-          <View style={styles.badgePill}>
-            <Image
-              source={require('../../../assets/images/sara-idle.png')}
-              style={styles.mascotBadgeIcon}
-            />
-            <Text style={styles.badgePillText}>ZENTRACK VOICE NLP</Text>
-          </View>
+          {/* Clean Top Header Bar */}
+          <View style={styles.topHeader}>
+            <View style={styles.headerLeft}>
+              <View style={[styles.headerStatusDot, state === 'recording' && styles.headerStatusDotActive]} />
+              <Text style={styles.headerTitle}>
+                {state === 'preview'
+                  ? tasks.length > 1
+                    ? `${tasks.length} Tasks Detected`
+                    : 'Review Task'
+                  : 'Voice Task'}
+              </Text>
+            </View>
 
-          <TouchableOpacity
-            style={styles.closeBtn}
-            onPress={onClose}
-            activeOpacity={0.7}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Ionicons name="close" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.container}>
-          {/* Main Title Section */}
-          <View style={styles.titleSection}>
-            <Text style={styles.mainTitle}>
-              {state === 'preview'
-                ? tasks.length > 1
-                  ? `${tasks.length} Tasks Detected`
-                  : 'Review & Edit Task'
-                : 'Talk to create tasks'}
-            </Text>
-            <Text style={styles.subTitle}>
-              {state === 'preview'
-                ? tasks.length > 1
-                  ? 'All tasks extracted from your speech. Review, edit any, or add all at once.'
-                  : 'Everything connected: subtasks, start-end times, alarms, duration & tags.'
-                : 'Extracts subtasks, deadlines, time ranges, recurrence & alarms instantly.'}
-            </Text>
-          </View>
-
-          {/* Dynamic NLP & Status Card */}
-          <View style={styles.cardContainer}>
-            <LinearGradient
-              colors={
-                state === 'preview'
-                  ? ['#1C1C22', '#141418']
-                  : ['#1A1A20', '#131317']
-              }
-              style={[
-                styles.glassCard,
-                state === 'preview' && { borderColor: 'rgba(255, 105, 97, 0.3)' }
-              ]}
+            <TouchableOpacity
+              style={styles.closeBtn}
+              onPress={onClose}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              {/* Card Header */}
-              <View style={styles.cardHeaderRow}>
-                {state === 'processing' ? (
-                  <>
-                    <ActivityIndicator size="small" color="#FF6961" style={{ marginRight: 4 }} />
-                    <Text style={[styles.cardHeaderText, { color: '#FF6961' }]}>TRANSCRIBING & EXTRACTING NLP...</Text>
-                  </>
-                ) : state === 'preview' ? (
-                  <>
-                    <Image
-                      source={require('../../../assets/images/sara-idle.png')}
-                      style={styles.mascotCardIcon}
-                    />
-                    <Text style={[styles.cardHeaderText, { color: offlineNLPMode ? '#34D399' : '#FF6961' }]}>
-                      {offlineNLPMode
-                        ? '⚡ LOCAL NLP ACTIVE · 0MS OFFLINE'
-                        : tasks.length > 1
-                        ? `${tasks.length} TASKS DETECTED · TAP TO EDIT`
-                        : 'DETECTED TASK · ALL NLP CONNECTED'}
-                    </Text>
-                  </>
-                ) : errorMsg ? (
-                  <>
-                    <Ionicons name="alert-circle-outline" size={16} color={COLORS.error} />
-                    <Text style={[styles.cardHeaderText, { color: COLORS.error }]}>COULD NOT DETECT TASK</Text>
-                  </>
-                ) : (
-                  <>
-                    <Ionicons name="bulb-outline" size={16} color="#A599FF" />
-                    <Text style={styles.cardHeaderText}>TRY SAYING</Text>
-                  </>
-                )}
-              </View>
+              <Ionicons name="close" size={20} color="rgba(255, 255, 255, 0.7)" />
+            </TouchableOpacity>
+          </View>
 
-              {/* Card Body Content */}
-              {errorMsg ? (
-                <Animated.View entering={FadeIn} exiting={FadeOut}>
-                  <Text style={styles.errorText}>{errorMsg}</Text>
-                  <Text style={styles.errorHint}>Tap the microphone below to speak again.</Text>
-                  <TouchableOpacity
-                    style={styles.offlineTypeBtn}
-                    onPress={handleSwitchToManualNLP}
-                    activeOpacity={0.8}
+          {/* ═══════════════════════════════════════════════════════════════
+              MODE A: REVIEW & EDIT CANVAS (when task(s) detected)
+             ═══════════════════════════════════════════════════════════════ */}
+          {state === 'preview' ? (
+            <View style={styles.previewContainer}>
+              {/* Multi-Task Selector Tabs (only shown when multiple tasks extracted) */}
+              {tasks.length > 1 && (
+                <View style={styles.multiTaskPillsWrapper}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.multiTaskPillsRow}
                   >
-                    <Ionicons name="create-outline" size={15} color="#FF6961" />
-                    <Text style={styles.offlineTypeBtnText}>Type Task with Instant NLP (Offline)</Text>
-                  </TouchableOpacity>
-
-                  {/* 1-Tap Quick Action Templates on Error */}
-                  <View style={styles.quickTemplatesWrapper}>
-                    <Text style={styles.quickTemplatesLabel}>OR PICK A QUICK TEMPLATE (0MS OFFLINE)</Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.quickTemplatesRow}
-                    >
-                      {QUICK_TEMPLATES.map((tmpl, idx) => (
-                        <TouchableOpacity
-                          key={idx}
-                          style={styles.quickTemplatePill}
-                          onPress={() => handleApplyTemplate(tmpl.text)}
-                          activeOpacity={0.75}
-                        >
-                          <Ionicons name={tmpl.icon as any} size={13} color={tmpl.color} />
-                          <Text style={styles.quickTemplatePillText}>{tmpl.text}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                </Animated.View>
-              ) : state === 'processing' ? (
-                <Animated.View entering={FadeIn} style={styles.processingContent}>
-                  <Text style={styles.processingText}>Listening and parsing all tasks, subtasks, times and tags...</Text>
-                </Animated.View>
-              ) : state === 'preview' ? (
-                <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.previewContent}>
-                  
-                  {/* Multi-Task Selector Header if > 1 task */}
-                  {tasks.length > 1 && (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.multiTaskPillsRow}>
-                      {tasks.map((t, idx) => (
-                        <TouchableOpacity
-                          key={t.id}
+                    {tasks.map((t, idx) => (
+                      <TouchableOpacity
+                        key={t.id}
+                        style={[
+                          styles.taskSelectorPill,
+                          activeTaskIdx === idx && styles.taskSelectorPillActive,
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setActiveTaskIdx(idx);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text
                           style={[
-                            styles.taskSelectorPill,
-                            activeTaskIdx === idx && styles.taskSelectorPillActive
-                          ]}
-                          onPress={() => {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            setActiveTaskIdx(idx);
-                          }}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={[
                             styles.taskSelectorPillText,
-                            activeTaskIdx === idx && styles.taskSelectorPillTextActive
-                          ]} numberOfLines={1}>
-                            {idx + 1}. {t.title || 'Task'}
-                          </Text>
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              removeTaskAt(idx);
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Ionicons name="close-circle" size={13} color={activeTaskIdx === idx ? '#FFFFFF' : 'rgba(255,255,255,0.4)'} />
-                          </TouchableOpacity>
+                            activeTaskIdx === idx && styles.taskSelectorPillTextActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {idx + 1}. {t.title || 'Task'}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            removeTaskAt(idx);
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons
+                            name="close-circle"
+                            size={14}
+                            color={activeTaskIdx === idx ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.35)'}
+                          />
                         </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  )}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
 
+              {/* Main Task Card Scrollable Area */}
+              <ScrollView
+                style={styles.reviewScroll}
+                contentContainerStyle={styles.reviewContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={styles.reviewCard}>
                   {/* Editable Task Title Input */}
-                  {currentTask && (
-                    <TextInput
-                      style={styles.detectedTitleInput}
-                      value={currentTask.title}
-                      onChangeText={handleTitleChange}
-                      placeholder={offlineNLPMode ? "Type task, e.g. Buy groceries tmrw 5pm p1..." : "Task title..."}
-                      placeholderTextColor="rgba(255,255,255,0.4)"
-                      multiline={false}
-                      returnKeyType="done"
-                    />
-                  )}
+                  <TextInput
+                    style={styles.reviewTitleInput}
+                    value={currentTask?.title || ''}
+                    onChangeText={handleTitleChange}
+                    placeholder="Task title..."
+                    placeholderTextColor="rgba(255, 255, 255, 0.35)"
+                    multiline
+                    blurOnSubmit
+                  />
 
-                  {/* Todoist-Style Complete NLP Interactive Attribute Chips */}
-                  {currentTask && (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.chipsRow}
+                  {/* Horizontal Scrollable Attribute Chips */}
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.chipsScrollContent}
+                  >
+                    {/* Due Date Chip */}
+                    <TouchableOpacity
+                      style={[styles.attrChip, styles.attrChipActive]}
+                      onPress={() => setShowCalendar(true)}
+                      activeOpacity={0.7}
                     >
-                      {/* Date Chip */}
-                      <Animated.View entering={FadeInRight.duration(180).delay(30)}>
+                      <Ionicons name="calendar-outline" size={13} color="#60A5FA" />
+                      <Text style={styles.attrChipText}>{activeDateLabel}</Text>
+                      {currentTask?.date !== today && (
                         <TouchableOpacity
-                          style={[styles.nlpChip, styles.dateChip]}
-                          onPress={() => setShowCalendar(true)}
-                          activeOpacity={0.7}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            updateActiveTask({ date: today });
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Ionicons name="calendar-outline" size={13} color="#60a5fa" />
-                          <Text style={styles.dateChipText}>{activeDateLabel}</Text>
-                          {currentTask.date !== today && (
-                            <TouchableOpacity
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                updateActiveTask({ date: today });
-                              }}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <Ionicons name="close-circle" size={13} color="#60a5fa" style={{ marginLeft: 2 }} />
-                            </TouchableOpacity>
-                          )}
+                          <Ionicons name="close-circle" size={12} color="#60A5FA" style={{ marginLeft: 2 }} />
                         </TouchableOpacity>
-                      </Animated.View>
+                      )}
+                    </TouchableOpacity>
 
-                      {/* Recurrence Chip (Prominent position right next to Date) */}
-                      <Animated.View entering={FadeInRight.duration(180).delay(60)}>
+                    {/* Start Time Chip */}
+                    <TouchableOpacity
+                      style={[styles.attrChip, currentTask?.timeSlot ? styles.attrChipActive : styles.attrChipEmpty]}
+                      onPress={() => setShowStartTimePicker(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name="time-outline"
+                        size={13}
+                        color={currentTask?.timeSlot ? '#34D399' : 'rgba(255,255,255,0.45)'}
+                      />
+                      <Text style={[styles.attrChipText, !currentTask?.timeSlot && styles.attrChipTextEmpty]}>
+                        {currentTask?.timeSlot ? formatTimeDisplay(currentTask.timeSlot) : 'Time'}
+                      </Text>
+                      {!!currentTask?.timeSlot && (
                         <TouchableOpacity
-                          style={[
-                            styles.nlpChip,
-                            currentTask.isRecurring ? styles.recurrenceChip : styles.emptyChip
-                          ]}
-                          onPress={() => setShowRecurrenceModal(true)}
-                          activeOpacity={0.7}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            updateActiveTask({ timeSlot: null });
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Ionicons name="repeat-outline" size={13} color={currentTask.isRecurring ? '#c084fc' : '#8e8e93'} />
-                          <Text style={[styles.recurrenceChipText, !currentTask.isRecurring && { color: '#8e8e93' }]}>
-                            {activeRecurrenceLabel || 'Repeat'}
-                          </Text>
-                          {currentTask.isRecurring && (
-                            <TouchableOpacity
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                updateActiveTask({ isRecurring: false, recurrenceRule: null });
-                              }}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <Ionicons name="close-circle" size={13} color="#c084fc" style={{ marginLeft: 2 }} />
-                            </TouchableOpacity>
-                          )}
+                          <Ionicons name="close-circle" size={12} color="#34D399" style={{ marginLeft: 2 }} />
                         </TouchableOpacity>
-                      </Animated.View>
+                      )}
+                    </TouchableOpacity>
 
-                      {/* Start Time Chip */}
-                      <Animated.View entering={FadeInRight.duration(180).delay(90)}>
+                    {/* End Time Chip */}
+                    <TouchableOpacity
+                      style={[styles.attrChip, currentTask?.endTimeSlot ? styles.attrChipActive : styles.attrChipEmpty]}
+                      onPress={() => setShowEndTimePicker(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name="arrow-forward-outline"
+                        size={13}
+                        color={currentTask?.endTimeSlot ? '#34D399' : 'rgba(255,255,255,0.45)'}
+                      />
+                      <Text style={[styles.attrChipText, !currentTask?.endTimeSlot && styles.attrChipTextEmpty]}>
+                        {currentTask?.endTimeSlot ? formatTimeDisplay(currentTask.endTimeSlot) : 'End Time'}
+                      </Text>
+                      {!!currentTask?.endTimeSlot && (
                         <TouchableOpacity
-                          style={[
-                            styles.nlpChip,
-                            currentTask.timeSlot ? styles.timeChip : styles.emptyChip
-                          ]}
-                          onPress={() => setShowStartTimePicker(true)}
-                          activeOpacity={0.7}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            updateActiveTask({ endTimeSlot: null });
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Ionicons name="time-outline" size={13} color={currentTask.timeSlot ? '#34d399' : '#8e8e93'} />
-                          <Text style={[styles.timeChipText, !currentTask.timeSlot && { color: '#8e8e93' }]}>
-                            {currentTask.timeSlot ? formatTimeDisplay(currentTask.timeSlot) : 'Start Time'}
-                          </Text>
-                          {!!currentTask.timeSlot && (
-                            <TouchableOpacity
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                updateActiveTask({ timeSlot: null });
-                              }}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <Ionicons name="close-circle" size={13} color="#34d399" style={{ marginLeft: 2 }} />
-                            </TouchableOpacity>
-                          )}
+                          <Ionicons name="close-circle" size={12} color="#34D399" style={{ marginLeft: 2 }} />
                         </TouchableOpacity>
-                      </Animated.View>
+                      )}
+                    </TouchableOpacity>
 
-                      {/* End Time Chip */}
-                      <Animated.View entering={FadeInRight.duration(180).delay(120)}>
+                    {/* Duration Chip */}
+                    <TouchableOpacity
+                      style={[styles.attrChip, currentTask && currentTask.durationMinutes > 0 ? styles.attrChipActive : styles.attrChipEmpty]}
+                      onPress={cycleDuration}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name="hourglass-outline"
+                        size={13}
+                        color={currentTask && currentTask.durationMinutes > 0 ? '#FBBF24' : 'rgba(255,255,255,0.45)'}
+                      />
+                      <Text style={[styles.attrChipText, (!currentTask || currentTask.durationMinutes <= 0) && styles.attrChipTextEmpty]}>
+                        {currentTask ? formatDurationText(currentTask.durationMinutes) : 'Duration'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Priority Chip */}
+                    <TouchableOpacity
+                      style={[styles.attrChip, currentTask?.priority !== 'low' ? styles.attrChipActive : styles.attrChipEmpty]}
+                      onPress={cyclePriority}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="flag" size={13} color={priorityColor} />
+                      <Text style={[styles.attrChipText, { color: priorityColor }]}>
+                        {currentTask?.priority === 'high' ? 'High' : currentTask?.priority === 'medium' ? 'Medium' : 'Priority'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Recurrence Chip */}
+                    <TouchableOpacity
+                      style={[styles.attrChip, currentTask?.isRecurring ? styles.attrChipActive : styles.attrChipEmpty]}
+                      onPress={() => setShowRecurrenceModal(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name="repeat-outline"
+                        size={13}
+                        color={currentTask?.isRecurring ? '#C084FC' : 'rgba(255,255,255,0.45)'}
+                      />
+                      <Text style={[styles.attrChipText, !currentTask?.isRecurring && styles.attrChipTextEmpty]}>
+                        {activeRecurrenceLabel || 'Repeat'}
+                      </Text>
+                      {currentTask?.isRecurring && (
                         <TouchableOpacity
-                          style={[
-                            styles.nlpChip,
-                            currentTask.endTimeSlot ? styles.timeChip : styles.emptyChip
-                          ]}
-                          onPress={() => setShowEndTimePicker(true)}
-                          activeOpacity={0.7}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            updateActiveTask({ isRecurring: false, recurrenceRule: null });
+                          }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Ionicons name="arrow-forward-outline" size={13} color={currentTask.endTimeSlot ? '#34d399' : '#8e8e93'} />
-                          <Text style={[styles.timeChipText, !currentTask.endTimeSlot && { color: '#8e8e93' }]}>
-                            {currentTask.endTimeSlot ? formatTimeDisplay(currentTask.endTimeSlot) : 'End Time'}
-                          </Text>
-                          {!!currentTask.endTimeSlot && (
-                            <TouchableOpacity
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                updateActiveTask({ endTimeSlot: null });
-                              }}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <Ionicons name="close-circle" size={13} color="#34d399" style={{ marginLeft: 2 }} />
-                            </TouchableOpacity>
-                          )}
+                          <Ionicons name="close-circle" size={12} color="#C084FC" style={{ marginLeft: 2 }} />
                         </TouchableOpacity>
-                      </Animated.View>
+                      )}
+                    </TouchableOpacity>
 
-                      {/* Duration Chip */}
-                      <Animated.View entering={FadeInRight.duration(180).delay(150)}>
-                        <TouchableOpacity
-                          style={[
-                            styles.nlpChip,
-                            currentTask.durationMinutes > 0 ? styles.durationChip : styles.emptyChip
-                          ]}
-                          onPress={cycleDuration}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons name="hourglass-outline" size={13} color={currentTask.durationMinutes > 0 ? '#fbbf24' : '#8e8e93'} />
-                          <Text style={[styles.durationChipText, currentTask.durationMinutes <= 0 && { color: '#8e8e93' }]}>
-                            {formatDurationText(currentTask.durationMinutes)}
-                          </Text>
-                          {currentTask.durationMinutes > 0 && (
-                            <TouchableOpacity
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                updateActiveTask({ durationMinutes: 0 });
-                              }}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <Ionicons name="close-circle" size={13} color="#fbbf24" style={{ marginLeft: 2 }} />
-                            </TouchableOpacity>
-                          )}
+                    {/* Reminder / Alarm Chip */}
+                    <TouchableOpacity
+                      style={[styles.attrChip, currentTask?.isReminder ? styles.attrChipActive : styles.attrChipEmpty]}
+                      onPress={toggleReminder}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={currentTask?.isReminder ? 'notifications' : 'notifications-outline'}
+                        size={13}
+                        color={currentTask?.isReminder ? '#FBBF24' : 'rgba(255,255,255,0.45)'}
+                      />
+                      <Text style={[styles.attrChipText, !currentTask?.isReminder && styles.attrChipTextEmpty]}>
+                        {currentTask?.isReminder ? 'Alarm ON' : 'Reminder'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Tags */}
+                    {currentTask?.tags.map((tag) => (
+                      <View key={tag} style={[styles.attrChip, styles.tagChip]}>
+                        <Ionicons name="pricetag-outline" size={11} color="#A599FF" />
+                        <Text style={[styles.attrChipText, { color: '#A599FF' }]}>#{tag}</Text>
+                        <TouchableOpacity onPress={() => removeTag(tag)}>
+                          <Ionicons name="close" size={11} color="#A599FF" style={{ marginLeft: 2 }} />
                         </TouchableOpacity>
-                      </Animated.View>
+                      </View>
+                    ))}
 
-                      {/* Priority Chip */}
-                      <Animated.View entering={FadeInRight.duration(180).delay(180)}>
-                        <TouchableOpacity
-                          style={[
-                            styles.nlpChip,
-                            currentTask.priority !== 'low' ? styles.priorityChip : styles.emptyChip
-                          ]}
-                          onPress={cyclePriority}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons name="flag" size={12} color={priorityColor} />
-                          <Text style={[styles.priorityChipText, { color: priorityColor }]}>
-                            {currentTask.priority === 'high' ? 'P1 High' : currentTask.priority === 'medium' ? 'P2 Medium' : 'Priority'}
-                          </Text>
-                          {currentTask.priority !== 'low' && (
-                            <TouchableOpacity
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                updateActiveTask({ priority: 'low' });
-                              }}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <Ionicons name="close-circle" size={13} color={priorityColor} style={{ marginLeft: 2 }} />
-                            </TouchableOpacity>
-                          )}
-                        </TouchableOpacity>
-                      </Animated.View>
+                    {/* Add Tag Button */}
+                    <TouchableOpacity
+                      style={[styles.attrChip, styles.attrChipEmpty]}
+                      onPress={() => setShowTagInput(v => !v)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="add" size={13} color="rgba(255,255,255,0.45)" />
+                      <Text style={[styles.attrChipText, styles.attrChipTextEmpty]}>Tag</Text>
+                    </TouchableOpacity>
+                  </ScrollView>
 
-                      {/* Reminder / Alarm Chip */}
-                      <Animated.View entering={FadeInRight.duration(180).delay(210)}>
-                        <TouchableOpacity
-                          style={[
-                            styles.nlpChip,
-                            currentTask.isReminder ? styles.reminderChip : styles.emptyChip
-                          ]}
-                          onPress={toggleReminder}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons name={currentTask.isReminder ? "notifications" : "notifications-outline"} size={13} color={currentTask.isReminder ? '#f59e0b' : '#8e8e93'} />
-                          <Text style={[styles.reminderChipText, !currentTask.isReminder && { color: '#8e8e93' }]}>
-                            {currentTask.isReminder ? (currentTask.timeSlot ? `Alarm ${formatTimeDisplay(currentTask.timeSlot)}` : 'Alarm ON') : 'Reminder'}
-                          </Text>
-                          {currentTask.isReminder && (
-                            <TouchableOpacity
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                updateActiveTask({ isReminder: false });
-                              }}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <Ionicons name="close-circle" size={13} color="#f59e0b" style={{ marginLeft: 2 }} />
-                            </TouchableOpacity>
-                          )}
-                        </TouchableOpacity>
-                      </Animated.View>
-
-                      {/* Tags Chips */}
-                      {currentTask.tags.map((tag, tagIdx) => (
-                        <Animated.View key={tag} entering={FadeInRight.duration(180).delay(240 + tagIdx * 30)}>
-                          <View style={[styles.nlpChip, styles.tagChip]}>
-                            <Ionicons name="pricetag-outline" size={11} color="#38bdf8" />
-                            <Text style={styles.tagChipText}>#{tag}</Text>
-                            <TouchableOpacity onPress={() => removeTag(tag)}>
-                              <Ionicons name="close" size={11} color="#38bdf8" style={{ marginLeft: 2 }} />
-                            </TouchableOpacity>
-                          </View>
-                        </Animated.View>
-                      ))}
-
-                      {/* Add Tag Quick Trigger */}
-                      <Animated.View entering={FadeInRight.duration(180).delay(240 + currentTask.tags.length * 30)}>
-                        <TouchableOpacity
-                          style={[styles.nlpChip, styles.emptyChip]}
-                          onPress={() => setShowTagInput(v => !v)}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons name="add" size={12} color="#8e8e93" />
-                          <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 12, color: '#8e8e93' }}>Tag</Text>
-                        </TouchableOpacity>
-                      </Animated.View>
-                    </ScrollView>
-                  )}
-
-                  {/* Subtask Section */}
+                  {/* Subtasks Section */}
                   {currentTask && (
-                    <View style={styles.subtasksContainer}>
+                    <View style={styles.subtasksCard}>
                       <View style={styles.subtasksHeaderRow}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Ionicons name="list-outline" size={14} color="#a599ff" />
-                          <Text style={styles.subtasksHeaderTitle}>
-                            Subtasks ({currentTask.subtasks.length})
-                          </Text>
-                        </View>
+                        <Text style={styles.subtasksTitle}>
+                          Subtasks {currentTask.subtasks.length > 0 ? `(${currentTask.subtasks.length})` : ''}
+                        </Text>
                         <TouchableOpacity
                           onPress={() => setShowSubtaskInput(v => !v)}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Text style={styles.subtaskToggleText}>
+                          <Text style={styles.subtaskAddLink}>
                             {showSubtaskInput ? 'Done' : '+ Add Subtask'}
                           </Text>
                         </TouchableOpacity>
                       </View>
 
                       {currentTask.subtasks.map((st, i) => (
-                        <View key={i} style={styles.subtaskRow}>
-                          <Ionicons name="ellipse-outline" size={12} color="#a599ff" />
-                          <Text style={styles.subtaskRowText}>{st}</Text>
+                        <View key={i} style={styles.subtaskItem}>
+                          <Ionicons name="radio-button-off" size={14} color="#A599FF" />
+                          <Text style={styles.subtaskItemText}>{st}</Text>
                           <TouchableOpacity onPress={() => removeSubtask(i)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                            <Ionicons name="close" size={14} color="rgba(255,255,255,0.45)" />
+                            <Ionicons name="close" size={14} color="rgba(255,255,255,0.4)" />
                           </TouchableOpacity>
                         </View>
                       ))}
@@ -1405,17 +1400,17 @@ export default function VoiceDictationOverlay({
                       {showSubtaskInput && (
                         <View style={styles.subtaskInputRow}>
                           <TextInput
-                            style={styles.subtaskInput}
+                            style={styles.subtaskTextInput}
                             placeholder="Add subtask..."
-                            placeholderTextColor="rgba(255,255,255,0.4)"
+                            placeholderTextColor="rgba(255,255,255,0.35)"
                             value={newSubtaskText}
                             onChangeText={setNewSubtaskText}
                             onSubmitEditing={handleAddSubtask}
                             returnKeyType="done"
                             autoFocus
                           />
-                          <TouchableOpacity style={styles.subtaskAddBtn} onPress={handleAddSubtask}>
-                            <Ionicons name="add" size={16} color="#FF6961" />
+                          <TouchableOpacity style={styles.subtaskSubmitBtn} onPress={handleAddSubtask}>
+                            <Ionicons name="checkmark" size={15} color="#090B10" />
                           </TouchableOpacity>
                         </View>
                       )}
@@ -1424,345 +1419,335 @@ export default function VoiceDictationOverlay({
 
                   {/* Inline Tag Input */}
                   {showTagInput && currentTask && (
-                    <View style={styles.tagInputPanel}>
-                      {tagLibrary.length > 0 && (
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }}>
-                          <View style={{ flexDirection: 'row', gap: 6 }}>
-                            {tagLibrary.filter(t => !currentTask.tags.includes(t)).slice(0, 6).map(tag => (
-                              <TouchableOpacity key={tag} style={styles.tagSuggestion} onPress={() => addTag(tag)}>
-                                <Text style={[styles.tagSuggestionText, { color: tagColorFor(tag) }]}>#{tag}</Text>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                        </ScrollView>
-                      )}
+                    <View style={styles.tagInputSection}>
                       <View style={styles.tagInputRow}>
                         <TextInput
-                          style={styles.tagInput}
+                          style={styles.tagTextInput}
                           placeholder="New label..."
-                          placeholderTextColor="rgba(255,255,255,0.4)"
+                          placeholderTextColor="rgba(255,255,255,0.35)"
                           value={newTagText}
                           onChangeText={setNewTagText}
                           onSubmitEditing={() => addTag(newTagText)}
                           returnKeyType="done"
                           autoCapitalize="none"
+                          autoFocus
                         />
-                        <TouchableOpacity style={styles.tagAddBtn} onPress={() => addTag(newTagText)}>
-                          <Ionicons name="add" size={16} color="#FF6961" />
+                        <TouchableOpacity style={styles.tagSubmitBtn} onPress={() => addTag(newTagText)}>
+                          <Ionicons name="add" size={16} color="#090B10" />
                         </TouchableOpacity>
                       </View>
                     </View>
                   )}
+                </View>
+              </ScrollView>
 
-                  {/* Spoken Quote */}
-                  {!!rawTranscript && (
-                    <Text style={styles.spokenCaption} numberOfLines={1}>
-                      Spoke: “{rawTranscript}”
-                    </Text>
-                  )}
-                </Animated.View>
-              ) : (
-                /* Initial Rotating Examples with highlighted tokens */
-                <Animated.View entering={FadeIn} exiting={FadeOut}>
-                  <Text style={styles.exampleText}>
-                    "{currentExample.prefix}
-                    <Text style={styles.highlightText}>{currentExample.highlight1}</Text>
-                    {currentExample.mid}
-                    <Text style={styles.highlightText}>{currentExample.highlight2}</Text>"
-                  </Text>
-                  
-                  <TouchableOpacity
-                    style={styles.typeInsteadHint}
-                    onPress={handleSwitchToManualNLP}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="create-outline" size={13} color="rgba(255,255,255,0.6)" />
-                    <Text style={styles.typeInsteadHintText}>Or tap here to type with instant local NLP</Text>
-                  </TouchableOpacity>
-
-                  <View style={styles.cardDivider} />
-
-                  {/* 1-Tap Quick Action Templates */}
-                  <View style={styles.quickTemplatesWrapper}>
-                    <Text style={styles.quickTemplatesLabel}>QUICK 1-TAP TEMPLATES (0MS NLP)</Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.quickTemplatesRow}
-                    >
-                      {QUICK_TEMPLATES.map((tmpl, idx) => (
-                        <TouchableOpacity
-                          key={idx}
-                          style={styles.quickTemplatePill}
-                          onPress={() => handleApplyTemplate(tmpl.text)}
-                          activeOpacity={0.75}
-                        >
-                          <Ionicons name={tmpl.icon as any} size={13} color={tmpl.color} />
-                          <Text style={styles.quickTemplatePillText}>{tmpl.text}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                </Animated.View>
-              )}
-            </LinearGradient>
-          </View>
-
-          {/* Sleek Voice Waveform & Mic Orb Container */}
-          <View style={styles.orbArea}>
-            <View style={styles.listeningContainer}>
-              {/* Interactive Glow Mic Orb with Apple Intelligence Dual Breathing Aura */}
-              <TouchableOpacity
-                onPress={handleToggleMic}
-                activeOpacity={0.85}
-                disabled={state === 'processing' || state === 'saving'}
-                style={{ alignItems: 'center', justifyContent: 'center' }}
-              >
-                <Animated.View style={[styles.auraOuter, aura2AnimatedStyle]} />
-                <Animated.View style={[styles.auraInner, aura1AnimatedStyle]} />
-                <LinearGradient
-                  colors={state === 'recording' ? ['#FF453A', '#B30006'] : ['#2C2C2E', '#1C1C1E']}
-                  style={[
-                    styles.micOrb,
-                    state === 'recording' ? styles.micOrbActive : styles.micOrbIdle,
-                  ]}
-                >
-                  <Ionicons
-                    name={state === 'recording' ? 'mic' : 'mic-outline'}
-                    size={28}
-                    color="#FFFFFF"
-                  />
-                </LinearGradient>
-              </TouchableOpacity>
-
-              {/* Animated Equalizer Waveform */}
-              <SoundWaveBars active={state === 'recording'} />
-
-              {/* Live Status Dot — compact, no text label */}
-              <View style={styles.statusDotRow}>
-                <View
-                  style={[
-                    styles.liveDot,
-                    {
-                      backgroundColor:
-                        state === 'recording'
-                          ? '#FF453A'
-                          : state === 'processing'
-                          ? '#A599FF'
-                          : state === 'preview'
-                          ? '#34D399'
-                          : '#8E8E93',
-                    },
-                  ]}
-                />
-                <Text style={styles.statusDotLabel}>
-                  {state === 'recording'
-                    ? 'Listening'
-                    : state === 'processing'
-                    ? 'Processing'
-                    : state === 'preview'
-                    ? tasks.length > 1
-                      ? `${tasks.length} tasks ready`
-                      : 'Task ready'
-                    : state === 'saving'
-                    ? 'Saving'
-                    : 'Idle'}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Action Footer */}
-          <View style={[styles.footer, { paddingBottom: insets.bottom + 18 }]}>
-            {state === 'recording' && (
-              <TouchableOpacity
-                style={styles.doneBtn}
-                onPress={handleStopAndProcess}
-                activeOpacity={0.85}
-              >
-                <LinearGradient
-                  colors={['#FF453A', '#D70015']}
-                  style={styles.doneBtnGradient}
-                >
-                  <Ionicons name="checkmark" size={22} color="#FFFFFF" />
-                  <Text style={styles.doneBtnText}>Done Dictating</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
-
-            {state === 'preview' && (
-              <View style={styles.previewActionsContainer}>
-                {/* Primary Action: Add Task / Add All Tasks */}
+              {/* Review Bottom Action Area */}
+              <View style={[styles.reviewFooter, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
                 <TouchableOpacity
-                  style={styles.addTaskBtnFull}
+                  style={styles.primaryActionButton}
                   onPress={() => handleConfirmSaveTasks(false)}
                   activeOpacity={0.85}
                 >
-                  <LinearGradient
-                    colors={['#FF453A', '#D70015']}
-                    style={styles.addTaskGradient}
-                  >
-                    <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                    <Text style={styles.addTaskText}>
-                      {tasks.length > 1 ? `Add All ${tasks.length} Tasks` : 'Add Task'}
+                  <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                  <Text style={styles.primaryButtonText}>
+                      {tasks.length > 1 ? `Create All ${tasks.length} Tasks` : 'Create Task'}
                     </Text>
-                  </LinearGradient>
                 </TouchableOpacity>
 
-                {/* Secondary Action: Full-Width Continuous Voice Dictation */}
-                <TouchableOpacity
-                  style={styles.continuousBtnFull}
-                  onPress={() => handleConfirmSaveTasks(true)}
-                  activeOpacity={0.8}
-                >
-                  <LinearGradient
-                    colors={['rgba(255, 69, 58, 0.16)', 'rgba(255, 69, 58, 0.08)']}
-                    style={styles.continuousBtnGradient}
-                  >
-                    <Ionicons name="mic" size={17} color="#FF6961" />
-                    <Text style={styles.continuousBtnText}>
-                      Add & Dictate Next Task
-                    </Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                {/* Utility Actions: Re-record & Cancel Side-by-Side */}
-                <View style={styles.utilityActionsRow}>
+                <View style={styles.secondaryActionRow}>
                   <TouchableOpacity
-                    style={styles.utilityBtn}
-                    onPress={handleStartRecording}
+                    style={styles.secondaryActionBtn}
+                    onPress={() => handleConfirmSaveTasks(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="mic-outline" size={15} color="#A599FF" />
+                    <Text style={styles.secondaryActionText}>Dictate Another</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.secondaryActionBtn}
+                    onPress={() => handleStartRecording(true)}
                     activeOpacity={0.7}
                   >
                     <Ionicons name="refresh-outline" size={15} color="rgba(255,255,255,0.7)" />
-                    <Text style={styles.utilityBtnText}>Re-record</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.utilityBtn}
-                    onPress={onClose}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="close-outline" size={15} color="rgba(255,255,255,0.7)" />
-                    <Text style={styles.utilityBtnText}>Cancel</Text>
+                    <Text style={styles.secondaryActionText}>Re-record</Text>
                   </TouchableOpacity>
                 </View>
               </View>
-            )}
+            </View>
+          ) : (
+            /* ═══════════════════════════════════════════════════════════════
+               MODE B: DICTATION / LISTENING CANVAS (clean & spacious)
+               ═══════════════════════════════════════════════════════════════ */
+            <View style={styles.dictateContainer}>
+              {/* Upper Canvas: Transcript / Prompt */}
+              <View style={styles.stageArea}>
+                {state === 'processing' ? (
+                  <Animated.View entering={FadeIn} style={styles.processingCenter}>
+                    <ActivityIndicator size="large" color="#A599FF" style={{ marginBottom: 14 }} />
+                    <Text style={styles.processingTitle}>Structuring your tasks...</Text>
+                    <Text style={styles.processingSubtitle}>Extracting dates, times, and subtasks</Text>
+                  </Animated.View>
+                ) : errorMsg ? (
+                  <Animated.View entering={FadeIn} style={styles.errorCenter}>
+                    <View style={styles.errorIconWrap}>
+                      <Ionicons name="mic-off-outline" size={24} color="#F87171" />
+                    </View>
+                    <Text style={styles.errorTitle}>Didn't catch that</Text>
+                    <Text style={styles.errorSubtitle}>{errorMsg}</Text>
+                    <TouchableOpacity
+                      style={styles.typeInsteadButton}
+                      onPress={handleSwitchToManualNLP}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="create-outline" size={13} color="#A599FF" />
+                      <Text style={styles.typeInsteadText}>Type task manually</Text>
+                    </TouchableOpacity>
+                  </Animated.View>
+                ) : rawTranscript.trim().length > 0 ? (
+                  <Animated.View entering={FadeIn.duration(150)} style={styles.transcriptContainer}>
+                    <ScrollView style={styles.transcriptScroll} showsVerticalScrollIndicator={false}>
+                      <Text style={styles.transcriptText}>
+                        “{rawTranscript}”
+                        {state === 'recording' && <Text style={styles.blinkingCursor}> ▌</Text>}
+                      </Text>
+                    </ScrollView>
 
-            {(state === 'idle' || state === 'error') && (
-              <TouchableOpacity
-                style={styles.retryPill}
-                onPress={handleStartRecording}
-                activeOpacity={0.85}
-              >
-                <LinearGradient
-                  colors={['rgba(255, 255, 255, 0.12)', 'rgba(255, 255, 255, 0.05)']}
-                  style={styles.retryPillGradient}
+                    {/* Subtle Live Token Badges */}
+                    {liveTokens.length > 0 && (
+                      <View style={styles.liveTokensStrip}>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={styles.liveTokensRow}
+                        >
+                          {liveTokens.map((token, i) => (
+                            <View key={i} style={[styles.liveTokenChip, { borderColor: token.color }]}>
+                              <Ionicons name={token.icon as any} size={11} color={token.color} />
+                              <Text style={[styles.liveTokenChipText, { color: token.color }]}>
+                                {token.label}
+                              </Text>
+                            </View>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    )}
+                  </Animated.View>
+                ) : (
+                  /* Initial Calm Prompt */
+                  <Animated.View entering={FadeIn} style={styles.promptContainer}>
+                    <Text style={styles.promptHeadline}>
+                      {state === 'recording' ? 'Listening...' : 'What would you like to do?'}
+                    </Text>
+                    <Text style={styles.promptExample}>
+                      “{currentExample.prefix}{currentExample.highlight1}{currentExample.mid}{currentExample.highlight2}”
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.typeInsteadButton}
+                      onPress={handleSwitchToManualNLP}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="create-outline" size={13} color="rgba(255,255,255,0.5)" />
+                      <Text style={styles.typeInsteadText}>Or tap to type</Text>
+                    </TouchableOpacity>
+                  </Animated.View>
+                )}
+              </View>
+
+              {/* Center: Glowing Violet Orb & Equalizer */}
+              <View style={styles.orbSection}>
+                <TouchableOpacity
+                  onPress={handleToggleMic}
+                  activeOpacity={0.85}
+                  disabled={state === 'processing' || state === 'saving'}
+                  style={styles.orbTouchable}
                 >
-                  <Ionicons name="mic" size={19} color="#FFFFFF" />
-                  <Text style={styles.retryPillText}>Start Voice Dictation</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            )}
-          </View>
+                  <Animated.View style={[styles.auraOuter, aura2AnimatedStyle]} />
+                  <Animated.View style={[styles.auraInner, aura1AnimatedStyle]} />
+                  <LinearGradient
+                    colors={state === 'recording' ? ['#A599FF', '#6366F1'] : ['#1E202B', '#141620']}
+                    style={[
+                      styles.micOrbCircle,
+                      state === 'recording' ? styles.micOrbActive : styles.micOrbIdle,
+                    ]}
+                  >
+                    <Ionicons
+                      name={state === 'recording' ? 'mic' : 'mic-outline'}
+                      size={30}
+                      color={state === 'recording' ? '#090B10' : '#FFFFFF'}
+                    />
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                {/* Animated Sound Wave Equalizer Bars */}
+                <SoundWaveBars active={state === 'recording'} />
+
+                {/* Subtle Status Label */}
+                <View style={styles.statusIndicator}>
+                  <View
+                    style={[
+                      styles.statusDot,
+                      {
+                        backgroundColor:
+                          state === 'recording'
+                            ? '#A599FF'
+                            : state === 'processing'
+                            ? '#818CF8'
+                            : 'rgba(255,255,255,0.35)',
+                      },
+                    ]}
+                  />
+                  <Text style={styles.statusLabel}>
+                    {state === 'recording'
+                      ? 'Listening...'
+                      : state === 'processing'
+                      ? 'Processing...'
+                      : 'Tap mic to speak'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Bottom Action Footer */}
+              <View style={[styles.footerArea, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
+                {state === 'recording' ? (
+                  <TouchableOpacity
+                    style={styles.primaryActionButton}
+                    onPress={handleStopAndProcess}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                    <Text style={styles.primaryButtonText}>Done Dictating</Text>
+                  </TouchableOpacity>
+                ) : rawTranscript.trim().length > 0 ? (
+                  <View style={{ width: '100%', gap: 10 }}>
+                    <TouchableOpacity
+                      style={styles.primaryActionButton}
+                      onPress={() => handleParsedSpokenText(rawTranscript.trim())}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                      <Text style={styles.primaryButtonText}>Create Task</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.secondaryActionBtnFull}
+                      onPress={() => handleStartRecording(true)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="refresh-outline" size={16} color="rgba(255,255,255,0.7)" />
+                      <Text style={styles.secondaryActionText}>Speak Again</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.secondaryActionBtnFull}
+                    onPress={() => handleStartRecording(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="mic" size={18} color="#FFFFFF" />
+                    <Text style={styles.secondaryActionBtnFullText}>Tap Mic to Dictate</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* Universal Date Picker Modal */}
+          <UniversalCalendarModal
+            visible={showCalendar}
+            onClose={() => setShowCalendar(false)}
+            selectedDate={currentTask?.date || today}
+            onDateSelect={(d) => {
+              updateActiveTask({ date: d });
+              setShowCalendar(false);
+            }}
+            title="Pick Due Date"
+          />
+
+          {/* Start Time Picker */}
+          {showStartTimePicker && (
+            <DateTimePicker
+              value={(() => {
+                const d = new Date();
+                if (currentTask?.timeSlot && currentTask.timeSlot.includes(':')) {
+                  const [h, m] = currentTask.timeSlot.split(':');
+                  const parsedH = parseInt(h, 10);
+                  const parsedM = parseInt(m, 10);
+                  if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
+                }
+                return d;
+              })()}
+              mode="time"
+              display="default"
+              onChange={(event, d) => {
+                if (Platform.OS === 'android') {
+                  setShowStartTimePicker(false);
+                  if (event.type === 'set' && d) {
+                    updateActiveTask({
+                      timeSlot: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
+                      isReminder: true,
+                    });
+                  }
+                } else {
+                  if (d) {
+                    updateActiveTask({
+                      timeSlot: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
+                      isReminder: true,
+                    });
+                  }
+                }
+              }}
+            />
+          )}
+
+          {/* End Time Picker */}
+          {showEndTimePicker && (
+            <DateTimePicker
+              value={(() => {
+                const d = new Date();
+                if (currentTask?.endTimeSlot && currentTask.endTimeSlot.includes(':')) {
+                  const [h, m] = currentTask.endTimeSlot.split(':');
+                  const parsedH = parseInt(h, 10);
+                  const parsedM = parseInt(m, 10);
+                  if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
+                }
+                return d;
+              })()}
+              mode="time"
+              display="default"
+              onChange={(event, d) => {
+                if (Platform.OS === 'android') {
+                  setShowEndTimePicker(false);
+                  if (event.type === 'set' && d) {
+                    updateActiveTask({
+                      endTimeSlot: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
+                    });
+                  }
+                } else {
+                  if (d) {
+                    updateActiveTask({
+                      endTimeSlot: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
+                    });
+                  }
+                }
+              }}
+            />
+          )}
+
+          {/* Recurrence Rule Modal */}
+          <RecurrencePickerModal
+            visible={showRecurrenceModal}
+            onClose={() => setShowRecurrenceModal(false)}
+            initialRule={currentTask?.recurrenceRule || null}
+            onSave={(rule) => {
+              updateActiveTask({
+                recurrenceRule: rule,
+                isRecurring: !!rule,
+              });
+              setShowRecurrenceModal(false);
+            }}
+          />
         </View>
-
-        {/* Universal Date Picker Modal */}
-        <UniversalCalendarModal
-          visible={showCalendar}
-          onClose={() => setShowCalendar(false)}
-          selectedDate={currentTask?.date || today}
-          onDateSelect={(d) => {
-            updateActiveTask({ date: d });
-            setShowCalendar(false);
-          }}
-          title="Pick Due Date"
-        />
-
-        {/* Start Time Picker */}
-        {showStartTimePicker && (
-          <DateTimePicker
-            value={(() => {
-              const d = new Date();
-              if (currentTask?.timeSlot && currentTask.timeSlot.includes(':')) {
-                const [h, m] = currentTask.timeSlot.split(':');
-                const parsedH = parseInt(h, 10);
-                const parsedM = parseInt(m, 10);
-                if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
-              }
-              return d;
-            })()}
-            mode="time"
-            display="default"
-            onChange={(event, d) => {
-              if (Platform.OS === 'android') {
-                setShowStartTimePicker(false);
-                if (event.type === 'set' && d) {
-                  updateActiveTask({
-                    timeSlot: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
-                    isReminder: true,
-                  });
-                }
-              } else {
-                if (d) {
-                  updateActiveTask({
-                    timeSlot: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
-                    isReminder: true,
-                  });
-                }
-              }
-            }}
-          />
-        )}
-
-        {/* End Time Picker */}
-        {showEndTimePicker && (
-          <DateTimePicker
-            value={(() => {
-              const d = new Date();
-              if (currentTask?.endTimeSlot && currentTask.endTimeSlot.includes(':')) {
-                const [h, m] = currentTask.endTimeSlot.split(':');
-                const parsedH = parseInt(h, 10);
-                const parsedM = parseInt(m, 10);
-                if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
-              }
-              return d;
-            })()}
-            mode="time"
-            display="default"
-            onChange={(event, d) => {
-              if (Platform.OS === 'android') {
-                setShowEndTimePicker(false);
-                if (event.type === 'set' && d) {
-                  updateActiveTask({
-                    endTimeSlot: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
-                  });
-                }
-              } else {
-                if (d) {
-                  updateActiveTask({
-                    endTimeSlot: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
-                  });
-                }
-              }
-            }}
-          />
-        )}
-
-        {/* Recurrence Rule Modal */}
-        <RecurrencePickerModal
-          visible={showRecurrenceModal}
-          onClose={() => setShowRecurrenceModal(false)}
-          initialRule={currentTask?.recurrenceRule || null}
-          onSave={(rule) => {
-            updateActiveTask({
-              recurrenceRule: rule,
-              isRecurring: !!rule,
-            });
-            setShowRecurrenceModal(false);
-          }}
-        />
-      </View>
       </Animated.View>
     </Modal>
   );
@@ -1772,32 +1757,35 @@ export default function VoiceDictationOverlay({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: '#0C0C0E',
+    backgroundColor: '#090B10',
   },
   topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 8 : 10,
-    paddingBottom: 10,
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 8 : 12,
+    paddingBottom: 12,
   },
-  badgePill: {
+  headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 69, 58, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 69, 58, 0.25)',
+    gap: 8,
   },
-  badgePillText: {
+  headerStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  headerStatusDotActive: {
+    backgroundColor: '#A599FF',
+  },
+  headerTitle: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 10,
-    color: '#FF6961',
-    letterSpacing: 0.8,
+    fontSize: 16,
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
   closeBtn: {
     width: 36,
@@ -1805,589 +1793,485 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  container: {
+
+  /* ── Mode A: Review Mode Styles ── */
+  previewContainer: {
     flex: 1,
-    paddingHorizontal: 16,
     justifyContent: 'space-between',
   },
-  titleSection: {
-    marginTop: 4,
-    marginBottom: 8,
-    alignItems: 'center',
-    paddingHorizontal: 8,
-  },
-  mainTitle: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 25,
-    color: '#FFFFFF',
-    marginBottom: 4,
-    textAlign: 'center',
-    letterSpacing: -0.3,
-  },
-  subTitle: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 12.5,
-    color: 'rgba(255, 255, 255, 0.55)',
-    textAlign: 'center',
-    paddingHorizontal: 8,
-    lineHeight: 18,
-    maxWidth: 340,
-  },
-  cardContainer: {
-    marginTop: 6,
-  },
-  glassCard: {
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    backgroundColor: '#16161A',
-    overflow: 'hidden',
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-  },
-  cardHeaderText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 10,
-    color: '#A599FF',
-    letterSpacing: 1,
-  },
-  exampleText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 15,
-    color: '#FFFFFF',
-    lineHeight: 23,
-    marginBottom: 8,
-  },
-  highlightText: {
-    color: '#FF6961',
-    fontWeight: '700',
-  },
-  processingContent: {
-    paddingVertical: 8,
-  },
-  processingText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    lineHeight: 20,
-  },
-  previewContent: {
-    gap: 8,
+  multiTaskPillsWrapper: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   multiTaskPillsRow: {
-    marginBottom: 6,
     flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 2,
   },
   taskSelectorPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    marginRight: 6,
-  },
-  taskSelectorPillActive: {
-    backgroundColor: 'rgba(255, 69, 58, 0.2)',
-    borderColor: 'rgba(255, 69, 58, 0.5)',
-  },
-  taskSelectorPillText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.65)',
-    maxWidth: 130,
-  },
-  taskSelectorPillTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  detectedTitleInput: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 17,
-    color: '#FFFFFF',
-    paddingVertical: 4,
-    paddingHorizontal: 0,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.12)',
-    marginBottom: 4,
-  },
-  chipsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 4,
-  },
-  nlpChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 13,
-    borderWidth: 1,
-  },
-  emptyChip: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-  },
-  dateChip: {
-    backgroundColor: 'rgba(96, 165, 250, 0.14)',
-    borderColor: 'rgba(96, 165, 250, 0.35)',
-  },
-  dateChipText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: '#60a5fa',
-  },
-  timeChip: {
-    backgroundColor: 'rgba(52, 211, 153, 0.14)',
-    borderColor: 'rgba(52, 211, 153, 0.35)',
-  },
-  timeChipText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: '#34d399',
-  },
-  durationChip: {
-    backgroundColor: 'rgba(251, 191, 36, 0.14)',
-    borderColor: 'rgba(251, 191, 36, 0.35)',
-  },
-  durationChipText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: '#fbbf24',
-  },
-  recurrenceChip: {
-    backgroundColor: 'rgba(192, 132, 252, 0.14)',
-    borderColor: 'rgba(192, 132, 252, 0.35)',
-  },
-  recurrenceChipText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: '#c084fc',
-  },
-  priorityChip: {
-    backgroundColor: 'rgba(248, 113, 113, 0.14)',
-    borderColor: 'rgba(248, 113, 113, 0.35)',
-  },
-  priorityChipText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-  },
-  reminderChip: {
-    backgroundColor: 'rgba(245, 158, 11, 0.14)',
-    borderColor: 'rgba(245, 158, 11, 0.35)',
-  },
-  reminderChipText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: '#f59e0b',
-  },
-  locationChip: {
-    backgroundColor: 'rgba(52, 211, 153, 0.14)',
-    borderColor: 'rgba(52, 211, 153, 0.35)',
-  },
-  locationChipText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: '#34d399',
-  },
-  tagChip: {
-    backgroundColor: 'rgba(56, 189, 248, 0.14)',
-    borderColor: 'rgba(56, 189, 248, 0.35)',
-  },
-  tagChipText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: '#38bdf8',
-  },
-  subtasksContainer: {
-    backgroundColor: 'rgba(165, 153, 255, 0.05)',
-    borderRadius: 12,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(165, 153, 255, 0.15)',
-    gap: 4,
-    marginTop: 2,
-  },
-  subtasksHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  subtasksHeaderTitle: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: '#a599ff',
-  },
-  subtaskToggleText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: '#FF6961',
-  },
-  subtaskRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 2,
-  },
-  subtaskRowText: {
-    flex: 1,
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.85)',
-  },
-  subtaskInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
-    paddingTop: 4,
-  },
-  subtaskInput: {
-    flex: 1,
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 12,
-    color: '#FFFFFF',
-    paddingVertical: 2,
-  },
-  subtaskAddBtn: {
-    padding: 2,
-  },
-  tagInputPanel: {
-    marginTop: 2,
-    padding: 6,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-  },
-  tagSuggestion: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-  },
-  tagSuggestionText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-  },
-  tagInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  tagInput: {
-    flex: 1,
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 12,
-    color: '#FFFFFF',
-    paddingVertical: 2,
-  },
-  tagAddBtn: {
-    padding: 2,
-  },
-  spokenCaption: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.4)',
-    fontStyle: 'italic',
-    marginTop: 2,
-  },
-  errorText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 14,
-    color: COLORS.error,
-    lineHeight: 20,
-  },
-  errorHint: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.4)',
-    marginTop: 4,
-  },
-  orbArea: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 10,
-  },
-  listeningContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  auraOuter: {
-    position: 'absolute',
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: '#A599FF',
-  },
-  auraInner: {
-    position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FF453A',
-  },
-  micOrb: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  micOrbIdle: {
-    borderColor: 'rgba(255, 255, 255, 0.16)',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  micOrbActive: {
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    shadowColor: '#FF453A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.45,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  statusDotRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 12,
-  },
-  liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-  },
-  statusDotLabel: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.45)',
-    letterSpacing: 0.3,
-  },
-  mascotBadgeIcon: {
-    width: 18,
-    height: 18,
-    resizeMode: 'contain',
-  },
-  mascotCardIcon: {
-    width: 20,
-    height: 20,
-    resizeMode: 'contain',
-  },
-  footer: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  doneBtn: {
-    width: '100%',
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#FF453A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  doneBtnGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 15,
-  },
-  doneBtnText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
-  previewActionsContainer: {
-    width: '100%',
-    gap: 8,
-  },
-  addTaskBtnFull: {
-    width: '100%',
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#FF453A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  addTaskGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 15,
-  },
-  addTaskText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
-  continuousBtnFull: {
-    width: '100%',
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 69, 58, 0.3)',
-  },
-  continuousBtnGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-  },
-  continuousBtnText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 14,
-    color: '#FF6961',
-  },
-  utilityActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  utilityBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-  },
-  utilityBtnText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.75)',
-  },
-  retryPill: {
-    width: '100%',
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  retryPillGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 15,
-  },
-  retryPillText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 15,
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
-  },
-  offlineTypeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 12,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 69, 58, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 69, 58, 0.28)',
-  },
-  offlineTypeBtnText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 13,
-    color: '#FF6961',
-  },
-  typeInsteadHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'center',
-    gap: 6,
-    marginTop: 8,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.09)',
-  },
-  typeInsteadHintText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11.5,
-    color: 'rgba(255, 255, 255, 0.65)',
-  },
-  cardDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
-    marginVertical: 12,
-  },
-  quickTemplatesWrapper: {
-    width: '100%',
-    marginTop: 2,
-  },
-  quickTemplatesLabel: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: 'rgba(255, 255, 255, 0.4)',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-  },
-  quickTemplatesRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingVertical: 2,
-    paddingRight: 16,
-  },
-  quickTemplatePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingVertical: 7,
     paddingHorizontal: 12,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
-  quickTemplatePillText: {
+  taskSelectorPillActive: {
+    backgroundColor: 'rgba(165, 153, 255, 0.15)',
+    borderColor: '#A599FF',
+  },
+  taskSelectorPillText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 12.5,
+    color: 'rgba(255, 255, 255, 0.6)',
+  },
+  taskSelectorPillTextActive: {
+    color: '#FFFFFF',
+    fontFamily: FONT_FAMILY.bold,
+  },
+  reviewScroll: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  reviewContent: {
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
+  reviewCard: {
+    borderRadius: 22,
+    padding: 20,
+    backgroundColor: '#11141C',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  reviewTitleInput: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 19,
+    lineHeight: 26,
+    color: '#FFFFFF',
+    marginBottom: 16,
+    padding: 0,
+  },
+  chipsScrollContent: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 4,
+    paddingRight: 12,
+  },
+  attrChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  attrChipActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  attrChipEmpty: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  attrChipText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 12.5,
+    color: '#FFFFFF',
+  },
+  attrChipTextEmpty: {
+    color: 'rgba(255, 255, 255, 0.45)',
+  },
+  tagChip: {
+    backgroundColor: 'rgba(165, 153, 255, 0.12)',
+    borderColor: 'rgba(165, 153, 255, 0.25)',
+  },
+  subtasksCard: {
+    marginTop: 18,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.07)',
+  },
+  subtasksHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  subtasksTitle: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.65)',
+    letterSpacing: 0.2,
+  },
+  subtaskAddLink: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 12.5,
+    color: '#A599FF',
+  },
+  subtaskItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 7,
+  },
+  subtaskItemText: {
+    flex: 1,
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+  },
+  subtaskInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  subtaskTextInput: {
+    flex: 1,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 12,
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  subtaskSubmitBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#A599FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tagInputSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.07)',
+  },
+  tagInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tagTextInput: {
+    flex: 1,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 12,
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  tagSubmitBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#A599FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reviewFooter: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    gap: 12,
+  },
+  primaryActionButton: {
+    width: '100%',
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: '#7C67FF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#7C67FF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  primaryButtonGradient: {
+    width: '100%',
+    height: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 16,
+  },
+  primaryButtonText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 16,
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  secondaryActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  secondaryActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  secondaryActionText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+
+  /* ── Mode B: Dictation Mode Styles ── */
+  dictateContainer: {
+    flex: 1,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+  },
+  stageArea: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  processingCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  processingTitle: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 19,
+    color: '#FFFFFF',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  processingSubtitle: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
+  },
+  errorCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  errorIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(248, 113, 113, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(248, 113, 113, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  errorTitle: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 17,
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  errorSubtitle: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  transcriptContainer: {
+    width: '100%',
+    maxHeight: 220,
+    borderRadius: 20,
+    padding: 18,
+    backgroundColor: '#11141C',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  transcriptScroll: {
+    maxHeight: 140,
+  },
+  transcriptText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 20,
+    lineHeight: 28,
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  blinkingCursor: {
+    color: '#A599FF',
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 20,
+  },
+  liveTokensStrip: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  liveTokensRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  liveTokenChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+  },
+  liveTokenChipText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 11.5,
+  },
+  promptContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  promptHeadline: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 22,
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  promptExample: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 14,
+    lineHeight: 22,
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
+    maxWidth: 300,
+    fontStyle: 'italic',
+    marginBottom: 16,
+  },
+  typeInsteadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  typeInsteadText: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.65)',
+  },
+  orbSection: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 12,
+  },
+  orbTouchable: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 120,
+    height: 120,
+  },
+  auraOuter: {
+    position: 'absolute',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(99, 102, 241, 0.12)',
+  },
+  auraInner: {
+    position: 'absolute',
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    backgroundColor: 'rgba(165, 153, 255, 0.22)',
+  },
+  micOrbCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#A599FF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  micOrbActive: {
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  micOrbIdle: {
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  statusIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusLabel: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  footerArea: {
+    width: '100%',
+    paddingTop: 8,
+  },
+  secondaryActionBtnFull: {
+    width: '100%',
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 16,
+    backgroundColor: 'rgba(165, 153, 255, 0.18)',
+    borderWidth: 1.5,
+    borderColor: '#A599FF',
+  },
+  secondaryActionBtnFullText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 15,
     color: '#FFFFFF',
+    letterSpacing: 0.2,
   },
 });

@@ -38,7 +38,8 @@ import { COLLECTION } from '../../config/constants';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { useTheme } from "../../contexts/ThemeContext";
 import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
-import { startVADRecording, stopAndTranscribe, cancelVoiceRecording, isSilenceOrNoise, VoiceState } from '../../services/voiceEngine';
+import { isSilenceOrNoise, VoiceState } from '../../services/voiceEngine';
+import { startNativeStt, stopNativeStt, abortNativeStt } from '../../services/nativeStt';
 import { Portal } from '../../contexts/PortalContext';
 import NLPTaskInput from '../Tasks/NLPTaskInput';
 import { scheduleSingleTaskReminder } from '../../services/notifications';
@@ -101,7 +102,7 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
         if (finished) runOnJS(focusInput)();
       });
     } else if (mounted) {
-      cancelVoiceRecording();
+      abortNativeStt();
       backdropOpacity.value = withTiming(0, { duration: 150 });
       translateY.value = withTiming(1000, { duration: 150, easing: Easing.in(Easing.quad) }, (finished) => {
         if (finished) runOnJS(setMounted)(false);
@@ -124,29 +125,32 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
 
   const handleToggleVoice = async () => {
     if (voiceState === 'recording') {
-      await stopAndTranscribe({
-        onStateChange: setVoiceState,
-        onTranscript: (t) => {
-          if (!t || !t.trim() || isSilenceOrNoise(t)) return;
-          setText(t);
-        },
-        onError: (err) => console.log('Voice error', err)
-      });
+      stopNativeStt();
+      setVoiceState('idle');
       return;
     }
-    
-    await startVADRecording({
-      onStateChange: setVoiceState,
-      onTranscript: async (t) => {
-        if (!t || !t.trim() || isSilenceOrNoise(t)) return;
-        setText(t);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await handleSave(t);
+
+    // Start native OS SpeechRecognizer (Gboard-level quality)
+    await startNativeStt({
+      onStateChange: (state) => {
+        if (state === 'listening') setVoiceState('recording');
+        else if (state === 'idle') setVoiceState('idle');
+        else if (state === 'error') setVoiceState('idle');
+      },
+      onResult: async (text, isFinal) => {
+        if (!text || !text.trim()) return;
+        // Show interim text live
+        setText(text);
+        if (isFinal) {
+          if (isSilenceOrNoise(text)) return;
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          await handleSave(text);
+        }
       },
       onError: (err) => {
         console.log('Voice error', err);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      }
+      },
     });
   };
 

@@ -1,16 +1,23 @@
 /**
  * PomodoroFloatingPill.tsx — ZenTrack Mobile
  *
- * Ultra-Sleek Dynamic Island / Floating Capsule:
- * - Appears above bottom navigation when a Pomodoro timer is running in the background.
- * - Shows live countdown with mode icon and subtle accent highlights.
+ * Authentic Apple Dynamic Island / Floating Activity Capsule:
+ * - Appears smoothly above bottom navigation when a focus timer is active in background.
+ * - Displays an elegant mode beacon with breathing glow aura when running.
+ * - Shows warm amber paused badge and icon when paused.
+ * - Tabular crisp typography, balanced padding, and responsive press-down spring feedback.
  * - 1-tap instant expand to the full Pomodoro sheet.
  */
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Animated, {
   FadeInDown,
   FadeOutDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  Easing,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,65 +36,123 @@ export default function PomodoroFloatingPill() {
   const accentFn = isDark ? modeAccentDark : modeAccentLight;
   const currentAccent = accentFn(mode);
 
+  // Subtle breathing glow aura when timer is actively running
+  const pulseAnim = useSharedValue(1);
+  useEffect(() => {
+    if (status === 'running') {
+      pulseAnim.value = withRepeat(
+        withTiming(1.22, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+        -1,
+        true
+      );
+    } else {
+      pulseAnim.value = withTiming(1, { duration: 250 });
+    }
+  }, [status, pulseAnim]);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulseAnim.value }],
+    opacity: status === 'running' ? 0.35 : 0,
+  }));
+
   // Only render if timer is active (running or paused) and full sheet is closed
   if (status === 'idle' || isSheetOpen) {
     return null;
   }
 
   const handlePress = () => {
-    feedback.tap();
+    feedback.selectionChange();
     setIsSheetOpen(true);
   };
 
   const bottomOffset = Math.max(insets.bottom + 68, 82);
+  const isPaused = status === 'paused';
+  const pillAccent = isPaused ? '#F59E0B' : currentAccent;
 
   return (
     <View style={[styles.floatingContainer, { bottom: bottomOffset }]} pointerEvents="box-none">
       <Animated.View
-        entering={FadeInDown.duration(240).springify().damping(20).stiffness(200)}
+        entering={FadeInDown.duration(260).springify().damping(22).stiffness(240)}
         exiting={FadeOutDown.duration(180)}
         style={styles.animatedWrap}
         pointerEvents="box-none"
       >
         <Pressable
           onPress={handlePress}
-          style={[
+          style={({ pressed }) => [
             styles.capsule,
             {
-              backgroundColor: isDark ? '#111016' : '#FFFFFF',
-              borderColor: isDark ? currentAccent + '40' : currentAccent + '30',
-              shadowColor: currentAccent,
+              backgroundColor: isDark ? '#14121B' : '#FFFFFF',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
+              shadowColor: pillAccent,
+              transform: [{ scale: pressed ? 0.96 : 1 }],
             },
           ]}
+          accessibilityRole="button"
+          accessibilityLabel={`Focus timer ${isPaused ? 'paused' : 'running'}: ${formatTime(timeLeft)} remaining. Tap to expand.`}
         >
-          {/* Pulsing Status Dot */}
-          <View style={[styles.indicatorDot, { backgroundColor: currentAccent }]} />
+          {/* Status Icon Disc with Breathing Aura */}
+          <View style={styles.iconContainer}>
+            <Animated.View
+              style={[
+                styles.iconGlowAura,
+                { backgroundColor: pillAccent },
+                pulseStyle,
+              ]}
+            />
+            <View
+              style={[
+                styles.iconDisc,
+                {
+                  backgroundColor: isDark
+                    ? isPaused
+                      ? 'rgba(245, 158, 11, 0.16)'
+                      : `${currentAccent}22`
+                    : isPaused
+                    ? 'rgba(245, 158, 11, 0.12)'
+                    : `${currentAccent}15`,
+                },
+              ]}
+            >
+              <Ionicons
+                name={isPaused ? 'pause' : modeIconName(mode)}
+                size={12}
+                color={pillAccent}
+              />
+            </View>
+          </View>
 
-          {/* Mode Icon */}
-          <Ionicons
-            name={modeIconName(mode)}
-            size={13}
-            color={currentAccent}
-            style={{ marginRight: 2 }}
-          />
-
-          {/* Time Left */}
+          {/* Time Left Tabular Digits */}
           <Text style={[styles.digitsText, { color: colors.textPrimary }]}>
             {formatTime(timeLeft)}
           </Text>
 
-          {/* Mode Tag */}
-          <View style={[styles.modeTag, { backgroundColor: currentAccent + '1A' }]}>
-            <Text style={[styles.modeTagText, { color: currentAccent }]}>
-              {status === 'paused' ? 'PAUSED' : modeLabel(mode)}
+          {/* Status Badge */}
+          <View
+            style={[
+              styles.statusBadge,
+              {
+                backgroundColor: isDark
+                  ? isPaused
+                    ? 'rgba(245, 158, 11, 0.14)'
+                    : `${currentAccent}1A`
+                  : isPaused
+                  ? 'rgba(245, 158, 11, 0.10)'
+                  : `${currentAccent}12`,
+              },
+            ]}
+          >
+            <Text style={[styles.statusBadgeText, { color: pillAccent }]}>
+              {isPaused ? 'PAUSED' : modeLabel(mode)}
             </Text>
           </View>
 
+          {/* Expand Chevron */}
           <Ionicons
             name="chevron-up"
             size={13}
             color={colors.textTertiary}
-            style={{ marginLeft: 2 }}
+            style={styles.chevron}
           />
         </Pressable>
       </Animated.View>
@@ -111,36 +176,57 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'center',
-    gap: 7,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    height: 42,
+    paddingLeft: 8,
+    paddingRight: 14,
     borderRadius: 999,
-    borderWidth: 1.2,
+    borderWidth: 1,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    elevation: 6,
+    gap: 8,
   },
-  indicatorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  iconContainer: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  iconGlowAura: {
+    position: 'absolute',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+  },
+  iconDisc: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   digitsText: {
     fontFamily: 'Inter_700Bold',
-    fontSize: 13.5,
-    letterSpacing: -0.5,
+    fontSize: 14,
+    letterSpacing: -0.4,
     fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
   },
-  modeTag: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+  statusBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     borderRadius: 6,
   },
-  modeTagText: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 9,
-    letterSpacing: 0.5,
+  statusBadgeText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 9.5,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
+    includeFontPadding: false,
+  },
+  chevron: {
+    marginLeft: 1,
   },
 });

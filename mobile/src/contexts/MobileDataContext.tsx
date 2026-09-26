@@ -52,7 +52,7 @@ export interface Task {
   priority: "P1" | "P2" | "P3" | "high" | "medium" | "low";
   date?: string; tags?: string[]; userId: string; isRecurring?: boolean;
   recurrenceRule?: RecurrenceRule; recurringSourceId?: string;
-  timeSlot?: string; estimatedMinutes?: number; subject?: string;
+  timeSlot?: string; estimatedMinutes?: number; subject?: string; notes?: string;
   commitmentTo?: string; energyRequirement?: "low" | "medium" | "high";
   order?: number; subtasks?: { id: string; title: string; completed: boolean }[];
   completedAt?: string | null;

@@ -554,6 +554,8 @@ export async function performSignOut() {
       '@zentrack_offline_write_queue',
       'zentrack_xp_v1',
       'zentrack_xp_streak',
+      '@zentrack_onboarding_completed',
+      'zentrack_onboarded_v2',
     ]);
     await auth.signOut();
     await clearCoreCache();

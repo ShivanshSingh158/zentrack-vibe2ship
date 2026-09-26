@@ -257,12 +257,43 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
         optimisticAddSubject(newSubject);
         setDoc(doc(db, COLLECTION.ATTENDANCE, subId), newSubject).catch(e => console.log('Subject add error:', e));
       }
-      onClose();
+      handleRequestClose();
     } catch (e) {
       console.error(e);
     }
     setLoading(false);
   };
+
+  const [modalVisible, setModalVisible] = useState(visible);
+  const [contentVisible, setContentVisible] = useState(visible);
+  const isClosingRef = React.useRef(false);
+
+  useEffect(() => {
+    if (visible) {
+      isClosingRef.current = false;
+      setModalVisible(true);
+      setContentVisible(true);
+    } else if (modalVisible && !isClosingRef.current) {
+      isClosingRef.current = true;
+      setContentVisible(false);
+      const timer = setTimeout(() => {
+        setModalVisible(false);
+        isClosingRef.current = false;
+      }, 220);
+      return () => clearTimeout(timer);
+    }
+  }, [visible, modalVisible]);
+
+  const handleRequestClose = useCallback(() => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
+    setContentVisible(false);
+    setTimeout(() => {
+      setModalVisible(false);
+      onClose();
+      isClosingRef.current = false;
+    }, 220);
+  }, [onClose]);
 
   const addSession = (dayIdx: number, type: 'classes' | 'labs') => {
     setSchedule((prev: any) => {
@@ -300,19 +331,30 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
     });
   };
 
-  return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBg}>
-        {Platform.OS === 'ios' && (
-          <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
-        )}
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+  if (!modalVisible && !visible) return null;
 
-        <Reanimated.View
-          entering={SlideInDown.duration(280).easing(Easing.bezier(0.16, 1, 0.3, 1))}
-          exiting={SlideOutDown.duration(200).easing(Easing.in(Easing.quad))}
-          style={styles.modalSheet}
-        >
+  return (
+    <Modal visible={modalVisible} animationType="none" transparent onRequestClose={handleRequestClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
+        {contentVisible && (
+          <Reanimated.View
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(200)}
+            style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(0,0,0,0.70)' : 'rgba(0,0,0,0.4)' }]}
+          >
+            {Platform.OS === 'ios' && (
+              <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+            )}
+            <Pressable style={StyleSheet.absoluteFill} onPress={handleRequestClose} />
+          </Reanimated.View>
+        )}
+
+        {contentVisible && (
+          <Reanimated.View
+            entering={SlideInDown.duration(280).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+            exiting={SlideOutDown.duration(200).easing(Easing.in(Easing.quad))}
+            style={styles.modalSheet}
+          >
           {/* iOS Sheet Grab Handle */}
           <View style={styles.handleContainer}>
             <View style={styles.sheetHandle} />
@@ -320,7 +362,7 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
 
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{existingSubject ? 'Edit Subject' : 'Add Subject'}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={handleRequestClose} style={styles.closeBtn} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="close" size={18} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
@@ -608,6 +650,7 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
             />
           )}
         </Reanimated.View>
+        )}
       </KeyboardAvoidingView>
     </Modal>
   );

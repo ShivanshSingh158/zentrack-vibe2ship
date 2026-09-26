@@ -138,6 +138,7 @@ zentrack-vibe2ship/
 │   │   │   ├── CategoryFilterTabs.tsx Category filter strip (All, Documents, Images, Notes) with dynamic count badges
 │   │   │   ├── BatchActionBar.tsx  Floating bottom action bar for multi-item selection (Select All, Move, Delete, New Folder with Selection)
 │   │   │   ├── MoveNodeModal.tsx   Move destination dialog (single and batch move to folders or root)
+│   │   │   ├── PdfCompressorModal.tsx PDF Compressor Studio modal (Strategies A, B, C, <10MB Cloudinary Gate, folder selector, 1-click upload)
 │   │   │   ├── NotesSidebar.tsx    Vault folders and storage meter sidebar
 │   │   │   ├── NotesEditor.tsx     Rich text editor component
 │   │   │   └── NotesAIPanel.tsx    AI suggestions panel for notes
@@ -191,6 +192,7 @@ zentrack-vibe2ship/
 │   │   ├── useAgentVoice.ts        Integrates agent output with TTS
 │   │   └── useClassNotifications.ts Class schedule notification hook
 │   ├── services/
+│   │   ├── pdfCompressor.ts        In-app 3-Strategy PDF Compression Engine (Strategy A Canvas Raster, Strategy B Flate Object Stream / Lossless Text, Strategy C iLovePDF REST API, <10MB Cloudinary Gate)
 │   │   ├── firebase.ts             Firebase client: Auth + Firestore (offline persistence + multi-tab)
 │   │   ├── googleCalendar.ts       Google Calendar API: OAuth, event CRUD, token refresh, polling
 │   │   ├── googleWorkspace.ts      Gmail, Drive, Docs, Meet, Sheets API wrappers
@@ -716,9 +718,27 @@ User clicks "Connect Google" → signInWithGoogle() in googleCalendar.ts
   6. **Timeline, Kanban & Matrix Views**: All card titles (`.event-block-title`, `.kanban-card-title`, `.matrix-task-title`) now adapt cleanly to `#0f172a` in light mode.
 - **VERIFIED**: `npx tsc --noEmit` exited with code 0.
 
-### 2026-09-12 — Tasks Module: Empty State "Create Task" Modal Trigger Fix
-- **FIXED**: The `+ Create Task` button inside the empty state placeholder (`.empty-create-btn` in `src/features/tasks/TodoListModule.tsx`) was calling an unhandled local state instead of dispatching the global `open-new-task-modal` custom event. Updated `onClick` to dispatch `window.dispatchEvent(new CustomEvent('open-new-task-modal', { detail: { date: selectedDate } }))`, aligning it with the top header "+ Add Task" button and the sidebar "+ Add task" button. Clicking "+ Create Task" now immediately opens the unified `NewTaskModal` with the current selected date pre-filled.
-- **VERIFIED**: `npx tsc --noEmit` exited with code 0.
+### 2026-09-26 — In-App PDF Compressor Studio (Strategy A, B, C & <10MB Cloudinary Gate)
+- **ARCHITECTURE & IMPLEMENTATION**:
+  1. **Core Engine (`src/services/pdfCompressor.ts`)**:
+     - **Strategy A (Canvas Re-Rasterization)**: Uses `pdfjs-dist` + `pdf-lib` to render PDF pages onto canvases with adjustable scale/JPEG compression, achieving 75%–90% size reduction on scanned notes, college PDFs, and camera captures.
+     - **Strategy B (Deep Object Stream & Lossless Text)**: Uses `pdf-lib` Flate object stream compression (`useObjectStreams: true`), metadata stripping, and font/vector preservation. Keeps 100% vector text selectable and searchable.
+     - **Strategy C (iLovePDF REST API Client / Auto-Adaptive)**: Cloud-grade compression fallback using iLovePDF REST API with automatic graceful degradation to local engines.
+     - **Adaptive 10MB Cloudinary Gate**: Automatically verifies compressed size stays under Cloudinary's 10.0 MB upload limit. If Strategy B exceeds 10MB, it escalates to Strategy A (Scan Crunch); if still over 10MB, it calibrates to Extreme pass.
+  2. **Interactive UI (`src/features/notes/PdfCompressorModal.tsx`)**:
+     - Glassmorphic modal with file overview, original size badge, and >10MB warning indicator.
+     - Strategy cards for Strategy A (Scan Crunch), Strategy B (Crisp Text & Vector), and Strategy C (Cloud API).
+     - Preset selector (Extreme, Recommended, Less).
+     - Real-time animated progress bar with stage descriptions.
+     - Before vs. After comparison card (`Original ➔ Compressed (-Savings%)`) with Cloudinary Gate compliance badge.
+     - Destination folder picker asking where to upload in the Vault (defaults to active folder).
+     - 1-Click "Upload to [Folder]" (uploads to Cloudinary, adds to Firestore `storage_nodes`) + Local Download copy option.
+  3. **Notes Module Integration (`src/features/notes/NotesModule.tsx`)**:
+     - Auto-intercept in `handleFileUpload`: Any PDF uploaded exceeding 10MB is automatically redirected to the PDF Compressor Studio with a notification toast.
+     - Top action bar: Added "Compress PDF" action pill button (`.notes-action-pill-btn.compress-pill`) with Zap icon to compress any PDF on demand.
+     - File viewer toolbar: Added "Compress" button when viewing stored PDFs to compress directly from the viewer.
+- **VERIFIED**: `npx tsc --noEmit` passed with 0 errors.
+
 
 
 

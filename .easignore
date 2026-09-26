@@ -1,0 +1,34 @@
+# Root .easignore — Prevents EAS CLI from bundling Web App & Root Git into Mobile builds
+
+# Git & Dependencies
+.git
+.git/
+**/.git/
+node_modules
+node_modules/
+**/node_modules/
+
+# Web App Source & Assets
+/src/
+/api/
+/public/
+/server/
+/functions/
+/dist/
+/.vercel/
+/.agents/
+/.idea/
+/.vscode/
+/.repowise/
+/.vision_cache/
+
+# Mobile Local Caches & Intermediate Builds
+mobile/android/
+mobile/android/**
+mobile/ios/
+mobile/ios/**
+mobile/dist/
+mobile/dist/**
+mobile/.expo/
+mobile/scratch/
+mobile/tmp/

@@ -1,61 +1,78 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Dimensions } from 'react-native';
 import { PomodoroMode } from './pomodoroTimeMath';
 
-export const RING_SIZE = 260;
-export const RING_STROKE = 5.5;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+export const RING_SIZE = 240;
+export const RING_STROKE = 6.5;
 export const RING_RADIUS = (RING_SIZE - RING_STROKE * 2) / 2;
 export const RING_CIRCUM = RING_RADIUS * 2 * Math.PI;
 
-export function modeLabel(mode: PomodoroMode): string {
-  if (mode === 'focus') return 'DEEP FLOW';
-  if (mode === 'shortBreak') return 'ZEN RECHARGE';
-  return 'DEEP REST';
+export const FULLSCREEN_RING_SIZE = 296;
+export const FULLSCREEN_RING_STROKE = 7;
+export const FULLSCREEN_RING_RADIUS = (FULLSCREEN_RING_SIZE - FULLSCREEN_RING_STROKE * 2) / 2;
+export const FULLSCREEN_RING_CIRCUM = FULLSCREEN_RING_RADIUS * 2 * Math.PI;
+
+export function modeLabel(mode?: PomodoroMode): string {
+  return 'DEEP FOCUS';
 }
 
-export function modeIconName(mode: PomodoroMode): any {
-  if (mode === 'focus') return 'flame';
-  if (mode === 'shortBreak') return 'leaf';
-  return 'moon';
+export function modeIconName(mode?: PomodoroMode): any {
+  return 'flame';
 }
 
-export function modeAccentDark(mode: PomodoroMode): string {
-  if (mode === 'focus') return '#a599ff';
-  if (mode === 'shortBreak') return '#34d399';
-  return '#38bdf8';
+export function modeAccentDark(mode?: PomodoroMode): string {
+  return '#A599FF';
 }
 
-export function modeAccentLight(mode: PomodoroMode): string {
-  if (mode === 'focus') return '#6C5CE7';
-  if (mode === 'shortBreak') return '#059669';
-  return '#0284C7';
+export function modeAccentLight(mode?: PomodoroMode): string {
+  return '#6C5CE7';
 }
 
-export function makeStyles(colors: any, isDark: boolean, accent: string, insets: { bottom: number; top: number }) {
+export function makeStyles(
+  colors: any,
+  isDark: boolean,
+  accent: string,
+  insets: { bottom: number; top: number },
+  dimensions?: { width: number; height: number }
+) {
+  const windowWidth = dimensions?.width || SCREEN_WIDTH;
+  const windowHeight = dimensions?.height || SCREEN_HEIGHT;
+  const isWide = windowWidth >= 700;
+  const isLandscape = windowWidth > windowHeight && windowWidth >= 640;
+
+  const sheetMaxWidth = isWide ? Math.min(840, Math.round(windowWidth * 0.92)) : windowWidth;
+  const sheetLeftOffset = isWide ? Math.max(0, (windowWidth - sheetMaxWidth) / 2) : 0;
+
   return StyleSheet.create({
     backdrop: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(0, 0, 0, 0.82)',
+      backgroundColor: isDark ? 'rgba(0, 0, 0, 0.82)' : 'rgba(0, 0, 0, 0.45)',
     },
     sheet: {
       position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      backgroundColor: isDark ? '#08080b' : '#FFFFFF',
+      bottom: isWide ? Math.max(insets.bottom, 16) : 0,
+      left: sheetLeftOffset,
+      right: sheetLeftOffset,
+      width: sheetMaxWidth,
+      alignSelf: 'center',
+      backgroundColor: isDark ? '#0A0A0E' : '#FFFFFF',
       borderTopLeftRadius: 32,
       borderTopRightRadius: 32,
-      minHeight: 640,
-      maxHeight: '96%' as any,
-      paddingHorizontal: 20,
-      paddingTop: 10,
+      borderBottomLeftRadius: isWide ? 32 : 0,
+      borderBottomRightRadius: isWide ? 32 : 0,
+      minHeight: isWide ? 560 : 610,
+      maxHeight: (isWide ? '90%' : '94%') as any,
+      paddingHorizontal: isWide ? 28 : 20,
+      paddingTop: 8,
       shadowColor: '#000000',
-      shadowOffset: { width: 0, height: -8 },
-      shadowOpacity: isDark ? 0.9 : 0.15,
-      shadowRadius: 28,
-      elevation: 28,
+      shadowOffset: { width: 0, height: isWide ? 0 : -10 },
+      shadowOpacity: isDark ? 0.95 : 0.16,
+      shadowRadius: 36,
+      elevation: 36,
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
-      borderBottomWidth: 0,
+      borderBottomWidth: isWide ? 1 : 0,
     },
     handleWrap: {
       alignItems: 'center',
@@ -67,331 +84,335 @@ export function makeStyles(colors: any, isDark: boolean, accent: string, insets:
       borderRadius: 3,
       backgroundColor: isDark ? 'rgba(255, 255, 255, 0.20)' : 'rgba(0, 0, 0, 0.14)',
     },
+
+    /* Apple iOS Header */
     header: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       marginBottom: 12,
       paddingHorizontal: 4,
+      paddingTop: 4,
+    },
+    headerLeft: {
+      flex: 1,
+      marginRight: 12,
+    },
+    headerTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
     },
     headerTitle: {
       fontFamily: 'Inter_700Bold',
-      fontSize: 22,
+      fontSize: 23,
       color: colors.textPrimary,
       letterSpacing: -0.5,
     },
     headerSub: {
       fontFamily: 'Inter_400Regular',
-      fontSize: 12,
+      fontSize: 12.5,
       color: colors.textMuted,
-      marginTop: 2,
+      marginTop: 2.5,
+      letterSpacing: -0.1,
+    },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    headerActionBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F0EFF7',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.09)' : colors.border,
+    },
+    headerActionBtnActive: {
+      backgroundColor: isDark ? 'rgba(251, 191, 36, 0.16)' : '#FEF3C7',
+      borderColor: isDark ? 'rgba(251, 191, 36, 0.35)' : '#FCD34D',
+    },
+    sheetKeepAwakePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4.5,
+      paddingHorizontal: 9,
+      paddingVertical: 3.5,
+      borderRadius: 999,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F0EFF7',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.border,
+      marginLeft: 4,
+    },
+    sheetKeepAwakePillActive: {
+      backgroundColor: isDark ? 'rgba(251, 191, 36, 0.14)' : '#FEF3C7',
+      borderColor: isDark ? 'rgba(251, 191, 36, 0.32)' : '#FCD34D',
+    },
+    sheetKeepAwakeText: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 10,
+      color: colors.textMuted,
     },
     closeBtn: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      backgroundColor: isDark ? '#14141a' : '#F0EFF7',
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F0EFF7',
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1,
-      borderColor: isDark ? '#22222a' : colors.border,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.09)' : colors.border,
     },
 
-    /* Best-in-Class Mode Switcher: Deep Focus vs Zen Recharge */
-    modeSwitcherCapsule: {
+    /* Responsive Tablet 2-Column Split Layout */
+    tabletSplitRow: {
       flexDirection: 'row',
-      backgroundColor: isDark ? '#0f0f15' : '#F0EFF7',
-      borderRadius: 16,
-      padding: 4,
-      borderWidth: 1,
-      borderColor: isDark ? '#1c1c28' : colors.border,
-      marginBottom: 14,
+      alignItems: 'flex-start',
+      gap: 28,
+      paddingTop: 4,
     },
-    modeSwitcherTab: {
+    tabletColLeft: {
       flex: 1,
-      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 9,
-      borderRadius: 12,
-      gap: 6,
+      paddingVertical: 8,
     },
-    modeSwitcherTabActive: {
-      backgroundColor: isDark ? '#1a1a24' : '#FFFFFF',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 6,
-      elevation: 3,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
-    },
-    modeSwitcherText: {
-      fontFamily: 'Inter_600SemiBold',
-      fontSize: 12.5,
-      color: colors.textMuted,
+    tabletColRight: {
+      flex: 1.15,
+      paddingVertical: 4,
     },
 
-    /* Legacy Segmented Capsule (Backwards compatibility) */
-    segmentedCapsule: {
-      flexDirection: 'row',
-      backgroundColor: isDark ? '#0f0f14' : '#F0EFF7',
-      borderRadius: 16,
-      padding: 4,
-      borderWidth: 1,
-      borderColor: isDark ? '#1a1a24' : colors.border,
-      marginBottom: 18,
-    },
-    segmentedTab: {
-      flex: 1,
-      flexDirection: 'row',
+    /* Ambient Mindful Motivation Banner — Pure Editorial Typography (No Pill, No Star) */
+    mantraBox: {
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 9,
-      borderRadius: 12,
+      paddingVertical: 8,
+      paddingHorizontal: 20,
+      marginVertical: 4,
+      alignSelf: 'center',
+      maxWidth: '92%',
     },
-    segmentedTabActive: {
-      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.09)' : '#FFFFFF',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.18,
-      shadowRadius: 6,
-      elevation: 3,
-    },
-    segmentedTabText: {
+    mantraText: {
       fontFamily: 'Inter_500Medium',
       fontSize: 12.5,
-      color: colors.textMuted,
+      color: isDark ? 'rgba(255, 255, 255, 0.45)' : 'rgba(0, 0, 0, 0.48)',
+      fontStyle: 'italic',
+      textAlign: 'center',
+      letterSpacing: 0.15,
+      lineHeight: 18,
     },
 
-    /* Ring & Center */
+    /* Circular Timer Ring */
     ringContainer: {
       alignItems: 'center',
       justifyContent: 'center',
-      marginVertical: 6,
+      marginVertical: 8,
       position: 'relative',
     },
     ringAura: {
       position: 'absolute',
-      width: RING_SIZE * 0.85,
-      height: RING_SIZE * 0.85,
-      borderRadius: (RING_SIZE * 0.85) / 2,
+      width: RING_SIZE * 0.90,
+      height: RING_SIZE * 0.90,
+      borderRadius: (RING_SIZE * 0.90) / 2,
     },
     ringCenterContent: {
       position: 'absolute',
       alignItems: 'center',
       justifyContent: 'center',
+      paddingHorizontal: 16,
     },
     statusPill: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      backgroundColor: isDark ? '#0d0d12' : '#F4F3F8',
-      paddingHorizontal: 10,
-      paddingVertical: 3.5,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: isDark ? '#1e1e28' : colors.border,
+      gap: 5.5,
       marginBottom: 6,
     },
     statusDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
+      width: 5.5,
+      height: 5.5,
+      borderRadius: 2.75,
     },
     statusPillText: {
-      fontFamily: 'Inter_700Bold',
-      fontSize: 9.5,
-      letterSpacing: 1.5,
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 10.5,
+      letterSpacing: 1.4,
       textTransform: 'uppercase',
+    },
+    sheetModeTogglePill: {
+      display: 'none',
+    },
+    sheetModeTogglePillText: {
+      display: 'none',
+    },
+    sheetHeroRow: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    percentContainer: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'center',
     },
     timerDigits: {
       fontFamily: 'Inter_700Bold',
-      fontSize: 50,
-      letterSpacing: -2,
+      fontSize: 48,
+      letterSpacing: -1.6,
       color: colors.textPrimary,
       fontVariant: ['tabular-nums'],
-      lineHeight: 58,
+      lineHeight: 56,
+      textAlign: 'center',
+    },
+    timerPercentSign: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 24,
+      color: isDark ? '#C4B5FD' : '#6C5CE7',
+      marginLeft: 3,
+      marginBottom: 6,
+      includeFontPadding: false,
+    },
+    sheetMetaContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 8,
+    },
+    sheetMetaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5.5,
+    },
+    sheetLiveDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: '#34D399',
     },
     timerMeta: {
       fontFamily: 'Inter_500Medium',
       fontSize: 12,
       color: colors.textMuted,
-      marginTop: 2,
+      textAlign: 'center',
     },
 
-    /* Pips / Cycle Progress */
-    pipsSection: {
-      alignItems: 'center',
-      marginTop: 14,
-      marginBottom: 18,
-    },
-    pipsRow: {
-      flexDirection: 'row',
-      gap: 7,
-      marginBottom: 6,
-    },
-    pipCapsule: {
-      width: 32,
-      height: 5,
-      borderRadius: 3,
-      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
-    },
-    pipsSubtext: {
-      fontFamily: 'Inter_400Regular',
-      fontSize: 11.5,
-      color: colors.textTertiary,
-    },
-
-    /* Controls Bar */
+    /* Primary Controls Bar */
     controlsContainer: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 26,
-      marginBottom: 8,
+      gap: 20,
+      marginTop: 8,
+      marginBottom: 10,
     },
     secondaryControlBtn: {
       width: 48,
       height: 48,
       borderRadius: 24,
-      backgroundColor: isDark ? '#111116' : '#F0EFF7',
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F0EFF7',
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1,
-      borderColor: isDark ? '#1f1f2a' : colors.border,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.09)' : colors.border,
     },
     primaryPlayBtn: {
-      width: 72,
-      height: 72,
-      borderRadius: 36,
+      width: 68,
+      height: 68,
+      borderRadius: 34,
       alignItems: 'center',
       justifyContent: 'center',
       shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.5,
+      shadowOpacity: 0.40,
       shadowRadius: 18,
-      elevation: 10,
+      elevation: 8,
     },
 
-    /* Quick Boost +5m */
-    quickBoostRow: {
-      alignItems: 'center',
-      marginBottom: 16,
-    },
-    quickBoostBtn: {
+    /* Dual Quick Boost (+5m / +15m) */
+    dualBoostRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: 14,
-      paddingVertical: 6,
-      borderRadius: 999,
-      backgroundColor: isDark ? '#0f0f14' : '#F0EFF7',
-      borderWidth: 1,
-      borderColor: isDark ? '#1e1e28' : colors.border,
+      justifyContent: 'center',
+      gap: 10,
+      marginBottom: 14,
     },
-    quickBoostText: {
+    boostBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4.5,
+      paddingHorizontal: 15,
+      paddingVertical: 6.5,
+      borderRadius: 999,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#F0EFF7',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.border,
+    },
+    boostBtnText: {
       fontFamily: 'Inter_600SemiBold',
       fontSize: 11.5,
       color: colors.textSecondary,
     },
 
-    /* Linked Task */
-    linkedTaskCard: {
+    /* Apple iOS Grouped Summary Card (Focus Today & Completed Sessions) */
+    todaySummaryCard: {
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.035)' : '#F6F5FB',
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(0, 0, 0, 0.05)',
+      paddingVertical: 12,
+      paddingHorizontal: 18,
       marginBottom: 14,
     },
-    linkedTaskHeaderRow: {
+    todaySummaryGrid: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: 6,
-      paddingHorizontal: 2,
     },
-    linkedTaskHeader: {
-      fontFamily: 'Inter_600SemiBold',
-      fontSize: 10.5,
-      color: colors.textTertiary,
-      letterSpacing: 0.8,
-    },
-    autoCalcBadge: {
+    todaySummaryTile: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: 'rgba(165,153,255,0.12)',
-      paddingHorizontal: 7,
-      paddingVertical: 2.5,
-      borderRadius: 6,
+      gap: 12,
     },
-    autoCalcText: {
+    todaySummaryTileDivider: {
+      width: 1,
+      height: 32,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.07)',
+      marginHorizontal: 12,
+    },
+    todaySummaryIconWrap: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#EAE8F4',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    todaySummaryVal: {
       fontFamily: 'Inter_700Bold',
-      fontSize: 10,
+      fontSize: 17,
+      color: colors.textPrimary,
+      fontVariant: ['tabular-nums'],
+      letterSpacing: -0.3,
     },
-    linkedTaskChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      paddingHorizontal: 15,
-      paddingVertical: 11,
-      borderRadius: 14,
-      backgroundColor: isDark ? '#0c0c10' : '#F8F7FC',
-      borderWidth: 1,
-      borderColor: isDark ? '#1a1a24' : colors.border,
-    },
-    linkedTaskTitle: {
-      flex: 1,
+    todaySummaryLbl: {
       fontFamily: 'Inter_500Medium',
-      fontSize: 13,
+      fontSize: 10,
       color: colors.textMuted,
-    },
-    taskPickerList: {
-      marginTop: 6,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: isDark ? '#1e1e28' : colors.border,
-      backgroundColor: isDark ? '#0a0a0e' : '#FFFFFF',
-      overflow: 'hidden',
-    },
-    taskPickerItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 14,
-      paddingVertical: 11,
-      gap: 8,
-      borderBottomWidth: 1,
-      borderBottomColor: isDark ? '#14141c' : colors.border,
-    },
-    taskPickerBullet: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : colors.border,
-    },
-    taskPickerLabel: {
-      flex: 1,
-      fontFamily: 'Inter_400Regular',
-      fontSize: 13,
-      color: colors.textSecondary,
-    },
-    taskDurationPill: {
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 6,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-    },
-    taskDurationPillText: {
-      fontFamily: 'Inter_600SemiBold',
-      fontSize: 10.5,
-      color: colors.textTertiary,
+      marginTop: 2,
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
     },
 
-    /* Daily Performance HUD Bar */
+    /* Backwards-compatibility stubs for dailyHud */
     dailyHudCard: {
-      backgroundColor: isDark ? '#0d0d12' : '#F4F3F8',
-      borderRadius: 16,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.035)' : '#F6F5FB',
+      borderRadius: 18,
       borderWidth: 1,
-      borderColor: isDark ? '#1a1a24' : colors.border,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(0, 0, 0, 0.05)',
       paddingVertical: 10,
       paddingHorizontal: 16,
-      marginTop: 10,
-      marginBottom: 16,
+      marginBottom: 12,
     },
     dailyHudRow: {
       flexDirection: 'row',
@@ -404,7 +425,7 @@ export function makeStyles(colors: any, isDark: boolean, accent: string, insets:
     },
     dailyHudVal: {
       fontFamily: 'Inter_700Bold',
-      fontSize: 15,
+      fontSize: 16,
       color: colors.textPrimary,
       fontVariant: ['tabular-nums'],
     },
@@ -412,60 +433,102 @@ export function makeStyles(colors: any, isDark: boolean, accent: string, insets:
       fontFamily: 'Inter_500Medium',
       fontSize: 10,
       color: colors.textMuted,
-      marginTop: 2,
-      letterSpacing: 0.5,
+      marginTop: 2.5,
+      letterSpacing: 0.6,
       textTransform: 'uppercase',
     },
     dailyHudDivider: {
       width: 1,
-      height: 22,
+      height: 24,
       backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
     },
 
-    /* Mindful Focus Mantra */
-    mantraBox: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.03)',
-      paddingVertical: 7,
-      paddingHorizontal: 14,
-      borderRadius: 12,
+    /* Linked Task Picker */
+    linkedTaskCard: {
       marginBottom: 14,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
     },
-    mantraText: {
-      fontFamily: 'Inter_500Medium',
-      fontSize: 11.5,
-      color: colors.textSecondary,
-      fontStyle: 'italic',
-    },
-
-    /* Dual Quick Boost (+5m / +15m) */
-    dualBoostRow: {
+    linkedTaskHeaderRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      gap: 10,
-      marginBottom: 16,
+      justifyContent: 'space-between',
+      marginBottom: 7,
+      paddingHorizontal: 2,
     },
-    boostBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: 13,
-      paddingVertical: 6,
-      borderRadius: 999,
-      backgroundColor: isDark ? '#101017' : '#F0EFF7',
-      borderWidth: 1,
-      borderColor: isDark ? '#1e1e2c' : colors.border,
-    },
-    boostBtnText: {
+    linkedTaskHeader: {
       fontFamily: 'Inter_600SemiBold',
-      fontSize: 11.5,
+      fontSize: 11,
+      color: colors.textTertiary,
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+    },
+    autoCalcBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: 'rgba(165, 153, 255, 0.12)',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 999,
+    },
+    autoCalcText: {
+      fontFamily: 'Inter_700Bold',
+      fontSize: 10,
+    },
+    linkedTaskChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderRadius: 18,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.035)' : '#F8F7FC',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.border,
+    },
+    linkedTaskTitle: {
+      flex: 1,
+      fontFamily: 'Inter_500Medium',
+      fontSize: 13,
+      color: colors.textMuted,
+    },
+    taskPickerList: {
+      marginTop: 6,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.border,
+      backgroundColor: isDark ? '#101016' : '#FFFFFF',
+      overflow: 'hidden',
+    },
+    taskPickerItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      gap: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.05)' : colors.border,
+    },
+    taskPickerBullet: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.2)' : colors.border,
+    },
+    taskPickerLabel: {
+      flex: 1,
+      fontFamily: 'Inter_500Medium',
+      fontSize: 13,
       color: colors.textSecondary,
+    },
+    taskDurationPill: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+    },
+    taskDurationPillText: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 11,
+      color: colors.textTertiary,
     },
 
     /* Focus Depths Section (Sprint, Classic, Deep, Flow) */
@@ -481,7 +544,7 @@ export function makeStyles(colors: any, isDark: boolean, accent: string, insets:
     },
     focusDepthTitle: {
       fontFamily: 'Inter_600SemiBold',
-      fontSize: 10.5,
+      fontSize: 11,
       color: colors.textTertiary,
       letterSpacing: 0.8,
       textTransform: 'uppercase',
@@ -502,37 +565,43 @@ export function makeStyles(colors: any, isDark: boolean, accent: string, insets:
     },
     depthCard: {
       flex: 1,
-      backgroundColor: isDark ? '#0b0b10' : '#F7F6FB',
+      backgroundColor: isDark ? '#191822' : '#F7F6FB',
       borderRadius: 16,
-      padding: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 4,
       borderWidth: 1.5,
-      borderColor: isDark ? '#171722' : colors.border,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.border,
       alignItems: 'center',
-      position: 'relative',
+      justifyContent: 'center',
     },
     depthCardActive: {
       borderColor: accent,
-      backgroundColor: isDark ? 'rgba(165, 153, 255, 0.08)' : 'rgba(108, 92, 231, 0.06)',
+      borderWidth: 1.8,
+      backgroundColor: isDark ? '#242138' : '#EEECFB',
       shadowColor: accent,
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.25,
       shadowRadius: 8,
-      elevation: 4,
+      elevation: 0,
     },
     depthCardIconWrap: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      backgroundColor: isDark ? '#161622' : '#ECEBF5',
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#EAE9F4',
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: 6,
+      alignSelf: 'center',
     },
     depthCardDurationText: {
       fontFamily: 'Inter_700Bold',
-      fontSize: 13.5,
+      fontSize: 14.5,
       color: colors.textPrimary,
-      fontVariant: ['tabular-nums'],
+      textAlign: 'center',
+      letterSpacing: -0.2,
+      includeFontPadding: false,
+      backgroundColor: 'transparent',
     },
     depthCardTitle: {
       fontFamily: 'Inter_500Medium',
@@ -540,64 +609,268 @@ export function makeStyles(colors: any, isDark: boolean, accent: string, insets:
       color: colors.textMuted,
       marginTop: 2,
       textAlign: 'center',
+      includeFontPadding: false,
+      backgroundColor: 'transparent',
     },
 
-    /* Zen Recharge Section */
-    rechargeCard: {
-      backgroundColor: isDark ? '#091510' : '#F0FDF4',
-      borderRadius: 16,
-      padding: 14,
-      borderWidth: 1,
-      borderColor: isDark ? '#164e37' : '#BBF7D0',
-      marginBottom: 16,
-      alignItems: 'center',
+    /* ═══════════════════════════════════════════════════════════════════════
+       PURE APPLE iOS FULL-SCREEN IMMERSIVE STANDBY FOCUS MODE
+       ═══════════════════════════════════════════════════════════════════════ */
+    fullScreenContainer: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: '#000000',
+      zIndex: 9999,
+      flexDirection: 'column',
+      justifyContent: 'space-between',
     },
-    rechargeTitle: {
-      fontFamily: 'Inter_700Bold',
-      fontSize: 14,
-      color: '#34D399',
-      marginBottom: 4,
-    },
-    rechargeDesc: {
-      fontFamily: 'Inter_400Regular',
-      fontSize: 12,
-      color: colors.textMuted,
-      textAlign: 'center',
-      lineHeight: 17,
-    },
-
-    /* Presets Grid */
-    presetsGrid: {
+    fullScreenHeader: {
       flexDirection: 'row',
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: isDark ? '#1a1a24' : colors.border,
-      backgroundColor: isDark ? '#0a0a0e' : '#F8F7FC',
-      overflow: 'hidden',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 24,
+      paddingTop: Math.max(insets.top + 8, 20),
+      zIndex: 2,
     },
-    presetItem: {
+    fullScreenHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    fullScreenStatusPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.12)',
+    },
+    fullScreenStatusDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 3.5,
+    },
+    fullScreenStatusText: {
+      fontFamily: 'Inter_700Bold',
+      fontSize: 10.5,
+      color: '#FFFFFF',
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+    },
+    fullScreenKeepAwakePill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+      paddingHorizontal: 11,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.12)',
+    },
+    fullScreenKeepAwakePillActive: {
+      backgroundColor: 'rgba(251, 191, 36, 0.18)',
+      borderColor: 'rgba(251, 191, 36, 0.40)',
+    },
+    fullScreenKeepAwakeText: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 10.5,
+      color: 'rgba(255, 255, 255, 0.70)',
+      letterSpacing: 0.2,
+    },
+    fullScreenCloseBtn: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: 'rgba(255, 255, 255, 0.09)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.15)',
+    },
+
+    /* Full Screen Linked Task Floating Banner */
+    fullScreenTaskBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'center',
+      gap: 8,
+      backgroundColor: 'rgba(255, 255, 255, 0.07)',
+      paddingHorizontal: 18,
+      paddingVertical: 9,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.12)',
+      marginTop: 14,
+      maxWidth: isWide ? 600 : '88%',
+    },
+    fullScreenTaskText: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 13,
+      color: '#E2E8F0',
+    },
+
+    /* Full Screen Central Ring & Digits */
+    fullScreenCenter: {
       flex: 1,
       alignItems: 'center',
-      paddingVertical: 13,
+      justifyContent: 'center',
+      position: 'relative',
     },
-    presetItemActive: {
-      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#FFFFFF',
+    fullScreenRingContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
     },
-    presetValue: {
+    fullScreenRingAura: {
+      position: 'absolute',
+      width: FULLSCREEN_RING_SIZE * 0.94,
+      height: FULLSCREEN_RING_SIZE * 0.94,
+      borderRadius: (FULLSCREEN_RING_SIZE * 0.94) / 2,
+    },
+    fullScreenCenterContent: {
+      position: 'absolute',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 16,
+    },
+    heroRow: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    fullScreenDigits: {
       fontFamily: 'Inter_700Bold',
-      fontSize: 15.5,
-      color: colors.textPrimary,
+      fontSize: isWide ? 76 : 70,
+      letterSpacing: -2.4,
+      color: '#FFFFFF',
+      fontVariant: ['tabular-nums'],
+      lineHeight: isWide ? 84 : 78,
+      textAlign: 'center',
     },
-    presetLabel: {
-      fontFamily: 'Inter_400Regular',
-      fontSize: 10.5,
-      color: colors.textMuted,
-      marginTop: 2,
+    fullScreenPercentSign: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 32,
+      color: '#C4B5FD',
+      marginLeft: 4,
+      marginBottom: 8,
+      includeFontPadding: false,
     },
-    presetDivider: {
-      width: 1,
-      backgroundColor: isDark ? '#1a1a24' : colors.border,
-      marginVertical: 8,
+    fullScreenMetaContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 10,
+    },
+    fullScreenMetaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    liveDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 3.5,
+      backgroundColor: '#34D399',
+    },
+    fullScreenMetaText: {
+      fontFamily: 'Inter_500Medium',
+      fontSize: 13.5,
+      color: 'rgba(255, 255, 255, 0.70)',
+      textAlign: 'center',
+      letterSpacing: 0.2,
+    },
+    fullScreenMeta: {
+      fontFamily: 'Inter_500Medium',
+      fontSize: 13.5,
+      color: 'rgba(255, 255, 255, 0.60)',
+      marginTop: 4,
+      textAlign: 'center',
+    },
+    fullScreenMantraCard: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 10,
+      paddingHorizontal: 24,
+      marginTop: 18,
+      alignSelf: 'center',
+      maxWidth: isWide ? 520 : '88%',
+    },
+    fullScreenMantraText: {
+      fontFamily: 'Inter_500Medium',
+      fontSize: 13,
+      color: 'rgba(255, 255, 255, 0.42)',
+      fontStyle: 'italic',
+      textAlign: 'center',
+      letterSpacing: 0.2,
+      lineHeight: 19,
+    },
+    fullScreenMantra: {
+      fontFamily: 'Inter_500Medium',
+      fontSize: 13,
+      color: 'rgba(255, 255, 255, 0.42)',
+      fontStyle: 'italic',
+      textAlign: 'center',
+      marginTop: 20,
+      paddingHorizontal: 24,
+    },
+
+    /* Full Screen Bottom Floating Controls */
+    fullScreenControlsWrap: {
+      paddingBottom: Math.max(insets.bottom + 16, 28),
+      paddingHorizontal: 24,
+      alignItems: 'center',
+      gap: 16,
+    },
+    fullScreenControlsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 28,
+    },
+    fullScreenSecondaryBtn: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: 'rgba(255, 255, 255, 0.10)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.16)',
+    },
+    fullScreenPlayBtn: {
+      width: 78,
+      height: 78,
+      borderRadius: 39,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.55,
+      shadowRadius: 24,
+      elevation: 12,
+    },
+    fullScreenBoostRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+    },
+    fullScreenBoostBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4.5,
+      paddingHorizontal: 16,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.14)',
+    },
+    fullScreenBoostBtnText: {
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: 12,
+      color: '#E2E8F0',
     },
   });
 }

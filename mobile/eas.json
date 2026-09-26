@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 16.0.0"
+    "version": ">= 16.0.0",
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
@@ -22,7 +23,9 @@
         "EXPO_PUBLIC_GOOGLE_CALENDAR_CLIENT_ID": "336719988763-a8l7noum7dapki5st6uoqvscnnlkid7e.apps.googleusercontent.com",
         "EXPO_PUBLIC_BACKEND_URL": "https://zentrack-vibe2ship.onrender.com",
         "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "drc8jwyjf",
-        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "aoaogtkw"
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "aoaogtkw",
+        "EXPO_PUBLIC_ILOVEPDF_PUBLIC_KEY": "project_public_3631b30d014a61a6e5c8e4fc4186e27b_RkycWa70cde52ecbf827ee2f3bee50dd46eb4",
+        "EXPO_PUBLIC_ILOVEPDF_SECRET_KEY": "secret_key_b193424ccc6084b89815a1f188627a3c_NCWpE12d17d203d6b758aa426421b0ba256bc"
       }
     },
     "preview": {
@@ -46,7 +49,9 @@
         "EXPO_PUBLIC_GOOGLE_CALENDAR_CLIENT_ID": "336719988763-a8l7noum7dapki5st6uoqvscnnlkid7e.apps.googleusercontent.com",
         "EXPO_PUBLIC_BACKEND_URL": "https://zentrack-vibe2ship.onrender.com",
         "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "drc8jwyjf",
-        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "aoaogtkw"
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "aoaogtkw",
+        "EXPO_PUBLIC_ILOVEPDF_PUBLIC_KEY": "project_public_3631b30d014a61a6e5c8e4fc4186e27b_RkycWa70cde52ecbf827ee2f3bee50dd46eb4",
+        "EXPO_PUBLIC_ILOVEPDF_SECRET_KEY": "secret_key_b193424ccc6084b89815a1f188627a3c_NCWpE12d17d203d6b758aa426421b0ba256bc"
       }
     },
     "preview-debug": {
@@ -75,7 +80,9 @@
         "EXPO_PUBLIC_GOOGLE_CALENDAR_CLIENT_ID": "336719988763-a8l7noum7dapki5st6uoqvscnnlkid7e.apps.googleusercontent.com",
         "EXPO_PUBLIC_BACKEND_URL": "https://zentrack-vibe2ship.onrender.com",
         "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "drc8jwyjf",
-        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "aoaogtkw"
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "aoaogtkw",
+        "EXPO_PUBLIC_ILOVEPDF_PUBLIC_KEY": "project_public_3631b30d014a61a6e5c8e4fc4186e27b_RkycWa70cde52ecbf827ee2f3bee50dd46eb4",
+        "EXPO_PUBLIC_ILOVEPDF_SECRET_KEY": "secret_key_b193424ccc6084b89815a1f188627a3c_NCWpE12d17d203d6b758aa426421b0ba256bc"
       }
     },
     "production": {
@@ -95,7 +102,9 @@
         "EXPO_PUBLIC_GOOGLE_CALENDAR_CLIENT_ID": "336719988763-a8l7noum7dapki5st6uoqvscnnlkid7e.apps.googleusercontent.com",
         "EXPO_PUBLIC_BACKEND_URL": "https://zentrack-vibe2ship.onrender.com",
         "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "drc8jwyjf",
-        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "aoaogtkw"
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "aoaogtkw",
+        "EXPO_PUBLIC_ILOVEPDF_PUBLIC_KEY": "project_public_3631b30d014a61a6e5c8e4fc4186e27b_RkycWa70cde52ecbf827ee2f3bee50dd46eb4",
+        "EXPO_PUBLIC_ILOVEPDF_SECRET_KEY": "secret_key_b193424ccc6084b89815a1f188627a3c_NCWpE12d17d203d6b758aa426421b0ba256bc"
       }
     }
   },

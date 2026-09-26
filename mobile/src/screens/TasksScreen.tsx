@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pressable, Platform, StatusBar, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pressable, Platform, StatusBar, Linking, PanResponder } from 'react-native';
 import Animated, {
   FadeIn,
   FadeInUp,
@@ -23,7 +23,7 @@ import { requestNotificationPermissions } from '../services/notifications';
 
 import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { formatDateWithDay, formatLocalDateStr, formatDateShort } from '../utils/dateUtils';
+import { formatDateWithDay, formatLocalDateStr, formatDateShort, offsetDateStr } from '../utils/dateUtils';
 import { formatTimeStr } from '../utils/timeUtils';
 import { setTabBarVisible } from '../utils/tabBarScroll';
 
@@ -158,12 +158,12 @@ export default function TasksScreen() {
 
   // 2. Data/State Hook
   const {
-    selectedDate, viewMode, filterTag, isCalendarOpen, isTemplatesSheetOpen,
+    selectedDate, viewMode, isCalendarOpen, isTemplatesSheetOpen,
     isNewTaskOpen, isBulkEdit, selectedTaskIds, bulkRescheduleModal,
     isOverdueModalOpen, isInboxModalOpen, isMenuOpen, sortBy,
     timeLogTask, isTimeSpentOpen, editingTask, conflicts,
     overdueTasks, inboxTasks, selectedDateTasks, upcomingTasks, taskDates,
-    setSelectedDate, setViewMode, setFilterTag, setIsCalendarOpen,
+    setSelectedDate, setViewMode, setIsCalendarOpen,
     setIsTemplatesSheetOpen, setIsNewTaskOpen, setIsBulkEdit,
     setSelectedTaskIds, setBulkRescheduleModal, setIsOverdueModalOpen,
     setIsInboxModalOpen, setIsMenuOpen, setSortBy, setTimeLogTask,
@@ -246,67 +246,55 @@ export default function TasksScreen() {
     lastScrollY.current = offsetY;
   }, []);
 
-  const handleDateSelect = useCallback((date: string) => {
-    setSelectedDate(date);
+  // ── Swipe-to-change-date Engine ──
+  const [swipeDirection, setSwipeDirection] = useState<'forward' | 'backward'>('forward');
+
+  const goToNextDay = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSwipeDirection('forward');
+    setSelectedDate((prevDate) => offsetDateStr(prevDate, 1));
   }, [setSelectedDate]);
 
-  // ── Interactive Tag Filters & Task Counts ──
-  const tagFilters = useMemo(() => {
-    const counts: Record<string, number> = { all: selectedDateTasks.length };
-    const discoveredTags = new Set<string>();
+  const goToPrevDay = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSwipeDirection('backward');
+    setSelectedDate((prevDate) => offsetDateStr(prevDate, -1));
+  }, [setSelectedDate]);
 
-    for (let i = 0; i < selectedDateTasks.length; i++) {
-      const t = selectedDateTasks[i];
-      const tags = (t.tags || []).map(tg => tg.toLowerCase().replace(/^#/, '').trim());
-      const titleMatches = t.title?.match(/#([a-zA-Z0-9_\-]+)/g);
-      if (titleMatches) {
-        titleMatches.forEach(m => tags.push(m.toLowerCase().replace(/^#/, '').trim()));
-      }
-      const unique = new Set(tags);
-      unique.forEach(tag => {
-        if (!tag) return;
-        discoveredTags.add(tag);
-        counts[tag] = (counts[tag] || 0) + 1;
-      });
+  const handleDateSelect = useCallback((newDate: string) => {
+    if (newDate > selectedDate) {
+      setSwipeDirection('forward');
+    } else if (newDate < selectedDate) {
+      setSwipeDirection('backward');
     }
+    setSelectedDate(newDate);
+  }, [selectedDate, setSelectedDate]);
 
-    // Only show tags that are actually present on tasks for this date!
-    const activeTags = Array.from(discoveredTags).filter(tag => (counts[tag] || 0) > 0);
+  // PanResponder allowing horizontal swiping anywhere across the task view to navigate dates
+  const taskViewPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          // Do not steal touches in kanban mode (which has horizontal columns)
+          if (viewMode === 'kanban') return false;
+          // Only claim gesture if it's primarily horizontal with enough displacement
+          return (
+            Math.abs(gestureState.dx) > 28 &&
+            Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.8
+          );
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (gestureState.dx < -40) {
+            goToNextDay();
+          } else if (gestureState.dx > 40) {
+            goToPrevDay();
+          }
+        },
+      }),
+    [goToNextDay, goToPrevDay, viewMode]
+  );
 
-    if (activeTags.length === 0) {
-      return [];
-    }
-
-    const orderedTagKeys = ['all', ...activeTags];
-
-    return orderedTagKeys.map(key => {
-      let label = key === 'all' ? '#all' : `#${key}`;
-      return {
-        key,
-        label,
-        count: counts[key] || 0,
-      };
-    });
-  }, [selectedDateTasks]);
-
-  // Reset filterTag if it no longer exists on the current date
-  useEffect(() => {
-    if (filterTag && tagFilters.length > 0 && !tagFilters.some(t => t.key === filterTag.toLowerCase().replace(/^#/, ''))) {
-      setFilterTag(null);
-    }
-  }, [tagFilters, filterTag, setFilterTag]);
-
-  // ── Filtered Tasks by Selected Tag ──
-  const displayedTasks = useMemo(() => {
-    if (!filterTag || filterTag.toLowerCase() === 'all') return selectedDateTasks;
-    const target = filterTag.toLowerCase().replace(/^#/, '').trim();
-    return selectedDateTasks.filter(t => {
-      const tags = (t.tags || []).map(tg => tg.toLowerCase().replace(/^#/, '').trim());
-      if (tags.includes(target)) return true;
-      if (t.title?.toLowerCase().includes(`#${target}`)) return true;
-      return false;
-    });
-  }, [selectedDateTasks, filterTag]);
+  const displayedTasks = selectedDateTasks;
 
   const sections = useMemo(() => {
     if (displayedTasks.length === 0) return [];
@@ -494,53 +482,7 @@ export default function TasksScreen() {
         <TaskDateStrip selectedDate={selectedDate} onSelectDate={handleDateSelect} taskDates={taskDates} />
       </View>
 
-      {/* Interactive Horizontal Tag Filter Strip — only rendered when tags are present on this day */}
-      {tagFilters.length > 1 && (
-        <View style={styles.tagFilterStripContainer}>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tagFilterContent}
-          >
-            {tagFilters.map((item) => {
-              const isActive = item.key === 'all' 
-                ? (!filterTag || filterTag === 'all')
-                : filterTag?.toLowerCase() === item.key;
-              return (
-                <Animated.View
-                  key={item.key}
-                  layout={LinearTransition.springify().damping(22).stiffness(250)}
-                >
-                  <TouchableOpacity
-                    style={[
-                      styles.filterTagChip,
-                      isActive && styles.filterTagChipActive,
-                    ]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      if (item.key === 'all' || filterTag?.toLowerCase() === item.key) {
-                        setFilterTag(null);
-                      } else {
-                        setFilterTag(item.key);
-                      }
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.filterTagChipText, isActive && styles.filterTagChipTextActive]}>
-                      {item.label}
-                    </Text>
-                    <View style={[styles.tagCountBadge, isActive && styles.tagCountBadgeActive]}>
-                      <Text style={[styles.tagCountText, isActive && styles.tagCountTextActive]}>
-                        {item.count}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                </Animated.View>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
+
 
       {/* NOTIFICATION PERMISSION WARNING BANNER */}
       {hasNotifPermission === false && (
@@ -628,77 +570,79 @@ export default function TasksScreen() {
       )}
 
       {/* VIEWS */}
-      {isInitialLoading ? (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-          <TasksSkeleton />
-        </ScrollView>
-      ) : viewMode === 'timeline' ? (
-        <Animated.View key="timeline" entering={SlideInRight.duration(200).easing(Easing.out(Easing.exp))} exiting={FadeOut.duration(140)} style={{ flex: 1 }}>
-          <Suspense fallback={<TasksSkeleton />}>
-            <TimelineView
-              tasks={displayedTasks}
-              onTaskPress={(t) => setEditingTask(t)}
-              colors={colors}
-              isDark={isDark}
-              selectedDate={selectedDate}
-            />
-          </Suspense>
-        </Animated.View>
-      ) : viewMode === 'kanban' ? (
-        <Animated.View key="kanban" entering={SlideInRight.duration(200).easing(Easing.out(Easing.exp))} exiting={FadeOut.duration(140)} style={{ flex: 1 }}>
-          <Suspense fallback={<TasksSkeleton />}>
-            <KanbanView
-              tasks={tasks.filter(t => !filterTag || (t.tags ?? []).includes(filterTag))}
-              onTaskPress={(t) => setEditingTask(t)}
-              colors={colors}
-            />
-          </Suspense>
-        </Animated.View>
-      ) : (
-        <Animated.View key="list" entering={SlideInLeft.duration(200).easing(Easing.out(Easing.exp))} exiting={FadeOut.duration(140)} style={{ flex: 1 }}>
-        <SectionList
-          style={{ flex: 1 }}
-          contentContainerStyle={[
-            styles.listContent,
-            displayedTasks.length === 0 
-              ? { flexGrow: 1, justifyContent: 'center', paddingBottom: 80 } 
-              : { paddingBottom: 140 }
-          ]}
-          scrollEnabled={displayedTasks.length > 0}
-          bounces={displayedTasks.length > 0}
-          showsVerticalScrollIndicator={false}
-          removeClippedSubviews={Platform.OS === 'android'}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          initialNumToRender={8}
-          onScroll={handleScroll}
-          scrollEventThrottle={64}
-          onScrollEndDrag={(e: any) => {
-            if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
-          }}
-          onMomentumScrollEnd={(e: any) => {
-            if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
-          }}
-          sections={sections as any}
-          keyExtractor={taskKeyExtractor}
-          ListEmptyComponent={
-            filterTag ? (
-              <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
-                <Ionicons name="pricetag-outline" size={38} color={colors.textTertiary} style={{ marginBottom: 12, opacity: 0.6 }} />
-                <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 16, color: colors.textPrimary, marginBottom: 4 }}>
-                  No #{filterTag} tasks
-                </Text>
-                <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginBottom: 16 }}>
-                  No tasks tagged #{filterTag} found for this day.
-                </Text>
-                <TouchableOpacity
-                  style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : colors.surface2, borderWidth: 1, borderColor: colors.border }}
-                  onPress={() => setFilterTag(null)}
-                >
-                  <Text style={{ color: colors.accentPrimary, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>Show All Tasks</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
+      <View style={{ flex: 1 }} {...taskViewPanResponder.panHandlers}>
+        {isInitialLoading ? (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+            <TasksSkeleton />
+          </ScrollView>
+        ) : viewMode === 'timeline' ? (
+          <Animated.View
+            key={`timeline-${selectedDate}`}
+            entering={
+              swipeDirection === 'forward'
+                ? SlideInRight.duration(200).easing(Easing.out(Easing.cubic))
+                : SlideInLeft.duration(200).easing(Easing.out(Easing.cubic))
+            }
+            exiting={FadeOut.duration(120)}
+            style={{ flex: 1 }}
+          >
+            <Suspense fallback={<TasksSkeleton />}>
+              <TimelineView
+                tasks={displayedTasks}
+                onTaskPress={(t) => setEditingTask(t)}
+                colors={colors}
+                isDark={isDark}
+                selectedDate={selectedDate}
+              />
+            </Suspense>
+          </Animated.View>
+        ) : viewMode === 'kanban' ? (
+          <Animated.View key="kanban" entering={SlideInRight.duration(200).easing(Easing.out(Easing.exp))} exiting={FadeOut.duration(140)} style={{ flex: 1 }}>
+            <Suspense fallback={<TasksSkeleton />}>
+              <KanbanView
+                tasks={tasks}
+                onTaskPress={(t) => setEditingTask(t)}
+                colors={colors}
+              />
+            </Suspense>
+          </Animated.View>
+        ) : (
+          <Animated.View
+            key={`list-${selectedDate}`}
+            entering={
+              swipeDirection === 'forward'
+                ? SlideInRight.duration(200).easing(Easing.out(Easing.cubic))
+                : SlideInLeft.duration(200).easing(Easing.out(Easing.cubic))
+            }
+            exiting={FadeOut.duration(120)}
+            style={{ flex: 1 }}
+          >
+          <SectionList
+            style={{ flex: 1 }}
+            contentContainerStyle={[
+              styles.listContent,
+              displayedTasks.length === 0 
+                ? { flexGrow: 1, justifyContent: 'center', paddingBottom: 80 } 
+                : { paddingBottom: 140 }
+            ]}
+            scrollEnabled={displayedTasks.length > 0}
+            bounces={displayedTasks.length > 0}
+            showsVerticalScrollIndicator={false}
+            removeClippedSubviews={Platform.OS === 'android'}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            initialNumToRender={8}
+            onScroll={handleScroll}
+            scrollEventThrottle={64}
+            onScrollEndDrag={(e: any) => {
+              if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
+            }}
+            onMomentumScrollEnd={(e: any) => {
+              if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
+            }}
+            sections={sections as any}
+            keyExtractor={taskKeyExtractor}
+            ListEmptyComponent={
               <EmptyState
                 mascot="running"
                 title="All clear!"
@@ -706,13 +650,13 @@ export default function TasksScreen() {
                 mascotSize={110}
                 style={{ marginTop: 0, paddingVertical: 10 }}
               />
-            )
-          }
-          renderSectionHeader={renderSectionHeader}
-          renderItem={renderItem}
-        />
-        </Animated.View>
-      )}
+            }
+            renderSectionHeader={renderSectionHeader}
+            renderItem={renderItem}
+          />
+          </Animated.View>
+        )}
+      </View>
 
       {/* FLOATING ACTION PILLS */}
       <View style={[styles.floatingAddContainer, { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 }]}>

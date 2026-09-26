@@ -7,18 +7,24 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, Modal, SectionList, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Modal, SectionList, Pressable, StyleSheet, Platform } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
 import Reanimated, {
   LinearTransition,
+  FadeIn,
+  FadeOut,
   FadeInDown,
   SlideOutRight,
+  SlideInDown,
+  SlideOutDown,
   useSharedValue,
   useAnimatedStyle,
   withSequence,
   withTiming,
+  Easing,
 } from 'react-native-reanimated';
 import { formatAttendanceHistoryDate } from '../../screens/attendance/attendanceConstants';
 import { FONT_FAMILY, SHADOW } from '../../theme/tokens';
@@ -391,23 +397,32 @@ export const SubjectHistoryModal = React.memo(function SubjectHistoryModal({
   }
   const currentSubject = subject || lastSubjectRef.current;
 
-  const [activeVisible, setActiveVisible] = useState(visible);
+  const [modalVisible, setModalVisible] = useState(visible);
+  const [contentVisible, setContentVisible] = useState(visible);
   const isClosingRef = React.useRef(false);
 
   useEffect(() => {
     if (visible) {
-      setActiveVisible(true);
       isClosingRef.current = false;
-    } else {
-      setActiveVisible(false);
+      setModalVisible(true);
+      setContentVisible(true);
+    } else if (modalVisible && !isClosingRef.current) {
+      isClosingRef.current = true;
+      setContentVisible(false);
+      const timer = setTimeout(() => {
+        setModalVisible(false);
+        isClosingRef.current = false;
+      }, 220);
+      return () => clearTimeout(timer);
     }
-  }, [visible]);
+  }, [visible, modalVisible]);
 
   const handleRequestClose = useCallback(() => {
     if (isClosingRef.current) return;
     isClosingRef.current = true;
-    setActiveVisible(false);
+    setContentVisible(false);
     setTimeout(() => {
+      setModalVisible(false);
       onClose();
       isClosingRef.current = false;
     }, 220);
@@ -487,7 +502,7 @@ export const SubjectHistoryModal = React.memo(function SubjectHistoryModal({
     return subjects.find(s => (currentSubject.id && s.id === currentSubject.id) || s.name === currentSubject.name) || currentSubject;
   }, [subjects, currentSubject]);
 
-  if (!visible && !activeVisible) return null;
+  if (!visible && !modalVisible) return null;
   if (!currentSubject || !sub) return null;
 
   const att = (sub.classesAttended || 0) + (sub.labsAttended || 0);
@@ -503,19 +518,38 @@ export const SubjectHistoryModal = React.memo(function SubjectHistoryModal({
     : '#FF453A';
 
   return (
-    <Modal visible={activeVisible} animationType="slide" onRequestClose={handleRequestClose}>
-      <SafeAreaView style={[styles.modalRoot, { backgroundColor: isDark ? '#000000' : (colors.background || '#F8F9FA') }]} edges={['top']}>
-        {/* Apple iOS Navigation Header */}
-        <View
-          style={[
-            styles.modalHeader,
-            {
-              borderBottomColor: isDark
-                ? '#1c1c20'
-                : 'rgba(0, 0, 0, 0.08)',
-            },
-          ]}
-        >
+    <Modal visible={modalVisible} animationType="none" transparent onRequestClose={handleRequestClose}>
+      <View style={{ flex: 1 }}>
+        {contentVisible && (
+          <Reanimated.View
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(200)}
+            style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.35)' }]}
+          >
+            {Platform.OS === 'ios' && (
+              <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+            )}
+            <Pressable style={StyleSheet.absoluteFill} onPress={handleRequestClose} />
+          </Reanimated.View>
+        )}
+        {contentVisible && (
+          <Reanimated.View
+            entering={SlideInDown.duration(280).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+            exiting={SlideOutDown.duration(200).easing(Easing.in(Easing.quad))}
+            style={{ flex: 1, backgroundColor: isDark ? '#000000' : (colors.background || '#F8F9FA') }}
+          >
+            <SafeAreaView style={[styles.modalRoot, { backgroundColor: isDark ? '#000000' : (colors.background || '#F8F9FA') }]} edges={['top']}>
+            {/* Apple iOS Navigation Header */}
+            <View
+              style={[
+                styles.modalHeader,
+                {
+                  borderBottomColor: isDark
+                    ? '#1c1c20'
+                    : 'rgba(0, 0, 0, 0.08)',
+                },
+              ]}
+            >
           <View style={{ flex: 1, marginRight: 12 }}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]} numberOfLines={1}>
               {currentSubject.name}
@@ -688,7 +722,10 @@ export const SubjectHistoryModal = React.memo(function SubjectHistoryModal({
             </View>
           }
         />
-      </SafeAreaView>
+          </SafeAreaView>
+        </Reanimated.View>
+        )}
+      </View>
     </Modal>
   );
 });

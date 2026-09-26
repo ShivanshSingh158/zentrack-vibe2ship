@@ -5,8 +5,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { useTheme } from '../contexts/ThemeContext';
-import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '../theme/tokens';
+import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, SHADOW } from '../theme/tokens';
 
 interface TermsScreenProps {
   visible: boolean;
@@ -17,28 +18,43 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
   const { colors, isDark } = useTheme();
   const styles = makeStyles(colors, isDark);
 
+  const handleClose = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onClose();
+  };
+
   return (
     <Modal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
       <View style={styles.container}>
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
 
-        {/* ── Top Sticky Header ────────────────────────────────────────── */}
+        {/* ── Native iOS Sheet Grabber Handle ───────────────────────── */}
+        <View style={styles.sheetHandleContainer}>
+          <View style={styles.sheetHandle} />
+        </View>
+
+        {/* ── Top Header Bar ────────────────────────────────────────── */}
         <View style={styles.header}>
           <View>
             <Text style={styles.headerTitle}>Terms of Service & Privacy</Text>
             <Text style={styles.headerSubtitle}>ZenTrack Life OS · Version 2.4.0</Text>
           </View>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="close" size={22} color={colors.textPrimary} />
+          <TouchableOpacity
+            onPress={handleClose}
+            style={styles.closeBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="close" size={20} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
 
-        {/* ── Scrollable Comprehensive Legal Body ───────────────────────── */}
+        {/* ── Scrollable Legal Body ─────────────────────────────────── */}
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={true}
@@ -46,14 +62,17 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
           {/* Metadata Badge Row */}
           <View style={styles.metaRow}>
             <View style={styles.badgePill}>
+              <View style={styles.badgeDot} />
               <Text style={styles.badgePillText}>LEGAL AGREEMENT</Text>
             </View>
             <Text style={styles.lastUpdated}>EFFECTIVE: AUGUST 2026</Text>
           </View>
 
-          {/* Overview Callout Box */}
+          {/* Privacy Pledge Hero Card */}
           <View style={styles.calloutBox}>
-            <Ionicons name="shield-checkmark" size={20} color={colors.accentPrimary} style={{ marginRight: 10, marginTop: 2 }} />
+            <View style={styles.calloutIconBox}>
+              <Ionicons name="shield-checkmark" size={20} color={colors.accentPrimary} />
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.calloutTitle}>Our Core Privacy Pledge</Text>
               <Text style={styles.calloutBody}>
@@ -65,7 +84,9 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
           {/* ── SECTION 1 ──────────────────────────────────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
-              <Ionicons name="document-text" size={18} color={colors.accentPrimary} />
+              <View style={styles.sectionIconBadge}>
+                <Ionicons name="document-text-outline" size={16} color={colors.accentPrimary} />
+              </View>
               <Text style={styles.sectionTitle}>1. Agreement to Terms</Text>
             </View>
             <Text style={styles.paragraph}>
@@ -82,7 +103,9 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
           {/* ── SECTION 2 ──────────────────────────────────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
-              <Ionicons name="lock-closed" size={18} color={colors.accentPrimary} />
+              <View style={styles.sectionIconBadge}>
+                <Ionicons name="lock-closed-outline" size={16} color={colors.accentPrimary} />
+              </View>
               <Text style={styles.sectionTitle}>2. Account Registration & Data Security</Text>
             </View>
             <Text style={styles.paragraph}>
@@ -98,7 +121,9 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
           {/* ── SECTION 3 ──────────────────────────────────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
-              <Ionicons name="sparkles" size={18} color={colors.accentPrimary} />
+              <View style={styles.sectionIconBadge}>
+                <Ionicons name="sparkles-outline" size={16} color={colors.accentPrimary} />
+              </View>
               <Text style={styles.sectionTitle}>3. S.A.R.A Autonomous AI & Voice Assistant</Text>
             </View>
             <Text style={styles.paragraph}>
@@ -114,7 +139,9 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
           {/* ── SECTION 4 ──────────────────────────────────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
-              <Ionicons name="school" size={18} color={colors.accentPrimary} />
+              <View style={styles.sectionIconBadge}>
+                <Ionicons name="school-outline" size={16} color={colors.accentPrimary} />
+              </View>
               <Text style={styles.sectionTitle}>4. Academic & Timetable Radar Disclaimers</Text>
             </View>
             <Text style={styles.paragraph}>
@@ -131,14 +158,16 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
           {/* ── SECTION 5 ──────────────────────────────────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
-              <Ionicons name="barbell" size={18} color={colors.accentPrimary} />
+              <View style={styles.sectionIconBadge}>
+                <Ionicons name="barbell-outline" size={16} color={colors.accentPrimary} />
+              </View>
               <Text style={styles.sectionTitle}>5. Fitness, Gym & Wellness Disclaimer</Text>
             </View>
             <Text style={styles.paragraph}>
               The gym workout tracker, 1RM calculators, progressive overload matrices, hydration meters, and dietary suggestions provided by ZenTrack are for educational and personal organization purposes only.
             </Text>
             <View style={styles.warningBox}>
-              <Ionicons name="warning" size={18} color="#FF9F4D" style={{ marginRight: 8, marginTop: 2 }} />
+              <Ionicons name="warning-outline" size={18} color="#FF9F4D" style={{ marginRight: 10, marginTop: 1 }} />
               <Text style={styles.warningText}>
                 Consult a qualified physician or certified personal trainer before attempting high-intensity weight training or dietary changes. You assume 100% of physical risks associated with exercise routines logged in ZenTrack.
               </Text>
@@ -148,7 +177,9 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
           {/* ── SECTION 6 ──────────────────────────────────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
-              <Ionicons name="code-slash" size={18} color={colors.accentPrimary} />
+              <View style={styles.sectionIconBadge}>
+                <Ionicons name="code-slash-outline" size={16} color={colors.accentPrimary} />
+              </View>
               <Text style={styles.sectionTitle}>6. Intellectual Property & Ownership</Text>
             </View>
             <Text style={styles.paragraph}>
@@ -162,7 +193,9 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
           {/* ── SECTION 7 ──────────────────────────────────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
-              <Ionicons name="hand-left" size={18} color={colors.accentPrimary} />
+              <View style={styles.sectionIconBadge}>
+                <Ionicons name="shield-outline" size={16} color={colors.accentPrimary} />
+              </View>
               <Text style={styles.sectionTitle}>7. Prohibited Uses & Community Conduct</Text>
             </View>
             <Text style={styles.paragraph}>You expressly agree not to:</Text>
@@ -177,7 +210,9 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
           {/* ── SECTION 8 ──────────────────────────────────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
-              <Ionicons name="cloud-offline" size={18} color={colors.accentPrimary} />
+              <View style={styles.sectionIconBadge}>
+                <Ionicons name="cloud-offline-outline" size={16} color={colors.accentPrimary} />
+              </View>
               <Text style={styles.sectionTitle}>8. Service Availability & Modifications</Text>
             </View>
             <Text style={styles.paragraph}>
@@ -191,7 +226,9 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
           {/* ── SECTION 9 ──────────────────────────────────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
-              <Ionicons name="alert-circle" size={18} color={colors.accentPrimary} />
+              <View style={styles.sectionIconBadge}>
+                <Ionicons name="alert-circle-outline" size={16} color={colors.accentPrimary} />
+              </View>
               <Text style={styles.sectionTitle}>9. Limitation of Liability</Text>
             </View>
             <Text style={styles.paragraph}>
@@ -202,7 +239,9 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
           {/* ── SECTION 10 ─────────────────────────────────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
-              <Ionicons name="mail" size={18} color={colors.accentPrimary} />
+              <View style={styles.sectionIconBadge}>
+                <Ionicons name="mail-outline" size={16} color={colors.accentPrimary} />
+              </View>
               <Text style={styles.sectionTitle}>10. Contact Information & Inquiries</Text>
             </View>
             <Text style={styles.paragraph}>
@@ -217,7 +256,7 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
 
           {/* Bottom Acknowledgment Action */}
           <View style={styles.bottomActionBlock}>
-            <TouchableOpacity style={styles.agreeBtn} onPress={onClose} activeOpacity={0.88}>
+            <TouchableOpacity style={styles.agreeBtn} onPress={handleClose} activeOpacity={0.88}>
               <Text style={styles.agreeBtnText}>I Understand & Agree</Text>
             </TouchableOpacity>
           </View>
@@ -227,7 +266,7 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
 
         {/* Bottom Fade Gradient */}
         <LinearGradient
-          colors={['rgba(5,5,5,0)', isDark ? 'rgba(5,5,5,0.95)' : 'rgba(255,255,255,0.95)']}
+          colors={['rgba(0,0,0,0)', isDark ? 'rgba(8,8,12,0.95)' : 'rgba(249,249,251,0.95)']}
           style={styles.bottomGradient}
           pointerEvents="none"
         />
@@ -239,24 +278,35 @@ export default function TermsScreen({ visible, onClose }: TermsScreenProps) {
 const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: isDark ? '#08080C' : '#F9F9FB',
+    backgroundColor: isDark ? '#0A0B10' : '#F9F9FB',
+  },
+  sheetHandleContainer: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4.5,
+    borderRadius: 3,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.18)',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 20 : 36,
+    paddingTop: 8,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-    backgroundColor: isDark ? 'rgba(8,8,12,0.95)' : 'rgba(249,249,251,0.95)',
+    backgroundColor: isDark ? '#0A0B10' : '#F9F9FB',
     zIndex: 10,
   },
   headerTitle: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 17,
     color: colors.textPrimary,
+    letterSpacing: -0.2,
   },
   headerSubtitle: {
     fontFamily: FONT_FAMILY.body,
@@ -266,13 +316,16 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     letterSpacing: 0.2,
   },
   closeBtn: {
-    padding: 6,
-    borderRadius: RADIUS.full,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 18,
     paddingBottom: 80,
   },
   metaRow: {
@@ -282,12 +335,21 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     marginBottom: 20,
   },
   badgePill: {
-    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
-    paddingHorizontal: 9,
-    paddingVertical: 3.5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.10)' : 'rgba(108,92,231,0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: RADIUS.full,
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+    borderColor: isDark ? 'rgba(165,153,255,0.22)' : 'rgba(108,92,231,0.18)',
+    gap: 6,
+  },
+  badgeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: colors.accentPrimary,
   },
   badgePillText: {
     fontFamily: FONT_FAMILY.bold,
@@ -303,16 +365,26 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
   calloutBox: {
     flexDirection: 'row',
-    backgroundColor: isDark ? 'rgba(165,153,255,0.06)' : 'rgba(108,92,231,0.05)',
-    borderRadius: RADIUS.md,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.07)' : 'rgba(108,92,231,0.05)',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.15)',
-    padding: 14,
-    marginBottom: 28,
+    borderColor: isDark ? 'rgba(165,153,255,0.20)' : 'rgba(108,92,231,0.15)',
+    padding: 16,
+    marginBottom: 26,
+    gap: 12,
+  },
+  calloutIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
   },
   calloutTitle: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 13.5,
+    fontSize: 14,
     color: colors.textPrimary,
     marginBottom: 4,
   },
@@ -323,18 +395,27 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     lineHeight: 18.5,
   },
   section: {
-    marginBottom: 28,
+    marginBottom: 26,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10,
-    gap: 8,
+    gap: 10,
+  },
+  sectionIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionTitle: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 15.5,
+    fontSize: 15,
     color: colors.textPrimary,
+    letterSpacing: -0.1,
   },
   paragraph: {
     fontFamily: FONT_FAMILY.body,
@@ -361,10 +442,10 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   warningBox: {
     flexDirection: 'row',
     backgroundColor: isDark ? 'rgba(255,159,77,0.08)' : 'rgba(255,159,77,0.06)',
-    borderRadius: RADIUS.sm,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,159,77,0.25)' : 'rgba(255,159,77,0.2)',
-    padding: 12,
+    borderColor: isDark ? 'rgba(255,159,77,0.22)' : 'rgba(255,159,77,0.18)',
+    padding: 14,
     marginTop: 6,
   },
   warningText: {
@@ -375,12 +456,12 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flex: 1,
   },
   contactCard: {
-    backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-    borderRadius: RADIUS.md,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.025)',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+    borderColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)',
     padding: 14,
-    marginTop: 6,
+    marginTop: 8,
     gap: 6,
   },
   contactItem: {
@@ -389,20 +470,21 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     color: colors.textSecondary,
   },
   bottomActionBlock: {
-    marginTop: 20,
+    marginTop: 18,
     alignItems: 'center',
   },
   agreeBtn: {
     backgroundColor: isDark ? '#FFFFFF' : '#0A0A0E',
-    borderRadius: RADIUS.lg,
-    paddingVertical: 14,
+    borderRadius: 22,
+    height: 54,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+    ...SHADOW.sm,
   },
   agreeBtnText: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 14.5,
+    fontSize: 15,
     color: isDark ? '#0A0A0E' : '#FFFFFF',
     letterSpacing: 0.2,
   },
@@ -414,3 +496,4 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     height: 40,
   },
 });
+

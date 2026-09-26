@@ -1,124 +1,94 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Dimensions,
-  ScrollView, NativeSyntheticEvent, NativeScrollEvent
+  ScrollView, NativeSyntheticEvent, NativeScrollEvent, Animated, Pressable
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import Animated, {
+import Reanimated, {
   FadeInDown,
   FadeInUp,
 } from 'react-native-reanimated';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { PlayfairDisplay_600SemiBold, PlayfairDisplay_600SemiBold_Italic } from '@expo-google-fonts/playfair-display';
 import { useTheme } from '../contexts/ThemeContext';
-import { FONT_FAMILY, FONT_SIZE, RADIUS, SHADOW } from '../theme/tokens';
+import { FONT_FAMILY, RADIUS, SHADOW } from '../theme/tokens';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = SCREEN_WIDTH - 18;
-
-interface FeatureItem {
-  icon: keyof typeof Ionicons.glyphMap;
-  text: string;
-}
+const HORIZONTAL_MARGIN = 20;
+const CARD_WIDTH = SCREEN_WIDTH - (HORIZONTAL_MARGIN * 2);
+const CARD_SPACING = 12;
 
 interface ModulePillar {
   id: string;
-  step: string;
-  badge: string;
+  category: string;
+  icon: string;
+  iconSet?: 'ionicons' | 'mci';
+  iconSize?: number;
   title: string;
   desc: string;
-  features: FeatureItem[];
   preview: string;
-  status: string;
+  accentColor: string;
 }
 
 const MODULE_PILLARS: ModulePillar[] = [
   {
     id: 'voice_nlp',
-    step: '01 / VOICE NLP INTELLIGENCE',
-    badge: 'VOICE NLP',
-    title: 'Voice-to-Action NLP Engine',
-    desc: 'Speak naturally to capture tasks, log habits, schedule routines & query telemetry hands-free',
-    features: [
-      { icon: 'mic-outline', text: 'Natural speech-to-intent command parsing' },
-      { icon: 'flash-outline', text: 'Zero-latency multi-action autonomous pipeline' },
-      { icon: 'notifications-outline', text: 'Proactive routine alerts & schedule warnings' },
-    ],
-    preview: '🎙️ "Log 300ml water and remind DSA study for 6 PM"',
-    status: 'Neural Voice Pipeline · Low Latency',
+    category: 'VOICE INTELLIGENCE',
+    icon: 'mic',
+    iconSet: 'ionicons',
+    iconSize: 21,
+    title: 'Speak to plan your day.',
+    desc: 'Dictate tasks, schedule routines, or log habits hands-free. Instant local parsing with zero friction.',
+    preview: '🎙️ "Study physics at 9am, gym at 6pm"',
+    accentColor: '#A599FF',
   },
   {
     id: 'tasks',
-    step: '02 / TASKS & NLP',
-    badge: 'NLP ENGINE',
-    title: 'Smart Task Management',
-    desc: 'Frictionless capture with intelligent deadline parsing & recurring cadence',
-    features: [
-      { icon: 'time-outline', text: 'Natural language time & recurrence parser' },
-      { icon: 'checkbox-outline', text: 'Eisenhower matrix & subtask checklists' },
-      { icon: 'pricetag-outline', text: 'Smart tag filters & priority weighting' },
-    ],
-    preview: '⚡ Quick Capture · Auto-scheduled for 6:00 PM',
-    status: 'Offline-First Local Sync',
+    category: 'SMART TASKS',
+    icon: 'checkmark-circle',
+    iconSet: 'ionicons',
+    iconSize: 22,
+    title: 'Capture tasks in seconds.',
+    desc: 'Natural language deadlines, Eisenhower priority tagging, and subtasks — 100% offline-first.',
+    preview: '⚡ Deep Work · Today 4:00 PM · High Priority',
+    accentColor: '#34C759',
   },
   {
     id: 'attendance',
-    step: '03 / ACADEMIC RADAR',
-    badge: 'SAFE ZONE',
-    title: 'Timetable & Attendance',
-    desc: 'Live college schedule radar with automated bunk safety calculations',
-    features: [
-      { icon: 'shield-checkmark-outline', text: '75% safe-zone threshold safeguard' },
-      { icon: 'calculator-outline', text: 'Predictive bunk availability calculator' },
-      { icon: 'school-outline', text: 'Live college timetable slot alerts' },
-    ],
+    category: 'ACADEMIC RADAR',
+    icon: 'id-card',
+    iconSet: 'ionicons',
+    iconSize: 21,
+    title: 'Never drop below 75% attendance.',
+    desc: 'Live timetable schedule with automatic bunk safety calculations and proactive attendance alerts.',
     preview: '🎓 Data Structures · 84.2% · 2 Bunks Safe',
-    status: 'Bunk Safeguard Active',
+    accentColor: '#6C5CE7',
   },
   {
     id: 'gym',
-    step: '04 / GYM & OVERLOAD',
-    badge: 'PROGRESSION',
-    title: 'Gym & Progressive Overload',
-    desc: 'Log sets, calculate 1RM velocity, track muscle splits and rest intervals',
-    features: [
-      { icon: 'barbell-outline', text: 'Push / Pull / Legs split workout tracker' },
-      { icon: 'timer-outline', text: 'Automated rest interval stopwatch' },
-      { icon: 'trending-up-outline', text: 'Dynamic volume & 1RM progressive overload' },
-    ],
-    preview: '🏋️ Push Day A · Bench Press: 80kg × 8 reps',
-    status: 'Volume PR Tracked',
+    category: 'GYM & WORKOUTS',
+    icon: 'arm-flex',
+    iconSet: 'mci',
+    iconSize: 23,
+    title: 'Progressive overload, tracked.',
+    desc: 'Log sets, track 1RM progression, and optimize rest intervals across your Push / Pull / Legs split.',
+    preview: '🏋️ Bench Press · 80kg × 8 reps (New PR)',
+    accentColor: '#38BDF8',
   },
   {
     id: 'habits',
-    step: '05 / DISCIPLINE & XP',
-    badge: 'MYTHIC TIER',
-    title: 'Habit Constellations & Water',
-    desc: 'Gamified consistency streaks, hydration targets, and character XP',
-    features: [
-      { icon: 'flame-outline', text: 'Unbreakable multi-day habit streak shields' },
-      { icon: 'water-outline', text: 'Adaptive hydration dial & interval logging' },
-      { icon: 'trophy-outline', text: 'Gamified character XP & mythic tier badges' },
-    ],
-    preview: '💧 Hydration: 2.8 / 3.0L · 🔥 42-Day Streak',
-    status: 'Level 14 · Mythic Rank',
-  },
-  {
-    id: 'vault',
-    step: '06 / VAULT & ANALYTICS',
-    badge: 'ENCRYPTED',
-    title: 'Analytics & Secure Vault',
-    desc: 'Life balance telemetry, focus velocity, and encrypted markdown notes',
-    features: [
-      { icon: 'lock-closed-outline', text: 'Private encrypted markdown journal & vault' },
-      { icon: 'analytics-outline', text: 'Life balance telemetry & focus velocity index' },
-      { icon: 'cloud-offline-outline', text: 'Offline-first WhatsApp-grade local sync' },
-    ],
-    preview: '🔒 Private Notes · 94% Focus Velocity Index',
-    status: 'End-to-End Encrypted',
+    category: 'HABITS & DISCIPLINE',
+    icon: 'sync',
+    iconSet: 'ionicons',
+    iconSize: 21,
+    title: 'Build streaks that stick.',
+    desc: 'Daily habit streaks, hydration goals, and gamified XP rewards to keep you consistent every day.',
+    preview: '🔥 42-Day Streak · 💧 2.8L Water Logged',
+    accentColor: '#FF9500',
   },
 ];
 
@@ -130,6 +100,9 @@ export default function LandingScreen() {
   const [isUserInteracting, setIsUserInteracting] = useState(false);
   const userInteractTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Button Spring Press Animation
+  const btnScale = useRef(new Animated.Value(1)).current;
+
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -139,7 +112,7 @@ export default function LandingScreen() {
     PlayfairDisplay_600SemiBold_Italic,
   });
 
-  // ── Auto-Scroll Carousel with Seamless Loop ────────────────────────────────
+  // Smooth Auto-Scroll Carousel
   useEffect(() => {
     if (isUserInteracting) return;
 
@@ -147,12 +120,12 @@ export default function LandingScreen() {
       setActiveCardIndex((prev) => {
         const nextIndex = (prev + 1) % MODULE_PILLARS.length;
         scrollRef.current?.scrollTo({
-          x: nextIndex * (CARD_WIDTH + 8),
+          x: nextIndex * (CARD_WIDTH + CARD_SPACING),
           animated: true,
         });
         return nextIndex;
       });
-    }, 3600);
+    }, 4500);
 
     return () => clearInterval(timer);
   }, [isUserInteracting]);
@@ -168,7 +141,7 @@ export default function LandingScreen() {
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(offsetX / (CARD_WIDTH + 8));
+    const index = Math.round(offsetX / (CARD_WIDTH + CARD_SPACING));
     if (index !== activeCardIndex && index >= 0 && index < MODULE_PILLARS.length) {
       setActiveCardIndex(index);
       Haptics.selectionAsync();
@@ -177,59 +150,73 @@ export default function LandingScreen() {
 
   const handleScrollBeginDrag = () => {
     setIsUserInteracting(true);
-    if (userInteractTimeoutRef.current) {
-      clearTimeout(userInteractTimeoutRef.current);
-    }
+    if (userInteractTimeoutRef.current) clearTimeout(userInteractTimeoutRef.current);
   };
 
   const handleScrollEndDrag = () => {
-    if (userInteractTimeoutRef.current) {
-      clearTimeout(userInteractTimeoutRef.current);
-    }
+    if (userInteractTimeoutRef.current) clearTimeout(userInteractTimeoutRef.current);
     userInteractTimeoutRef.current = setTimeout(() => {
       setIsUserInteracting(false);
-    }, 4500);
+    }, 5000);
   };
 
   const handleDotPress = (index: number) => {
     Haptics.selectionAsync();
     setActiveCardIndex(index);
     scrollRef.current?.scrollTo({
-      x: index * (CARD_WIDTH + 8),
+      x: index * (CARD_WIDTH + CARD_SPACING),
       animated: true,
     });
     setIsUserInteracting(true);
     if (userInteractTimeoutRef.current) clearTimeout(userInteractTimeoutRef.current);
-    userInteractTimeoutRef.current = setTimeout(() => setIsUserInteracting(false), 4500);
+    userInteractTimeoutRef.current = setTimeout(() => setIsUserInteracting(false), 5000);
+  };
+
+  const pressIn = () => {
+    Animated.spring(btnScale, { toValue: 0.97, useNativeDriver: true, tension: 100, friction: 8 }).start();
+  };
+
+  const pressOut = () => {
+    Animated.spring(btnScale, { toValue: 1, useNativeDriver: true, tension: 100, friction: 8 }).start();
   };
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
+      {/* Subtle Ambient Cosmic Violet Aura */}
+      <LinearGradient
+        colors={isDark ? ['rgba(165,153,255,0.07)', 'rgba(0,0,0,0)'] : ['rgba(108,92,231,0.05)', 'rgba(255,255,255,0)']}
+        style={StyleSheet.absoluteFillObject}
+        locations={[0, 0.45]}
+        pointerEvents="none"
+      />
+
       <View style={styles.content}>
-        
-        {/* ── Top Header (Matching Step 02 in AuthScreen) ─────────────── */}
-        <Animated.View entering={FadeInDown.duration(600)} style={styles.topHeader}>
+        {/* Top Header */}
+        <Reanimated.View entering={FadeInDown.duration(500)} style={styles.topHeader}>
           <Text style={[styles.brand, { color: colors.textPrimary }]}>ZENTRACK</Text>
           <Text style={[styles.step, { color: colors.textMuted }]}>01 / welcome</Text>
-        </Animated.View>
+        </Reanimated.View>
 
-        {/* ── Main Editorial Hero Block ───────────────────────────────── */}
-        <Animated.View entering={FadeInDown.delay(120).duration(700)} style={styles.mainBlock}>
+        {/* Main Editorial Hero Block */}
+        <Reanimated.View entering={FadeInDown.delay(100).duration(600)} style={styles.mainBlock}>
           <View style={styles.heroTextContainer}>
-            <Text style={[styles.heroTitleItalic, { color: colors.accentPrimary }]}>Quietly</Text>
+            <Text style={[styles.heroTitleRow, { color: colors.accentPrimary }]}>
+              <Text style={styles.modernGeometricQ}>Q</Text>
+              <Text style={styles.heroTitleRest}>uietly</Text>
+            </Text>
             <Text style={[styles.heroTitleBold, { color: colors.textPrimary }]}>orchestrated.</Text>
           </View>
 
           <Text style={[styles.sub, { color: colors.textSecondary }]}>
-            Tasks, time, academics, and habits, handled alongside you. No dashboard clutter. Zero cognitive friction.
+            Tasks, timetable, academics, and habits, handled alongside you. No dashboard clutter. Zero cognitive friction.
           </Text>
 
-          {/* ── Sliding Minimalist Telemetry Cards / Pills ────────────── */}
+          {/* Minimalist Showcase Cards Carousel */}
           <View style={styles.carouselWrapper}>
             <ScrollView
               ref={scrollRef}
               horizontal
-              pagingEnabled
+              pagingEnabled={false}
               showsHorizontalScrollIndicator={false}
               onScroll={handleScroll}
               onScrollBeginDrag={handleScrollBeginDrag}
@@ -237,7 +224,7 @@ export default function LandingScreen() {
               onMomentumScrollEnd={handleScrollEndDrag}
               scrollEventThrottle={16}
               decelerationRate="fast"
-              snapToInterval={CARD_WIDTH + 8}
+              snapToInterval={CARD_WIDTH + CARD_SPACING}
               snapToAlignment="start"
               contentContainerStyle={styles.carouselContent}
             >
@@ -247,132 +234,141 @@ export default function LandingScreen() {
                   <View
                     key={item.id}
                     style={[
-                      styles.slidingCard,
+                      styles.showcaseCard,
                       {
                         width: CARD_WIDTH,
                         borderColor: isSelected
-                          ? isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.18)'
-                          : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-                        backgroundColor: isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.02)',
+                          ? isDark ? 'rgba(165, 153, 255, 0.28)' : 'rgba(108, 92, 231, 0.24)'
+                          : isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+                        backgroundColor: isDark ? '#10121A' : '#FFFFFF',
                       },
                     ]}
                   >
-                    {/* Card Top Label & Badge */}
-                    <View style={styles.cardTopRow}>
-                      <Text style={[styles.cardStepText, { color: colors.textMuted }]}>{item.step}</Text>
+                    {/* Header Row: Icon Badge + Category Pill */}
+                    <View style={styles.cardHeaderRow}>
                       <View
                         style={[
-                          styles.cardBadge,
+                          styles.iconBadge,
                           {
-                            backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
-                            borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.18)',
+                            backgroundColor: `${item.accentColor}18`,
+                            borderColor: `${item.accentColor}35`,
                           },
                         ]}
                       >
-                        <Text style={[styles.cardBadgeText, { color: colors.accentPrimary }]}>{item.badge}</Text>
+                        {item.iconSet === 'mci' ? (
+                          <MaterialCommunityIcons name={item.icon as any} size={item.iconSize || 22} color={item.accentColor} />
+                        ) : (
+                          <Ionicons name={item.icon as any} size={item.iconSize || 21} color={item.accentColor} />
+                        )}
+                      </View>
+                      <View
+                        style={[
+                          styles.categoryPill,
+                          {
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+                          },
+                        ]}
+                      >
+                        <View style={[styles.dotIndicator, { backgroundColor: item.accentColor }]} />
+                        <Text style={[styles.categoryPillText, { color: colors.textMuted }]}>
+                          {item.category}
+                        </Text>
                       </View>
                     </View>
 
-                    {/* Card Title & Desc */}
-                    <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.title}</Text>
-                    <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>{item.desc}</Text>
+                    {/* Bold Punchy Title */}
+                    <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
+                      {item.title}
+                    </Text>
 
-                    {/* Feature Rows with dedicated icons */}
-                    <View style={styles.featuresRow}>
-                      {item.features.map((feat, i) => (
-                        <View key={i} style={styles.featureItem}>
-                          <View
-                            style={[
-                              styles.featureIconBox,
-                              {
-                                backgroundColor: isDark
-                                  ? 'rgba(165,153,255,0.12)'
-                                  : 'rgba(108,92,231,0.08)',
-                              },
-                            ]}
-                          >
-                            <Ionicons
-                              name={feat.icon}
-                              size={12}
-                              color={colors.accentPrimary}
-                            />
-                          </View>
-                          <Text
-                            style={[styles.featureText, { color: colors.textSecondary }]}
-                            numberOfLines={1}
-                          >
-                            {feat.text}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
+                    {/* Friendly Human Description */}
+                    <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>
+                      {item.desc}
+                    </Text>
 
-                    {/* Monochromatic Preview Capsule */}
-                    <View style={[styles.previewCapsule, { backgroundColor: isDark ? 'rgba(0,0,0,0.40)' : 'rgba(255,255,255,0.6)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
+                    {/* Clean Interactive Preview Capsule */}
+                    <View
+                      style={[
+                        styles.previewCapsule,
+                        {
+                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.035)' : 'rgba(0, 0, 0, 0.03)',
+                          borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+                        },
+                      ]}
+                    >
                       <Text style={[styles.previewText, { color: colors.textPrimary }]} numberOfLines={1}>
                         {item.preview}
                       </Text>
-                    </View>
-
-                    {/* Bottom Status Row */}
-                    <View style={styles.cardStatusRow}>
-                      <View style={[styles.statusDot, { backgroundColor: isDark ? '#5EDA9E' : '#059669' }]} />
-                      <Text style={[styles.statusText, { color: colors.textMuted }]}>{item.status}</Text>
                     </View>
                   </View>
                 );
               })}
             </ScrollView>
 
-            {/* Pagination Dots */}
+            {/* iOS-Style Pagination Indicators */}
             <View style={styles.paginationRow}>
-              {MODULE_PILLARS.map((_, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  onPress={() => handleDotPress(idx)}
-                  hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
-                  activeOpacity={0.7}
-                >
-                  <View
-                    style={[
-                      styles.paginationDot,
-                      {
-                        backgroundColor: activeCardIndex === idx
-                          ? (isDark ? '#FFFFFF' : '#0A0A0E')
-                          : (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.15)'),
-                        width: activeCardIndex === idx ? 16 : 4.5,
-                      },
-                    ]}
-                  />
-                </TouchableOpacity>
-              ))}
+              {MODULE_PILLARS.map((_, idx) => {
+                const isActive = activeCardIndex === idx;
+                return (
+                  <TouchableOpacity
+                    key={idx}
+                    onPress={() => handleDotPress(idx)}
+                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                    activeOpacity={0.7}
+                  >
+                    <View
+                      style={[
+                        styles.paginationDot,
+                        {
+                          backgroundColor: isActive
+                            ? (isDark ? '#FFFFFF' : '#0A0A0E')
+                            : (isDark ? 'rgba(255, 255, 255, 0.18)' : 'rgba(0, 0, 0, 0.14)'),
+                          width: isActive ? 20 : 6,
+                        },
+                      ]}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
-        </Animated.View>
+        </Reanimated.View>
 
-        {/* ── Bottom Actions (Matching AuthScreen Google Button) ──────── */}
-        <Animated.View entering={FadeInUp.delay(200).duration(700)} style={styles.bottomBlock}>
+        {/* Bottom CTA Block */}
+        <Reanimated.View entering={FadeInUp.delay(180).duration(600)} style={styles.bottomBlock}>
           <TouchableOpacity
-            style={[
-              styles.primaryBtn,
-              {
-                backgroundColor: isDark ? '#FFFFFF' : '#0A0A0E',
-                borderColor: isDark ? '#FFFFFF' : '#0A0A0E',
-              }
-            ]}
+            onPressIn={pressIn}
+            onPressOut={pressOut}
             onPress={handleGetStarted}
-            activeOpacity={0.88}
+            activeOpacity={0.9}
+            style={styles.btnWrapper}
           >
-            <Text style={[styles.primaryBtnText, { color: isDark ? '#0A0A0E' : '#FFFFFF' }]}>
-              Get Started  →
-            </Text>
+            <Animated.View
+              style={[
+                styles.primaryBtn,
+                {
+                  backgroundColor: isDark ? '#FFFFFF' : '#0A0A0E',
+                  borderColor: isDark ? '#FFFFFF' : '#0A0A0E',
+                  transform: [{ scale: btnScale }],
+                },
+              ]}
+            >
+              <Text style={[styles.primaryBtnText, { color: isDark ? '#0A0A0E' : '#FFFFFF' }]}>
+                Get Started
+              </Text>
+              <Ionicons
+                name="arrow-forward"
+                size={16}
+                color={isDark ? '#0A0A0E' : '#FFFFFF'}
+                style={{ marginLeft: 8 }}
+              />
+            </Animated.View>
           </TouchableOpacity>
 
           <Text style={[styles.trustText, { color: colors.textMuted }]}>
             Private · 100% Local-First · Encrypted
           </Text>
-        </Animated.View>
-
+        </Reanimated.View>
       </View>
     </SafeAreaView>
   );
@@ -384,14 +380,13 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 5,
+    paddingHorizontal: HORIZONTAL_MARGIN,
     justifyContent: 'space-between',
     paddingTop: 8,
-    paddingBottom: 24,
+    paddingBottom: 20,
   },
   topHeader: {
-    marginTop: 8,
-    paddingHorizontal: 6,
+    marginTop: 6,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -408,140 +403,123 @@ const styles = StyleSheet.create({
   },
   mainBlock: {
     justifyContent: 'center',
-    paddingHorizontal: 4,
-    marginTop: 4,
-    marginBottom: 12,
+    marginVertical: 4,
   },
   heroTextContainer: {
-    marginBottom: 10,
+    marginBottom: 6,
+    overflow: 'visible',
   },
-  heroTitleItalic: {
-    fontFamily: 'PlayfairDisplay_600SemiBold_Italic',
-    fontSize: 46,
+  heroTitleRow: {
+    fontSize: 44,
     lineHeight: 52,
-    paddingLeft: 4,
-    paddingRight: 16,
-    paddingVertical: 2,
+  },
+  modernGeometricQ: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 46,
+    letterSpacing: 0.5,
+  },
+  heroTitleRest: {
+    fontFamily: 'PlayfairDisplay_600SemiBold_Italic',
+    fontSize: 44,
+    lineHeight: 52,
   },
   heroTitleBold: {
     fontFamily: 'PlayfairDisplay_600SemiBold',
-    fontSize: 36,
-    lineHeight: 42,
-    letterSpacing: -0.5,
-    paddingLeft: 4,
+    fontSize: 34,
+    lineHeight: 38,
+    letterSpacing: -0.6,
   },
   sub: {
     fontFamily: FONT_FAMILY.body,
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 13.5,
+    lineHeight: 20,
     marginBottom: 16,
-    paddingHorizontal: 4,
+    opacity: 0.85,
   },
 
-  // Carousel & Sliding Cards
+  // Showcase Cards
   carouselWrapper: {
     width: '100%',
   },
   carouselContent: {
-    gap: 8,
+    gap: CARD_SPACING,
+    paddingVertical: 4,
   },
-  slidingCard: {
-    borderRadius: RADIUS.lg,
+  showcaseCard: {
+    borderRadius: 24,
     borderWidth: 1,
-    padding: 15,
+    padding: 18,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 3,
   },
-  cardTopRow: {
+  cardHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 12,
   },
-  cardStepText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 9.5,
-    letterSpacing: 1,
-  },
-  cardBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
+  iconBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
   },
-  cardBadgeText: {
+  categoryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: RADIUS.full,
+    gap: 5,
+  },
+  dotIndicator: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  categoryPillText: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 8.5,
+    fontSize: 9.5,
     letterSpacing: 0.8,
   },
   cardTitle: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 16.5,
-    letterSpacing: 0.2,
-    marginBottom: 3,
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: -0.2,
+    marginBottom: 6,
   },
   cardDesc: {
     fontFamily: FONT_FAMILY.body,
-    fontSize: 12,
-    lineHeight: 17,
-    marginBottom: 10,
-  },
-  featuresRow: {
-    marginBottom: 10,
-    gap: 4,
-  },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  featureIconBox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  featureText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11.5,
-    lineHeight: 16,
-    flex: 1,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 16,
+    opacity: 0.8,
   },
   previewCapsule: {
-    paddingHorizontal: 12,
-    paddingVertical: 7.5,
-    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
     borderWidth: 1,
-    marginBottom: 8,
   },
   previewText: {
     fontFamily: FONT_FAMILY.medium,
-    fontSize: 11.5,
-  },
-  cardStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    marginRight: 6,
-  },
-  statusText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 10.5,
-    letterSpacing: 0.2,
+    fontSize: 12.5,
   },
   paginationRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 5,
-    marginTop: 10,
+    gap: 6,
+    marginTop: 14,
   },
   paginationDot: {
-    height: 3.5,
+    height: 4,
     borderRadius: 2,
   },
 
@@ -549,17 +527,19 @@ const styles = StyleSheet.create({
   bottomBlock: {
     width: '100%',
     alignItems: 'center',
-    paddingHorizontal: 4,
+  },
+  btnWrapper: {
+    width: '100%',
+    marginBottom: 12,
   },
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADIUS.lg,
-    paddingVertical: 15,
+    borderRadius: 22,
+    height: 54,
     width: '100%',
     borderWidth: 1,
-    marginBottom: 12,
     ...SHADOW.sm,
   },
   primaryBtnText: {
@@ -569,9 +549,10 @@ const styles = StyleSheet.create({
   },
   trustText: {
     fontFamily: FONT_FAMILY.body,
-    fontSize: FONT_SIZE.xs,
+    fontSize: 11,
     opacity: 0.6,
     letterSpacing: 0.3,
     textAlign: 'center',
   },
 });
+

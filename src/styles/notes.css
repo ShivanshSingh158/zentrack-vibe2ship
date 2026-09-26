@@ -287,6 +287,19 @@ body.notes-fullscreen-active .app-layout-sidebar .main-content,
   color: #ffffff;
 }
 
+.notes-action-pill-btn.compress-pill {
+  border-color: rgba(124, 58, 237, 0.35);
+  background: rgba(124, 58, 237, 0.08);
+  color: var(--notes-accent-purple-light);
+}
+
+.notes-action-pill-btn.compress-pill:hover {
+  background: rgba(124, 58, 237, 0.18);
+  border-color: var(--notes-accent-purple-light);
+  color: #ffffff;
+}
+
+
 .notes-primary-add-btn {
   display: inline-flex;
   align-items: center;

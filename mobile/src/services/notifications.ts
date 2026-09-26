@@ -1,4 +1,4 @@
-﻿/**
+/**
  * notifications.ts â€” ZenTrack Mobile
  *
  * scheduleAllNotifications() â€” the single source of truth for all local notifications.
@@ -10,7 +10,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
-import { getDocs, collection, query, where, getFirestore } from 'firebase/firestore';
+import { getDocs, collection, query, where, getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 import { initializeApp, getApps } from 'firebase/app';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
@@ -161,6 +161,46 @@ export function getLastScheduleStatus() {
     count: _lastScheduledCount,
     lastError: _lastScheduleError,
   };
+}
+
+// ── Firestore Cross-Device Fingerprint Sync ────────────────────────────────────
+// Collection: notification_schedules / {userId}
+// Both devices write/read this doc. When device A reschedules and saves a new
+// fingerprint to Firestore, device B will pull it on next run, see its local
+// cache is stale, and reschedule at the SAME absolute timestamps — eliminating
+// the 4–5 minute gap caused by each device scheduling independently.
+
+const _NOTIF_SCHEDULE_COLLECTION = 'notification_schedules';
+const _CLOUD_SYNC_TIMEOUT_MS = 3000;
+
+async function _pullFingerprintFromFirestore(userId: string): Promise<string | null> {
+  try {
+    const db = getFirestore();
+    const ref = doc(db, _NOTIF_SCHEDULE_COLLECTION, userId);
+    const snap = await Promise.race<any>([
+      getDoc(ref),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), _CLOUD_SYNC_TIMEOUT_MS)),
+    ]);
+    if (!snap || !snap.exists()) return null;
+    const data = snap.data();
+    return typeof data?.fingerprint === 'string' ? data.fingerprint : null;
+  } catch {
+    return null; // offline or timeout: fall through to local cache
+  }
+}
+
+async function _pushFingerprintToFirestore(userId: string, fingerprint: string): Promise<void> {
+  try {
+    const db = getFirestore();
+    const ref = doc(db, _NOTIF_SCHEDULE_COLLECTION, userId);
+    await setDoc(ref, {
+      fingerprint,
+      scheduledAt: Date.now(),
+      deviceModel: Device.modelName ?? 'unknown',
+    }, { merge: true });
+  } catch {
+    // Non-fatal: local scheduling already succeeded
+  }
 }
 
 function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | null>): string {
@@ -385,6 +425,22 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       if (!_lastScheduleFingerprint) {
         const cached = getBootManifestSync()?.notifFingerprint || (await AsyncStorage.getItem(NOTIF_FINGERPRINT_KEY).catch(() => null));
         if (cached) _lastScheduleFingerprint = cached;
+      }
+
+      // Cross-device sync: pull the cloud fingerprint
+      // If another device (e.g. tablet) already ran a full reschedule with the
+      // current data, it will have written its fingerprint to Firestore. We pull
+      // it here so THIS device can also update its local cache and reschedule
+      // against the same absolute timestamps -- eliminating the 4-5 min gap.
+      const userId = auth.currentUser?.uid;
+      if (userId) {
+        const cloudFp = await _pullFingerprintFromFirestore(userId);
+        if (cloudFp && cloudFp !== _lastScheduleFingerprint) {
+          console.log("[Notifications] Cloud fingerprint differs from local -- syncing for cross-device alignment.");
+          _lastScheduleFingerprint = cloudFp;
+          AsyncStorage.setItem(NOTIF_FINGERPRINT_KEY, cloudFp).catch(() => {});
+          updateL1Cache("notifFingerprint", cloudFp);
+        }
       }
 
       const fingerprint = _buildFingerprint(currentParams, kv);
@@ -1655,6 +1711,10 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         _lastScheduleError = null;
         AsyncStorage.setItem(NOTIF_FINGERPRINT_KEY, fingerprint).catch(() => {});
         updateL1Cache('notifFingerprint', fingerprint);
+        // Push to Firestore so the other device (tablet/phone) picks up the same
+        // fingerprint on its next run and reschedules at identical absolute times.
+        const uid = auth.currentUser?.uid;
+        if (uid) _pushFingerprintToFirestore(uid, fingerprint);
       } else if (pendingQueue.length > 0) {
         console.warn(`[Notifications] 0 of ${pendingQueue.length} notifications scheduled! Last error: ${_lastScheduleError}`);
       }

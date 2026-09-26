@@ -25,7 +25,8 @@ import * as Haptics from 'expo-haptics';
 import { parseNLTask, ParsedTask, NLPToken } from '../../utils/dateUtils';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { useTheme } from '../../contexts/ThemeContext';
-import { startVADRecording, stopAndTranscribe, cancelVoiceRecording, isSilenceOrNoise, VoiceState } from '../../services/voiceEngine';
+import { isSilenceOrNoise, VoiceState } from '../../services/voiceEngine';
+import { startNativeStt, stopNativeStt, abortNativeStt, isNativeSttListening } from '../../services/nativeStt';
 import { ActivityIndicator } from 'react-native';
 import VoiceMicButton from '../SARA/VoiceMicButton';
 
@@ -105,36 +106,40 @@ export default function NLPTaskInput({
 
   useEffect(() => {
     return () => {
-      cancelVoiceRecording();
+      abortNativeStt();
     };
   }, []);
 
   const handleToggleVoice = async () => {
     if (voiceState === 'recording') {
-      await stopAndTranscribe({
-        onStateChange: setVoiceState,
-        onTranscript: (t) => {
-          if (!t || !t.trim() || isSilenceOrNoise(t)) return;
-          onChangeText(t);
-          if (onAutoSubmit) onAutoSubmit(t);
-        },
-        onError: (err) => console.log('Voice error', err)
-      });
+      // Stop native STT — will finalize and fire the final result
+      stopNativeStt();
+      setVoiceState('idle');
       return;
     }
-    
-    await startVADRecording({
-      onStateChange: setVoiceState,
-      onTranscript: (t) => {
-        if (!t || !t.trim() || isSilenceOrNoise(t)) return;
-        handleLocalChangeText(t);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        if (onAutoSubmit) onAutoSubmit(t);
+
+    // Start native OS SpeechRecognizer (Gboard-level quality)
+    await startNativeStt({
+      onStateChange: (state) => {
+        if (state === 'listening') setVoiceState('recording');
+        else if (state === 'idle') setVoiceState('idle');
+        else if (state === 'error') setVoiceState('idle');
+      },
+      onResult: (text, isFinal) => {
+        if (!text || !text.trim()) return;
+        // Show interim text live as user speaks
+        handleLocalChangeText(text);
+        if (isFinal) {
+          // Final result — auto-submit
+          if (isSilenceOrNoise(text)) return;
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          if (onAutoSubmit) onAutoSubmit(text);
+        }
       },
       onError: (err) => {
         console.log('Voice error', err);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      }
+      },
     });
   };
 

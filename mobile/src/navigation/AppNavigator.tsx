@@ -167,19 +167,20 @@ const ALLOWED_SAVE_ROUTES = new Set([
 
 
 // --- Full Component Map for Bottom Tabs --------------------------------------
-// withTabEntrance applied to the four pinned tabs (highest-traffic screens)
-// for WhatsApp/Telegram-grade fade + lift on focus. Others get raw error boundary.
+// withTabEntrance applied to ALL tab screens for unified Apple iOS-grade
+// ease-out-expo fade + spring lift on every focus event.
+// Runs 100% on UI thread (Reanimated worklets) — 60fps regardless of JS load.
 const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
-  Tasks:          withTabEntrance(withErrorBoundary(TasksScreen,      'Tasks')),
-  Attendance:     withTabEntrance(withErrorBoundary(AttendanceScreen, 'Attendance')),
-  Gym:            withErrorBoundary(GymStack,        'Gym'),
-  Calendar:       withTabEntrance(withErrorBoundary(CalendarScreen,   'Calendar')),
-  Habits:         withErrorBoundary(HabitsScreen,    'Habits'),
-  Analytics:      withErrorBoundary(AnalyticsScreen, 'Analytics'),
-  Notes:          withErrorBoundary(NotesScreen,     'Notes'),
-  Grades:         withErrorBoundary(GradesScreen,    'Grades'),
-  Assignments:    withErrorBoundary(AssignmentsScreen, 'Assignments'),
-  Learning:       withErrorBoundary(LearningScreen,  'Learning'),
+  Tasks:       withTabEntrance(withErrorBoundary(TasksScreen,       'Tasks')),
+  Attendance:  withTabEntrance(withErrorBoundary(AttendanceScreen,  'Attendance')),
+  Gym:         withTabEntrance(withErrorBoundary(GymStack,          'Gym')),
+  Calendar:    withTabEntrance(withErrorBoundary(CalendarScreen,    'Calendar')),
+  Habits:      withTabEntrance(withErrorBoundary(HabitsScreen,      'Habits')),
+  Analytics:   withTabEntrance(withErrorBoundary(AnalyticsScreen,   'Analytics')),
+  Notes:       withTabEntrance(withErrorBoundary(NotesScreen,       'Notes')),
+  Grades:      withTabEntrance(withErrorBoundary(GradesScreen,      'Grades')),
+  Assignments: withTabEntrance(withErrorBoundary(AssignmentsScreen, 'Assignments')),
+  Learning:    withTabEntrance(withErrorBoundary(LearningScreen,    'Learning')),
 };
 
 const ALL_NAV_MODULE_IDS = Object.keys(COMPONENT_MAP);
@@ -205,9 +206,9 @@ import { TelegramTabBar } from '../components/Navigation/TelegramTabBar';
 import { withTabEntrance } from '../components/Navigation/withTabEntrance';
 
 // --- SafeDashboard & SafeMore (defined before MainTabNavigator that uses them) -------------
-// withTabEntrance adds WhatsApp/Telegram-grade fade + lift on every tab focus
+// withTabEntrance adds Apple iOS-grade ease-out-expo fade + spring lift on every tab focus
 const SafeDashboard = withTabEntrance(withErrorBoundary(DashboardScreen, 'Dashboard'));
-const SafeMore      = withErrorBoundary(MoreScreen, 'More');
+const SafeMore      = withTabEntrance(withErrorBoundary(MoreScreen,      'More'));
 
 const TabBarNullButton = () => null;
 
@@ -300,28 +301,34 @@ function MainTabNavigator() {
 }
 
 // --- Nested screens stack ----------------------------------------------------
+//
+// ANIMATION STRATEGY:
+// - Default: 'ios' at 180ms — native spring-based slide that matches system apps.
+// - Modal screens (no header, overlay feel): 'fade_from_bottom' — lifts up like
+//   an iOS sheet, which is more natural than a side-slide for full-screen overlays.
 function NestedScreens() {
   const { colors } = useTheme();
   return (
     <ErrorBoundary screenName="Nested Screens">
       <Stack.Navigator
         screenOptions={{
-          header:            ({ route }) => <NestedHeader title={route.name} />,
-          contentStyle:      { backgroundColor: colors.background },
-          animation:         'slide_from_right',
-          animationDuration: 220,
+          header:                  ({ route }) => <NestedHeader title={route.name} />,
+          contentStyle:            { backgroundColor: colors.background },
+          animation:               'default',
+          animationDuration:       180,
           fullScreenGestureEnabled: true,
         }}
       >
         <Stack.Screen name="Settings"              component={withErrorBoundary(SettingsScreen,              'Settings')} />
         <Stack.Screen name="NotificationsSettings" component={withErrorBoundary(NotificationsSettingsScreen, 'Notifications')} options={{ headerShown: false }} />
         <Stack.Screen name="Sara"                  component={NullScreen}                                                       options={{ headerShown: false }} />
-        <Stack.Screen name="StreakDetail"           component={withErrorBoundary(StreakDetailScreen,          'StreakDetail')}   options={{ headerShown: false }} />
+        {/* Modal-style screens lift up from bottom — more natural than a side-slide */}
+        <Stack.Screen name="StreakDetail"           component={withErrorBoundary(StreakDetailScreen,          'StreakDetail')}   options={{ headerShown: false, animation: 'fade_from_bottom', animationDuration: 320 }} />
         <Stack.Screen name="SaraModal"             component={NullScreen}                                                       options={{ headerShown: false }} />
         <Stack.Screen name="AgentHistory"          component={withErrorBoundary(AgentHistoryScreen,          'AgentHistory')} />
         <Stack.Screen name="Assignments"           component={withErrorBoundary(AssignmentsScreen,           'Assignments')}   options={{ headerShown: false }} />
-        <Stack.Screen name="WellbeingDashboard"    component={withErrorBoundary(WellbeingDashboardScreen,    'Wellbeing')}     options={{ headerShown: false }} />
-        <Stack.Screen name="XPConstellation"       component={withErrorBoundary(XPConstellationScreen,       'XPConstellation')} options={{ headerShown: false }} />
+        <Stack.Screen name="WellbeingDashboard"    component={withErrorBoundary(WellbeingDashboardScreen,    'Wellbeing')}     options={{ headerShown: false, animation: 'fade_from_bottom', animationDuration: 320 }} />
+        <Stack.Screen name="XPConstellation"       component={withErrorBoundary(XPConstellationScreen,       'XPConstellation')} options={{ headerShown: false, animation: 'fade_from_bottom', animationDuration: 320 }} />
       </Stack.Navigator>
     </ErrorBoundary>
   );
@@ -639,6 +646,7 @@ export default function AppNavigator() {
     const guestSignInSub = DeviceEventEmitter.addListener('guest_sign_in', (guestUsr: any) => {
       wasLoggedInRef.current = true;
       hasResolved.current = true;
+      setOnboarded(false);
       setUser(guestUsr);
       saveOptimisticUser(guestUsr);
     });

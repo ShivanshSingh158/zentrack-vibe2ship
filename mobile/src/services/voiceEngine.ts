@@ -31,11 +31,12 @@ let _lastAudioLevel = 0;
 
 // VAD constants
 const VAD_POLL_INTERVAL_MS = 100;      // Check RMS every 100ms
-const VAD_SILENCE_THRESHOLD = -40;     // dB below which = silence. -40dB reliably separates voice from AC/breathing
-const VAD_SILENCE_DURATION_MS = 1800;  // 1.8s silence → auto-submit. Allows natural mid-sentence pauses
-const VAD_SPEECH_START_FRAMES = 2;     // Need 200ms of real speech before starting (avoids cough/pop, but responds instantly)
-const VAD_SPEECH_RESUME_GUARD_MS = 200; // After speech, wait 200ms before starting silence countdown (snappier)
+const VAD_SILENCE_THRESHOLD = -33;     // dB below which = silence. -33dB rejects room fans/AC (-35dB to -45dB) while capturing speech (-15dB to -28dB)
+const VAD_SILENCE_DURATION_MS = 900;   // 0.9s silence → instant auto-submit. Snappy, prevents user from repeating themselves
+const VAD_SPEECH_START_FRAMES = 2;     // Need 200ms of real speech before starting (avoids cough/pop, responds instantly)
+const VAD_SPEECH_RESUME_GUARD_MS = 150; // After speech, wait 150ms before starting silence countdown (snappier)
 const VAD_WARMUP_DELAY_MS = 200;       // Wait 200ms after recording starts before polling (audio driver stabilisation)
+const VAD_MAX_SPEECH_MS = 6500;        // Max 6.5s of speech per task — auto-submits to prevent runaway repetitive recording
 
 export async function requestMicPermission(): Promise<boolean> {
   const { status } = await Audio.requestPermissionsAsync();
@@ -243,6 +244,7 @@ export async function startVADRecording(
     callbacks.onStateChange('recording');
 
     let hasSpeechStarted = false;
+    let speechStartTime = 0;
     let speechFrameCount = 0;
     let lastSpeechTime = 0;
 
@@ -267,6 +269,15 @@ export async function startVADRecording(
         const dbLevel = (status as any).metering ?? -160;
         _lastAudioLevel = dbLevel;
 
+        // Auto-cutoff: If user has spoken for 6.5s, auto-submit immediately so the user never repeats themselves
+        if (hasSpeechStarted && speechStartTime > 0 && Date.now() - speechStartTime >= VAD_MAX_SPEECH_MS) {
+          console.log('[VAD] Max speech duration reached (6.5s) — auto-submitting');
+          _vadActive = false;
+          _stopVAD();
+          stopAndTranscribe(callbacks);
+          return;
+        }
+
         const isSpeaking = dbLevel > VAD_SILENCE_THRESHOLD;
 
         if (isSpeaking) {
@@ -276,6 +287,7 @@ export async function startVADRecording(
           // This filters out coughs, pops, clicks
           if (speechFrameCount >= VAD_SPEECH_START_FRAMES && !hasSpeechStarted) {
             hasSpeechStarted = true;
+            speechStartTime = Date.now();
             onVoiceDetected?.();
           }
           // Cancel silence timer when speech resumes
@@ -291,7 +303,7 @@ export async function startVADRecording(
           if (hasSpeechStarted && !_vadSilenceTimer && timeSinceLastSpeech >= VAD_SPEECH_RESUME_GUARD_MS) {
             _vadSilenceTimer = setTimeout(() => {
               if (!_vadActive) return;
-              console.log('[VAD] Silence detected for 1.8s — auto-submitting');
+              console.log('[VAD] Silence detected for 900ms — auto-submitting');
               _vadActive = false;
               _stopVAD();
               stopAndTranscribe(callbacks);

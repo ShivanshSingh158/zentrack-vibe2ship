@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, LayoutChangeEvent } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -8,7 +8,6 @@ import Animated, {
   withSequence,
   FadeIn,
   FadeOut,
-  ZoomIn,
   Easing,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -167,8 +166,7 @@ const TabItem = React.memo(function TabItem({
           {/* Discrete notification badge — animated entrance */}
           {badge !== undefined && badge > 0 && (
             <Animated.View
-              key={badge}
-              entering={ZoomIn.duration(200).springify().damping(14)}
+              entering={FadeIn.duration(150)}
               exiting={FadeOut.duration(120)}
               style={[
                 styles.badge,
@@ -226,10 +224,13 @@ function PillIndicator({ activeIndex, tabCount, tabWidth, colors }: PillIndicato
   const pillX = useSharedValue(activeIndex * tabWidth + centerOffset);
 
   useEffect(() => {
-    pillX.value = withSpring(activeIndex * tabWidth + centerOffset, {
-      damping:   22,
-      stiffness: 300,
-      mass:      0.6,
+    // Fixed-duration ease-out-expo: pill always arrives in 160ms regardless
+    // of travel distance (Apple UITabBar behaviour). withSpring was
+    // distance-dependent so long jumps (e.g. Home → Attend) lagged behind
+    // the screen switch.
+    pillX.value = withTiming(activeIndex * tabWidth + centerOffset, {
+      duration: 160,
+      easing: Easing.bezier(0.16, 1, 0.3, 1), // Apple ease-out-expo
     });
   }, [activeIndex, tabWidth]);
 

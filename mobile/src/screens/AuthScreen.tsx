@@ -5,6 +5,7 @@ import {
   ActivityIndicator, Animated, Dimensions, Image, Platform, DeviceEventEmitter
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { GoogleAuthProvider, signInWithCredential, signInAnonymously } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -37,42 +38,41 @@ try {
 
 const GUARANTEES = [
   {
-    icon: 'shield-checkmark-outline',
+    icon: 'shield-checkmark-outline' as const,
     title: '100% Local-First',
     desc: 'Encrypted on-device SQLite & LWW cache',
-    tag: 'ENCRYPTED',
     colorDark: '#5EDA9E',
     colorLight: '#059669',
     bgDark: 'rgba(94,218,158,0.12)',
     bgLight: 'rgba(5,150,105,0.08)',
-    borderDark: 'rgba(94,218,158,0.25)',
-    borderLight: 'rgba(5,150,105,0.2)',
+    borderDark: 'rgba(94,218,158,0.22)',
+    borderLight: 'rgba(5,150,105,0.16)',
   },
   {
-    icon: 'eye-off-outline',
+    icon: 'eye-off-outline' as const,
     title: 'Zero Telemetry',
     desc: 'Strict privacy with zero tracking or profiling',
-    tag: 'ZERO LOGS',
     colorDark: '#A599FF',
     colorLight: '#6C5CE7',
     bgDark: 'rgba(165,153,255,0.12)',
     bgLight: 'rgba(108,92,231,0.08)',
-    borderDark: 'rgba(165,153,255,0.25)',
-    borderLight: 'rgba(108,92,231,0.2)',
+    borderDark: 'rgba(165,153,255,0.22)',
+    borderLight: 'rgba(108,92,231,0.16)',
   },
   {
-    icon: 'cloud-done-outline',
+    icon: 'cloud-done-outline' as const,
     title: 'Seamless Sync',
     desc: 'Instant cross-device cloud continuity',
-    tag: 'REAL-TIME',
     colorDark: '#38BDF8',
     colorLight: '#0284C7',
     bgDark: 'rgba(56,189,248,0.12)',
     bgLight: 'rgba(2,132,199,0.08)',
-    borderDark: 'rgba(56,189,248,0.25)',
-    borderLight: 'rgba(2,132,199,0.2)',
+    borderDark: 'rgba(56,189,248,0.22)',
+    borderLight: 'rgba(2,132,199,0.16)',
   },
 ];
+
+const HORIZONTAL_MARGIN = 20;
 
 export default function AuthScreen() {
   const { colors, isDark } = useTheme();
@@ -83,13 +83,14 @@ export default function AuthScreen() {
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
+  const slideAnim = useRef(new Animated.Value(16)).current;
   const btnScale = useRef(new Animated.Value(1)).current;
+  const skipBtnScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.spring(slideAnim, { toValue: 0, tension: 50, friction: 10, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, tension: 70, friction: 9, useNativeDriver: true }),
     ]).start();
   }, []);
 
@@ -141,6 +142,11 @@ export default function AuthScreen() {
     setLoading(true);
 
     try {
+      // Clear any prior onboarding completion flags so user always enters OnboardingScreen
+      await AsyncStorage.multiRemove(['@zentrack_onboarding_completed', 'zentrack_onboarded_v2']);
+      updateL1Cache('onboarded', false);
+      DeviceEventEmitter.emit('reset_onboarding');
+
       // 1. Standard Firebase anonymous authentication
       await signInAnonymously(auth);
     } catch (e: any) {
@@ -157,6 +163,7 @@ export default function AuthScreen() {
         } as any;
 
         updateL1Cache('optimisticUser', guestUser);
+        updateL1Cache('onboarded', false);
         await AsyncStorage.setItem(
           '@zentrack_optimistic_user',
           JSON.stringify({
@@ -165,6 +172,7 @@ export default function AuthScreen() {
             displayName: 'Guest User',
           })
         );
+        DeviceEventEmitter.emit('reset_onboarding');
         DeviceEventEmitter.emit('guest_sign_in', guestUser);
       } catch (fallbackErr: any) {
         console.error('[AuthScreen] Fallback guest sign-in error:', fallbackErr);
@@ -189,11 +197,22 @@ export default function AuthScreen() {
     }
   };
 
-  const pressIn = () => Animated.spring(btnScale, { toValue: 0.96, useNativeDriver: true }).start();
-  const pressOut = () => Animated.spring(btnScale, { toValue: 1, useNativeDriver: true }).start();
+  const pressIn = () => Animated.spring(btnScale, { toValue: 0.97, useNativeDriver: true, tension: 100, friction: 8 }).start();
+  const pressOut = () => Animated.spring(btnScale, { toValue: 1, useNativeDriver: true, tension: 100, friction: 8 }).start();
+
+  const skipPressIn = () => Animated.spring(skipBtnScale, { toValue: 0.97, useNativeDriver: true, tension: 100, friction: 8 }).start();
+  const skipPressOut = () => Animated.spring(skipBtnScale, { toValue: 1, useNativeDriver: true, tension: 100, friction: 8 }).start();
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
+      {/* Subtle Ambient Cosmic Violet Aura */}
+      <LinearGradient
+        colors={isDark ? ['rgba(165,153,255,0.07)', 'rgba(0,0,0,0)'] : ['rgba(108,92,231,0.05)', 'rgba(255,255,255,0)']}
+        style={StyleSheet.absoluteFillObject}
+        locations={[0, 0.45]}
+        pointerEvents="none"
+      />
+
       <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
 
         {/* ── Top Header (Matching Step 01 in LandingScreen) ─────────── */}
@@ -216,45 +235,47 @@ export default function AuthScreen() {
           {/* Error Banner */}
           {error ? (
             <View style={styles.errorBox}>
-              <Ionicons name="alert-circle" size={16} color={colors.error} style={{ marginRight: 6 }} />
+              <Ionicons name="alert-circle" size={16} color={colors.error} style={{ marginRight: 8 }} />
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
 
-          {/* Enhanced Security & Privacy Card */}
+          {/* Clean Apple-Style Feature Highlight Card */}
           <View
             style={[
               styles.specCard,
               {
                 borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-                backgroundColor: isDark ? '#111114' : '#F9F8FD',
+                backgroundColor: isDark ? '#10121A' : '#FFFFFF',
               },
             ]}
           >
             {GUARANTEES.map((item, index) => {
               const iconColor = isDark ? item.colorDark : item.colorLight;
               const iconBg = isDark ? item.bgDark : item.bgLight;
-              const badgeBorder = isDark ? item.borderDark : item.borderLight;
               const isSeamlessSync = item.title === 'Seamless Sync';
 
               return (
                 <View key={item.title}>
                   <TouchableOpacity
-                    activeOpacity={isSeamlessSync ? 0.65 : 1}
+                    activeOpacity={isSeamlessSync ? 0.7 : 1}
                     onPress={isSeamlessSync ? handleSeamlessSyncPress : undefined}
                     disabled={!isSeamlessSync || loading}
                     style={styles.specRow}
                   >
-                    <View style={[styles.specIconBox, { backgroundColor: iconBg }]}>
-                      <Ionicons name={item.icon as any} size={15} color={iconColor} />
+                    <View style={[styles.specIconBox, { backgroundColor: iconBg, borderColor: isDark ? item.borderDark : item.borderLight }]}>
+                      <Ionicons name={item.icon} size={18} color={iconColor} />
                     </View>
                     <View style={styles.specTextCol}>
                       <Text style={[styles.specLabel, { color: colors.textPrimary }]}>{item.title}</Text>
                       <Text style={[styles.specValue, { color: colors.textSecondary }]}>{item.desc}</Text>
                     </View>
-                    <View style={[styles.specBadge, { backgroundColor: iconBg, borderColor: badgeBorder }]}>
-                      <Text style={[styles.specBadgeText, { color: iconColor }]}>{item.tag}</Text>
-                    </View>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={18}
+                      color={iconColor}
+                      style={styles.checkIcon}
+                    />
                   </TouchableOpacity>
                   {index < GUARANTEES.length - 1 && (
                     <View
@@ -307,7 +328,7 @@ export default function AuthScreen() {
             <AppleAuthentication.AppleAuthenticationButton
               buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
               buttonStyle={isDark ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-              cornerRadius={RADIUS.lg}
+              cornerRadius={22}
               style={styles.appleBtn}
               onPress={async () => {
                 try {
@@ -327,17 +348,20 @@ export default function AuthScreen() {
 
           {/* Skip for Now Button */}
           <TouchableOpacity
+            onPressIn={skipPressIn}
+            onPressOut={skipPressOut}
             style={styles.skipBtnContainer}
             onPress={handleSkipNow}
             disabled={loading}
-            activeOpacity={0.8}
+            activeOpacity={0.88}
           >
-            <View
+            <Animated.View
               style={[
                 styles.skipBtn,
                 {
                   backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
-                  borderColor: isDark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(0, 0, 0, 0.08)',
+                  borderColor: isDark ? 'rgba(255, 255, 255, 0.09)' : 'rgba(0, 0, 0, 0.08)',
+                  transform: [{ scale: skipBtnScale }],
                 },
               ]}
             >
@@ -356,7 +380,7 @@ export default function AuthScreen() {
                   />
                 </View>
               )}
-            </View>
+            </Animated.View>
           </TouchableOpacity>
 
           {/* Terms & Privacy Footnote */}
@@ -382,14 +406,13 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 5,
+    paddingHorizontal: HORIZONTAL_MARGIN,
     justifyContent: 'space-between',
     paddingTop: 8,
     paddingBottom: 20,
   },
   topHeader: {
-    marginTop: 8,
-    paddingHorizontal: 6,
+    marginTop: 6,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -406,34 +429,33 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
   mainBlock: {
     justifyContent: 'center',
-    paddingHorizontal: 4,
-    marginTop: 8,
-    marginBottom: 16,
+    marginVertical: 4,
   },
   heroTextContainer: {
-    marginBottom: 12,
+    marginBottom: 6,
+    overflow: 'visible',
   },
   heroTitleItalic: {
     fontFamily: 'PlayfairDisplay_600SemiBold_Italic',
-    fontSize: 46,
+    fontSize: 44,
     lineHeight: 52,
-    paddingLeft: 4,
+    paddingLeft: 16,
     paddingRight: 16,
-    paddingVertical: 2,
+    paddingVertical: 4,
+    marginLeft: -16,
   },
   heroTitleBold: {
     fontFamily: 'PlayfairDisplay_600SemiBold',
-    fontSize: 36,
-    lineHeight: 42,
-    letterSpacing: -0.5,
-    paddingLeft: 4,
+    fontSize: 34,
+    lineHeight: 38,
+    letterSpacing: -0.6,
   },
   sub: {
     fontFamily: FONT_FAMILY.body,
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 13.5,
+    lineHeight: 20,
     marginBottom: 20,
-    paddingHorizontal: 4,
+    opacity: 0.85,
   },
   errorBox: {
     flexDirection: 'row',
@@ -452,51 +474,49 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flex: 1,
   },
   specCard: {
-    borderRadius: 18,
+    borderRadius: 24,
     borderWidth: 1,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 6,
     width: '100%',
-    marginBottom: 4,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 3,
   },
   specRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 14,
   },
   specIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
+    borderWidth: 1,
   },
   specTextCol: {
     flex: 1,
-    marginRight: 8,
+    marginRight: 10,
   },
   specLabel: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 13,
-    letterSpacing: 0.1,
+    fontSize: 14,
+    letterSpacing: -0.1,
   },
   specValue: {
     fontFamily: FONT_FAMILY.body,
-    fontSize: 11,
-    marginTop: 1.5,
-    lineHeight: 15,
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
+    opacity: 0.8,
   },
-  specBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  specBadgeText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 9,
-    letterSpacing: 0.6,
+  checkIcon: {
+    opacity: 0.85,
   },
   specDivider: {
     height: StyleSheet.hairlineWidth,
@@ -505,7 +525,6 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   bottomBlock: {
     width: '100%',
     alignItems: 'center',
-    paddingHorizontal: 4,
   },
   btnContainer: {
     width: '100%',
@@ -515,8 +534,8 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADIUS.lg,
-    paddingVertical: 15,
+    borderRadius: 22,
+    height: 54,
     width: '100%',
     borderWidth: 1,
     ...SHADOW.sm,
@@ -533,7 +552,7 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
   appleBtn: {
     width: '100%',
-    height: 52,
+    height: 54,
     marginBottom: 10,
   },
   skipBtnContainer: {
@@ -544,8 +563,8 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADIUS.lg,
-    paddingVertical: 13,
+    borderRadius: 22,
+    height: 50,
     width: '100%',
     borderWidth: 1,
   },
@@ -565,11 +584,12 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     lineHeight: 17,
     textAlign: 'center',
     paddingHorizontal: 16,
-    marginBottom: 14,
-    opacity: 0.7,
+    marginBottom: 8,
+    opacity: 0.65,
   },
   linkText: {
     fontFamily: FONT_FAMILY.bold,
     textDecorationLine: 'underline',
   },
 });
+

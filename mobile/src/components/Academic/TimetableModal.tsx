@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import Reanimated, {
   LinearTransition,
+  FadeIn,
   FadeInDown,
   FadeOut,
   SlideInDown,
@@ -245,94 +246,138 @@ export const TimetableModal = React.memo(({
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
+  const [modalVisible, setModalVisible] = React.useState(visible);
+  const [contentVisible, setContentVisible] = React.useState(visible);
+  const isClosingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (visible) {
+      isClosingRef.current = false;
+      setModalVisible(true);
+      setContentVisible(true);
+    } else if (modalVisible && !isClosingRef.current) {
+      isClosingRef.current = true;
+      setContentVisible(false);
+      const timer = setTimeout(() => {
+        setModalVisible(false);
+        isClosingRef.current = false;
+      }, 220);
+      return () => clearTimeout(timer);
+    }
+  }, [visible, modalVisible]);
+
+  const handleRequestClose = useCallback(() => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
+    setContentVisible(false);
+    setTimeout(() => {
+      setModalVisible(false);
+      onClose();
+      isClosingRef.current = false;
+    }, 220);
+  }, [onClose]);
+
+  if (!modalVisible && !visible) return null;
+
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.modalBg}>
-        {Platform.OS === 'ios' && (
-          <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+    <Modal visible={modalVisible} animationType="none" transparent onRequestClose={handleRequestClose}>
+      <View style={{ flex: 1 }}>
+        {contentVisible && (
+          <Reanimated.View
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(200)}
+            style={[StyleSheet.absoluteFill, styles.modalBg]}
+          >
+            {Platform.OS === 'ios' && (
+              <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+            )}
+            <Pressable style={StyleSheet.absoluteFill} onPress={handleRequestClose} />
+          </Reanimated.View>
         )}
-        <Reanimated.View
-          entering={SlideInDown.duration(280).easing(Easing.bezier(0.16, 1, 0.3, 1))}
-          exiting={SlideOutDown.duration(200).easing(Easing.in(Easing.quad))}
-          style={styles.sheetContainer}
-        >
-          <SafeAreaView style={styles.modalRoot} edges={['top']}>
-            {/* Apple iOS Clean Navigation Header */}
-            <View style={styles.header}>
-              <View style={styles.headerTitleGroup}>
-                <Text style={styles.headerTitle}>Timetable</Text>
-                <View style={styles.countBadge}>
-                  <Text style={styles.countBadgeText}>{subjects.length} {subjects.length === 1 ? 'subject' : 'subjects'}</Text>
+        {contentVisible && (
+          <Reanimated.View
+            entering={SlideInDown.duration(280).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+            exiting={SlideOutDown.duration(200).easing(Easing.in(Easing.quad))}
+            style={styles.sheetContainer}
+          >
+            <SafeAreaView style={styles.modalRoot} edges={['top']}>
+              {/* Apple iOS Clean Navigation Header */}
+              <View style={styles.header}>
+                <View style={styles.headerTitleGroup}>
+                  <Text style={styles.headerTitle}>Timetable</Text>
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countBadgeText}>{subjects.length} {subjects.length === 1 ? 'subject' : 'subjects'}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.headerActions}>
+                  <SpringScaleButton
+                    onPress={handleAddSubject}
+                    style={styles.addBtn}
+                    haptic="light"
+                  >
+                    <Ionicons name="add" size={16} color={isDark ? "#000000" : "#FFFFFF"} />
+                    <Text style={styles.addBtnText}>Add</Text>
+                  </SpringScaleButton>
+
+                  <SpringIconButton
+                    onPress={handleRequestClose}
+                    style={styles.closeBtn}
+                    haptic="light"
+                  >
+                    <Ionicons name="close" size={18} color={colors.textPrimary} />
+                  </SpringIconButton>
                 </View>
               </View>
 
-          <View style={styles.headerActions}>
-            <SpringScaleButton
-              onPress={handleAddSubject}
-              style={styles.addBtn}
-              haptic="light"
-            >
-              <Ionicons name="add" size={16} color={isDark ? "#000000" : "#FFFFFF"} />
-              <Text style={styles.addBtnText}>Add</Text>
-            </SpringScaleButton>
-
-            <SpringIconButton
-              onPress={onClose}
-              style={styles.closeBtn}
-              haptic="light"
-            >
-              <Ionicons name="close" size={18} color={colors.textPrimary} />
-            </SpringIconButton>
-          </View>
-        </View>
-
-        {/* Subjects List with Refined Apple iOS Layout */}
-        <FlatList
-          data={subjects}
-          keyExtractor={s => s.id!}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: Math.max(insets.bottom, 20) + 24 }
-          ]}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item: s }) => (
-            <TimetableSubjectRow
-              key={s.id}
-              s={s}
-              styles={styles}
-              colors={colors}
-              isDark={isDark}
-              onEdit={onEditSubject}
-              onDelete={handleDeleteSubject}
-            />
-          )}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <View style={styles.emptyIconCircle}>
-                <Ionicons name="calendar-outline" size={32} color={colors.accentPrimary} />
-              </View>
-              <Text style={styles.emptyTitle}>No Subjects Configured</Text>
-              <Text style={styles.emptySubtitle}>Tap the "+ Add" button above to set up your weekly classes, labs, and attendance targets.</Text>
-            </View>
-          }
-          ListFooterComponent={
-            subjects.length > 0 ? (
-              <View style={styles.footerRow}>
-                <SpringScaleButton
-                  onPress={handleResetSemester}
-                  containerStyle={{ width: '100%' }}
-                  style={styles.resetBtn}
-                  haptic="medium"
-                >
-                  <Ionicons name="refresh-outline" size={16} color="#FF453A" style={{ backgroundColor: 'transparent' }} />
-                  <Text style={styles.resetBtnText}>Reset Semester Attendance</Text>
-                </SpringScaleButton>
-              </View>
-            ) : null
-          }
-        />
-          </SafeAreaView>
-        </Reanimated.View>
+              {/* Subjects List with Refined Apple iOS Layout */}
+              <FlatList
+                data={subjects}
+                keyExtractor={s => s.id!}
+                contentContainerStyle={[
+                  styles.listContent,
+                  { paddingBottom: Math.max(insets.bottom, 20) + 24 }
+                ]}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item: s }) => (
+                  <TimetableSubjectRow
+                    key={s.id}
+                    s={s}
+                    styles={styles}
+                    colors={colors}
+                    isDark={isDark}
+                    onEdit={onEditSubject}
+                    onDelete={handleDeleteSubject}
+                  />
+                )}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <View style={styles.emptyIconCircle}>
+                      <Ionicons name="calendar-outline" size={32} color={colors.accentPrimary} />
+                    </View>
+                    <Text style={styles.emptyTitle}>No Subjects Configured</Text>
+                    <Text style={styles.emptySubtitle}>Tap the "+ Add" button above to set up your weekly classes, labs, and attendance targets.</Text>
+                  </View>
+                }
+                ListFooterComponent={
+                  subjects.length > 0 ? (
+                    <View style={styles.footerRow}>
+                      <SpringScaleButton
+                        onPress={handleResetSemester}
+                        containerStyle={{ width: '100%' }}
+                        style={styles.resetBtn}
+                        haptic="medium"
+                      >
+                        <Ionicons name="refresh-outline" size={16} color="#FF453A" style={{ backgroundColor: 'transparent' }} />
+                        <Text style={styles.resetBtnText}>Reset Semester Attendance</Text>
+                      </SpringScaleButton>
+                    </View>
+                  ) : null
+                }
+              />
+            </SafeAreaView>
+          </Reanimated.View>
+        )}
       </View>
     </Modal>
   );

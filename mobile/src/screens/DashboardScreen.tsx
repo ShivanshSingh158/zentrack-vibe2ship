@@ -267,7 +267,7 @@ export default function DashboardScreen() {
             />
           )}
 
-          <Animated.View entering={FadeInDown.duration(200)} style={[s.greetingContainer, { zIndex: 99999, elevation: 9999 }]}>
+          <Animated.View entering={FadeInDown.duration(380).springify().damping(24).stiffness(210)} style={[s.greetingContainer, { zIndex: 99999, elevation: 9999 }]}>
             <View style={{ flex: 1, paddingRight: 8 }}>
               <Text style={s.greetingGood}>Good</Text>
               <Text style={s.greetingTime}>{data.timeGreeting}</Text>
@@ -454,13 +454,23 @@ export default function DashboardScreen() {
                 isDark={isDark}
               />
 
-              {data.layout.map((layoutItem) => {
+              {data.layout.map((layoutItem, layoutIndex) => {
             if (layoutItem.hidden) return null;
 
             // One-time entrance animation: only animate on the very first mount.
             // Prevents FadeInDown re-firing every time a Firestore update causes
             // a parent re-render (tasks, waterLogs, habitLogs, etc.).
-            const entering = !hasAnimatedRef.current ? FadeInDown.duration(200) : undefined;
+            // Stagger: each visible widget enters 55ms after the previous one.
+            // springify() adds Apple-grade spring physics to the Reanimated
+            // entering animation instead of a flat linear fade.
+            const entering = !hasAnimatedRef.current
+              ? FadeInDown
+                  .delay(layoutIndex * 55)
+                  .duration(400)
+                  .springify()
+                  .damping(22)
+                  .stiffness(200)
+              : undefined;
 
             if (layoutItem.id === 'quote') {
               return (

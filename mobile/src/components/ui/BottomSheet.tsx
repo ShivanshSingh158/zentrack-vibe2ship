@@ -7,6 +7,8 @@ import {
   BackHandler,
   Keyboard,
   Dimensions,
+  Platform,
+  View,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -140,11 +142,20 @@ export default function BottomSheet({
     <Portal name={portalId}>
       {/* Frosted Glass Blur Backdrop */}
       <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
-        <BlurView
-          intensity={isDark ? 30 : 20}
-          tint={isDark ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFill}
-        />
+        {Platform.OS === 'ios' ? (
+          <BlurView
+            intensity={isDark ? 30 : 20}
+            tint={isDark ? 'dark' : 'light'}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.45)' },
+            ]}
+          />
+        )}
         <Pressable
           style={[StyleSheet.absoluteFill, styles.backdrop]}
           onPress={handleClose}

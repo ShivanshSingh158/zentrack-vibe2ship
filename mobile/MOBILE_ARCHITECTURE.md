@@ -64,7 +64,6 @@
 | `@react-native-google-signin/google-signin` | `^16.1.2` | Native Google Authentication |
 | `@shopify/flash-list` | `2.0.2` | High-Performance Virtualized Lists |
 | `react-native-reanimated` | `4.1.1` | Worklet-Based UI Thread Animations (Pinned) |
-| `react-native-worklets` | `^0.5.1` | Reanimated Runtime Engine (Pinned) |
 | `react-native-gesture-handler` | `~2.28.0` | Gesture Recognition & Native Touch |
 | `react-native-screens` | `~4.16.0` | Native Screen Containers |
 | `react-native-safe-area-context` | `~5.6.0` | Device Notch & Inset Handler |
@@ -82,7 +81,6 @@
 | `expo-sharing` | `~14.0.8` | Native OS Share Sheet |
 | `expo-crypto` | `~15.0.9` | Cryptographic Utilities & UUIDs |
 | `expo-web-browser` | `~15.0.11` | In-App Browser Modals |
-| `expo-auth-session` | `~7.0.11` | OAuth Session Coordinator |
 | `expo-apple-authentication` | `~8.0.8` | Apple Sign-In (iOS) |
 | `expo-font` | `~14.0.12` | Custom Typography Loader |
 | `@expo-google-fonts/inter` | `^0.4.2` | Inter Font Family (400, 500, 600, 700) |
@@ -93,14 +91,12 @@
 | `react-native-youtube-iframe` | `^2.4.1` | YouTube Video Player Bridge |
 | `react-native-confetti-cannon` | `^1.5.2` | Milestone Confetti Particle Emitter |
 | `react-native-view-shot` | `4.0.3` | View Snapshot Image Capture |
-| `react-native-syntax-highlighter` | `^2.1.0` | Code Block Syntax Formatter |
 | `xlsx` | `^0.18.5` | Excel Timetable & Attendance Parser |
 
 ### Version Overrides (in `package.json`)
 ```json
 "overrides": {
-  "react-native-reanimated": "4.1.1",
-  "react-native-worklets": "0.5.1"
+  "react-native-reanimated": "4.1.1"
 }
 ```
 
@@ -137,8 +133,8 @@ mobile/
     │   ├── Notes/                        # StorageNodeRow, NoteEditorModal, ActionSheet, Modals, BatchActionBar
     │   ├── PlacementHub/                 # LeetCode Tracker, DSA Heatmap, Pattern Vault, Panic Modal
     │   ├── SARA/                         # Voice Orb, Bubbles, Action Confirmation, Reasoning Feed
-    │   ├── Tasks/                        # Task Rows, Timeline, Matrix, Kanban, LocationPickerModal, Pomodoro Sheets
-    │   ├── Vault/                        # Local Offline Document Viewer & Download HUD
+    │   ├── Tasks/                        # Task Rows, Timeline, Matrix, Kanban, LocationPickerModal, Pomodoro Sheets, VoiceDictationOverlay (Spacious Obsidian Cosmos UI)
+    │   ├── Vault/                        # Local Offline Document Viewer, Download HUD & ShareToVaultModal (System Share Target)
     │   ├── ui/                           # BottomSheet, FloatingActionButton, GlassCard, EmptyState, UserAvatar
     │   ├── AnimatedPressable.tsx         # Haptic-Enabled Animated Touch Wrapper
     │   ├── ErrorBoundary.tsx             # Crash Guard with Auto-Recovery & Diagnostic Log
@@ -198,9 +194,9 @@ mobile/
     │   ├── SettingsScreen.tsx            # App Preferences, Theme Switcher, Default Task Reminder Picker, Biometrics, Diagnostics & Cache Flush
     │   ├── NotificationsSettingsScreen.tsx # Multi-Channel Notification Scheduling Controls
     │   ├── OnboardingScreen.tsx          # 5-Step Psychological Persona Setup
-    │   ├── AuthScreen.tsx                # Google & Apple One-Tap Sign In
-    │   ├── LandingScreen.tsx             # Welcome Landing Screen
-    │   ├── TermsScreen.tsx               # Privacy Policy & Terms of Service
+    │   ├── AuthScreen.tsx                # Google & Apple One-Tap Sign In (iOS Grouped Value Props, Skip-to-Onboarding Routing, Spring Touch Physics)
+    │   ├── LandingScreen.tsx             # Welcome Landing Screen (iOS Apple Health/Linear Aesthetic, Editorial Carousel, Unified Tab Nav Icons, 54px Spring Pill CTA)
+    │   ├── TermsScreen.tsx               # Privacy Policy & Terms of Service (Native iOS PageSheet Handle, Frosted Pledge Card, Haptic Dismiss)
     │   ├── attendance/                   # Attendance Helper Hooks, Styles & Week Strip
     │   ├── calendar/                     # Calendar Views, MonthDropdownCalendar, Event Sheets & State Hooks
     │   ├── dashboard/                    # Dashboard Data Aggregate Hook & Widget Layouts
@@ -210,7 +206,7 @@ mobile/
     │   ├── firebase.ts                   # Firebase Init, Auth Persistence, Memory Cache
     │   ├── geminiProxy.ts                # Direct Gemini REST API Client with 9-Key Pool
     │   ├── sarvamProxy.ts                # Sarvam AI Indic Voice TTS Proxy (500-char chunking)
-    │   ├── voiceEngine.ts                # Audio Recording, VAD Silence Detection & Base64 Encoder
+    │   ├── voiceEngine.ts                # Audio Recording, Calibrated VAD (-33dB, 900ms silence, 6.5s max cutoff) & Base64 Encoder
     │   ├── saraMemory.ts                 # Contextual Memory Graph (CMG) & Behavioral Fingerprint
     │   ├── offlineSync.ts                # Offline Write Queue, LWW Resolution & NetInfo Sync
     │   ├── notifications.ts              # Local Multi-Channel Notification Scheduler
@@ -230,6 +226,8 @@ mobile/
     │   ├── backgroundTasks.ts            # Expo TaskManager Background Tasks
     │   ├── backgroundProactiveAgent.ts   # Deactivated (cleans up any deprecated OS background task)
     │   ├── userAvatarService.ts          # Permanent Local-Disk Avatar Caching Engine (${FileSystem.documentDirectory}zentrack_avatar_cache/)
+    │   ├── otaUpdateService.ts           # Tier-1 Background OTA Update Synchronization (expo-updates)
+    │   ├── nativeStt.ts                  # On-Device Offline Speech-to-Text Bridge (expo-speech-recognition)
     │   └── webScraper.ts                 # DuckDuckGo AI Web Search Provider
     ├── theme/
     │   ├── tokens.ts                     # Obsidian Cosmos (Dark) & Frost Quartz (Light) Palettes
@@ -319,7 +317,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | | `useCreativeData` | `() => CreativeContextType` | Hook returning `storageNodes`, `notes`, `learningTopics`, `jobs`, `contentLogs`, `ensureSubscribed`, `optimisticAddStorageNode`, `optimisticUpdateStorageNode`, `optimisticDeleteStorageNode`, `optimisticBatchDeleteStorageNodes`. |
 | [`src/contexts/domains/PlannerContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/PlannerContext.tsx) | `PlannerProvider` | `React.FC<{ children: React.ReactNode, user: any }>` | Subscriptions for `calendar_events`, `goals`, `weekly_reviews`. |
 | | `usePlannerData` | `() => PlannerContextType` | Hook returning `customEvents`, `goals`, `weeklyReviews`, `optimisticAddEvent`, `optimisticUpdateEvent`, `optimisticAddGoal`. |
-| [`src/contexts/PomodoroContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/PomodoroContext.tsx) | `PomodoroProvider`, `usePomodoro` | `React.FC<{ children: React.ReactNode }>` | Database-backed persistent Pomodoro engine with monotonic timestamp countdown, AsyncStorage + Firestore sync, and instant boot auto-pop. |
+| [`src/contexts/PomodoroContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/PomodoroContext.tsx) | `PomodoroProvider`, `usePomodoro` | `React.FC<{ children: React.ReactNode }>` | Database-backed persistent Pomodoro engine with monotonic timestamp countdown, AsyncStorage + Firestore sync, exact totalSecondsToday focus accumulation, instant boot auto-pop, and pure iOS focus flow. |
 
 ### 4.5. Services & Backend Engines (`src/services/`)
 | File Path | Function / Export | Signature / Type | Description & Purpose |
@@ -339,6 +337,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | | `stopAndTranscribe` | `(callbacks: VoiceRecordingCallbacks) => Promise<void>` | Stops audio recording, converts temporary WAV file to Base64, and transcribes via Gemini. |
 | | `startVADRecording` | `(callbacks: VADRecordingCallbacks) => Promise<void>` | Starts continuous Voice Activity Detection (VAD) using polling RMS power metering. |
 | | `cancelVoiceRecording` | `() => Promise<void>` | Cancels recording without triggering transcription callbacks and removes temp files. |
+| [`src/services/nativeStt.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/nativeStt.ts) | `startNativeStt`, `stopNativeStt`, `abortNativeStt`, `isNativeSttAvailable`, `requestSttPermissions` | STT Engine Functions | Native OS speech-to-text engine with runtime guard (`try-catch require`) preventing startup crashes on older binaries. Configured with `maxAlternatives: 1` and extracts `event.results[0]` (highest-confidence hypothesis candidate) to avoid concatenating alternative guesses into duplicate strings. Provides streaming interim tokens (~200ms), 3000ms silence tolerance, and seamless fallback to `voiceEngine` (Gemini VAD). |
 | [`src/services/saraMemory.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/saraMemory.ts) | `buildMemorySummary` | `(userId: string) => Promise<string>` | Reads Contextual Memory Graph (CMG) from AsyncStorage and formats facts into system prompt text. |
 | | `extractAndStore` | `(userId: string, userMsg: string, saraMsg: string) => Promise<void>` | Background fact extractor analyzing conversation turns and updating memory graph entities. |
 | | `getFingerprint` | `(userId: string) => Promise<BehavioralFingerprint>` | Returns user's Behavioral Fingerprint (tone, verbosity, active hours, primary goals). |
@@ -367,6 +366,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | | `calculateLevel` | `(xp: number) => XPLevel` | Maps numeric XP to 1 of 8 rank titles (`Initiate` to `Mythic`). |
 | [`src/services/conflictDetector.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/conflictDetector.ts) | `detectConflicts` | `(tasks: Task[], events: CustomEvent[], timetable: AttendanceSubject[]) => ScheduleConflict[]` | Full multi-interval collision detection engine scanning timeSlot overlaps between calendar events, academic classes, and scheduled tasks using local timezone math. |
 | [`src/services/cloudinary.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/cloudinary.ts) | `uploadFileToCloudinary` | `(uri: string, type: string, name: string, onProgress?: (p: number) => void) => Promise<{ url: string, size: number }>` | Uploads local files/photos directly to Cloudinary CDN with progress. |
+| [`src/services/ilovepdfCompress.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/ilovepdfCompress.ts) | `compressPdfWithILovePDF` | `(uri: string, fileName: string, onStep?: (s: string) => void, level?: 'recommended'\|'extreme'\|'low') => Promise<string>` | Multi-stage PDF compression engine via iLovePDF REST API: authenticates with public key, uploads multipart stream, executes task with specified compression level, downloads and caches sanitized output locally. |
 | [`src/services/vaultCacheService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/vaultCacheService.ts) | `getCachedFilePath`, `downloadAndCacheFile`, `cacheLocalFile`, `isUrlCached`, `getVaultCacheStats`, `getCacheFilenameForUrl` | Helper Functions | Bulletproof local-first disk caching engine for Notes Vault documents, images, and PDFs in `${FileSystem.documentDirectory}zentrack_vault_cache/`. Uses deterministic URL SHA256 hashes (`vcache_${hash}${ext}`) with query-string stripping and legacy fallback. Guarantees 0ms opening and full offline persistence regardless of document renames. |
 | [`src/services/youtubeTranscriptService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/youtubeTranscriptService.ts) | `fetchYouTubeTranscript` | `(videoId: string) => Promise<TranscriptResult>` | 4-layer resilient transcript pipeline (InnerTube, Gemini multimodal, Supadata API, Audio fallback). |
 | | `transcriptToPlainText` | `(cues: TranscriptCue[], maxChars?: number) => string` | Formats transcript cues into timestamped `[MM:SS]` text blocks for AI ingestion. |
@@ -402,10 +402,10 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/screens/DashboardScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/DashboardScreen.tsx) | `DashboardScreen` | `Home` | Main Dashboard: Life Matrix ring, daily tasks briefing, habit streak rings, hydration logger, quick speed-dial sheet, and Voice Task Dictation FAB (replaces Sara button for 1-tap speech-to-task creation). |
 | [`src/screens/SaraScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/SaraScreen.tsx) | `SaraScreen` | `Sara`, `SaraModal` | Deactivated & hidden ultra-lightweight stub: renders null with 0 runtime dependencies, completely detached from prefetch queue and floating UI triggers to maximize app speed and responsiveness. |
 | [`src/screens/TasksScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/TasksScreen.tsx) | `TasksScreen` | `Tasks` | Task Command Center: List view with swipe actions, 24-hour timeline view, Eisenhower 4-quadrant matrix, and Pomodoro focus sheet. Features Apple iOS-grade micro-interactions: 90° rotating morph icon worklet on the View toggle, smooth cross-fading view transitions (List, Timeline, Kanban), refined floating action buttons with press compression (`scale: 0.95`) and ambient glow, staggered task entrance cascade in Inbox and Overdue sheets (`FadeInDown`), smooth fade entrance on the 3-dots overflow menu, and bulk selection cleanup on sheet dismiss. |
-| [`src/screens/AttendanceScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AttendanceScreen.tsx) | `AttendanceScreen` | `Attendance` | Attendance Tracker: subject card list with Apple 20px squircle curvature, health-tinted percentage pills (eliminated cluttered circular donut rings), vertically aligned progress tracks (Class & Lab), and clean bunk margin status callouts; bunk prediction calculator; danger zone banner; timetable grid; Excel import/export; and chronological Subject History modal. |
+| [`src/screens/AttendanceScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AttendanceScreen.tsx) | `AttendanceScreen` | `Attendance` | Attendance Tracker: subject card list with Apple 20px squircle curvature, health-tinted percentage pills (eliminated cluttered circular donut rings), vertically aligned progress tracks (Class & Lab), staggered spring entrance cascade (FadeInDown on daily sessions & by-subject cards), clean bunk margin status callouts; un-guarded BottomSheet and Modal rendering allowing seamless 60/120fps iOS slide-out and spring dismiss transitions; danger zone banner; timetable grid; Excel import/export; and chronological Subject History modal. |
 | [`src/screens/CalendarScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/CalendarScreen.tsx) | `CalendarScreen` | `Calendar` | Calendar Hub: interactive month view, week strip pager, day agenda, event creator, and conflict markers. |
 | [`src/screens/HabitsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/HabitsScreen.tsx) | `HabitsScreen` | `Habits` | HabitKit-Tier Habit Command Center: 35-day GitHub contribution heatmaps per card, squircle tiles with 4-tier graduated luminance, cyan freeze highlights, interactive historical date tooltip HUD, segmented filter bar (`All`, `Building`, `Avoiding`), 365-day panoramic annual analytics modal with day-of-week radar and 4-pill KPI summary, zero layout-shift skeleton matrix, and WhatsApp-grade offline safeWrite sync. |
-| [`src/screens/NotesScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/NotesScreen.tsx) | `NotesScreen` | `Notes` | ZenNotes: Markdown editor, hierarchical file/folder storage nodes, AI co-writer assistance, and PDF document exporter. |
+| [`src/screens/NotesScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/NotesScreen.tsx) | `NotesScreen` | `Notes` | ZenNotes: Markdown editor, hierarchical file/folder storage nodes, AI co-writer assistance, PDF exporter, and Cloud Vault with FileSystem size probing, two-stage adaptive PDF compression (recommended → extreme) via iLovePDF, Cloudinary 10.0 MB gate, and detailed diagnostic error alerts. |
 | [`src/screens/GoalsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GoalsScreen.tsx) | `GoalsScreen` | `Goals` | OKR Goal Tracker: goal cards, milestone breakdown, and progress completion progress rings. |
 | [`src/screens/GradesScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GradesScreen.tsx) | `GradesScreen` | `Grades` | SGPA/CGPA University Grade Calculator with semester subject credit breakdown. |
 | [`src/screens/LearningScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/LearningScreen.tsx) | `LearningScreen` | `Learning` | Learning Hub: synchronized YouTube video player, AI tutor chat, VS Code syntax highlighter, interactive mind map, and flashcard deck. |
@@ -421,7 +421,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/screens/MoreScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/MoreScreen.tsx) | `MoreScreen` | `More` | Module Launcher: 16-module icon grid with tab pinning configuration controls, up-to-4 pin multi-selection with ordered badges (1–4), and explicit save mechanics. |
 | [`src/screens/SettingsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/SettingsScreen.tsx) | `SettingsScreen` | `Settings` | Settings: theme switcher, biometric lock toggle, data export/import, and sign-out button. |
 | [`src/screens/NotificationsSettingsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/NotificationsSettingsScreen.tsx) | `NotificationsSettingsScreen` | `NotificationsSettings` | Notification Preferences: mission windows, briefings, class reminders, hydration interval controls, OS scheduled alarm inspector modal with resilience polling, and interactive 1-tap pipeline diagnostic tool. |
-| [`src/screens/OnboardingScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/OnboardingScreen.tsx) | `OnboardingScreen` | `Onboarding` | 5-step psychological onboarding: persona selection, goals, academic baseline, and SARA setup. |
+| [`src/screens/OnboardingScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/OnboardingScreen.tsx) | `OnboardingScreen` | `Onboarding` | Apple-Grade Luxury Minimal Onboarding: matched to LandingScreen visual design tokens (20px breathable margins, ambient cosmic violet gradient overlay, Playfair Display editorial typography, 22px squircle archetype cards with 14px squircle badge icons, 3x3 focus matrix with authentic nav icons, live interactive dock preview card with glowing status pill, genesis XP calibration card, spring scale press CTA buttons, and balanced pagination dots). |
 | [`src/screens/AuthScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AuthScreen.tsx) | `AuthScreen` | `Auth` | Sign In: Google One-Tap and Apple Authentication buttons. |
 | [`src/screens/GuestDashboard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GuestDashboard.tsx) | `GuestDashboard` | `GuestDashboard` | Offline Sample Preview: sample dashboard data for unauthenticated evaluation. |
 | [`src/screens/LandingScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/LandingScreen.tsx) | `LandingScreen` | `Landing` | Welcome Hero: feature carousel and Get Started CTA. |
@@ -442,9 +442,10 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/screens/tasks/useTasksData.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/useTasksData.ts) | `useTasksData()` | Tasks filtering, sorting, tab selection (`all`, `today`, `upcoming`), and tag grouping hook. |
 | [`src/screens/tasks/useRecurringSpawn.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/useRecurringSpawn.ts) | `useRecurringSpawn(tasks, optimisticAddTask)` | Client-side daily task recurrence spawner preventing duplicate clones for `today`. |
 | [`src/screens/tasks/NewTaskModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/NewTaskModal.tsx) | `NewTaskModal` | Slide-up modal for task creation with NLP natural language parsing chips. |
-| [`src/screens/tasks/EditTaskModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/EditTaskModal.tsx) | `EditTaskModal` | Modal for updating tasks with full NLP natural language parsing, live token chips, and save-time re-parsing (mic hidden). |
-| [`src/screens/tasks/tasksStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/tasksStyles.ts) | `makeTasksStyles(colors, isDark)` | Dynamic style factory for tasks screens across Obsidian Cosmos & Frost Quartz themes. Includes styles for horizontal tag filter strip and "Inbox Zero" constellation celebration card. |
-| [`src/screens/TasksScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/TasksScreen.tsx) | `TasksScreen` | Main task coordinator: horizontal date strip, interactive horizontal tag filter strip with live counts for active tags, "Inbox Zero" constellation celebration banner with +50 XP re| [`src/screens/attendance/HorizontalWeekStrip.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/HorizontalWeekStrip.tsx) | `HorizontalWeekStrip` | WhatsApp-grade 7-day Flexbox week strip: magnetic sliding active background pill (`slidingActivePill` driven by `withSpring(selectedIndex, { damping: 20, stiffness: 240 })`) that glides and stretches horizontally between days, elastic day number spring bounce (`scale: 1.18 → 1.0`), PanResponder horizontal week swiping via `currentDateRef`, guaranteed minHeight, decoupled from `logs` to prevent parent re-renders. |
+| [`src/screens/tasks/EditTaskModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/EditTaskModal.tsx) | `EditTaskModal` | Apple Reminders iOS 18 "Grouped Inspector" modal: top nav bar ("Cancel", "Details", "Done"); Group 1 (standalone NLP task title with fast 60ms real-time token extraction for Date, Time, Priority, Recurrence; eliminated extraneous notes input); Group 2 Schedule (Date with 1-tap shortcuts Today/Tomorrow/Weekend, structured Time Slot with dual Starts/Ends cards and 1-tap Clear, notification Switch, recurrence picker); Group 3 (Priority segmented control None/Low/Med/High + conditional Tag selector showing active tags only when present, eliminated suggested tags clutter); Group 4 (Checkable Subtasks with progress counter and chained inline "+ Add step" input); and bottom Save CTA + red Delete Task button (eliminated focus duration block). |
+| [`src/screens/tasks/tasksStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/tasksStyles.ts) | `makeTasksStyles(colors, isDark)` | Dynamic style factory for tasks screens across Obsidian Cosmos & Frost Quartz themes. |
+| [`src/screens/TasksScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/TasksScreen.tsx) | `TasksScreen` | Main task coordinator: horizontal date strip with direct swipe day navigation, zero-pill Apple Reminders task list layout, "Inbox Zero" constellation celebration banner, and view switcher. |
+| [`src/screens/attendance/HorizontalWeekStrip.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/HorizontalWeekStrip.tsx) | `HorizontalWeekStrip` | WhatsApp-grade 7-day Flexbox week strip: magnetic sliding active background pill (`slidingActivePill` driven by `withSpring(selectedIndex, { damping: 20, stiffness: 240 })`) that glides and stretches horizontally between days, elastic day number spring bounce (`scale: 1.18 → 1.0`), PanResponder horizontal week swiping via `currentDateRef`, guaranteed minHeight, decoupled from `logs` to prevent parent re-renders. |
 | [`src/screens/attendance/attendanceConstants.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/attendanceConstants.ts) | `ATTENDANCE_STATUS_COLORS` | Constants for Present, Absent, and Cancelled attendance statuses. |
 | [`src/screens/attendance/attendanceStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/attendanceStyles.ts) | `makeAttendanceStyles(colors, isDark)` | Dynamic style factory for Attendance screen. |
 | [`src/components/Calendar/CalendarWeekStripPager.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Calendar/CalendarWeekStripPager.tsx) | `CalendarWeekStripPager` | Zero-virtualization 7-day Flexbox week strip with PanResponder horizontal week swiping, directional spring micro-transitions, static day labels (0 Hermes crashes), guaranteed minHeight (never blanks on background autofetch), and multi-colored event dots. |
@@ -479,11 +480,11 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/components/UpdateBanner.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/UpdateBanner.tsx) | `UpdateBanner` | In-app notification banner for OTA Expo Updates bundle downloads. |
 | **Academic Components** (`src/components/Academic/` & `src/screens/attendance/`) | | |
 | [`src/screens/attendance/HorizontalWeekStrip.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/HorizontalWeekStrip.tsx) | `HorizontalWeekStrip`, `WeekDayCol` | Horizontal 7-day calendar week strip with WhatsApp-grade magnetic sliding active pill: Apple iOS critically damped spring physics (`damping: 30, stiffness: 260, mass: 0.85`, zero wobble, zero overshoot), silky-smooth number scaling without bouncy sequences, native `Haptics.selectionAsync()`, and smooth directional week swiping (`friction: 12, tension: 80`). |
-| [`src/components/Academic/AddSubjectModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/AddSubjectModal.tsx) | `AddSubjectModal` | Apple iOS-grade modal for creating academic subjects: Reanimated `SlideInDown`/`SlideOutDown` (`bezier(0.16, 1, 0.3, 1)`), native `BlurView` frosted backdrop blur, sheet grab handle, 34x34 circular glass close button, smooth cubic-bezier session row reflow (`LinearTransition.duration(220)`), calibrated tactile `SpringPressableBtn` touch down/up timing (`70ms`/`110ms`), and mid-semester baseline calibration card. |
-| [`src/components/Academic/ClassNotifSettingsModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/ClassNotifSettingsModal.tsx) | `ClassNotifSettingsModal` | Apple iOS-grade class alert notification timing configurator: Reanimated `SlideInDown`/`SlideOutDown` pageSheet presentation, native `BlurView` frosted backdrop, sheet grab handle, 34x34 circular glass close button, pure OLED pitch black squircle cards (`#000000`), and tactile selection haptics (`Haptics.selectionAsync()`) on timing offset and delay chips. |
-| [`src/components/Academic/TimetableModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/TimetableModal.tsx) | `TimetableModal`, `TimetableSubjectRow` | Apple iOS-grade timetable subject manager in Obsidian Cosmos dark theme: Reanimated `SlideInDown`/`SlideOutDown` (`bezier(0.16, 1, 0.3, 1)`) fluid modal presentation, native `BlurView` backdrop blur, clean iOS navigation header with count badge, signature purple "+ Add" button, and 34x34 glass close button; calibrated tactile micro-physics on `SpringScaleButton` and `SpringIconButton`; 20px squircle cards with subtle frosted borders; full-width subject titles with zero truncation (`numberOfLines={2}`) and target badges; single-line horizontal scrollable weekly schedule strip; and seamless blended solid crimson "Reset Semester Attendance" button (`#221315`, `elevation: 0`, zero black box artifacts). |
+| [`src/components/Academic/AddSubjectModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/AddSubjectModal.tsx) | `AddSubjectModal` | Apple iOS-grade modal for creating academic subjects: dual `modalVisible`/`contentVisible` state orchestration, Reanimated `SlideInDown`/`SlideOutDown` (`bezier(0.16, 1, 0.3, 1)` / `quad`) with `FadeIn`/`FadeOut` backdrop, native `BlurView` frosted backdrop blur, sheet grab handle, 34x34 circular glass close button, smooth cubic-bezier session row reflow (`LinearTransition.duration(220)`), calibrated tactile `SpringPressableBtn` touch down/up timing (`70ms`/`110ms`), and mid-semester baseline calibration card. |
+| [`src/components/Academic/ClassNotifSettingsModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/ClassNotifSettingsModal.tsx) | `ClassNotifSettingsModal` | Apple iOS-grade class alert notification timing configurator: dual `modalVisible`/`contentVisible` state orchestration, Reanimated `SlideInDown`/`SlideOutDown` pageSheet presentation with `FadeIn`/`FadeOut` backdrop, native `BlurView` frosted backdrop, sheet grab handle, 34x34 circular glass close button, pure OLED pitch black squircle cards (`#000000`), and tactile selection haptics (`Haptics.selectionAsync()`) on timing offset and delay chips. |
+| [`src/components/Academic/TimetableModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/TimetableModal.tsx) | `TimetableModal`, `TimetableSubjectRow` | Apple iOS-grade timetable subject manager in Obsidian Cosmos dark theme: dual `modalVisible`/`contentVisible` state orchestration, Reanimated `SlideInDown`/`SlideOutDown` (`bezier(0.16, 1, 0.3, 1)` / `quad`) fluid modal presentation with `FadeIn`/`FadeOut` backdrop, native `BlurView` backdrop blur, clean iOS navigation header with count badge, signature purple "+ Add" button, and 34x34 glass close button; calibrated tactile micro-physics on `SpringScaleButton` and `SpringIconButton`; 20px squircle cards with subtle frosted borders; full-width subject titles with zero truncation (`numberOfLines={2}`) and target badges; single-line horizontal scrollable weekly schedule strip; and seamless blended solid crimson "Reset Semester Attendance" button (`#221315`, `elevation: 0`, zero black box artifacts). |
 | [`src/components/Academic/SubjectContextMenuModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/SubjectContextMenuModal.tsx) | `SubjectContextMenuModal` | Authentic Apple iOS-grade context menu triggered on subject card long-press: native `BlurView` frosted backdrop blur (`intensity={35}`), elevated Obsidian Cosmos preview card with live attendance percentage badge and bunk safety callout, cubic bezier bloom transition (`FadeIn.duration(200).easing(Easing.bezier(0.16, 1, 0.3, 1))`), and Apple UIMenu action tray with hairline dividers, SF Symbol style icons (0 cartoonish square boxes), smooth press illumination, and destructive reset action. |
-| [`src/components/Academic/SubjectHistoryModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/SubjectHistoryModal.tsx) | `SubjectHistoryModal`, `AttendanceHistoryRow` | Apple iOS-grade attendance history modal: clean Inter bold typography (eliminated out-of-place serif fonts), 34x34 circular glass close button, refined 18px squircle stats overview bar with health percentage badge, unified iOS segmented filter control (`All`, `Classes`, `Labs`), and 16px squircle history log cards with subtle frosted borders and tactile rotating undo button. |
+| [`src/components/Academic/SubjectHistoryModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/SubjectHistoryModal.tsx) | `SubjectHistoryModal`, `AttendanceHistoryRow` | Apple iOS-grade attendance history modal: dual `modalVisible`/`contentVisible` state orchestration with `SlideInDown`/`SlideOutDown` (`bezier(0.16, 1, 0.3, 1)` / `quad`) and `FadeIn`/`FadeOut` backdrop, clean Inter bold typography (eliminated out-of-place serif fonts), 34x34 circular glass close button, refined 18px squircle stats overview bar with health percentage badge, unified iOS segmented filter control (`All`, `Classes`, `Labs`), and 16px squircle history log cards with subtle frosted borders and tactile rotating undo button. |
 | [`src/components/Academic/AcademicPredictorCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/AcademicPredictorCard.tsx) | `AcademicPredictorCard` | Predictive card showing projected end-of-semester attendance based on current bunk rate. |
 | **Analytics Components** (`src/components/Analytics/`) | | |
 | [`src/components/Analytics/AcademicPredictorCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Analytics/AcademicPredictorCard.tsx) | `AcademicPredictorCard` | Grade and attendance risk forecasting card for Analytics screen. |
@@ -500,20 +501,19 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/components/Dashboard/DashboardLayoutSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/DashboardLayoutSheet.tsx) | `DashboardLayoutSheet` | Drag-and-drop widget reordering sheet for customizing Dashboard layout. |
 | [`src/components/Dashboard/DashboardRings.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/DashboardRings.tsx) | `DashboardRings` | Multi-ring Apple Watch style activity rings for tasks, habits, and gym. |
 | **Tasks Components** (`src/components/Tasks/`) | | |
-| [`src/components/Tasks/TaskRow.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskRow.tsx) | `TaskRow`, `SubtaskRowItem` | Reusable swipeable task row: separated touch targets (`checkArea` dedicated to completion/bulk-selection; `rowBody` dedicated to opening details or long-pressing context menu), selection styling strictly scoped to `isBulkEdit && isSelected` preventing stuck selection artifacts, crisp white checkmark against signature purple completion pill, animated SVG strikethrough pen draw (left-to-right) with card recession, title-aligned scheduled time and clock icon with priority tinting (#FF453A High, #FF9F0A Med, #30D158 Low), guaranteed '#' prefix on tag pills (`#placement`), single-line Obsidian Cosmos signature purple "Live Now" pill (`● In Progress • Xm left` in #a599ff, title-aligned), pulsing overdue radar with relative duration, haptic swipe-to-complete with threshold checkmark pop (scale 0.7 to 1.2), elastic swipe-to-delete with soft red action and haptic notch, subtask smooth accordion fold with 180° rotating chevron Reanimated worklet, `SubtaskRowItem` with tactile spring-pop checkboxes (scale 0.82 → 1.18 → 1.0), and WhatsApp-inspired reaction micro-burst (6 radial particle dots springing outward at 60° intervals with fade-out + `Haptics.notificationAsync(Success)`). |
+| [`src/components/Tasks/TaskRow.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskRow.tsx) | `TaskRow`, `SubtaskRowItem` | Authentic Apple Reminders "Unified Metadata Line" (Concept 1) task row: separated touch targets (`checkArea` dedicated to completion/bulk-selection with WhatsApp-inspired radial confetti burst; `rowBody` dedicated to opening details or long-pressing context menu), selection styling strictly scoped to `isBulkEdit && isSelected`, iOS circular radio checkbox, animated strikethrough pen draw with card recession. Swiping left directly opens Edit Task modal with crisp haptic pulse (eliminated cluttered option buttons), while swiping right completes task. Line 1: bold 15px task title. Line 2: unified, zero-pill metadata line with subtle dot separators (`•`), live en-dash scheduled times (`8:00 am – 9:00 pm`), pulsating relative overdue radar (`🔴 Overdue by X days`), glowing Live Now status (`● In Progress`), tinted tag dots with clean text (`● College`, zero heavy pill boxes), recurrence type, and inline subtask counter (`1/3`). Right side: clean and spacious with subtle subtask chevron (`expandChevronBtn`) and accordion fold with rotating chevron worklet. Memoized with full recurrence and subtask change detection. |
 | [`src/components/Tasks/TaskContextMenuModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskContextMenuModal.tsx) | `TaskContextMenuModal` | Authentic Apple iOS-grade context menu: pops up on task row long-press with `BlurView` frosted backdrop blur (`intensity={35}`), elevated Obsidian Cosmos task preview card with glowing priority badge, live colored tag pills, date and time slots, silky-smooth Apple iOS bloom animation (`FadeIn.duration(200).easing(Easing.bezier(0.16, 1, 0.3, 1))` with zero rubber-band bounce), and Apple UIMenu style action tray with left-aligned labels, right-aligned icons, hairline dividers, smooth pressed state feedback, and destructive delete. |
 | [`src/components/Tasks/TimelineView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TimelineView.tsx) | `TimelineView` | 24-hour visual block timeline mapping tasks, academic classes, and gym workouts with `DraggableTaskBlock`, `timelineMath`, and `timelineViewStyles`. |
 | [`src/components/Tasks/MatrixView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/MatrixView.tsx) | `MatrixView` | Eisenhower Matrix (Do First, Schedule, Delegate, Don't Do) 4-quadrant layout. |
 | [`src/components/Tasks/KanbanView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/KanbanView.tsx) | `KanbanView` | Drag-and-drop Kanban board with Pending, In Progress, and Done columns. |
-| [`src/components/Tasks/PomodoroSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/PomodoroSheet.tsx) | `PomodoroSheet` | Ultra-modern Focus Flow timer: eliminates generic break tabs in favor of Focus Depths (Sprint 15m, Classic 25m, Deep Work 50m, Ultra Flow 90m), Zen Recharge (mindful breather), Daily Performance HUD bar, mindful focus mantras, and modular auto-linked task integration with `PomodoroTaskPicker`, `pomodoroTimeMath`, and `pomodoroStyles`. |
+| [`src/components/Tasks/PomodoroSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/PomodoroSheet.tsx) | `PomodoroSheet` | Authentic Apple iOS Focus timer: pure distraction-free Focus Flow with zero redundant metric cascade, responsive iPadOS 2-column form sheet on tablets (Ring & Controls on left; Today's Summary, Linked Task & Focus Depth on right), spacious single-column flow on phones, 1-tap Immersive OLED Full-Screen StandBy Focus Mode with breathing aura & giant tabular digits, screen sleep prevention via `expo-keep-awake` (`ZenTrackPomodoroKeepAwake`), tactile Always-On status badges & toggles, 2-tile Today's Focus summary card (Time Focused & Sessions Done), unified controls dock with integrated quick-boost pills (+5m, +15m), bug-free squircle Focus Depth cards, mindful focus mantras, and modular auto-linked task integration with `PomodoroTaskPicker`, `pomodoroTimeMath`, and `pomodoroStyles`. |
 | [`src/components/Tasks/NLPTaskInput.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/NLPTaskInput.tsx) | `NLPTaskInput` | Natural language text input field with live parsing token chips. |
-| [`src/components/Tasks/RecurrencePickerModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/RecurrencePickerModal.tsx) | `RecurrencePickerModal` | Custom repeat rule configurator (Daily, Weekly, Monthly, Custom intervals). |
-| [`src/components/Tasks/TaskDateStrip.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskDateStrip.tsx) | `TaskDateStrip`, `DatePillItem` | Horizontal calendar date pill picker for filtering tasks by date with `DatePillItem`: critically damped Apple calendar number scale (`1.08` → `1.0` with `damping: 26, stiffness: 260`), `scaleTo={0.95}` press-in damping, and tactile `Haptics.selectionAsync()`. |
+| [`src/components/Tasks/RecurrencePickerModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/RecurrencePickerModal.tsx) | `RecurrencePickerModal` | Apple iOS 18 grouped repeat sheet: full-width frequency rows (Never, Every Day, Every Week, Every Month, Custom) with subtitles, icons, and native checkmarks covering space with zero empty voids; 7-day circular weekday selector with Weekday/Weekend shortcuts; interval stepper; and optional End Repeat date selector. |
+| [`src/components/Tasks/TaskDateStrip.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskDateStrip.tsx) | `TaskDateStrip`, `DatePillItem` | Horizontal calendar date pill picker for filtering tasks by date with `DatePillItem`: critically damped Apple calendar number scale (`1.08` → `1.0` with `damping: 26, stiffness: 260`), `scaleTo={0.95}` press-in damping, tactile `Haptics.selectionAsync()`, embedded `PanResponder` for horizontal day swipe navigation (swipe left → next day, swipe right → previous day) with directional spring slide animation, clean un-cluttered header, and 1-tap "Today" pill. |
 | [`src/components/Tasks/BulkRescheduleSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/BulkRescheduleSheet.tsx) | `BulkRescheduleSheet` | Bulk action bottom sheet for rescheduling multiple selected tasks at once. |
 | [`src/components/Tasks/TaskTemplatesSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskTemplatesSheet.tsx) | `TaskTemplatesSheet` | Predefined routine task templates (Morning routine, Exam prep, Workout setup). |
 | [`src/components/Tasks/TaskTimeLogSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskTimeLogSheet.tsx) | `TaskTimeLogSheet` | Post-completion time logging sheet capturing actual minutes spent on a task. |
-| [`src/components/Tasks/TimeSpentSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TimeSpentSheet.tsx) | `TimeSpentSheet` | Time tracking analytics sheet. |
-| [`src/components/Tasks/VoiceDictationOverlay.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/VoiceDictationOverlay.tsx) | `VoiceDictationOverlay` | Todoist-grade full-screen voice dictation overlay: 100% opaque Obsidian Cosmos base canvas (`#0C0C0E`), solid dark surface NLP card (`#16161A`) with 0% screen bleed-through, Siri / Apple Intelligence dual breathing radial aura behind the mic orb (`#A599FF` outer + `#FF453A` inner), 9-bar fluid dynamic soundwave visualizer with organic bezier undulation, staggered NLP token chip cascade entrance (`FadeInRight`), real-time VAD voice recording, Gemini audio transcription (`transcribeAudioViaProxy`), live `parseNLTask` extraction with colorful chips (Date, Time, Recurrence, Priority, Tags), direct creation into Firestore (`safeWrite`) and `optimisticAddTask`, and notification reminder scheduling. |
+| [`src/components/Tasks/VoiceDictationOverlay.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/VoiceDictationOverlay.tsx) | `VoiceDictationOverlay` | Todoist-grade full-screen continuous voice ramble dictation overlay: 100% opaque Obsidian Cosmos base canvas (`#0C0C0E`), solid dark surface NLP card (`#16161A`) with 0% screen bleed-through, real-time live streaming speech canvas with blinking cursor and live extracted NLP token strip (Date, Time, Priority, Tags, Subtasks, Compound Task Count) updating word-by-word as user speaks, Siri / Apple Intelligence dual breathing radial aura behind the mic orb (`#A599FF` outer + `#FF453A` inner), 9-bar fluid dynamic soundwave visualizer with organic bezier undulation, continuous Android native STT session (`startNativeStt` with 3000ms pause buffer, multi-utterance aggregation, and zero speech-drop resilience), direct creation into Firestore (`safeWrite`) and `optimisticAddTask`, and notification reminder scheduling. |
 | **Gym Components** (`src/components/Gym/` & `Charts/`) | | |
 | [`src/components/Gym/ZenGymAiModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ZenGymAiModal.tsx) | `ZenGymAiModal` | Modular GYM-GPT AI coach modal: `GymAiChatBubble`, `GymAiMultiDayPlanCard`, `GymAiOptionsChips`, and `zenGymAiStyles`. |
 | [`src/components/Gym/ZenGymAiFab.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ZenGymAiFab.tsx) | `ZenGymAiFab` | Luxury floating action button with metallic plates & AI sparkles. |
@@ -588,11 +588,13 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/components/Notes/StorageItemActionSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Notes/StorageItemActionSheet.tsx) | `StorageItemActionSheet` | Authentic Apple iOS-Grade Action Sheet / Context Menu for Cloud Vault & Notes: native `BlurView` frosted backdrop blur, elevated preview card, and silky-smooth bloom transition matching the iOS UIMenu pattern. |
 | [`src/components/Notes/NewFolderModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Notes/NewFolderModal.tsx) | `NewFolderModal` | Lightweight modal for creating new folders with 0ms optimistic UI dispatch and autofocus text input. |
 | [`src/components/Notes/RenameNodeModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Notes/RenameNodeModal.tsx) | `RenameNodeModal` | Isolated modal for renaming files, notes, or folders with 0ms optimistic update. |
-| [`src/components/Notes/MoveNodeModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Notes/MoveNodeModal.tsx) | `MoveNodeModal` | Folder picker modal for moving single items or batch selections. |
+| [`src/components/Notes/MoveNodeModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Notes/MoveNodeModal.tsx) | `MoveNodeModal` | Hierarchical folder destination picker for single item and batch moves. Features full DFS tree hierarchy (Root → Main Folders → Subfolders → Units), proportional depth-based indentation with branch lines (`return-down-forward`), explicit breadcrumb path subtitles on every row (`Home > Semester 5 > Electrical vehicles > Unit 1`), level-based icon coloring (Purple Root, Amber Main, Blue Subfolder, Emerald Unit), collapsible/expandable branches, instant name/path search bar, cycle-safe guard preventing a folder from moving into itself or its descendants, and `Current location` indicator badge. |
 | [`src/components/Notes/BatchActionBar.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Notes/BatchActionBar.tsx) | `BatchActionBar` | Floating bottom action bar with `SlideInDown.springify().damping(18).stiffness(220)` entrance, bouncy badge counter spring animation (`scale: 1.28 → 1.0`), `SpringScaleButton` tactile press compression on all buttons, and Select All, Move (N), Delete (N), and Dismiss controls. |
 | [`src/components/Notes/UploadProgressRing.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Notes/UploadProgressRing.tsx) | `UploadProgressRing` | Memoized SVG circular progress indicator for active Cloudinary document and image uploads. |
+| **Vault Components** (`src/components/Vault/`) | | |
+| [`src/components/Vault/ShareToVaultModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Vault/ShareToVaultModal.tsx) | `ShareToVaultModal` | System Share Target Modal for saving incoming shared files, PDFs, and images: native iOS-grade sheet grab handle, Obsidian Cosmos theme palette, hierarchical tree folder selector with proportional indentation, depth level coloring, explicit breadcrumb path subtitles (`Home > Semester 5 > Electrical vehicles`), smooth 60fps LayoutAnimation for folder picker and inline folder creator, fully scrollable folder directory with zero clipping, tactile haptic feedback, and local-first offline caching. |
 | **UI Primitives** (`src/components/ui/`) | | |
-| [`src/components/ui/BottomSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/BottomSheet.tsx) | `BottomSheet` | Apple iOS-grade bottom sheet modal wrapper: native `BlurView` frosted backdrop blur (`intensity={30}`), dynamic `Dimensions.get('window').height` sheet positioning (eliminating arbitrary 600px cutoff), and critically damped Apple spring curve (`damping: 28, stiffness: 260, mass: 0.85`) with zero rubber-band bounce. |
+| [`src/components/ui/BottomSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/BottomSheet.tsx) | `BottomSheet` | Apple iOS-grade bottom sheet modal wrapper: native `BlurView` frosted backdrop blur on iOS (`intensity={30}`) and hardware-accelerated alpha on Android (eliminating software blur frame drops), dynamic `Dimensions.get('window').height` sheet positioning (eliminating arbitrary 600px cutoff), and critically damped Apple spring curve (`damping: 28, stiffness: 260, mass: 0.85`) with zero rubber-band bounce. |
 | [`src/components/ui/FloatingActionButton.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/FloatingActionButton.tsx) | `FloatingActionButton` | Reusable floating action button with icon and glow effects. |
 | [`src/components/ui/GlassCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/GlassCard.tsx) | `GlassCard` | Frosted glassmorphism card wrapper using `expo-blur`. |
 | [`src/components/ui/EmptyState.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/EmptyState.tsx) | `EmptyState` | Consistent placeholder component for empty lists with icon, title, and CTA button. |
@@ -1836,12 +1838,180 @@ Four targeted performance fixes to eliminate lag when switching away from the we
   - Same progress bar (`setUploadProgress`) works for both paths.
   - User experience: no error, no blocked uploads, 88 MB PDFs now upload seamlessly.
 
+### 2026-09-26 — Android APK Build Fix: expo-speech-recognition Downgraded to 3.1.3
+
+- **ROOT CAUSE**: `expo-speech-recognition@57.1.0` (for Expo SDK 57) was mistakenly installed in an **Expo SDK 54** project. SDK 57's package uses `@OptimizedRecord` (from `expo.modules.kotlin.types.OptimizedRecord`) which does not exist in `expo-modules-core@3.0.30` (SDK 54), causing a hard Kotlin compile failure: `Unresolved reference 'OptimizedRecord'` × 7, failing `Task :expo-speech-recognition:compileReleaseKotlin`.
+- **FIX**: Downgraded `expo-speech-recognition` from `^57.1.0` → `3.1.3` — the last release built for SDK 50–54 (before the package switched to SDK-matched versioning). Version `3.1.3` has zero `@OptimizedRecord` usage and compiles cleanly against `expo-modules-core@3.0.30`.
+- **CLEANUP**: Removed `patch-package` devDependency, `"postinstall": "patch-package"` script, and the stale `patches/` directory — no patching needed with the correct version installed.
+- **FILES CHANGED**: `package.json` — `expo-speech-recognition` version pin updated.
+
 ### 2026-09-25 — Attendance Notification Suppression Fix (Marked Classes No Longer Notify)
 - **FIXED** [`src/screens/attendance/useAttendanceFirestore.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/useAttendanceFirestore.ts):
   - **Removed `clearScheduleCache()` call from `handleLog`**: Previously, after marking a class present/absent/cancelled, `clearScheduleCache()` was called immediately after `cancelClassNotificationsImmediately()`. This cleared the fingerprint cache before Firestore confirmed the new attendance log, causing `BackgroundNotificationWatcher` to reschedule all notifications (including the just-cancelled ones) within 600ms, before `attendanceLogs` in `AcademicContext` had been updated. The fix: rely solely on the `attendanceLogs` fingerprint change (triggered by the Firestore snapshot ~1-2s later) to drive the reschedule. The scheduler's `sessionLog` guard in Section 10 correctly suppresses already-marked sessions.
-  - **Removed `clearScheduleCache()` from `handleUndo`** for the same reason — let the Firestore snapshot's removal of the log update the fingerprint and trigger the reschedule.
-- **FIXED** [`src/services/notifications.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/notifications.ts) — `cancelClassNotificationsImmediately()`:
-  - **Android-safe rewrite**: On Android, `content.data` is always `undefined` (stripped to prevent `NotSerializableException`). The old function matched on `data.type`, `data.subjectId`, and `data.date` — all unavailable on Android. New dual-strategy: (1) identifier `class_{subjectId}_{sessionIdx}_{ts}` as primary match (works on both platforms), (2) `data.*` fields as iOS-only fallback.
-  - **Added null-result logging**: Now logs when no notifications were found to cancel (helps diagnose cases where OS already fired them).
-  - **`sessionIdx` extraction**: Now reads from identifier segment `parts[2]` before falling back to `data.sessionIdx`, ensuring Android correctly scopes cancellation to a single session slot.
+### 2026-09-26 — Focus Flow: Apple iOS Design Polish, Viewport Fitting & Glitch Elimination
+- **GLITCHES RESOLVED**:
+  1. **Android Hermes Font Rectangle Glitch**: Removed `fontVariant: ['tabular-nums']` from `depthCardDurationText` and added strict `overflow: 'hidden'` across all card containers and icon wraps, eliminating the dark rectangular bounding-box artifact behind `25m Classic`.
+  2. **Android 3-Button Nav Bar Viewport Clipping**:
+     - Calibrated `RING_SIZE` from 264px down to `Math.min(236, Math.round(SCREEN_WIDTH * 0.64))`, reclaiming 28px+ of vertical clearance.
+     - Added dynamic bottom clearance to ScrollView: `paddingBottom: Math.max(insets.bottom, 24) + 64`, ensuring the entire Focus Depth grid is fully visible and scrollable without getting cut off by the OS navigation bar.
+  3. **Singular/Plural Grammar Bug**: Corrected `{completedToday} {completedToday === 1 ? 'Session' : 'Sessions'}` in the 3-column performance HUD card (fixing `1 SESSIONS` to `1 SESSION`).
+- **APPLE iOS THEME REFINEMENT**:
+  - Elevated `dailyHudCard` with authentic iOS Grouped Inset styling (`rgba(255, 255, 255, 0.035)` surface, 1px subtle hairline border).
+  - Modernized `depthCard` squircles with Apple squircle radius (`borderRadius: 16`), elevated active state with violet radiance (`shadowColor: accent, shadowOpacity: 0.35, elevation: 4`).
+### 2026-09-26 — Focus Flow: Percentage Completed Primary Hero, 1-Tap Toggle & iOS Fluid Animations
+- **HERO PERCENTAGE DISPLAY**:
+  - Replaced redundant time left countdown with **Percentage Completed** (`0%` -> `100%`) as the primary hero center metric in both Full-Screen StandBy and Standard Sheet modes.
+  - Rendered with Apple Fitness/Watch typography: grand numbers in `Inter_700Bold` (70px/48px) with a dedicated `%` glyph in `Inter_600SemiBold` aligned along the baseline with `includeFontPadding: false` to avoid Android Hermes font glitches.
+- **1-TAP DUAL-MODE TOGGLE**:
+  - Added an interactive frosted glass mode pill (`[ ⚡ PROGRESS ⇄ ]` / `[ ⏱ TIME LEFT ⇄ ]`) right above the hero digits.
+  - Tapping the pill or center ring triggers a fluid Reanimated spring bounce (`damping: 14, stiffness: 360`) and tactile haptic feedback (`feedback.selectionChange()`), seamlessly toggling between Percentage Completed and Time Remaining.
+- **CIRCULAR PROGRESS RING HARMONY**:
+  - In Percentage Mode: Ring starts clean at 12 o'clock and sweeps clockwise to 100% with a glowing multi-stop violet-lavender gradient (`#818CF8` -> `#A599FF` -> `#C4B5FD`).
+  - In Time Remaining Mode: Ring smoothly adapts to show remaining session fraction.
+- **ZERO REDUNDANCY METADATA & LIVE BREATHING DOT**:
+  - Subtitle displays non-redundant, contextual information:
+    - Running in Percentage Mode: shows `🟢 ${formatTime(timeLeft)} remaining` with a breathing live flow dot.
+    - Running in Time Mode: shows `🟢 ${completionPct}% completed`.
+    - Paused: shows `🟡 Paused • ${formatTime(timeLeft)} remaining`.
+    - Idle: shows `${formatDurationLabel(currentTotal)} session • Tap to start`.
+- **MINDFUL MANTRA CARD**:
+  - Upgraded the motivational quote into a refined glass capsule with sparkles icon and subtle touch feedback.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
+
+### 2026-09-26 — Focus Flow: Apple iOS Spacious Redesign, Tablet 2-Column Split & De-cluttered Metrics
+- **RESPONSIVE TABLET 2-COLUMN IPADOS FORM SHEET**:
+  - Automatically detects viewport dimensions (`useWindowDimensions()`). On tablets / landscape screens (`width >= 700`), the sheet centers as an authentic iPadOS Form Sheet with `maxWidth: 840`, 32px rounded corners, and a balanced two-column layout:
+    - **Left Column**: Hero Timer Ring (properly proportioned), Unified Control Dock (Play/Pause, Reset, Complete), Quick Boost Pills (+5m, +15m), and Mindful Mantra.
+    - **Right Column**: Today's Focus Overview card, Linked Task Card with dropdown, and Focus Depth Cadence Grid.
+  - On phones (`width < 700`): Preserves a clean, breathable single-column flow with generous breathing room and zero cramped vertical crowding.
+- **ELIMINATED REDUNDANT METRIC CASCADES**:
+  - Removed the repetitive 3-column divider strip (`0m FOCUS TODAY | 0 SESSIONS | 25m CADENCE`) that duplicated the header and cadence cards.
+  - Replaced it with an authentic Apple iOS Grouped Summary card featuring 2 clean metric tiles: **Time Focused** (with hourglass icon) and **Sessions Done** (with flame icon).
+  - Streamlined header subtitle into dynamic, non-redundant contextual information (e.g. `Focusing on: [Task Name]`, `Session Paused • [X] left`, or `Deep Work & Flow State`).
+- **APPLE-GRADE UNIFIED CONTROLS DOCK**:
+  - Unified controls into a cohesive dock with tactile circular frosted secondary buttons, signature lavender play button with spring physics, and integrated quick-boost capsules (`+5m`, `+15m`).
+- **IMMERSIVE STANDBY FULL-SCREEN OVERHAUL**:
+  - Pure OLED pitch black (`#000000`) canvas with dynamic ring scaling, breathing glow aura, tabular numbers, live flow dot, and minimal floating control dock.
+### 2026-09-26 — Tasks Screen: Horizontal Swipe-to-Change-Date Navigation & Directional Animations
+- **HORIZONTAL SWIPE GESTURE ENGINE**:
+  - Implemented intuitive swipe gestures on the Tasks screen:
+    - **Swipe Left (`dx < -40`)**: Navigates forward to the next day (`offsetDateStr(date, 1)`).
+    - **Swipe Right (`dx > 40`)**: Navigates backward to the previous day (`offsetDateStr(date, -1)`).
+  - Designed with non-conflicting gesture thresholds (`|dx| > 28` and `|dx| > |dy| * 1.8`), preventing false triggers during vertical list scrolling and preserving individual `TaskRow` horizontal swipe-to-complete / swipe-to-delete actions.
+  - Automatically disabled in Kanban mode (`viewMode === 'kanban'`) to ensure smooth horizontal column dragging.
+- **DIRECTIONAL SPRING TRANSITIONS & HAPTICS**:
+  - Integrated dynamic Reanimated slide animations:
+    - Forward day movement slides content from the right (`SlideInRight.duration(200).easing(Easing.out(Easing.cubic))`).
+    - Backward day movement slides content from the left (`SlideInLeft.duration(200).easing(Easing.out(Easing.cubic))`).
+  - Tactile light haptic pulse (`Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)`) triggers on day transition.
+- **TASK DATE STRIP NAVIGATION ENHANCEMENTS**:
+  - `TaskDateStrip.tsx` includes an integrated `PanResponder` (`dx > 16`) for direct swiping over the date row with a spring translateX slide animation.
+  - Added discrete `<` and `>` chevron buttons in the date strip header for accessibility and quick 1-day step navigation.
+  - Added a smart 1-tap "Today" pill when viewing past or future dates to quickly return to the current day.
+### 2026-09-26 — Focus Flow: Zero Metric Redundancy, Editorial Typography, Island Pill & Android Artifact Elimination
+- **ZERO REDUNDANT REMAINING TIME (Image 1 fix)**:
+  - Eliminated duplicate display where hero digits showed `1:29:04` and the subtitle directly below also repeated `Paused • 1:29:04 remaining`.
+  - When in Time mode (`displayMode === 'time'`):
+    - Paused: Subtitle displays clean `Session Paused` (with amber status dot) instead of duplicating the remaining time.
+    - Running: Subtitle displays `${completionPct}% completed`.
+  - In Header Subtitle: Displays `Session Paused • Tap to Resume` instead of repeating the remaining time.
+- **PURE EDITORIAL INSPIRATION QUOTE (Image 2 fix)**:
+  - Removed tacky sparkles icon (`✨`) and artificial pill container (`mantraBox`/`fullScreenMantraCard`).
+  - Implemented authentic editorial typography quotes with typographic curly quotes (`“...”`), refined opacity, and natural line heights, making it feel organic and human-crafted rather than AI-generated.
+- **APPLE DYNAMIC ISLAND FLOATING CAPSULE (Image 3 fix)**:
+  - Completely redesigned [`PomodoroFloatingPill.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/PomodoroFloatingPill.tsx):
+    - Removed cluttered duplicate dot + flame icon.
+    - Replaced with a unified 26x26 circular beacon disc with animated breathing glow aura (`withRepeat(withTiming(...))`) when running, and soft amber disc with pause icon when paused.
+    - Crisp tabular numerals (`Inter_700Bold`) with balanced micro-spacing.
+    - Soft amber micro-badge `PAUSED` or mode badge `FOCUS`.
+    - Sleek 42px height, 1px hairline border, and press-in scale spring physics (`scale: 0.96`).
+- **ELIMINATED ANDROID HARDWARE RECTANGLE ARTIFACT (Image 4 fix)**:
+  - Root caused the dark vertical rectangle behind active cards (`25m Classic`): Android's RenderThread casts an opaque black hardware elevation drop-shadow when `elevation > 0` is combined with `overflow: 'hidden'` and semi-transparent alpha backgrounds.
+  - Set `elevation: 0` on `depthCardActive`.
+  - Removed `overflow: 'hidden'` on `depthCard` and `depthCardIconWrap`.
+  - Upgraded card backgrounds to crisp solid surfaces (`#191822` inactive, `#242138` active) with `1.8px` accent border.
+  - Added `includeFontPadding: false` and `backgroundColor: 'transparent'` to `depthCardDurationText` and `depthCardTitle`.
+### 2026-09-26 — Focus Flow: Pill-Free Timer Ring Center & Apple Watch Minimalist Dial
+- **ELIMINATED PILL CLUTTER INSIDE TIMER RING**:
+  - Removed the cramped "pill sandwich" inside the circular dial (`[● READY]` pill above and `[⏱ TIME ⇄]` pill below the digits).
+  - **Top Status Beacon**: Replaced `statusPill` with a refined, unboxed status row (subtle status dot + tracked uppercase text: `● READY` / `● FOCUS` / `● PAUSED`) with zero borders and zero background boxes.
+  - **Hero Tabular Digits**: Grand, unobstructed `25:00` digits. Tapping the digits or ring flips between time remaining and percentage with a fluid spring bounce and tactile feedback.
+  - **Eliminated Mode Toggle Pill**: Removed `sheetModeTogglePill` and `modeTogglePill`, allowing the contextual subtitle (`25m • Tap to start` / `78% completed` / `Session Paused`) to breathe naturally with generous vertical clearance.
+  - **StandBy Full Screen**: Streamlined to pure grand numerals and contextual meta, matching Apple iOS StandBy aesthetics.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
+
+### 2026-09-26 — Tasks: Apple Reminders "Unified Metadata Line" (Zero Ugly Pills)
+- **AUTHENTIC APPLE REMINDERS UNIFIED METADATA LINE (Concept 1)**:
+  - Completely eliminated bulky, isolated tag pills (`#college`) and right-side time crowding with a single, calm, native Apple Reminders metadata row.
+  - **Line 1 (Title)**: Clean, bold task title (`15px Inter_500Medium`, `lineHeight: 20`, `letterSpacing: -0.2`).
+  - **Line 2 (Unified Metadata)**: Clean horizontal sequence using subtle dot separators `•` (`metaDot`) and zero artificial pill containers:
+    - **Live Now**: Pulsating accent dot + `In Progress (Xm left)`
+    - **Overdue**: Pulsating red dot + relative text (`Overdue by X days`)
+    - **Scheduled Time**: Clean en-dash formatted range (`8:00 am – 9:00 pm`) with icon and optional priority tinting. Overdue tasks gracefully show both the overdue indicator and original time slot.
+    - **Priority Fallback**: Clean flag icon + level (`High` / `Medium` / `Low`) when no time slot exists.
+    - **Recurrence**: Repeat icon + capitalized rule (`Daily` / `Weekly` / `Repeating`).
+    - **Tags (Pill-Free)**: Clean 5px tinted circular dot (`tagDot`) + text (`tagText`, e.g. `● College`, `● Work`), eliminating ugly border-heavy container pills entirely.
+    - **Subtask Counter**: Inline list icon + count (`1/3`).
+- **SPACIOUS RIGHT SIDE & SUBTASK ACCORDION**:
+  - Eliminated the cluttered right-aligned time column that caused layout collisions with long task titles.
+  - Right side now cleanly hosts only the `expandChevronBtn` when subtasks exist, smoothly rotating 180° with `useAnimatedStyle`.
+  - Accordion subtasks use circular iOS-style checkboxes (`borderRadius: 8`) and smooth spring animations.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
+
+### 2026-09-26 — Tasks: Removed Horizontal Tag Filter Pill Strip (`#all`, `#college`)
+- **ELIMINATED TAG FILTER PILL STRIP**:
+  - Completely removed the horizontal `#all (2)`, `#college (1)` pill container scroll strip that appeared directly beneath the date strip in [`TasksScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/TasksScreen.tsx).
+  - Cleaned up unneeded tag filter calculations, state bindings, and empty states.
+  - Removed obsolete tag filter style definitions in [`tasksStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/tasksStyles.ts).
+  - Restored maximum vertical breathing room directly between the calendar date strip and the tasks list.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
+
+### 2026-09-26 — Tasks: Left-Swipe Directly Opens Edit Modal (Zero Option Clutter)
+- **DIRECT EDIT ON LEFT SWIPE**:
+  - Replaced the 3 cluttered option buttons (`Trash`, `Calendar / Reschedule`, `List / Add Subtask`) on left swipe with an instant direct-edit action.
+  - Swiping a task row to the left now reveals a clean system blue (`#0A84FF`) Edit action with a `create-outline` pencil icon.
+  - Releasing or opening the swipe automatically triggers `handleEditPress()`, delivering light haptic feedback, snapping the swipe closed, and directly opening the Edit Task modal.
+  - Safe, advanced task options (reschedule, subtasks, delete) remain accessible via row long-press in the context menu.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
+
+### 2026-09-26 — Tasks: Redesigned EditTaskModal to Apple Reminders iOS 18 Grouped Inspector
+- **APPLE REMINDERS IOS 18 GROUPED INSPECTOR**:
+  - Completely redesigned [`EditTaskModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/EditTaskModal.tsx) from a basic cramped bottom sheet into an authentic Apple iOS 18 grouped task inspector.
+  - **Top Navigation Bar**: Features standard Apple modal header with `Cancel` on the left, `Details` in the center, and accent `Done` on the right.
+  - **Group 1 — Title & Notes**:
+    - Retains smart NLP title input (with token detection and live chip highlights).
+    - Added multiline **Notes & Details** input (`minHeight: 52`, `maxHeight: 120`) to save links, descriptions, and extended context into `task.notes`.
+  - **Group 2 — Schedule & Timing**:
+    - **Date Row**: Calendar icon badge, current date, and 1-tap quick presets: `Today`, `Tomorrow`, `This Weekend`, plus custom Universal Calendar Picker.
+    - **Time Slot Row**: Clean start & end badges (`9:00 AM – 10:30 AM`) with native time wheel and 1-tap clear button.
+    - **Reminder Notification**: Native iOS Switch with amber bell icon badge.
+    - **Repeat Rule**: Displays recurrence status (`Daily`, `Weekly`, `Never`) with chevron opening `RecurrencePickerModal`.
+  - **Group 3 — Priority & Tags**:
+    - **Priority**: Segmented control (`None`, `Low` with green dot, `Med` with orange dot, `High` with red dot) with smooth tactile haptic selection.
+    - **Tag Selector**: Full interactive tag selector with active colored tag dots, suggested library tags, and inline `+ New Tag` creator.
+  - **Group 4 — Subtasks Checklist & Chained Entry**:
+    - Displays progress badge (`2/3 completed`).
+    - Circular checkable items with inline title editing and remove button.
+    - Chained `+ Add step` row: user can type and hit Return to instantly add steps one after another without keyboard dismissal.
+  - **Group 5 — Focus Target Time (Pomodoro Integration)**:
+    - 4 quick capsules (`15m`, `25m Classic`, `45m`, `60m`) to set `estimatedMinutes` for focus sessions.
+  - **Footer Actions**:
+    - Full-width signature purple `Save Changes` CTA.
+    - Centered non-destructive red `Delete Task` button at the bottom with recurrence safety sheet.
+- **Tasks Module Refinements (EditTaskModal, RecurrencePickerModal, dateUtils)**:
+  - **Removed Notes Input**: Eliminated the extraneous "Notes, links, or description..." input from Group 1 in `EditTaskModal.tsx`. The top card now houses only the standalone NLP task title input with inline token highlights.
+  - **Structured Time Slot Layout**: Replaced the cramped single-line `Time Slot` row with a structured dual-card layout (`STARTS: 9:00 PM` → `ENDS: 10:00 PM` or `+ Set End`) with large touch targets and a 1-tap `Clear` button in the header. When no time is set, displays clean `+ Set Time`.
+  - **Redesigned RecurrencePickerModal**: Completely eliminated the floating pill clumping and massive empty black void in `RecurrencePickerModal.tsx`. Implemented an authentic Apple iOS 18 grouped list covering space properly: full-width frequency rows (`Never`, `Every Day`, `Every Week`, `Every Month`, `Custom...`) with subtitles, icons, and native checkmarks; 7-day circular weekday selector with `Weekdays`/`Weekends` shortcuts; custom interval stepper; and optional End Repeat date selector.
+  - **Removed Estimated Focus Time**: Completely removed the "ESTIMATED FOCUS TIME" (Pomodoro Target) section from `EditTaskModal.tsx`.
+  - **Conditional Tags Display**: If a task has no tags, tag chips and suggestions are completely hidden, showing only a clean `Tags` → `+ Add Tag` button. When tags exist, displays only the task's active tags with `x` remove buttons, plus `+ Tag`. Eliminated cluttered library suggestion chips.
+  - **Enhanced NLP Parser**: Added support in `dateUtils.ts` for common spelling variations and abbreviations (`tommorow`, `tomorow`, `tommorrow`, `tmrw`, `tmr`, `tomo`, `2moro`, `2morrow`) across relative date parsing and title cleanup. Reduced NLP parsing debounce in `EditTaskModal.tsx` from 300ms to 60ms so typing changes Date, Time, Priority, and Recurrence automatically and instantly in real-time.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0 (0 errors).
+
+
+
+
+
+
+
+
 

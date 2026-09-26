@@ -9,6 +9,12 @@ import * as FileSystem from 'expo-file-system/legacy';
 const ILOVE_BASE = 'https://api.ilovepdf.com/v1';
 const PUBLIC_KEY = process.env.EXPO_PUBLIC_ILOVEPDF_PUBLIC_KEY || '';
 
+export type ILovePdfCompressionLevel = 'recommended' | 'extreme' | 'low';
+
+function getSafeFileName(fileName: string): string {
+  return (fileName || 'document.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
 async function getToken(): Promise<string> {
   const res = await fetch(`${ILOVE_BASE}/auth`, {
     method: 'POST',
@@ -41,6 +47,7 @@ async function uploadFile(
   uri: string,
   fileName: string,
 ): Promise<string> {
+  const safeName = getSafeFileName(fileName);
   const uploadRes = await FileSystem.uploadAsync(
     `https://${server}/v1/upload`,
     uri,
@@ -67,12 +74,14 @@ async function processTask(
   token: string,
   serverFilename: string,
   originalFileName: string,
+  compressionLevel: ILovePdfCompressionLevel = 'recommended',
 ): Promise<void> {
+  const safeName = getSafeFileName(originalFileName);
   const body = {
     task,
     tool: 'compress',
-    files: [{ server_filename: serverFilename, filename: originalFileName }],
-    compression_level: 'recommended',
+    files: [{ server_filename: serverFilename, filename: safeName }],
+    compression_level: compressionLevel,
   };
   const res = await fetch(`https://${server}/v1/process`, {
     method: 'POST',
@@ -94,7 +103,8 @@ async function downloadResult(
   token: string,
   fileName: string,
 ): Promise<string> {
-  const destUri = `${FileSystem.cacheDirectory}compressed_${Date.now()}_${fileName}`;
+  const safeName = getSafeFileName(fileName);
+  const destUri = `${FileSystem.cacheDirectory}compressed_${Date.now()}_${safeName}`;
   const dlRes = await FileSystem.downloadAsync(
     `https://${server}/v1/download/${task}`,
     destUri,
@@ -110,6 +120,7 @@ export const compressPdfWithILovePDF = async (
   uri: string,
   fileName: string,
   onStep?: (step: string) => void,
+  compressionLevel: ILovePdfCompressionLevel = 'recommended',
 ): Promise<string> => {
   if (!PUBLIC_KEY) {
     throw new Error(
@@ -117,20 +128,21 @@ export const compressPdfWithILovePDF = async (
     );
   }
 
-  onStep?.('Authenticating...');
+  onStep?.('Authenticating with compressor...');
   const token = await getToken();
 
-  onStep?.('Starting compression task...');
+  onStep?.(`Starting ${compressionLevel} compression...`);
   const { server, task } = await startTask(token);
 
   onStep?.('Uploading to compressor...');
   const serverFilename = await uploadFile(server, task, token, uri, fileName);
 
-  onStep?.('Compressing...');
-  await processTask(server, task, token, serverFilename, fileName);
+  onStep?.(`Compressing (${compressionLevel})...`);
+  await processTask(server, task, token, serverFilename, fileName, compressionLevel);
 
   onStep?.('Downloading compressed file...');
   const compressedUri = await downloadResult(server, task, token, fileName);
 
   return compressedUri;
 };
+

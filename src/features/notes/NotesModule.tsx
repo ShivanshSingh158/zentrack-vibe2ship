@@ -10,7 +10,7 @@ import {
   HardDrive, ExternalLink, Sparkles, Upload, Download,
   PanelLeftClose, PanelLeftOpen, Maximize2, Minimize2, Columns, LayoutGrid,
   Loader2, RotateCw, RotateCcw, Edit2, ZoomIn, ZoomOut, MousePointerClick,
-  Image as ImageIcon
+  Image as ImageIcon, Zap
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -21,6 +21,8 @@ import { NotesFeed, type SortMode } from './NotesFeed';
 import { type FilterCategory } from './CategoryFilterTabs';
 import { NotesEditor } from './NotesEditor';
 import { NotesAIPanel, type ChatMessage } from './NotesAIPanel';
+import { PdfCompressorModal } from './PdfCompressorModal';
+import { formatBytes } from '../../services/pdfCompressor';
 import '../../styles/notes.css';
 
 export const NotesModule = () => {
@@ -54,6 +56,10 @@ export const NotesModule = () => {
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderParentId, setNewFolderParentId] = useState<string | null>(null);
   const [renameModal, setRenameModal] = useState<{ isOpen: boolean; node: StorageNode | null; newName: string }>({ isOpen: false, node: null, newName: '' });
+
+  // PDF Compressor Studio State
+  const [isPdfCompressorOpen, setIsPdfCompressorOpen] = useState(false);
+  const [pdfToCompress, setPdfToCompress] = useState<File | null>(null);
 
   // Note Editor State
   const [activeNote, setActiveNote] = useState<StorageNode | null>(null);
@@ -718,10 +724,20 @@ export const NotesModule = () => {
     try {
       for (let i = 0; i < filesToUpload.length; i++) {
         const file = filesToUpload[i];
+
+        // 10MB Cloudinary Gate: If PDF exceeds 10MB, route directly to PDF Compressor Studio
+        const isPdf = file.type.includes('pdf') || file.name.toLowerCase().endsWith('.pdf');
+        if (isPdf && file.size > 10 * 1024 * 1024) {
+          toast.info(`"${file.name}" is ${formatBytes(file.size)} (>10MB limit). Opening PDF Compressor Studio...`);
+          setPdfToCompress(file);
+          setIsPdfCompressorOpen(true);
+          continue;
+        }
+
         setUploadProgress(Math.round(((i + 1) / filesToUpload.length) * 100));
 
         let fileType: 'pdf' | 'docx' | 'image' | 'file' = 'file';
-        if (file.type.includes('pdf')) fileType = 'pdf';
+        if (isPdf) fileType = 'pdf';
         else if (file.type.includes('word') || file.name.endsWith('.docx')) fileType = 'docx';
         else if (file.type.startsWith('image/')) fileType = 'image';
 
@@ -923,6 +939,24 @@ export const NotesModule = () => {
         </div>
 
         <div className="notes-header-actions">
+          {/* Compress PDF (<10MB Studio) */}
+          <label className="notes-action-pill-btn compress-pill" title="Compress PDF (<10MB) & Upload to Vault">
+            <Zap size={13} className="notes-action-icon" style={{ color: '#FBBF24' }} />
+            <span>Compress PDF</span>
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  setPdfToCompress(e.target.files[0]);
+                  setIsPdfCompressorOpen(true);
+                  e.target.value = '';
+                }
+              }}
+              style={{ display: 'none' }}
+            />
+          </label>
+
           {/* File Upload Hidden Input */}
           <label className="notes-action-pill-btn upload-pill" title="Upload files">
             <Upload size={13} className="notes-action-icon" />
@@ -1258,6 +1292,28 @@ export const NotesModule = () => {
 
                   {activeViewingFileUrl && (
                     <>
+                      {isPdfOrOfficeDoc && (viewingFile.fileType === 'pdf' || viewingFile.name?.toLowerCase().endsWith('.pdf')) && (
+                        <button
+                          type="button"
+                          className="notes-file-action-btn"
+                          onClick={async () => {
+                            try {
+                              toast.info('Loading PDF into Compressor Studio...');
+                              const response = await fetch(activeViewingFileUrl);
+                              const blob = await response.blob();
+                              const file = new File([blob], viewingFile.name || 'document.pdf', { type: 'application/pdf' });
+                              setPdfToCompress(file);
+                              setIsPdfCompressorOpen(true);
+                            } catch (e) {
+                              toast.error('Could not load PDF for compression');
+                            }
+                          }}
+                          title="Compress this PDF to optimize size"
+                        >
+                          <Zap size={13} style={{ color: '#FBBF24' }} />
+                          <span>Compress</span>
+                        </button>
+                      )}
                       <a
                         href={activeViewingFileUrl}
                         target="_blank"
@@ -1690,6 +1746,21 @@ export const NotesModule = () => {
         onConfirm={() => handleDeleteNode(deleteConfirm.id)}
         onCancel={() => setDeleteConfirm({ isOpen: false, id: '' })}
       />
+
+      {/* PDF Compressor Studio Modal */}
+      {isPdfCompressorOpen && (
+        <PdfCompressorModal
+          isOpen={isPdfCompressorOpen}
+          onClose={() => {
+            setIsPdfCompressorOpen(false);
+            setPdfToCompress(null);
+          }}
+          initialFile={pdfToCompress}
+          folders={nodes.filter(n => n.type === 'folder')}
+          currentFolderId={currentFolderId}
+          onUploadSuccess={() => {}}
+        />
+      )}
     </div>
   );
 };

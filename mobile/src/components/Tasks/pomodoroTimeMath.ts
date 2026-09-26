@@ -185,3 +185,13 @@ export function formatDurationLabel(secs: number): string {
   }
   return `${Math.round(secs / 60)}m`;
 }
+
+export function formatFocusTime(totalSecs: number): string {
+  if (totalSecs <= 0) return '0m';
+  const totalMins = Math.round(totalSecs / 60);
+  if (totalMins < 60) return `${totalMins}m`;
+  const hrs = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+}
+

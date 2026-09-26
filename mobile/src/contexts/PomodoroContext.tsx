@@ -14,6 +14,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import { AppState, AppStateStatus, Platform, Vibration } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, setDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import { db, auth } from '../services/firebase';
 import { safeWrite } from '../utils/safeWrite';
@@ -28,6 +29,8 @@ import {
 
 const STORAGE_KEY_POMODORO = '@zentrack_active_pomodoro_v2';
 const STORAGE_KEY_POMO_TODAY = '@zentrack_pomodoro_completed_today_v2';
+const STORAGE_KEY_POMO_KEEP_AWAKE = '@zentrack_pomodoro_keep_awake';
+const POMODORO_KEEP_AWAKE_TAG = 'ZenTrackPomodoroKeepAwake';
 
 export interface ActivePomodoroState {
   status: 'idle' | 'running' | 'paused';
@@ -51,6 +54,7 @@ export interface PomodoroContextType {
   totalDuration: number;
   sessionCount: number;
   completedToday: number;
+  totalSecondsToday: number;
   linkedTaskId: string | null;
   config: PomodoroConfig;
   isSheetOpen: boolean;
@@ -67,6 +71,9 @@ export interface PomodoroContextType {
   unlinkTask: () => void;
   openPomodoro: (taskId?: string) => void;
   closePomodoro: () => void;
+  keepAwakeEnabled: boolean;
+  toggleKeepAwake: () => void;
+  setKeepAwakeEnabled: (enabled: boolean) => void;
 }
 
 const PomodoroContext = createContext<PomodoroContextType | null>(null);
@@ -90,9 +97,50 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [pausedAt, setPausedAt] = useState<number | null>(null);
   const [sessionCount, setSessionCount] = useState<number>(0);
   const [completedToday, setCompletedToday] = useState<number>(0);
+  const [totalSecondsToday, setTotalSecondsToday] = useState<number>(0);
   const [linkedTaskId, setLinkedTaskId] = useState<string | null>(null);
   const [linkedTaskTitle, setLinkedTaskTitle] = useState<string | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState<boolean>(false);
+  const [keepAwakeEnabled, setKeepAwakeEnabledState] = useState<boolean>(true);
+
+  // Load saved keep-awake preference (defaults to true)
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY_POMO_KEEP_AWAKE).then(saved => {
+      if (saved !== null) {
+        try {
+          setKeepAwakeEnabledState(JSON.parse(saved));
+        } catch {}
+      }
+    }).catch(() => {});
+  }, []);
+
+  const setKeepAwakeEnabled = useCallback((enabled: boolean) => {
+    setKeepAwakeEnabledState(enabled);
+    AsyncStorage.setItem(STORAGE_KEY_POMO_KEEP_AWAKE, JSON.stringify(enabled)).catch(() => {});
+  }, []);
+
+  const toggleKeepAwake = useCallback(() => {
+    feedback.tap();
+    setKeepAwakeEnabledState(prev => {
+      const next = !prev;
+      AsyncStorage.setItem(STORAGE_KEY_POMO_KEEP_AWAKE, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  // Screen Keep-Awake Engine: Screen never sleeps when timer sheet is open OR timer is actively running
+  useEffect(() => {
+    const shouldKeepAwake = keepAwakeEnabled && (isSheetOpen || status === 'running');
+    if (shouldKeepAwake) {
+      activateKeepAwakeAsync(POMODORO_KEEP_AWAKE_TAG).catch(() => {});
+    } else {
+      deactivateKeepAwake(POMODORO_KEEP_AWAKE_TAG).catch(() => {});
+    }
+
+    return () => {
+      deactivateKeepAwake(POMODORO_KEEP_AWAKE_TAG).catch(() => {});
+    };
+  }, [keepAwakeEnabled, isSheetOpen, status]);
 
   const isInitializedRef = useRef<boolean>(false);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -150,7 +198,7 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [status, mode, timeLeft, totalDuration, startTime, targetEndTime, pausedAt, sessionCount, completedToday, linkedTaskId, linkedTaskTitle]);
 
-  // Session completion handler
+  // Session completion handler — Pure iOS Focus Flow
   const handleSessionComplete = useCallback(async (completedMode: PomodoroMode) => {
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
@@ -162,76 +210,57 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const uid = auth.currentUser?.uid;
 
-    if (completedMode === 'focus') {
-      const newSessionCount = sessionCount + 1;
-      const newCompletedToday = completedToday + 1;
-      setSessionCount(newSessionCount);
-      setCompletedToday(newCompletedToday);
+    const newSessionCount = sessionCount + 1;
+    const newCompletedToday = completedToday + 1;
+    const sessionSecs = totalDuration > 0 ? totalDuration : config.focus;
+    const newTotalSecondsToday = totalSecondsToday + sessionSecs;
+    setSessionCount(newSessionCount);
+    setCompletedToday(newCompletedToday);
+    setTotalSecondsToday(newTotalSecondsToday);
 
-      // Persist completed count for today
-      AsyncStorage.setItem(STORAGE_KEY_POMO_TODAY, JSON.stringify({
-        date: new Date().toISOString().slice(0, 10),
-        count: newCompletedToday,
-      })).catch(() => {});
+    // Persist completed count and exact focus seconds for today
+    AsyncStorage.setItem(STORAGE_KEY_POMO_TODAY, JSON.stringify({
+      date: new Date().toISOString().slice(0, 10),
+      count: newCompletedToday,
+      totalSeconds: newTotalSecondsToday,
+    })).catch(() => {});
 
-      // Record session in Firestore
-      if (uid) {
-        try {
-          await addDoc(collection(db, COLLECTION.POMODORO_SESSIONS || 'pomodoro_sessions'), {
-            userId: uid,
-            startTime: serverTimestamp(),
-            duration: totalDuration,
-            taskId: linkedTaskId ?? null,
-            mode: 'focus',
-          });
-          await awardXP('POMODORO_SESSION');
-        } catch { /* non-blocking */ }
-      }
-
-      // Transition to next break mode
-      const nextMode = newSessionCount % config.sessionsUntilLong === 0 ? 'longBreak' : 'shortBreak';
-      const nextDuration = config[nextMode];
-      setMode(nextMode);
-      setTimeLeft(nextDuration);
-      setTotalDuration(nextDuration);
-      setStatus('idle');
-      setStartTime(null);
-      setTargetEndTime(null);
-      setPausedAt(null);
-
-      persistState({
-        status: 'idle',
-        mode: nextMode,
-        timeLeft: nextDuration,
-        totalDuration: nextDuration,
-        startTime: null,
-        targetEndTime: null,
-        pausedAt: null,
-        sessionCount: newSessionCount,
-        completedToday: newCompletedToday,
-      });
-    } else {
-      // Break finished -> back to focus mode
-      const nextDuration = config.focus;
-      setMode('focus');
-      setTimeLeft(nextDuration);
-      setTotalDuration(nextDuration);
-      setStatus('idle');
-      setStartTime(null);
-      setTargetEndTime(null);
-      setPausedAt(null);
-
-      persistState({
-        status: 'idle',
-        mode: 'focus',
-        timeLeft: nextDuration,
-        totalDuration: nextDuration,
-        startTime: null,
-        targetEndTime: null,
-        pausedAt: null,
-      });
+    // Record session in Firestore
+    if (uid) {
+      try {
+        await addDoc(collection(db, COLLECTION.POMODORO_SESSIONS || 'pomodoro_sessions'), {
+          userId: uid,
+          startTime: serverTimestamp(),
+          duration: sessionSecs,
+          taskId: linkedTaskId ?? null,
+          mode: 'focus',
+        });
+        await awardXP('POMODORO_SESSION');
+      } catch { /* non-blocking */ }
     }
-  }, [sessionCount, completedToday, totalDuration, linkedTaskId, config, persistState]);
+
+    // Pure iOS Focus Flow: remain in focus mode ready for next mission (NO Zen Recharge)
+    const nextDuration = config.focus;
+    setMode('focus');
+    setTimeLeft(nextDuration);
+    setTotalDuration(nextDuration);
+    setStatus('idle');
+    setStartTime(null);
+    setTargetEndTime(null);
+    setPausedAt(null);
+
+    persistState({
+      status: 'idle',
+      mode: 'focus',
+      timeLeft: nextDuration,
+      totalDuration: nextDuration,
+      startTime: null,
+      targetEndTime: null,
+      pausedAt: null,
+      sessionCount: newSessionCount,
+      completedToday: newCompletedToday,
+    });
+  }, [sessionCount, completedToday, totalSecondsToday, totalDuration, linkedTaskId, config, persistState]);
 
   // High-accuracy timer tick loop
   useEffect(() => {
@@ -272,8 +301,15 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (savedToday) {
         try {
           const parsedToday = JSON.parse(savedToday);
-          if (parsedToday.date === todayStr && typeof parsedToday.count === 'number') {
-            setCompletedToday(parsedToday.count);
+          if (parsedToday.date === todayStr) {
+            if (typeof parsedToday.count === 'number') {
+              setCompletedToday(parsedToday.count);
+            }
+            if (typeof parsedToday.totalSeconds === 'number') {
+              setTotalSecondsToday(parsedToday.totalSeconds);
+            } else if (typeof parsedToday.count === 'number') {
+              setTotalSecondsToday(parsedToday.count * (config.focus || 1500));
+            }
           }
         } catch {}
       }
@@ -529,6 +565,7 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     totalDuration,
     sessionCount,
     completedToday,
+    totalSecondsToday,
     linkedTaskId,
     config,
     isSheetOpen,
@@ -545,6 +582,9 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     unlinkTask,
     openPomodoro,
     closePomodoro,
+    keepAwakeEnabled,
+    toggleKeepAwake,
+    setKeepAwakeEnabled,
   }), [
     status,
     mode,
@@ -552,6 +592,7 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     totalDuration,
     sessionCount,
     completedToday,
+    totalSecondsToday,
     linkedTaskId,
     config,
     isSheetOpen,
@@ -566,6 +607,9 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     unlinkTask,
     openPomodoro,
     closePomodoro,
+    keepAwakeEnabled,
+    toggleKeepAwake,
+    setKeepAwakeEnabled,
   ]);
 
   return (

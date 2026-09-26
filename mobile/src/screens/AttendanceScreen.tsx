@@ -272,6 +272,7 @@ const BunkSafetyRing = React.memo(function BunkSafetyRing({
 // â”€â”€ Pure Memoized Session Action Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface SessionRowProps {
   session: any;
+  sessionIndex?: number;
   log: any;
   colors: any;
   isDark: boolean;
@@ -282,6 +283,7 @@ interface SessionRowProps {
 
 const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
   session,
+  sessionIndex,
   log,
   colors,
   isDark,
@@ -327,16 +329,10 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
     opacity: crimsonWave.value,
   }));
 
-  // Gap 1: rowScale burst (1 â†’ 1.04 â†’ 1.0 spring on mark, 0.96 â†’ 1.0 on absent)
-  const rowScale    = useSharedValue(1);
   // rowColorVal: 0=neutral, 1=present, -1=absent, 0.5=cancelled
   const rowColorVal = useSharedValue(
     log?.action === 'attended' ? 1 : log?.action === 'missed' ? -1 : log?.action === 'cancelled' ? 0.5 : 0
   );
-
-  const rowScaleStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: rowScale.value }],
-  }));
 
   const rowBgStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
@@ -365,16 +361,10 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
         withTiming(1, { duration: 120 }),
         withTiming(0, { duration: 420 })
       );
-      // Scale burst: expand â†’ spring settle
-      rowScale.value = withSequence(
-        withSpring(1.04, { damping: 10, stiffness: 500 }),
-        withSpring(1.0,  { damping: 18, stiffness: 350 }),
-      );
-      rowColorVal.value = withTiming(1, { duration: 220 });
       setLocalAction('attended');
       onLog(subject, type, 'attended', log?.id, sessionIdx, undefined, isExtra);
     }
-  }, [isPresent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, emeraldRipple, rowScale, rowColorVal]);
+  }, [isPresent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, emeraldRipple, rowColorVal]);
 
   const handlePressAbsent = useCallback(() => {
     if (processingRef.current) return;
@@ -389,16 +379,10 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
         withTiming(1, { duration: 100 }),
         withTiming(0, { duration: 380 })
       );
-      // Compress burst: shrink â†’ spring back
-      rowScale.value = withSequence(
-        withSpring(0.96, { damping: 12, stiffness: 500 }),
-        withSpring(1.0,  { damping: 18, stiffness: 350 }),
-      );
-      rowColorVal.value = withTiming(-1, { duration: 220 });
       setLocalAction('missed');
       onLog(subject, type, 'missed', log?.id, sessionIdx, undefined, isExtra);
     }
-  }, [isAbsent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, crimsonWave, rowScale, rowColorVal]);
+  }, [isAbsent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, crimsonWave, rowColorVal]);
 
   const handlePressCancelled = useCallback(() => {
     if (processingRef.current) return;
@@ -416,7 +400,10 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
   }, [isCancelled, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, rowColorVal]);
 
   return (
-    <Reanimated.View style={[styles.sessionCard, { position: 'relative', overflow: 'hidden' }, rowScaleStyle, rowBgStyle]}>
+    <Reanimated.View
+      entering={FadeIn.duration(180)}
+      style={[styles.sessionCard, { position: 'relative', overflow: 'hidden' }, rowBgStyle]}
+    >
       {/* WhatsApp Emerald Glow Ripple Overlay */}
       <Reanimated.View
         pointerEvents="none"
@@ -531,6 +518,7 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
 // â”€â”€ Pure Memoized Subject Summary Row (By Subject with Decoupled Plain Labels) â”€â”€
 interface SubjectSummaryRowProps {
   subject: AttendanceSubject;
+  index?: number;
   colors: any;
   isDark: boolean;
   styles: any;
@@ -540,6 +528,7 @@ interface SubjectSummaryRowProps {
 
 const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
   subject,
+  index,
   colors,
   isDark,
   styles,
@@ -631,7 +620,10 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
   }
 
   return (
-    <Reanimated.View style={animCardStyle}>
+    <Reanimated.View
+      entering={FadeIn.duration(180)}
+      style={animCardStyle}
+    >
       <TouchableOpacity
         onPress={handlePress}
         onLongPress={handleLongPress}
@@ -958,22 +950,19 @@ export default function AttendanceScreen() {
   }, [handleToggleHoliday, isSelectedHoliday]);
 
   const handleAddSubject = () => {
-    // Close the Timetable modal first, then open AddSubject after
-    // its slide-out animation completes (avoids double-modal stacking)
     setIsTimetableOpen(false);
     setTimeout(() => {
       setEditSubject(null);
       setShowAddModal(true);
-    }, 350);
+    }, 120);
   };
 
-  // Same close-first pattern as handleAddSubject â€” avoids both modals stacking
   const handleEditSubject = useCallback((subject: AttendanceSubject) => {
     setIsTimetableOpen(false);
     setTimeout(() => {
       setEditSubject(subject);
       setShowAddModal(true);
-    }, 350);
+    }, 120);
   }, []);
 
   const renderItem = useCallback(({ item: session }: { item: any }) => {
@@ -1008,6 +997,7 @@ export default function AttendanceScreen() {
     return (
       <AttendanceSessionRow
         session={session}
+        sessionIndex={idx}
         log={log}
         colors={colors}
         isDark={isDark}
@@ -1103,10 +1093,11 @@ export default function AttendanceScreen() {
     return (
       <View style={{ marginTop: 20, marginBottom: 56 }}>
         <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, paddingHorizontal: 2 }}>BY SUBJECT</Text>
-        {subjects.map(subject => (
+        {subjects.map((subject, index) => (
           <SubjectSummaryRow
             key={subject.id}
             subject={subject}
+            index={index}
             colors={colors}
             isDark={isDark}
             styles={styles}
@@ -1304,17 +1295,15 @@ export default function AttendanceScreen() {
       {/* â”€â”€ Lazy Loaded Modals â”€â”€ */}
       <Suspense fallback={null}>
         {/* Timetable Modal */}
-        {isTimetableOpen && (
-          <TimetableModal
-            visible={isTimetableOpen}
-            onClose={() => setIsTimetableOpen(false)}
-            subjects={subjects}
-            handleAddSubject={handleAddSubject}
-            onEditSubject={handleEditSubject}
-            handleDeleteSubject={handleDeleteSubject}
-            handleResetSemester={handleResetSemester}
-          />
-        )}
+        <TimetableModal
+          visible={isTimetableOpen}
+          onClose={() => setIsTimetableOpen(false)}
+          subjects={subjects}
+          handleAddSubject={handleAddSubject}
+          onEditSubject={handleEditSubject}
+          handleDeleteSubject={handleDeleteSubject}
+          handleResetSemester={handleResetSemester}
+        />
 
         {/* History Modal */}
         <SubjectHistoryModal
@@ -1330,21 +1319,17 @@ export default function AttendanceScreen() {
         />
 
         {/* Add Subject Modal */}
-        {showAddModal && (
-          <AddSubjectModal 
-            visible={showAddModal} 
-            onClose={() => setShowAddModal(false)} 
-            existingSubject={editSubject} 
-          />
-        )}
+        <AddSubjectModal 
+          visible={showAddModal} 
+          onClose={() => setShowAddModal(false)} 
+          existingSubject={editSubject} 
+        />
 
         {/* Class Notification Preferences Modal */}
-        {showClassNotifModal && (
-          <ClassNotifSettingsModal
-            visible={showClassNotifModal}
-            onClose={() => setShowClassNotifModal(false)}
-          />
-        )}
+        <ClassNotifSettingsModal
+          visible={showClassNotifModal}
+          onClose={() => setShowClassNotifModal(false)}
+        />
 
         {/* WhatsApp-Grade Floating Action Context Menu for Subjects */}
         <SubjectContextMenuModal
@@ -1352,13 +1337,20 @@ export default function AttendanceScreen() {
           subject={contextMenuSubject}
           onClose={() => setContextMenuSubject(null)}
           onQuickLogExtra={(subj) => {
-            setExtraSubjectId(subj.id);
-            setIsExtraOpen(true);
+            setContextMenuSubject(null);
+            setTimeout(() => {
+              setExtraSubjectId(subj.id);
+              setIsExtraOpen(true);
+            }, 100);
           }}
           onViewHistory={(subj) => {
-            setSelectedHistorySubject(subj);
+            setContextMenuSubject(null);
+            setTimeout(() => {
+              setSelectedHistorySubject(subj);
+            }, 100);
           }}
           onEditSubject={(subj) => {
+            setContextMenuSubject(null);
             handleEditSubject(subj);
           }}
           onResetSubject={(subj) => {
@@ -1386,59 +1378,56 @@ export default function AttendanceScreen() {
       </Suspense>
 
       {/* Unlogged / Pending Classes & Labs Drawer */}
-      {isUnloggedOpen && (
-        <BottomSheet visible={isUnloggedOpen} onClose={() => setIsUnloggedOpen(false)} avoidKeyboard={false}>
-          <View style={{ width: '100%', maxHeight: 480 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <View style={{ flex: 1, marginRight: 10 }}>
-                <Text style={styles.sheetTitle}>Unlogged Classes & Labs</Text>
-                <Text style={{ fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
-                  {unloggedSessions.length} {unloggedSessions.length === 1 ? 'past session' : 'past sessions'} pending â€¢ Newest first
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => setIsUnloggedOpen(false)} style={{ padding: 4 }}>
-                <Ionicons name="close" size={20} color={colors.textMuted} />
-              </TouchableOpacity>
+      <BottomSheet visible={isUnloggedOpen} onClose={() => setIsUnloggedOpen(false)} avoidKeyboard={false}>
+        <View style={{ width: '100%', maxHeight: 480 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <Text style={styles.sheetTitle}>Unlogged Classes & Labs</Text>
+              <Text style={{ fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
+                {unloggedSessions.length} {unloggedSessions.length === 1 ? 'past session' : 'past sessions'} pending • Newest first
+              </Text>
             </View>
-
-            {unloggedSessions.length === 0 ? (
-              <Reanimated.View
-                entering={FadeIn.duration(220).easing(Easing.bezier(0.16, 1, 0.3, 1))}
-                style={{ paddingVertical: 36, alignItems: 'center', gap: 10 }}
-              >
-                <Ionicons name="checkmark-done-circle-outline" size={48} color={isDark ? '#34D399' : '#059669'} />
-                <Text style={{ fontSize: 16, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
-                  All Caught Up! 🎉
-                </Text>
-                <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', paddingHorizontal: 20 }}>
-                  No unlogged classes or labs found in the past 30 days. Everything is up to date.
-                </Text>
-              </Reanimated.View>
-            ) : (
-              <ScrollView style={{ marginTop: 12, marginBottom: 8 }} showsVerticalScrollIndicator={false}>
-                {unloggedSessions.map(item => (
-                  <UnloggedSessionRow
-                    key={item.id}
-                    item={item}
-                    colors={colors}
-                    isDark={isDark}
-                    styles={styles}
-                    onSelectDate={date => {
-                      setSelectedDate(date);
-                      setIsUnloggedOpen(false);
-                    }}
-                    onLog={handleLog}
-                  />
-                ))}
-              </ScrollView>
-            )}
+            <TouchableOpacity onPress={() => setIsUnloggedOpen(false)} style={{ padding: 4 }}>
+              <Ionicons name="close" size={20} color={colors.textMuted} />
+            </TouchableOpacity>
           </View>
-        </BottomSheet>
-      )}
+
+          {unloggedSessions.length === 0 ? (
+            <Reanimated.View
+              entering={FadeIn.duration(220).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+              style={{ paddingVertical: 36, alignItems: 'center', gap: 10 }}
+            >
+              <Ionicons name="checkmark-done-circle-outline" size={48} color={isDark ? '#34D399' : '#059669'} />
+              <Text style={{ fontSize: 16, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
+                All Caught Up! 🎉
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', paddingHorizontal: 20 }}>
+                No unlogged classes or labs found in the past 30 days. Everything is up to date.
+              </Text>
+            </Reanimated.View>
+          ) : (
+            <ScrollView style={{ marginTop: 12, marginBottom: 8 }} showsVerticalScrollIndicator={false}>
+              {unloggedSessions.map(item => (
+                <UnloggedSessionRow
+                  key={item.id}
+                  item={item}
+                  colors={colors}
+                  isDark={isDark}
+                  styles={styles}
+                  onSelectDate={date => {
+                    setSelectedDate(date);
+                    setIsUnloggedOpen(false);
+                  }}
+                  onLog={handleLog}
+                />
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </BottomSheet>
 
       {/* Extra Class Modal */}
-      {isExtraOpen && (
-        <BottomSheet visible={isExtraOpen} onClose={() => setIsExtraOpen(false)} avoidKeyboard={false}>
+      <BottomSheet visible={isExtraOpen} onClose={() => setIsExtraOpen(false)} avoidKeyboard={false}>
           <View style={{ width: '100%' }}>
             <Text style={[styles.sheetTitle, { marginBottom: 16 }]}>Log Extra Class</Text>
 
@@ -1490,7 +1479,6 @@ export default function AttendanceScreen() {
             </TouchableOpacity>
           </View>
         </BottomSheet>
-      )}
 
       {/* Custom Confirm Modal */}
       {confirmConfig.visible && (

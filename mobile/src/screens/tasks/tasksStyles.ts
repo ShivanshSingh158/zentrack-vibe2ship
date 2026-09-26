@@ -37,60 +37,6 @@ export const makeTasksStyles = (colors: any, isDark: boolean = true) => StyleShe
     borderColor: colors.border,
   },
   jumpBtnText: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
-  // Tag Filter Strip
-  tagFilterStripContainer: {
-    paddingTop: 0,
-    paddingBottom: 2,
-    paddingHorizontal: 0,
-  },
-  tagFilterContent: {
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  filterTagChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 11,
-    paddingVertical: 4.5,
-    borderRadius: 20,
-    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : colors.surface,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.border,
-    gap: 6,
-  },
-  filterTagChipActive: {
-    backgroundColor: isDark ? 'rgba(165, 153, 255, 0.16)' : 'rgba(165, 153, 255, 0.14)',
-    borderColor: colors.accentPrimary,
-  },
-  filterTagChipText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 12.5,
-    color: colors.textSecondary,
-  },
-  filterTagChipTextActive: {
-    fontFamily: 'Inter_600SemiBold',
-    color: isDark ? '#e0dcff' : colors.accentPrimary,
-  },
-  tagCountBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 10,
-    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
-  },
-  tagCountBadgeActive: {
-    backgroundColor: isDark ? 'rgba(165, 153, 255, 0.3)' : 'rgba(165, 153, 255, 0.25)',
-  },
-  tagCountText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 10.5,
-    color: colors.textTertiary,
-  },
-  tagCountTextActive: {
-    color: isDark ? '#ffffff' : colors.accentPrimary,
-  },
-
   dateSelectorContainer: { paddingHorizontal: 0, paddingTop: 0 },
   dateRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   dateItem: {

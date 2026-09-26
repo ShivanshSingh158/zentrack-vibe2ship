@@ -387,14 +387,14 @@ export function cleanTaskTitle(rawTitle: string): string {
   t = t.replace(/\s+(?:dena|deni|bhejna|bhejni|lena|leni|jana|aana|khatam\s+karna)\s+(?:hai|h)$/i, '').trim();
   t = t.replace(/\s+(?:karna|krna|karni|krni)\s+(?:hai|h)$/i, '').trim();
   t = t.replace(/\s+(?:kar\s+dena|kar\s+lena|de\s+dena|kar\s+do|karo)$/i, '').trim();
-  t = t.replace(/\s+(?:task|todo|to-do|item|reminder)(?:\s+(?:for|to|at|on|about))?(?:\s+(?:everyday|daily|each\s+day|today|tomorrow))?$/i, '').trim();
+  t = t.replace(/\s+(?:task|todo|to-do|item|reminder)(?:\s+(?:for|to|at|on|about))?(?:\s+(?:everyday|daily|each\s+day|today|tomorrow|tommorow|tomorow|tommorrow|tmrw|tmr))?$/i, '').trim();
   t = t.replace(/\s+(?:for\s+everyday|for\s+daily|everyday|daily)$/i, '').trim();
   t = t.replace(/\s+(?:shaam\s+ko|sham\s+ko|shaam|sham|subah\s+ko|subah|dopahar\s+ko|dopahar|raat\s+ko|raat)$/i, '').trim();
   t = t.replace(/\s+with\s+(?:a(?:n)?\s+)?(?:alarm|reminder|alert|notification|buzz|ping|bell|chime|sound|vibration|notify|toast|pop.?up|snooze|push\s+notification)s?$/i, '').trim();
   t = t.replace(/\s+(?:with\s+)?(?:set(?:\s+an?)?\s+)?(?:alarm|reminder|alert|notification)\s+(?:for|at|on|to)\s*$/i, '').trim();
   t = t.replace(/\s+and\s+(?:remind\s+(?:me\s+)?(?:to\s+|about\s+)?|set\s+(?:a[n]?\s+)?(?:alarm|reminder)|notify\s+(?:me\s+)?)$/i, '').trim();
   t = t.replace(/\s+at\s+\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm|a\.?m\.?|p\.?m\.?)?$/i, '').trim();
-  t = t.replace(/\s+(?:today|tomorrow|tonight|aaj|kal|parso)$/i, '').trim();
+  t = t.replace(/\s+(?:today|tomorrow|tommorow|tomorow|tommorrow|tmrw|tmr|tonight|aaj|kal|parso)$/i, '').trim();
   t = t.replace(/\s+(?:by|around|sharp|at|on|for|due)\s*$/i, '').trim();
   t = t.replace(/\s+(?:right\s+now|at\s+the\s+earliest|on\s+urgent\s+basis|urgent\s+basis)$/i, '').trim();
 
@@ -415,7 +415,7 @@ export function cleanTaskTitle(rawTitle: string): string {
     t = t.replace(/\s+(?:if\s+possible|as\s+soon\s+as\s+possible|right\s+now|or\s+something|you\s+know|at\s+the\s+earliest)$/i, '').trim();
     // Strip trailing orphaned period-of-day or time indicators
     t = t.replace(/\s+(?:[ap]\.?m\.?|am|pm|o'?clock)$/i, '').trim();
-    t = t.replace(/\s+(?:in\s+the\s+)?(?:early\s+morning|morning|afternoon|evening|night|tonight|today|tomorrow|yesterday)$/i, '').trim();
+    t = t.replace(/\s+(?:in\s+the\s+)?(?:early\s+morning|morning|afternoon|evening|night|tonight|today|tomorrow|tommorow|tomorow|tommorrow|tmrw|tmr|yesterday)$/i, '').trim();
     // Strip trailing orphaned priority expressions
     t = t.replace(/\s+(?:hi|high|medium|mid|low)\s+(?:priority|prio|importance)$/i, '').trim();
     t = t.replace(/\s+priority\s*(?:is\s+|:\s*|\s+)?(?:hi|high|medium|mid|low|1|2|3|one|two|three)$/i, '').trim();
@@ -485,6 +485,31 @@ export function cleanTaskTitle(rawTitle: string): string {
     }
   }
 
+  // 6b. Deduplicate repeated speech phrases, stuttered utterances & trailing duplicate metadata
+  const phraseDedupe = (str: string): string => {
+    let s = str.trim();
+
+    // Strip stray leaked metadata words that appear in spoken repetitions
+    s = s.replace(/\b(?:high|medium|low)\s+priority\b/gi, '');
+    s = s.replace(/\bpriority\s+(?:high|medium|low|urgent|p[123])\b/gi, '');
+    s = s.replace(/\b(?:today|tomorrow|tommorow|tomorow|tommorrow|tmrw|tmr|tonight|yesterday)\b/gi, '');
+    s = s.replace(/\b\d{1,2}(?::\d{2})?\s*(?:to|-)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b/gi, '');
+    s = s.replace(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi, '');
+
+    // Collapse multi-word repeated phrases (from 6 words down to 2 words):
+    // e.g. "TV Bldc Study TV Bldc Study ..." -> "TV Bldc Study"
+    for (let len = 6; len >= 2; len--) {
+      const pattern = new RegExp(`\\b((?:[\\w'-]+\\s+){${len - 1}}[\\w'-]+)(?:\\s+\\1\\b)+`, 'gi');
+      s = s.replace(pattern, '$1');
+    }
+
+    // Collapse repeated single words: "study study" -> "study"
+    s = s.replace(/\b([a-zA-Z]{3,})\s+\1\b/gi, '$1');
+
+    return s.replace(/\s+/g, ' ').trim();
+  };
+  t = phraseDedupe(t);
+
   // 7. Acronym & Brand normalization with smart title capitalization
   const ACRONYMS: Record<string, string> = {
     // Tech acronyms
@@ -497,6 +522,7 @@ export function cleanTaskTitle(rawTitle: string): string {
     '1rm': '1RM', 'bmi': 'BMI', 'vad': 'VAD', 'rest': 'REST', 'crud': 'CRUD',
     'sdk': 'SDK', 'sdks': 'SDKs', 'cli': 'CLI', 'ci': 'CI', 'cd': 'CD', 'cicd': 'CI/CD',
     'iot': 'IoT', 'ip': 'IP', 'vpn': 'VPN', 'url': 'URL', 'urls': 'URLs',
+    'bldc': 'BLDC', 'tv': 'TV', 'ev': 'EV', 'dc': 'DC', 'ac': 'AC',
     'json': 'JSON', 'jwt': 'JWT', 'ssh': 'SSH', 'ssl': 'SSL', 'tls': 'TLS',
     'dns': 'DNS', 'http': 'HTTP', 'https': 'HTTPS', 'ftp': 'FTP', 'ide': 'IDE',
     'gui': 'GUI', 'seo': 'SEO', 'mvp': 'MVP', 'kpi': 'KPI', 'okr': 'OKR', 'okrs': 'OKRs',
@@ -1414,23 +1440,23 @@ export function parseNLTask(rawInput: string): ParsedTask {
       dateResult = new Date(now);
       if (!timeSlot) timeSlot = '14:00';
       registerToken('date', m[0], 'This Afternoon');
-    } else if (!dateResult && /\b(tomorrow|tmr|tmrw|tomo)\s+evening\b/i.test(text)) {
-      const m = text.match(/\b(tomorrow|tmr|tmrw|tomo)\s+evening\b/i)!;
+    } else if (!dateResult && /\b(tomorrow|tommorow|tomorow|tommorrow|tmr|tmrw|tomo|2moro|2morrow)\s+evening\b/i.test(text)) {
+      const m = text.match(/\b(tomorrow|tommorow|tomorow|tommorrow|tmr|tmrw|tomo|2moro|2morrow)\s+evening\b/i)!;
       dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
       if (!timeSlot) timeSlot = '18:00';
       registerToken('date', m[0], 'Tomorrow Evening');
-    } else if (!dateResult && /\b(tomorrow|tmr|tmrw|tomo)\s+morning\b/i.test(text)) {
-      const m = text.match(/\b(tomorrow|tmr|tmrw|tomo)\s+morning\b/i)!;
+    } else if (!dateResult && /\b(tomorrow|tommorow|tomorow|tommorrow|tmr|tmrw|tomo|2moro|2morrow)\s+morning\b/i.test(text)) {
+      const m = text.match(/\b(tomorrow|tommorow|tomorow|tommorrow|tmr|tmrw|tomo|2moro|2morrow)\s+morning\b/i)!;
       dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
       if (!timeSlot) timeSlot = '09:00';
       registerToken('date', m[0], 'Tomorrow Morning');
-    } else if (!dateResult && /\b(tomorrow|tmr|tmrw|tomo)\s+afternoon\b/i.test(text)) {
-      const m = text.match(/\b(tomorrow|tmr|tmrw|tomo)\s+afternoon\b/i)!;
+    } else if (!dateResult && /\b(tomorrow|tommorow|tomorow|tommorrow|tmr|tmrw|tomo|2moro|2morrow)\s+afternoon\b/i.test(text)) {
+      const m = text.match(/\b(tomorrow|tommorow|tomorow|tommorrow|tmr|tmrw|tomo|2moro|2morrow)\s+afternoon\b/i)!;
       dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
       if (!timeSlot) timeSlot = '14:00';
       registerToken('date', m[0], 'Tomorrow Afternoon');
-    } else if (!dateResult && /\b(tomorrow|tmr|tmrw|tomo)\s+night\b/i.test(text)) {
-      const m = text.match(/\b(tomorrow|tmr|tmrw|tomo)\s+night\b/i)!;
+    } else if (!dateResult && /\b(tomorrow|tommorow|tomorow|tommorrow|tmr|tmrw|tomo|2moro|2morrow)\s+night\b/i.test(text)) {
+      const m = text.match(/\b(tomorrow|tommorow|tomorow|tommorrow|tmr|tmrw|tomo|2moro|2morrow)\s+night\b/i)!;
       dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
       if (!timeSlot) timeSlot = '21:00';
       registerToken('date', m[0], 'Tomorrow Night');
@@ -1471,8 +1497,8 @@ export function parseNLTask(rawInput: string): ParsedTask {
     if (/\btoday\b/i.test(text)) {
       const m = text.match(/\btoday\b/i)!; dateResult = new Date(now);
       registerToken('date', m[0], 'Today');
-    } else if (/\b(tomorrow|tmr|tmrw|tomo)\b/i.test(text)) {
-      const m = text.match(/\b(tomorrow|tmr|tmrw|tomo)\b/i)!;
+    } else if (/\b(tomorrow|tommorow|tomorow|tommorrow|tmr|tmrw|tomo|2moro|2morrow)\b/i.test(text)) {
+      const m = text.match(/\b(tomorrow|tommorow|tomorow|tommorrow|tmr|tmrw|tomo|2moro|2morrow)\b/i)!;
       dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
       registerToken('date', m[0], 'Tomorrow');
     } else if (/\bday after tomorrow\b/i.test(text)) {
@@ -2053,4 +2079,26 @@ export function formatLocalDateStr(date: Date = new Date()): string {
 
 export function getTodayLocalDateStr(): string {
   return formatLocalDateStr(new Date());
+}
+
+/**
+ * Safely adds/subtracts days to a local "YYYY-MM-DD" string without UTC shifts.
+ */
+export function offsetDateStr(dateStr: string, offsetDays: number): string {
+  try {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + offsetDays);
+    const year = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  } catch {
+    const dt = new Date();
+    dt.setDate(dt.getDate() + offsetDays);
+    const year = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
 }

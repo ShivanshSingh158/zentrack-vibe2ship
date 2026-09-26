@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Modal,
   Pressable,
+  Platform,
 } from 'react-native';
 import Animated, {
   FadeIn,
@@ -177,11 +178,13 @@ export const SubjectContextMenuModal = React.memo(function SubjectContextMenuMod
     >
       <View style={styles.overlay}>
         {/* Frosted Glass Blur Backdrop */}
-        <BlurView
-          intensity={isDark ? 35 : 20}
-          tint={isDark ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFill}
-        />
+        {Platform.OS === 'ios' && (
+          <BlurView
+            intensity={isDark ? 35 : 20}
+            tint={isDark ? 'dark' : 'light'}
+            style={StyleSheet.absoluteFill}
+          />
+        )}
         <Pressable
           style={[
             StyleSheet.absoluteFill,

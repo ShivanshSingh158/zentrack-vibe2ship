@@ -31,7 +31,6 @@ import {
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withTiming,
   withSequence,
   Easing as REasing,   // Reanimated Easing — used for Reanimated worklets only
@@ -158,20 +157,24 @@ const DayPill = React.memo(function DayPill({
 });
 
 // ── Sliding Active Pill (runs entirely on UI thread) ──────────────────────────
+// No padding offset: weekRow has no paddingHorizontal, so the 7 columns
+// divide the full row width exactly. translateX = activeIndex * tabWidth
+// lands the pillOuter (alignItems:'center') precisely on the column centre.
 interface PillProps {
   activeIndex: number;
-  tabWidth: number;
-  colors: any;
+  tabWidth:    number; // rowWidth ÷ 7 — exact slot width
+  colors:      any;
 }
 
 function SlidingDayPill({ activeIndex, tabWidth, colors }: PillProps) {
   const pillX = useSharedValue(activeIndex * tabWidth);
 
   useEffect(() => {
-    pillX.value = withSpring(activeIndex * tabWidth, {
-      damping:   22,
-      stiffness: 380,
-      mass:      0.5,
+    // Fixed 160ms Apple ease-out-expo: pill always arrives at the same time
+    // regardless of travel distance — eliminates the spring lag on long jumps.
+    pillX.value = withTiming(activeIndex * tabWidth, {
+      duration: 160,
+      easing: REasing.bezier(0.16, 1, 0.3, 1),
     });
   }, [activeIndex, tabWidth]);
 
@@ -200,17 +203,16 @@ function SlidingDayPill({ activeIndex, tabWidth, colors }: PillProps) {
 
 const styles_pill = StyleSheet.create({
   pillOuter: {
-    position:   'absolute',
-    top:        22,    // aligns with the day pill circle
-    height:     42,
-    alignItems: 'center',
+    position:       'absolute',
+    top:            22,    // aligns with the day-number pill circle
+    height:         42,
+    alignItems:     'center',   // centres the 38px pillInner in the slot
     justifyContent: 'center',
   },
   pillInner: {
     width:        38,
     height:       42,
     borderRadius: 12,
-    opacity:      1,
   },
 });
 
@@ -255,11 +257,12 @@ export function CalendarWeekStripPager({
     return idx >= 0 ? idx : 0;
   }, [weekDays]);
 
-  // Tab width measured from layout (needed to position the pill)
+  // tabWidth = full row width ÷ 7. weekRow has no paddingHorizontal so
+  // column i occupies [i*tabWidth, (i+1)*tabWidth] from the row's left edge,
+  // which is also the pill's coordinate origin (same parent View).
   const [tabWidth, setTabWidth] = useState(0);
   const onRowLayout = useCallback((e: LayoutChangeEvent) => {
-    const w = e.nativeEvent.layout.width / 7;
-    setTabWidth(w);
+    setTabWidth(e.nativeEvent.layout.width / 7);
   }, []);
 
   // Month label cross-fade + vertical slide on month boundary crossing
@@ -416,7 +419,8 @@ const makeStyles = (colors: any, isDark: boolean) =>
       justifyContent: 'space-between',
       alignItems:     'center',
       minHeight:      64,
-      paddingHorizontal: 8,
+      // No paddingHorizontal — columns fill the full row width so the pill's
+      // coordinate origin (parent View) perfectly matches column boundaries.
       width:          '100%',
     },
     dayCol: {

@@ -62,7 +62,7 @@ export const GymExerciseDraggableRow: React.FC<GymExerciseDraggableRowProps> = R
   return (
     <ScaleDecorator>
       <TouchableOpacity
-        style={[
+          style={[
           s.row,
           { marginHorizontal: 8 },
           ex.supersetGroup && {

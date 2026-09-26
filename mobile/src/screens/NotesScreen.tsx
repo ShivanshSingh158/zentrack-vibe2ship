@@ -299,10 +299,10 @@ export default function NotesScreen() {
     };
   }, [storageNodes, currentFolderId, isSearching, normalizedQuery]);
 
-  // Folders for Move dialog
-  const availableMoveFolders = useMemo(() => {
-    return storageNodes.filter(n => n.type === 'folder' && n.id !== moveTarget?.id);
-  }, [storageNodes, moveTarget?.id]);
+  // Folders for Move dialog (all vault folders so MoveNodeModal can build the complete hierarchical tree)
+  const allVaultFolders = useMemo(() => {
+    return storageNodes.filter(n => n.type === 'folder');
+  }, [storageNodes]);
 
   // Breadcrumbs path
   const breadcrumbs = useMemo(() => {
@@ -406,11 +406,32 @@ export default function NotesScreen() {
         pickedFiles = pickedFiles.slice(0, 10);
       }
 
+      // Guarantee accurate file sizes even on Android content providers where asset.size is null/undefined
+      const resolvedFiles = await Promise.all(
+        pickedFiles.map(async (file) => {
+          let resolvedSize = file.size;
+          if (!resolvedSize || resolvedSize <= 0) {
+            try {
+              const info = await FileSystem.getInfoAsync(file.uri);
+              if (info.exists && typeof (info as any).size === 'number') {
+                resolvedSize = (info as any).size;
+              }
+            } catch (sizeErr) {
+              console.warn('[NotesScreen] Failed to probe file size:', sizeErr);
+            }
+          }
+          return {
+            ...file,
+            size: resolvedSize ?? undefined,
+          };
+        })
+      );
+
       // ── Size thresholds ───────────────────────────────────────────────────────
       const CLOUDINARY_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
       // Large non-PDF files (images/docx) can't be compressed here — block them.
-      const largeNonPdf = pickedFiles.filter(
+      const largeNonPdf = resolvedFiles.filter(
         f => f.size != null && f.size > CLOUDINARY_MAX_BYTES &&
              !f.mimeType?.includes('pdf') && !f.name?.toLowerCase().endsWith('.pdf')
       );
@@ -423,18 +444,20 @@ export default function NotesScreen() {
           `These files exceed the 10 MB upload limit and cannot be auto-compressed:\n\n${names}\n\nPlease resize the file and try again.`,
           [{ text: 'OK' }]
         );
-        pickedFiles = pickedFiles.filter(
+        pickedFiles = resolvedFiles.filter(
           f => f.size == null || f.size <= CLOUDINARY_MAX_BYTES ||
                f.mimeType?.includes('pdf') || f.name?.toLowerCase().endsWith('.pdf')
         );
         if (pickedFiles.length === 0) return;
+      } else {
+        pickedFiles = resolvedFiles;
       }
       // ────────────────────────────────────────────────────────────────────
 
       setUploading(true);
       const total = pickedFiles.length;
       let successCount = 0;
-      const failedNames: string[] = [];
+      const failedItems: { name: string; reason: string }[] = [];
 
       for (let i = 0; i < total; i++) {
         const file = pickedFiles[i];
@@ -456,44 +479,70 @@ export default function NotesScreen() {
         else if (mime.includes('image') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name || '')) ftype = 'image';
         else if (mime.includes('word') || /\.(doc|docx)$/i.test(file.name || '')) ftype = 'docx';
 
+        let compressedTempUri: string | null = null;
         try {
           // ── Auto-compress large PDFs via iLovePDF before uploading ───────────
           let uploadUri  = file.uri;
           let uploadSize = file.size;
-          let compressedTempUri: string | null = null;
 
-          const isLargePdf = isPdf && file.size != null && file.size > CLOUDINARY_MAX_BYTES;
+          const isLargePdf = isPdf && uploadSize != null && uploadSize > CLOUDINARY_MAX_BYTES;
           if (isLargePdf) {
             // Instant feedback — banner appears before compression even starts
             showLargePdfBanner(
               file.name || 'document.pdf',
-              (file.size! / 1024 / 1024).toFixed(0)
+              (uploadSize! / 1024 / 1024).toFixed(1)
             );
             setUploadStep('Compressing PDF...');
             try {
+              // Stage 1: Recommended compression
               compressedTempUri = await compressPdfWithILovePDF(
                 file.uri,
                 file.name || 'document.pdf',
                 (step) => setUploadStep(step),
+                'recommended'
               );
-              // Get size of compressed file for accurate Cloudinary timeout
-              const info = await FileSystem.getInfoAsync(compressedTempUri);
+              // Get size of compressed file
+              let info = await FileSystem.getInfoAsync(compressedTempUri);
+              let currentSize = (info as any).size ?? uploadSize ?? 0;
+
+              // Stage 2: If still > 10 MB, auto-retry with 'extreme' compression
+              if (currentSize > CLOUDINARY_MAX_BYTES) {
+                console.log(
+                  `[NotesScreen] PDF still ${(currentSize / 1024 / 1024).toFixed(1)} MB after recommended compression. Retrying with extreme...`
+                );
+                setUploadStep('Applying extreme compression...');
+                await FileSystem.deleteAsync(compressedTempUri, { idempotent: true }).catch(() => {});
+
+                compressedTempUri = await compressPdfWithILovePDF(
+                  file.uri,
+                  file.name || 'document.pdf',
+                  (step) => setUploadStep(step),
+                  'extreme'
+                );
+                info = await FileSystem.getInfoAsync(compressedTempUri);
+                currentSize = (info as any).size ?? currentSize;
+              }
+
+              // Check if still exceeding limit after extreme
+              if (currentSize > CLOUDINARY_MAX_BYTES) {
+                throw new Error(
+                  `File is ${(currentSize / 1024 / 1024).toFixed(1)} MB even after extreme compression (Cloudinary limit is 10.0 MB). Please split the PDF into smaller parts.`
+                );
+              }
+
               uploadUri  = compressedTempUri;
-              uploadSize = (info as any).size ?? uploadSize;
-              setUploadSize(`${(uploadSize! / 1024 / 1024).toFixed(1)} MB (compressed)`);
+              uploadSize = currentSize;
+              setUploadSize(`${(currentSize / 1024 / 1024).toFixed(1)} MB (compressed)`);
             } catch (compressErr: any) {
-              // Compression failed for a file that's too large for Cloudinary.
-              // DO NOT attempt to upload the original — it will also fail (>10 MB).
-              // Instead, surface a clear error to the user.
-              console.warn('[NotesScreen] iLovePDF compression failed:', compressErr.message);
+              console.warn('[NotesScreen] iLovePDF compression error:', compressErr.message);
               setUploadStep('');
-              throw new Error(
-                `Could not compress "${file.name || 'PDF'}" (${((file.size ?? 0) / 1024 / 1024).toFixed(0)} MB). ` +
-                `Reason: ${compressErr.message}. ` +
-                `Please check your internet connection and try again, or manually compress the PDF to under 10 MB.`
-              );
+              throw compressErr;
             }
             setUploadStep('');
+          } else if (uploadSize != null && uploadSize > CLOUDINARY_MAX_BYTES) {
+            throw new Error(
+              `File is ${(uploadSize! / 1024 / 1024).toFixed(1)} MB, exceeding Cloudinary's 10.0 MB limit.`
+            );
           }
           // ────────────────────────────────────────────────────────────────────
 
@@ -504,11 +553,6 @@ export default function NotesScreen() {
             (p) => setUploadProgress(p),
             uploadSize
           );
-
-          // Clean up temp compressed file if created
-          if (compressedTempUri) {
-            FileSystem.deleteAsync(compressedTempUri, { idempotent: true }).catch(() => {});
-          }
 
           // Pre-cache local file into vault cache
           try {
@@ -553,7 +597,15 @@ export default function NotesScreen() {
           );
         } catch (fileErr: any) {
           console.error(`[NotesScreen] Upload error for ${file.name}:`, fileErr);
-          failedNames.push(file.name || `File ${fileNumber}`);
+          failedItems.push({
+            name: file.name || `File ${fileNumber}`,
+            reason: fileErr?.message || 'Unknown upload error',
+          });
+        } finally {
+          // Clean up temp compressed file if created
+          if (compressedTempUri) {
+            FileSystem.deleteAsync(compressedTempUri, { idempotent: true }).catch(() => {});
+          }
         }
       }
 
@@ -561,10 +613,13 @@ export default function NotesScreen() {
         feedback.success();
       }
 
-      if (failedNames.length > 0) {
+      if (failedItems.length > 0) {
+        const failureDetails = failedItems
+          .map((item) => `• ${item.name}:\n  ${item.reason}`)
+          .join('\n\n');
         Alert.alert(
           'Upload Notice',
-          `Successfully uploaded ${successCount} of ${total} files.\nFailed: ${failedNames.join(', ')}`
+          `Successfully uploaded ${successCount} of ${total} files.\n\nFailed:\n${failureDetails}`
         );
       }
     } catch (e: any) {
@@ -1153,7 +1208,9 @@ export default function NotesScreen() {
       <MoveNodeModal
         node={moveTarget}
         batchCount={isBatchMoving ? selectedIds.size : 0}
-        folders={availableMoveFolders}
+        selectedIds={selectedIds}
+        folders={allVaultFolders}
+        currentFolderId={currentFolderId}
         onClose={() => {
           setMoveTarget(null);
           setIsBatchMoving(false);

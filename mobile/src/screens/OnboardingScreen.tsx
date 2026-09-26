@@ -27,6 +27,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { DynamicCalendarIcon } from '../components/ui/DynamicCalendarIcon';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -47,10 +48,11 @@ import Reanimated, {
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { PlayfairDisplay_600SemiBold, PlayfairDisplay_600SemiBold_Italic } from '@expo-google-fonts/playfair-display';
 import { useTheme } from '../contexts/ThemeContext';
-import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
+import { FONT_FAMILY, RADIUS, SHADOW } from '../theme/tokens';
 import { updateL1Cache, getBootManifestSync } from '../utils/bootManifest';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const HORIZONTAL_MARGIN = 20;
 
 export const ONBOARDING_KEY = 'zentrack_onboarded_v2';
 
@@ -58,7 +60,8 @@ export const ONBOARDING_KEY = 'zentrack_onboarded_v2';
 interface PersonaConfig {
   id: string;
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: string;
+  iconSet?: 'ionicons' | 'mci';
   tagline: string;
   defaultModules: string[];
 }
@@ -68,6 +71,7 @@ const PERSONAS: PersonaConfig[] = [
     id: 'scholar',
     label: 'The Scholar',
     icon: 'school-outline',
+    iconSet: 'ionicons',
     tagline: 'Attendance, timetable, grades & study goals',
     defaultModules: ['Tasks', 'Attendance', 'Calendar', 'Notes'],
   },
@@ -75,13 +79,15 @@ const PERSONAS: PersonaConfig[] = [
     id: 'builder',
     label: 'The Builder',
     icon: 'flash-outline',
+    iconSet: 'ionicons',
     tagline: 'Deep work, habit streaks & daily execution',
     defaultModules: ['Tasks', 'Habits', 'Learning', 'Notes'],
   },
   {
     id: 'athlete',
     label: 'The Athlete',
-    icon: 'barbell-outline',
+    icon: 'arm-flex',
+    iconSet: 'mci',
     tagline: 'PPL workouts, progressive overload & rest',
     defaultModules: ['Gym', 'Habits', 'Tasks', 'Calendar'],
   },
@@ -89,6 +95,7 @@ const PERSONAS: PersonaConfig[] = [
     id: 'allrounder',
     label: 'The All-Rounder',
     icon: 'infinite-outline',
+    iconSet: 'ionicons',
     tagline: 'Balanced life matrix across work, fitness & study',
     defaultModules: ['Tasks', 'Gym', 'Calendar', 'Attendance'],
   },
@@ -108,16 +115,84 @@ export const MODULE_CATALOG: ModuleItem[] = [
   { id: 'Gym',         name: 'Gym',        activeIcon: 'barbell',          inactiveIcon: 'barbell-outline',          desc: 'PPL Overload Tracker' },
   { id: 'Attendance',  name: 'Attend',     activeIcon: 'id-card',          inactiveIcon: 'id-card-outline',          desc: 'Timetable & Bunk Safety' },
   { id: 'Assignments', name: 'Assign',     activeIcon: 'clipboard',        inactiveIcon: 'clipboard-outline',        desc: 'Coursework & Deadlines' },
-  { id: 'Habits',      name: 'Habits',     activeIcon: 'flame',            inactiveIcon: 'flame-outline',            desc: 'Dopamine Streaks' },
+  { id: 'Habits',      name: 'Habits',     activeIcon: 'sync',             inactiveIcon: 'sync-outline',             desc: 'Dopamine Streaks' },
   { id: 'Calendar',    name: 'Calendar',   activeIcon: 'calendar-clear',   inactiveIcon: 'calendar-clear-outline',   desc: 'Unified Agenda' },
-  { id: 'Notes',       name: 'Notes',      activeIcon: 'document-text',    inactiveIcon: 'document-text-outline',    desc: 'Markdown & AI Notes' },
+  { id: 'Notes',       name: 'Notes',      activeIcon: 'folder',           inactiveIcon: 'folder-outline',           desc: 'Markdown & AI Notes' },
   { id: 'Learning',    name: 'Learn',      activeIcon: 'library',          inactiveIcon: 'library-outline',          desc: 'Video Lectures & MindMap' },
   { id: 'Analytics',   name: 'Stats',      activeIcon: 'bar-chart',        inactiveIcon: 'bar-chart-outline',        desc: 'XP & Discipline Radar' },
 ];
 
+// ── Shared Spring CTA Button ────────────────────────────────────────────────
+interface SpringButtonProps {
+  title: string;
+  onPress: () => void;
+  disabled?: boolean;
+  isDark: boolean;
+  loading?: boolean;
+  iconName?: keyof typeof Ionicons.glyphMap;
+  style?: any;
+}
+
+function SpringButton({
+  title,
+  onPress,
+  disabled = false,
+  isDark,
+  loading = false,
+  iconName = 'arrow-forward',
+  style,
+}: SpringButtonProps) {
+  const btnScale = useRef(new Animated.Value(1)).current;
+
+  const pressIn = () => {
+    Animated.spring(btnScale, { toValue: 0.97, useNativeDriver: true, tension: 100, friction: 8 }).start();
+  };
+
+  const pressOut = () => {
+    Animated.spring(btnScale, { toValue: 1, useNativeDriver: true, tension: 100, friction: 8 }).start();
+  };
+
+  return (
+    <TouchableOpacity
+      onPressIn={pressIn}
+      onPressOut={pressOut}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress();
+      }}
+      disabled={disabled || loading}
+      activeOpacity={0.9}
+      style={[styles.btnWrapper, style]}
+    >
+      <Animated.View
+        style={[
+          styles.primaryBtn,
+          {
+            backgroundColor: isDark ? '#FFFFFF' : '#0A0A0E',
+            borderColor: isDark ? '#FFFFFF' : '#0A0A0E',
+            opacity: disabled ? 0.6 : 1,
+            transform: [{ scale: btnScale }],
+          },
+        ]}
+      >
+        <Text style={[styles.primaryBtnText, { color: isDark ? '#0A0A0E' : '#FFFFFF' }]}>
+          {loading ? 'Initializing...' : title}
+        </Text>
+        {!loading && (
+          <Ionicons
+            name={iconName}
+            size={16}
+            color={isDark ? '#0A0A0E' : '#FFFFFF'}
+            style={{ marginLeft: 8 }}
+          />
+        )}
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
 export default function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
   const { colors, isDark } = useTheme();
-  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -151,14 +226,14 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
 
   // Step 0: Select Persona
   const handleSelectPersona = (persona: PersonaConfig) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.selectionAsync();
     setPersona(persona.id);
     setPinned(persona.defaultModules);
   };
 
   // Step 1: Toggle Module in 4-Slot Dock
   const handleToggleModule = (moduleId: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Haptics.selectionAsync();
     setPinned(prev => {
       if (prev.includes(moduleId)) {
         if (prev.length <= 1) return prev; // Keep at least 1
@@ -240,7 +315,6 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
             selected={selectedPersona}
             onSelect={handleSelectPersona}
             onNext={next}
-            styles={styles}
             colors={colors}
             isDark={isDark}
           />
@@ -251,7 +325,6 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
             pinned={pinnedModules}
             onToggle={handleToggleModule}
             onNext={next}
-            styles={styles}
             colors={colors}
             isDark={isDark}
           />
@@ -263,7 +336,6 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
             pinned={pinnedModules}
             saving={saving}
             onLaunch={handleGenesisLaunch}
-            styles={styles}
             colors={colors}
             isDark={isDark}
           />
@@ -275,6 +347,14 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
+      {/* Subtle Ambient Cosmic Violet Aura matching LandingScreen */}
+      <LinearGradient
+        colors={isDark ? ['rgba(165,153,255,0.07)', 'rgba(0,0,0,0)'] : ['rgba(108,92,231,0.05)', 'rgba(255,255,255,0)']}
+        style={StyleSheet.absoluteFillObject}
+        locations={[0, 0.45]}
+        pointerEvents="none"
+      />
+
       <View style={styles.content}>
         
         {/* ── Top Header (Matching LandingScreen & AuthScreen) ─────────── */}
@@ -310,35 +390,43 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
           </Reanimated.View>
         </View>
 
-        {/* ── Footer Navigation & Pagination Dots ─────────────────────── */}
+        {/* ── Footer Navigation & Pagination Dots (Centered & Apple-Grade) ─ */}
         <View style={styles.footerRow}>
           {step > 0 ? (
-            <TouchableOpacity onPress={prev} style={styles.backBtn} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity
+              onPress={prev}
+              style={styles.backBtn}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
               <Ionicons name="arrow-back" size={15} color={colors.textSecondary} />
               <Text style={[styles.backBtnText, { color: colors.textSecondary }]}>Back</Text>
             </TouchableOpacity>
           ) : (
-            <View style={{ width: 50 }} />
+            <View style={styles.footerPlaceholder} />
           )}
 
-          <View style={styles.dots}>
-            {[0, 1, 2].map(i => (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  {
-                    backgroundColor: i === step
-                      ? (isDark ? '#FFFFFF' : '#0A0A0E')
-                      : (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.15)'),
-                    width: i === step ? 16 : 4.5,
-                  },
-                ]}
-              />
-            ))}
+          <View style={styles.paginationRow}>
+            {[0, 1, 2].map(i => {
+              const isActive = i === step;
+              return (
+                <View
+                  key={i}
+                  style={[
+                    styles.paginationDot,
+                    {
+                      backgroundColor: isActive
+                        ? (isDark ? '#FFFFFF' : '#0A0A0E')
+                        : (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.14)'),
+                      width: isActive ? 20 : 6,
+                    },
+                  ]}
+                />
+              );
+            })}
           </View>
 
-          <View style={{ width: 50 }} />
+          <View style={styles.footerPlaceholder} />
         </View>
 
       </View>
@@ -347,7 +435,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
 }
 
 // ─── Step 1: Persona Selection ────────────────────────────────────────────────
-function StepPersona({ selected, onSelect, onNext, styles, colors, isDark }: any) {
+function StepPersona({ selected, onSelect, onNext, colors, isDark }: any) {
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollStep} showsVerticalScrollIndicator={false}>
       <View style={styles.heroTextContainer}>
@@ -365,64 +453,78 @@ function StepPersona({ selected, onSelect, onNext, styles, colors, isDark }: any
             <TouchableOpacity
               key={p.id}
               onPress={() => onSelect(p)}
-              activeOpacity={0.84}
+              activeOpacity={0.85}
               style={[
                 styles.personaRow,
                 {
                   borderColor: active
-                    ? colors.accentPrimary
-                    : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                    ? (isDark ? 'rgba(165,153,255,0.38)' : 'rgba(108,92,231,0.32)')
+                    : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
                   backgroundColor: active
-                    ? isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.06)'
-                    : isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.02)',
+                    ? (isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.06)')
+                    : (isDark ? '#10121A' : '#FFFFFF'),
                 },
               ]}
             >
-              <View style={[
-                styles.personaIconWrap,
-                {
-                  backgroundColor: active
-                    ? isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.12)'
-                    : isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
-                }
-              ]}>
-                <Ionicons
-                  name={p.icon}
-                  size={19}
-                  color={active ? colors.accentPrimary : colors.textSecondary}
-                />
+              {/* Apple-style squircle badge container */}
+              <View
+                style={[
+                  styles.personaIconWrap,
+                  {
+                    backgroundColor: active
+                      ? (isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.12)')
+                      : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'),
+                    borderColor: active
+                      ? (isDark ? 'rgba(165,153,255,0.35)' : 'rgba(108,92,231,0.25)')
+                      : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
+                  },
+                ]}
+              >
+                {p.iconSet === 'mci' ? (
+                  <MaterialCommunityIcons
+                    name={p.icon as any}
+                    size={22}
+                    color={active ? colors.accentPrimary : colors.textSecondary}
+                  />
+                ) : (
+                  <Ionicons
+                    name={p.icon as any}
+                    size={20}
+                    color={active ? colors.accentPrimary : colors.textSecondary}
+                  />
+                )}
               </View>
+
               <View style={{ flex: 1 }}>
                 <Text style={[styles.personaTitle, { color: active ? colors.accentPrimary : colors.textPrimary }]}>
                   {p.label}
                 </Text>
-                <Text style={[styles.personaTagline, { color: colors.textMuted }]}>{p.tagline}</Text>
+                <Text style={[styles.personaTagline, { color: colors.textSecondary }]}>{p.tagline}</Text>
               </View>
-              {active && (
+
+              {active ? (
                 <View style={[styles.activeCheckCircle, { backgroundColor: colors.accentPrimary }]}>
-                  <Ionicons name="checkmark" size={11} color={isDark ? '#000000' : '#FFFFFF'} />
+                  <Ionicons name="checkmark" size={12} color={isDark ? '#0A0A0E' : '#FFFFFF'} />
                 </View>
+              ) : (
+                <View
+                  style={[
+                    styles.inactiveCheckCircle,
+                    { borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)' }
+                  ]}
+                />
               )}
             </TouchableOpacity>
           );
         })}
       </View>
 
-      <TouchableOpacity
-        style={[
-          styles.primaryBtn,
-          {
-            backgroundColor: isDark ? '#FFFFFF' : '#0A0A0E',
-            borderColor: isDark ? '#FFFFFF' : '#0A0A0E',
-          }
-        ]}
+      <SpringButton
+        title="Continue to Dock"
         onPress={onNext}
-        activeOpacity={0.88}
-      >
-        <Text style={[styles.primaryBtnText, { color: isDark ? '#0A0A0E' : '#FFFFFF' }]}>
-          Continue to Dock  →
-        </Text>
-      </TouchableOpacity>
+        isDark={isDark}
+        iconName="arrow-forward"
+      />
     </ScrollView>
   );
 }
@@ -508,7 +610,7 @@ const renderModuleNavIcon = (modId: string, isSelected: boolean, color: string, 
 };
 
 // ─── Step 2: Focus Matrix & LIVE DOCK PREVIEW ─────────────────────────────────
-function StepFocusMatrix({ pinned, onToggle, onNext, styles, colors, isDark }: any) {
+function StepFocusMatrix({ pinned, onToggle, onNext, colors, isDark }: any) {
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollStep} showsVerticalScrollIndicator={false}>
       <View style={styles.heroTextContainer}>
@@ -524,33 +626,42 @@ function StepFocusMatrix({ pinned, onToggle, onNext, styles, colors, isDark }: a
         {MODULE_CATALOG.map(mod => {
           const isSelected = pinned.includes(mod.id);
           const iconColor = isSelected ? colors.accentPrimary : colors.textSecondary;
+          const orderNum = pinned.indexOf(mod.id) + 1;
+
           return (
             <TouchableOpacity
               key={mod.id}
               onPress={() => onToggle(mod.id)}
-              activeOpacity={0.75}
+              activeOpacity={0.78}
               style={[
                 styles.moduleTile,
                 {
                   borderColor: isSelected
-                    ? colors.accentPrimary
-                    : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+                    ? (isDark ? 'rgba(165,153,255,0.38)' : 'rgba(108,92,231,0.32)')
+                    : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
                   backgroundColor: isSelected
-                    ? isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.06)'
-                    : isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.02)',
+                    ? (isDark ? 'rgba(165,153,255,0.10)' : 'rgba(108,92,231,0.08)')
+                    : (isDark ? '#10121A' : '#FFFFFF'),
                 }
               ]}
             >
-              <View style={{ height: 24, alignItems: 'center', justifyContent: 'center' }}>
-                {renderModuleNavIcon(mod.id, isSelected, iconColor, 21)}
+              <View style={styles.moduleIconContainer}>
+                {renderModuleNavIcon(mod.id, isSelected, iconColor, 22)}
               </View>
-              <Text style={[styles.moduleTileLabel, { color: isSelected ? colors.accentPrimary : colors.textPrimary }]}>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.moduleTileLabel,
+                  { color: isSelected ? colors.accentPrimary : colors.textPrimary }
+                ]}
+              >
                 {mod.name}
               </Text>
+
               {isSelected && (
                 <View style={[styles.moduleTileBadge, { backgroundColor: colors.accentPrimary }]}>
-                  <Text style={[styles.moduleTileBadgeText, { color: isDark ? '#000000' : '#FFFFFF' }]}>
-                    {pinned.indexOf(mod.id) + 1}
+                  <Text style={[styles.moduleTileBadgeText, { color: isDark ? '#0A0A0E' : '#FFFFFF' }]}>
+                    {orderNum}
                   </Text>
                 </View>
               )}
@@ -559,10 +670,40 @@ function StepFocusMatrix({ pinned, onToggle, onNext, styles, colors, isDark }: a
         })}
       </View>
 
-      {/* ── LIVE MORPHING DOCK PREVIEW ── */}
-      <View style={[styles.dockPreviewWrapper, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', backgroundColor: isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.02)' }]}>
-        <Text style={[styles.dockPreviewLabel, { color: colors.textMuted }]}>LIVE BOTTOM DOCK PREVIEW</Text>
-        <View style={[styles.dockPreviewBar, { backgroundColor: isDark ? '#000000' : '#F1F1F5', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
+      {/* ── LIVE MORPHING DOCK PREVIEW CARD ── */}
+      <View
+        style={[
+          styles.dockPreviewWrapper,
+          {
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+            backgroundColor: isDark ? '#10121A' : '#FFFFFF',
+          }
+        ]}
+      >
+        <View style={styles.dockHeaderRow}>
+          <View
+            style={[
+              styles.dockLivePill,
+              { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }
+            ]}
+          >
+            <View style={styles.dockLiveDot} />
+            <Text style={[styles.dockLiveText, { color: colors.textMuted }]}>LIVE DOCK PREVIEW</Text>
+          </View>
+          <Text style={[styles.dockCountText, { color: colors.textMuted }]}>
+            {pinned.length}/4 Selected
+          </Text>
+        </View>
+
+        <View
+          style={[
+            styles.dockPreviewBar,
+            {
+              backgroundColor: isDark ? '#08090D' : '#F2F2F7',
+              borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+            }
+          ]}
+        >
           {/* Permanent Home */}
           <View style={styles.dockPreviewItem}>
             <Ionicons name="home" size={16} color={colors.textMuted} />
@@ -584,7 +725,13 @@ function StepFocusMatrix({ pinned, onToggle, onNext, styles, colors, isDark }: a
                 <View style={{ height: 18, alignItems: 'center', justifyContent: 'center' }}>
                   {renderModuleNavIcon(modId, true, colors.accentPrimary, 16)}
                 </View>
-                <Text style={[styles.dockPreviewItemText, { color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold }]}>
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.dockPreviewItemText,
+                    { color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold }
+                  ]}
+                >
                   {modObj.name}
                 </Text>
               </Reanimated.View>
@@ -599,22 +746,13 @@ function StepFocusMatrix({ pinned, onToggle, onNext, styles, colors, isDark }: a
         </View>
       </View>
 
-      <TouchableOpacity
-        style={[
-          styles.primaryBtn,
-          {
-            backgroundColor: isDark ? '#FFFFFF' : '#0A0A0E',
-            borderColor: isDark ? '#FFFFFF' : '#0A0A0E',
-            opacity: pinned.length < 4 ? 0.85 : 1,
-          }
-        ]}
+      <SpringButton
+        title={`Confirm Dock (${pinned.length}/4)`}
         onPress={onNext}
-        activeOpacity={0.88}
-      >
-        <Text style={[styles.primaryBtnText, { color: isDark ? '#0A0A0E' : '#FFFFFF' }]}>
-          Confirm Dock ({pinned.length}/4)  →
-        </Text>
-      </TouchableOpacity>
+        isDark={isDark}
+        iconName="arrow-forward"
+        disabled={pinned.length === 0}
+      />
     </ScrollView>
   );
 }
@@ -625,10 +763,10 @@ const getMascotForLevel = (title: string) => {
 };
 
 // ─── Step 3: Genesis XP & Mascot Launch ───────────────────────────────────────
-function StepGenesisLaunch({ persona, pinned, saving, onLaunch, styles, colors, isDark }: any) {
+function StepGenesisLaunch({ persona, pinned, saving, onLaunch, colors, isDark }: any) {
   const personaObj = PERSONAS.find(p => p.id === persona);
 
-  // Live user XP & Level state (instant synchronous L1 cache read, background getXP verification)
+  // Live user XP & Level state
   const [xpState, setXpState] = useState<XPState>(() => {
     const cachedXP = getBootManifestSync()?.xp;
     return getLevel(cachedXP ?? 0);
@@ -671,175 +809,185 @@ function StepGenesisLaunch({ persona, pinned, saving, onLaunch, styles, colors, 
   const mascotSource = getMascotForLevel(xpState.title);
 
   return (
-    <View style={{ flex: 1 }}>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ flexGrow: 1, justifyContent: 'space-between', paddingBottom: 4 }}
-        showsVerticalScrollIndicator={false}
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={styles.scrollStep}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.heroTextContainer}>
+        <Text style={[styles.heroTitleSerif, { color: colors.textPrimary }]}>Genesis calibration</Text>
+        <Text style={[styles.heroTitleItalic, { color: colors.accentPrimary }]}>complete.</Text>
+      </View>
+      <Text style={[styles.subText, { color: colors.textSecondary }]}>
+        Your customized archetype and navigation matrix are loaded. Welcome to ZenTrack.
+      </Text>
+
+      {/* Floating Animated Mascot Hero */}
+      <View style={styles.mascotDisplayContainer}>
+        <Animated.Image
+          source={mascotSource}
+          blurRadius={Platform.OS === 'ios' ? 14 : 8}
+          style={[
+            styles.mascotAuraImage,
+            {
+              tintColor: rankColors[0],
+              transform: [
+                { translateY: floatAnim },
+                { scale: pulseAnim }
+              ]
+            }
+          ]}
+          resizeMode="contain"
+        />
+        <Animated.Image
+          source={mascotSource}
+          style={[
+            styles.mascotHeroImage,
+            {
+              transform: [
+                { translateY: floatAnim },
+                { scale: pulseAnim }
+              ]
+            }
+          ]}
+          resizeMode="contain"
+        />
+      </View>
+
+      {/* Genesis Initiation Spec Card */}
+      <View
+        style={[
+          styles.genesisCard,
+          {
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+            backgroundColor: isDark ? '#10121A' : '#FFFFFF',
+          }
+        ]}
       >
-        <View>
-          <View style={styles.heroTextContainer}>
-            <Text style={[styles.heroTitleSerif, { color: colors.textPrimary }]}>Genesis calibration</Text>
-            <Text style={[styles.heroTitleItalic, { color: colors.accentPrimary }]}>complete.</Text>
+        <View style={styles.genesisBadgeRow}>
+          <View
+            style={[
+              styles.rankPill,
+              {
+                backgroundColor: isDark ? `${rankColors[0]}22` : `${rankColors[0]}15`,
+                borderColor: rankColors[0]
+              }
+            ]}
+          >
+            <Text style={[styles.rankPillText, { color: rankColors[0] }]}>
+              ⭐ {xpState.title.toUpperCase()} · LEVEL {xpState.level}
+            </Text>
           </View>
-          <Text style={[styles.subText, { color: colors.textSecondary }]}>
-            Your customized archetype and navigation matrix are loaded. Welcome to ZenTrack.
+          <Text style={[styles.genesisRewardText, { color: isDark ? '#FFD60A' : '#D97706' }]}>
+            +{XP_SOURCES.ONBOARDING.base} XP
           </Text>
+        </View>
 
-          {/* Floating Large Animated Mascot Hero */}
-          <View style={styles.mascotDisplayContainer}>
-            <Animated.Image
-              source={mascotSource}
-              blurRadius={Platform.OS === 'ios' ? 14 : 8}
+        {/* Level XP Progress Meter */}
+        <View style={styles.xpProgressWrapper}>
+          <View
+            style={[
+              styles.xpProgressBg,
+              { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }
+            ]}
+          >
+            <View
               style={[
-                styles.mascotAuraImage,
+                styles.xpProgressFill,
                 {
-                  tintColor: rankColors[0],
-                  transform: [
-                    { translateY: floatAnim },
-                    { scale: pulseAnim }
-                  ]
+                  width: `${Math.max(10, Math.min(100, Math.round(xpState.progress * 100)))}%`,
+                  backgroundColor: rankColors[0],
                 }
               ]}
-              resizeMode="contain"
-            />
-            <Animated.Image
-              source={mascotSource}
-              style={[
-                styles.mascotHeroImage,
-                {
-                  transform: [
-                    { translateY: floatAnim },
-                    { scale: pulseAnim }
-                  ]
-                }
-              ]}
-              resizeMode="contain"
             />
           </View>
-
-          {/* Genesis Initiation Spec Card */}
-          <View style={[styles.genesisCard, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', backgroundColor: isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.02)' }]}>
-            <View style={styles.genesisBadgeRow}>
-              <View style={[styles.rankPill, { backgroundColor: isDark ? `${rankColors[0]}22` : `${rankColors[0]}15`, borderColor: rankColors[0] }]}>
-                <Text style={[styles.rankPillText, { color: rankColors[0] }]}>⭐ {xpState.title.toUpperCase()} · LEVEL {xpState.level}</Text>
-              </View>
-              <Text style={[styles.genesisRewardText, { color: isDark ? '#FFD60A' : '#D97706' }]}>
-                +{XP_SOURCES.ONBOARDING.base} XP
-              </Text>
-            </View>
-
-            {/* Level XP Progress Meter */}
-            <View style={styles.xpProgressWrapper}>
-              <View style={[styles.xpProgressBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
-                <View
-                  style={[
-                    styles.xpProgressFill,
-                    {
-                      width: `${Math.max(10, Math.min(100, Math.round(xpState.progress * 100)))}%`,
-                      backgroundColor: rankColors[0],
-                    }
-                  ]}
-                />
-              </View>
-              <View style={styles.xpProgressLabels}>
-                <Text style={[styles.xpProgressText, { color: rankColors[0] }]}>
-                  {xpState.xp} XP (Active)
-                </Text>
-                <Text style={[styles.xpNextLevelText, { color: colors.textMuted }]}>
-                  Next: {xpState.nextThreshold} XP
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.genesisConfigRows}>
-              <View style={styles.configItem}>
-                <Text style={[styles.configItemLabel, { color: colors.textMuted }]}>Archetype Profile</Text>
-                <Text style={[styles.configItemValue, { color: colors.textPrimary }]}>{personaObj?.label}</Text>
-              </View>
-              <View style={[styles.configDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} />
-              
-              <View style={styles.configColumnItem}>
-                <Text style={[styles.configItemLabel, { color: colors.textMuted, marginBottom: 6 }]}>Pinned Dock (4 Pillars)</Text>
-                <View style={styles.pinnedPillsWrap}>
-                  {pinned.slice(0, 4).map((modId: string) => {
-                    const shortLabel = modId === 'Assignments' ? 'Assign' : modId === 'Attendance' ? 'Attend' : modId;
-                    return (
-                      <View
-                        key={modId}
-                        style={[
-                          styles.pinnedMicroPill,
-                          {
-                            backgroundColor: isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.06)',
-                            borderColor: isDark ? 'rgba(165,153,255,0.28)' : 'rgba(108,92,231,0.2)',
-                          }
-                        ]}
-                      >
-                        <View style={{ marginRight: 3 }}>
-                          {renderModuleNavIcon(modId, true, colors.accentPrimary, 12)}
-                        </View>
-                        <Text
-                          numberOfLines={1}
-                          ellipsizeMode="tail"
-                          style={[styles.pinnedMicroPillText, { color: colors.accentPrimary }]}
-                        >
-                          {shortLabel}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-              <View style={[styles.configDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} />
-
-              <View style={styles.configItem}>
-                <Text style={[styles.configItemLabel, { color: colors.textMuted }]}>Storage Architecture</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#34d399' }} />
-                  <Text style={[styles.configItemValue, { color: '#34d399' }]}>100% Local-First Sync</Text>
-                </View>
-              </View>
-            </View>
+          <View style={styles.xpProgressLabels}>
+            <Text style={[styles.xpProgressText, { color: rankColors[0] }]}>
+              {xpState.xp} XP (Active)
+            </Text>
+            <Text style={[styles.xpNextLevelText, { color: colors.textMuted }]}>
+              Next: {xpState.nextThreshold} XP
+            </Text>
           </View>
         </View>
 
-        <TouchableOpacity
-          style={[
-            styles.primaryBtn,
-            {
-              backgroundColor: isDark ? '#FFFFFF' : '#0A0A0E',
-              borderColor: isDark ? '#FFFFFF' : '#0A0A0E',
-              marginTop: 10,
-            },
-            saving && { opacity: 0.6 }
-          ]}
-          onPress={onLaunch}
-          disabled={saving}
-          activeOpacity={0.88}
-        >
-          <Text style={[styles.primaryBtnText, { color: isDark ? '#0A0A0E' : '#FFFFFF' }]}>
-            {saving ? 'Initializing...' : 'Initialize Life OS  →'}
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
+        {/* Configuration summary */}
+        <View style={styles.genesisConfigRows}>
+          <View style={styles.configItem}>
+            <Text style={[styles.configItemLabel, { color: colors.textMuted }]}>Archetype Profile</Text>
+            <Text style={[styles.configItemValue, { color: colors.textPrimary }]}>{personaObj?.label}</Text>
+          </View>
+
+          <View style={[styles.configDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} />
+          
+          <View style={styles.configColumnItem}>
+            <Text style={[styles.configItemLabel, { color: colors.textMuted, marginBottom: 6 }]}>Pinned Dock (4 Pillars)</Text>
+            <View style={styles.pinnedPillsWrap}>
+              {pinned.slice(0, 4).map((modId: string) => {
+                const shortLabel = modId === 'Assignments' ? 'Assign' : modId === 'Attendance' ? 'Attend' : modId;
+                return (
+                  <View
+                    key={modId}
+                    style={[
+                      styles.pinnedMicroPill,
+                      {
+                        backgroundColor: isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.06)',
+                        borderColor: isDark ? 'rgba(165,153,255,0.28)' : 'rgba(108,92,231,0.2)',
+                      }
+                    ]}
+                  >
+                    <View style={{ marginRight: 4 }}>
+                      {renderModuleNavIcon(modId, true, colors.accentPrimary, 13)}
+                    </View>
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      style={[styles.pinnedMicroPillText, { color: colors.accentPrimary }]}
+                    >
+                      {shortLabel}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={[styles.configDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} />
+
+          <View style={styles.configItem}>
+            <Text style={[styles.configItemLabel, { color: colors.textMuted }]}>Storage Architecture</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#34d399' }} />
+              <Text style={[styles.configItemValue, { color: '#34d399' }]}>100% Local-First Sync</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      <SpringButton
+        title="Initialize Life OS"
+        onPress={onLaunch}
+        isDark={isDark}
+        loading={saving}
+        iconName="arrow-forward"
+      />
+    </ScrollView>
   );
 }
 
-const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 5,
+    paddingHorizontal: HORIZONTAL_MARGIN,
     justifyContent: 'space-between',
     paddingTop: 8,
     paddingBottom: 16,
   },
   topHeader: {
-    marginTop: 8,
-    paddingHorizontal: 6,
+    marginTop: 6,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -861,131 +1009,183 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
   stepContainer: {
     flex: 1,
-    paddingHorizontal: 4,
   },
   scrollStep: {
-    paddingBottom: 16,
+    paddingBottom: 12,
   },
   heroTextContainer: {
-    marginBottom: 4,
+    marginBottom: 6,
+    overflow: 'visible',
   },
   heroTitleSerif: {
     fontFamily: 'PlayfairDisplay_600SemiBold',
     fontSize: 34,
     lineHeight: 40,
-    paddingLeft: 4,
+    letterSpacing: -0.6,
   },
   heroTitleItalic: {
     fontFamily: 'PlayfairDisplay_600SemiBold_Italic',
     fontSize: 38,
     lineHeight: 44,
-    paddingLeft: 4,
-    paddingRight: 16,
-    paddingVertical: 1,
+    paddingRight: 8,
   },
   subText: {
     fontFamily: FONT_FAMILY.body,
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 10,
-    paddingHorizontal: 4,
+    fontSize: 13.5,
+    lineHeight: 20,
+    marginBottom: 16,
+    opacity: 0.85,
   },
 
-  // Step 1: Sleek Persona List
+  // ── Step 1: Sleek Persona List ──
   personaList: {
-    gap: 8,
-    marginBottom: 20,
+    gap: 10,
+    marginBottom: 18,
   },
   personaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
     paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: RADIUS.lg,
+    paddingHorizontal: 16,
+    borderRadius: 22,
     borderWidth: 1,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 2,
   },
   personaIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  activeCheckCircle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderWidth: 1,
   },
   personaTitle: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 14.5,
+    fontSize: 15.5,
+    letterSpacing: -0.2,
   },
   personaTagline: {
     fontFamily: FONT_FAMILY.body,
-    fontSize: 11.5,
+    fontSize: 12,
+    lineHeight: 17,
     marginTop: 2,
   },
+  activeCheckCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inactiveCheckCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+  },
 
-  // Step 2: Module Grid
+  // ── Step 2: Module Grid ──
   moduleGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
     marginBottom: 14,
+    justifyContent: 'space-between',
   },
   moduleTile: {
-    width: '31.8%',
-    paddingVertical: 10,
-    paddingHorizontal: 2,
-    borderRadius: RADIUS.md,
+    width: '31.5%',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderRadius: 18,
     borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  moduleIconContainer: {
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
   moduleTileLabel: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 10.5,
-    marginTop: 3,
+    fontSize: 11.5,
+    marginTop: 5,
     textAlign: 'center',
+    letterSpacing: -0.2,
   },
   moduleTileBadge: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    top: 5,
+    right: 5,
+    width: 17,
+    height: 17,
+    borderRadius: 8.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
   moduleTileBadgeText: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 8,
+    fontSize: 9.5,
   },
 
-  // Live Dock Preview Bar
+  // ── Live Dock Preview Bar ──
   dockPreviewWrapper: {
-    marginBottom: 18,
-    padding: 12,
-    borderRadius: RADIUS.lg,
+    marginBottom: 16,
+    padding: 14,
+    borderRadius: 22,
     borderWidth: 1,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  dockPreviewLabel: {
+  dockHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  dockLivePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+  },
+  dockLiveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#34D399',
+  },
+  dockLiveText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 9.5,
-    letterSpacing: 1,
-    marginBottom: 8,
-    textAlign: 'center',
+    letterSpacing: 0.8,
+  },
+  dockCountText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 11,
   },
   dockPreviewBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    height: 48,
-    borderRadius: RADIUS.md,
+    height: 54,
+    borderRadius: 18,
     borderWidth: 1,
     paddingHorizontal: 4,
   },
@@ -1000,10 +1200,10 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     marginTop: 2,
   },
 
-  // Step 3: Mascot Display & Genesis Card
+  // ── Step 3: Mascot Display & Genesis Card ──
   mascotDisplayContainer: {
     width: '100%',
-    height: 150,
+    height: 135,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
@@ -1011,19 +1211,24 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
   mascotAuraImage: {
     position: 'absolute',
-    width: 160,
-    height: 160,
+    width: 145,
+    height: 145,
     opacity: 0.35,
   },
   mascotHeroImage: {
-    width: 140,
-    height: 140,
+    width: 125,
+    height: 125,
   },
   genesisCard: {
-    padding: 14,
-    borderRadius: RADIUS.xl,
+    padding: 16,
+    borderRadius: 24,
     borderWidth: 1,
-    marginBottom: 8,
+    marginBottom: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 3,
   },
   genesisBadgeRow: {
     flexDirection: 'row',
@@ -1041,16 +1246,15 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     fontFamily: FONT_FAMILY.bold,
     fontSize: 10,
     letterSpacing: 0.8,
-    color: '#34d399',
   },
   genesisRewardText: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 18,
+    fontSize: 17,
     letterSpacing: 0.5,
   },
   xpProgressWrapper: {
     width: '100%',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   xpProgressBg: {
     height: 5,
@@ -1075,16 +1279,16 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     fontSize: 10,
   },
   genesisConfigRows: {
-    gap: 7,
+    gap: 8,
   },
   configItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 3.5,
+    paddingVertical: 3,
   },
   configColumnItem: {
-    paddingVertical: 3.5,
+    paddingVertical: 3,
   },
   configItemLabel: {
     fontFamily: FONT_FAMILY.medium,
@@ -1098,38 +1302,41 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 5,
-    marginTop: 2,
+    gap: 6,
+    marginTop: 4,
   },
   pinnedMicroPill: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 2,
-    paddingVertical: 5,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
     borderRadius: RADIUS.md,
     borderWidth: 1,
   },
   pinnedMicroPillText: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 9.5,
+    fontSize: 10,
   },
   configDivider: {
     height: StyleSheet.hairlineWidth,
     width: '100%',
   },
 
-  // Primary Button
+  // ── Shared Primary Button ──
+  btnWrapper: {
+    width: '100%',
+    marginBottom: 8,
+  },
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADIUS.lg,
-    paddingVertical: 14,
+    borderRadius: 22,
+    height: 54,
     width: '100%',
     borderWidth: 1,
-    marginBottom: 6,
     ...SHADOW.sm,
   },
   primaryBtnText: {
@@ -1138,32 +1345,34 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // Footer Row
+  // ── Footer Navigation Row ──
   footerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   backBtn: {
+    width: 55,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingVertical: 6,
-    paddingHorizontal: 6,
   },
   backBtnText: {
     fontFamily: FONT_FAMILY.medium,
-    fontSize: 12,
+    fontSize: 12.5,
   },
-  dots: {
+  footerPlaceholder: {
+    width: 55,
+  },
+  paginationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
   },
-  dot: {
-    height: 3.5,
+  paginationDot: {
+    height: 4,
     borderRadius: 2,
   },
 });

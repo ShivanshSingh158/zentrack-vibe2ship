@@ -8,7 +8,7 @@
     "jsEngine": "hermes",
     "name": "ZenTrack",
     "slug": "mobile",
-    "owner": "shiv_157",
+    "owner": "shiv_2",
     "scheme": "zentrack",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -20,7 +20,11 @@
       "backgroundColor": "#060509"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "ZenTrack uses speech recognition for voice-to-text input.",
+        "NSMicrophoneUsageDescription": "ZenTrack needs microphone access for S.A.R.A voice commands."
+      }
     },
     "android": {
       "package": "com.shiv157.zentrack",
@@ -33,11 +37,22 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.INTERNET",
         "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.WAKE_LOCK",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_EXACT_ALARM",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.INTERNET",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.WAKE_LOCK",
         "android.permission.SCHEDULE_EXACT_ALARM",
         "android.permission.USE_EXACT_ALARM",
@@ -59,6 +74,25 @@
         }
       ],
       "expo-web-browser",
+      [
+        "expo-share-intent",
+        {
+          "androidIntentFilters": [
+            "image/*",
+            "application/pdf"
+          ]
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "ZenTrack needs microphone access for S.A.R.A voice commands.",
+          "speechRecognitionPermission": "ZenTrack uses speech recognition for voice-to-text input.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ],
       "./plugins/withAndroidManifestMod.js",
       "@react-native-community/datetimepicker",
       [
@@ -69,21 +103,9 @@
       ],
       "expo-secure-store",
       [
-        "expo-camera",
-        {
-          "cameraPermission": "ZenTrack needs access to the camera to scan barcodes and take progress photos."
-        }
-      ],
-      [
         "expo-image-picker",
         {
           "photosPermission": "ZenTrack needs access to your photos to let you set a profile picture or log progress photos."
-        }
-      ],
-      [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": "ZenTrack uses location only when you select places or map coordinates."
         }
       ],
       [
@@ -134,16 +156,14 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "902d1185-e0dc-41d8-ab6c-98b9036f8a0e"
+        "projectId": "e09ae680-52ee-4e7f-85cf-4446c556d005"
       }
     },
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/902d1185-e0dc-41d8-ab6c-98b9036f8a0e",
-      "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_ERROR_RECOVERY"
+      "url": "https://u.expo.dev/e09ae680-52ee-4e7f-85cf-4446c556d005"
     }
   }
 }

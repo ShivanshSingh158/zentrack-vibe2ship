@@ -83,6 +83,8 @@ import { StatusBar } from 'expo-status-bar';
 
 
 import { PomodoroProvider } from './src/contexts/PomodoroContext';
+import { ShareIntentProvider } from 'expo-share-intent';
+import { ShareToVaultModal } from './src/components/Vault/ShareToVaultModal';
 
 function ThemedAppContainer() {
   const { colors, isDark } = useTheme();
@@ -97,10 +99,13 @@ function ThemedAppContainer() {
         <PortalProvider>
           <MobileDataProvider>
             <PomodoroProvider>
-              <ErrorBoundary screenName="RootApp">
-                <AppNavigator />
-              </ErrorBoundary>
-              <OfflineIndicator />
+              <ShareIntentProvider>
+                <ErrorBoundary screenName="RootApp">
+                  <AppNavigator />
+                </ErrorBoundary>
+                <OfflineIndicator />
+                <ShareToVaultModal />
+              </ShareIntentProvider>
             </PomodoroProvider>
           </MobileDataProvider>
         </PortalProvider>
@@ -108,13 +113,6 @@ function ThemedAppContainer() {
     </GestureHandlerRootView>
   );
 }
-
-import {
-  initGeofencingOnBoot,
-  checkImmediateGymProximity,
-  rearmGeofencesIfNeeded,
-  startForegroundGymProximityPolling,
-} from './src/services/geofenceService';
 
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({
@@ -140,9 +138,6 @@ export default function App() {
         registerBackgroundNotificationFetch();
         unregisterBackgroundProactiveAgent().catch(() => {});
         registerWeeklyReviewTask();
-        initGeofencingOnBoot().catch((e: any) => {
-          console.warn('[Boot] Geofence boot init skipped:', e?.message);
-        });
         // Run attendance duplicate-log repair once per install session.
         // Uses its own AsyncStorage flag — no-op if already done.
         const uid = auth.currentUser?.uid;
@@ -153,37 +148,6 @@ export default function App() {
       return () => clearTimeout(timer);
     });
     return () => handle.cancel();
-  }, []);
-
-  // Proactive Instant Geofence Check on Foreground Resume:
-  // When the user toggles Location (GPS) in Quick Settings and re-opens ZenTrack
-  // while already standing inside the gym, evaluate proximity immediately!
-  // Also re-arm geofences in case the OS silently de-registered them (reboot, low memory).
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'active') {
-        // 1. Check proximity immediately (user may already be inside gym)
-        checkImmediateGymProximity().catch(() => {});
-        // 2. Re-arm OS geofences if they were silently dropped
-        rearmGeofencesIfNeeded().catch(() => {});
-      }
-    });
-    return () => sub.remove();
-  }, []);
-
-  // Foreground Proximity Polling:
-  // Polls every 30 seconds while the app is running to detect gym arrival/departure
-  // without relying solely on OS geofencing (which can be delayed by DOZE mode).
-  useEffect(() => {
-    // Delay start by 5s to not interfere with app boot sequence
-    let stopPolling: (() => void) | null = null;
-    const bootDelay = setTimeout(() => {
-      stopPolling = startForegroundGymProximityPolling(30000);
-    }, 5000);
-    return () => {
-      clearTimeout(bootDelay);
-      if (stopPolling) stopPolling();
-    };
   }, []);
 
 

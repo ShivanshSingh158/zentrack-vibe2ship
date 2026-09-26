@@ -211,6 +211,13 @@ service cloud.firestore {
       allow read, write: if isSignedIn() && isOwner(userId);
     }
 
+    // ── Notification Schedules (Cross-Device Sync) ────────────────────────────
+    // Stores the notification fingerprint so all devices (phone + tablet) sharing
+    // the same account reschedule in sync and fire at identical absolute times.
+    match /notification_schedules/{userId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
+    }
+
     // ── Deny Everything Else ──────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

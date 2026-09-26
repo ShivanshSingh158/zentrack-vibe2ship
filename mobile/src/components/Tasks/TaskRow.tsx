@@ -78,7 +78,7 @@ function formatTime12(timeStr?: string) {
   if (!timeStr) return '';
   const parts = timeStr.split(/[-–—•]| to /i);
   if (parts.length > 1) {
-    return `${formatSingleTime(parts[0].trim())} to ${formatSingleTime(parts[1].trim())}`;
+    return `${formatSingleTime(parts[0].trim())} – ${formatSingleTime(parts[1].trim())}`;
   }
   return formatSingleTime(timeStr);
 }
@@ -340,6 +340,15 @@ const TaskRow = React.memo(function TaskRow({
   }, [task.timeSlot, task.status, task.date, task.estimatedMinutes]);
 
   const isLiveNow = !!liveNowInfo;
+  const hasMetadata = Boolean(
+    isLiveNow ||
+    isOverdue ||
+    subtextData ||
+    priorityColor ||
+    task.isRecurring ||
+    (taskTags && taskTags.length > 0) ||
+    hasSubtasks
+  );
 
   // ── Relative Overdue Time Calculation ──
   const overdueText = React.useMemo(() => {
@@ -437,47 +446,42 @@ const TaskRow = React.memo(function TaskRow({
     );
   }, [colors, styles]);
 
+  const handleEditPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    swipeableRef.current?.close();
+    (onPress as any)(task);
+  }, [onPress, task]);
+
   const renderRightActions = useCallback((progress: any, _dragX: any) => {
     const scale = progress.interpolate({
       inputRange: [0, 0.6, 1],
-      outputRange: [0.7, 0.9, 1.1],
+      outputRange: [0.7, 0.9, 1.15],
       extrapolate: 'clamp',
     });
 
     return (
       <View style={styles.actionRightContainer}>
-        {onDelete && (
-          <TouchableOpacity
-            style={[styles.actionRight, { backgroundColor: '#FF453A' }]}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              swipeableRef.current?.close();
-              onDelete(task);
-            }}
-          >
-            <RNAnimated.View style={{ transform: [{ scale }] }}>
-              <Ionicons name="trash-outline" size={20} color="#fff" />
-            </RNAnimated.View>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={[styles.actionRight, { backgroundColor: colors.accentPrimary }]} onPress={onReschedule}>
-          <Ionicons name="calendar-outline" size={20} color="#fff" />
+        <TouchableOpacity
+          style={[styles.actionRight, { backgroundColor: '#0A84FF', width: 76 }]}
+          onPress={handleEditPress}
+          activeOpacity={0.8}
+        >
+          <RNAnimated.View style={{ transform: [{ scale }], alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="create-outline" size={22} color="#ffffff" />
+          </RNAnimated.View>
         </TouchableOpacity>
-        {onAddSubtask && (
-          <TouchableOpacity style={[styles.actionRight, { backgroundColor: isDark ? '#3A3A3C' : '#6B7280' }]} onPress={onAddSubtask}>
-            <Ionicons name="list-outline" size={20} color="#fff" />
-          </TouchableOpacity>
-        )}
       </View>
     );
-  }, [onDelete, task, onReschedule, onAddSubtask, colors, isDark, styles]);
+  }, [styles, handleEditPress]);
 
   const handleSwipeOpen = useCallback((direction: string) => {
     if (direction === 'left') {
       handleComplete();
       swipeableRef.current?.close();
+    } else if (direction === 'right') {
+      handleEditPress();
     }
-  }, [handleComplete]);
+  }, [handleComplete, handleEditPress]);
 
   return (
     <Swipeable
@@ -535,7 +539,7 @@ const TaskRow = React.memo(function TaskRow({
           {/* 2. Unified Row Body (Tapping opens edit modal, holding opens context menu) */}
           <TouchableOpacity
             style={styles.rowBody}
-            onPress={isBulkEdit && onToggleSelect ? onToggleSelect : onPress}
+            onPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleEditPress}
             onLongPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleLongPress}
             activeOpacity={0.75}
           >
@@ -548,72 +552,169 @@ const TaskRow = React.memo(function TaskRow({
                 <Animated.View style={[styles.strikeLine, animatedStrikeStyle]} />
               </View>
 
-              {/* Subtask Progress Bar */}
-              {hasSubtasks && !isDone && (
-                <TouchableOpacity 
-                  style={styles.subtaskProgressContainer}
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setIsExpanded(!isExpanded);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.progressBarBg}>
-                    <View style={[styles.progressBarFill, { width: `${(completedSubtasks / totalSubtasks) * 100}%` }]} />
-                  </View>
-                  <Text style={styles.subtaskProgressText}>
-                    {completedSubtasks}/{totalSubtasks} subtasks
-                  </Text>
-                  <Animated.View style={[{ marginLeft: 4 }, animatedChevronStyle]}>
-                    <Ionicons name="chevron-down" size={12} color={colors.textTertiary} />
-                  </Animated.View>
-                </TouchableOpacity>
-              )}
+              {/* Apple Reminders Unified Metadata Line (Zero Ugly Pills) */}
+              {!isDone && hasMetadata && (
+                <View style={styles.metaRow}>
+                  {/* 1. Live Now Status */}
+                  {isLiveNow && (
+                    <View style={styles.metaItem}>
+                      <Animated.View style={[styles.liveDot, animatedPulseStyle]} />
+                      <Text style={styles.liveNowText}>In Progress ({liveNowInfo?.remainingMins}m left)</Text>
+                    </View>
+                  )}
 
-              {/* Tag Pills & Badges */}
-              {taskTags && !isDone && (
-                <View style={styles.tagRow}>
-                  {taskTags.slice(0, 3).map(tag => {
-                    const displayTag = tag.startsWith('#') ? tag : `#${tag}`;
-                    return (
-                      <View key={tag} style={[styles.tagPill, { backgroundColor: getTagColor(tag, colors) + '18' }]}>
-                        <Text style={[styles.tagPillText, { color: getTagColor(tag, colors) }]}>{displayTag}</Text>
+                  {/* 2. Overdue Status */}
+                  {isOverdue && !isLiveNow && (
+                    <View style={styles.metaItem}>
+                      <Animated.View style={[styles.overdueDot, animatedPulseStyle]} />
+                      <Text style={styles.overdueText}>{overdueText}</Text>
+                    </View>
+                  )}
+
+                  {/* 3. Scheduled Time Slot / Date */}
+                  {!isLiveNow && (
+                    <>
+                      {isOverdue && task.timeSlot && (
+                        <>
+                          <Text style={styles.metaDot}>•</Text>
+                          <View style={styles.metaItem}>
+                            <Ionicons
+                              name="time-outline"
+                              size={11}
+                              color={colors.textTertiary}
+                              style={{ marginRight: 3.5 }}
+                            />
+                            <Text style={styles.metaTimeText}>{formatTime12(task.timeSlot)}</Text>
+                          </View>
+                        </>
+                      )}
+                      {!isOverdue && subtextData && (
+                        <View style={styles.metaItem}>
+                          <Ionicons
+                            name={subtextData.icon}
+                            size={11}
+                            color={priorityColor ? priorityColor : colors.textTertiary}
+                            style={{ marginRight: 3.5 }}
+                          />
+                          <Text
+                            style={[
+                              styles.metaTimeText,
+                              priorityColor && { color: priorityColor, fontFamily: 'Inter_500Medium' },
+                            ]}
+                          >
+                            {subtextData.text}
+                          </Text>
+                        </View>
+                      )}
+                    </>
+                  )}
+
+                  {/* 4. Priority Indicator (when no timeslot/date) */}
+                  {!isLiveNow && !isOverdue && !subtextData && priorityColor && (
+                    <View style={styles.metaItem}>
+                      <Ionicons
+                        name="flag"
+                        size={11}
+                        color={priorityColor}
+                        style={{ marginRight: 3.5 }}
+                      />
+                      <Text style={[styles.metaText, { color: priorityColor, fontFamily: 'Inter_500Medium' }]}>
+                        {task.priority === 'high' || task.priority === 'P1' ? 'High' : task.priority === 'medium' || task.priority === 'P2' ? 'Medium' : 'Low'}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* 5. Recurrence Indicator */}
+                  {task.isRecurring && (
+                    <>
+                      {(subtextData || isLiveNow || isOverdue || (!subtextData && priorityColor)) && (
+                        <Text style={styles.metaDot}>•</Text>
+                      )}
+                      <View style={styles.metaItem}>
+                        <Ionicons
+                          name="repeat"
+                          size={11}
+                          color={colors.textTertiary}
+                          style={{ marginRight: 3 }}
+                        />
+                        <Text style={styles.metaText}>
+                          {task.recurrenceRule?.type
+                            ? task.recurrenceRule.type.charAt(0).toUpperCase() + task.recurrenceRule.type.slice(1)
+                            : 'Repeating'}
+                        </Text>
                       </View>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
+                    </>
+                  )}
 
-            <View style={styles.rightSide}>
-              {/* Live Now Pulsing Status Chip */}
-              {isLiveNow && !isDone && (
-                <View style={styles.liveNowPill}>
-                  <Animated.View style={[styles.liveDot, animatedPulseStyle]} />
-                  <Text style={styles.liveNowText}>In Progress • {liveNowInfo?.remainingMins}m left</Text>
-                </View>
-              )}
+                  {/* 6. Clean Tag Dots (NO UGLY PILLS!) */}
+                  {taskTags && taskTags.length > 0 && (
+                    <>
+                      {(subtextData || isOverdue || isLiveNow || task.isRecurring || (!subtextData && priorityColor)) && (
+                        <Text style={styles.metaDot}>•</Text>
+                      )}
+                      {taskTags.slice(0, 2).map((tag, idx) => {
+                        const cleanName = tag.replace(/^#/, '').trim();
+                        const tagColor = getTagColor(tag, colors);
+                        return (
+                          <React.Fragment key={tag}>
+                            {idx > 0 && <Text style={styles.metaDot}>•</Text>}
+                            <View style={styles.tagItem}>
+                              <View style={[styles.tagDot, { backgroundColor: tagColor }]} />
+                              <Text style={[styles.tagText, { color: isDark ? 'rgba(255, 255, 255, 0.70)' : 'rgba(0, 0, 0, 0.65)' }]}>
+                                {cleanName}
+                              </Text>
+                            </View>
+                          </React.Fragment>
+                        );
+                      })}
+                      {taskTags.length > 2 && (
+                        <>
+                          <Text style={styles.metaDot}>•</Text>
+                          <Text style={styles.metaText}>+{taskTags.length - 2}</Text>
+                        </>
+                      )}
+                    </>
+                  )}
 
-              {/* Overdue Radar Badge */}
-              {isOverdue && !isDone && !isLiveNow && (
-                <View style={styles.overdueRadarPill}>
-                  <Animated.View style={[styles.overdueDot, animatedPulseStyle]} />
-                  <Text style={styles.overdueRadarText}>{overdueText}</Text>
-                </View>
-              )}
-
-              {subtextData && !isDone && !isOverdue && !isLiveNow && (
-                <View style={styles.subtextRowRight}>
-                  <Ionicons name={subtextData.icon} size={12} color={subtextData.color} style={{ marginRight: 4 }} />
-                  <Text style={[styles.subtext, { color: subtextData.color, fontFamily: priorityColor ? 'Inter_600SemiBold' : 'Inter_500Medium' }]}>
-                    {subtextData.text}
-                  </Text>
-                  {subtextData.icon === 'time-outline' && (
-                     <Ionicons name="repeat" size={10} color={subtextData.color} style={{ marginLeft: 6, opacity: 0.7 }} />
+                  {/* 7. Subtasks Count Inline */}
+                  {hasSubtasks && (
+                    <>
+                      {(subtextData || (taskTags && taskTags.length > 0) || isOverdue || isLiveNow || task.isRecurring || (!subtextData && priorityColor)) && (
+                        <Text style={styles.metaDot}>•</Text>
+                      )}
+                      <View style={styles.subtaskInlineItem}>
+                        <Ionicons
+                          name="list-outline"
+                          size={11}
+                          color={colors.textTertiary}
+                          style={{ marginRight: 3 }}
+                        />
+                        <Text style={styles.subtaskInlineText}>
+                          {completedSubtasks}/{totalSubtasks}
+                        </Text>
+                      </View>
+                    </>
                   )}
                 </View>
               )}
             </View>
+
+            {/* Right Side: Clean Expand Chevron if task has subtasks */}
+            {hasSubtasks && !isDone && (
+              <TouchableOpacity
+                style={styles.expandChevronBtn}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setIsExpanded(!isExpanded);
+                }}
+                hitSlop={10}
+                activeOpacity={0.7}
+              >
+                <Animated.View style={animatedChevronStyle}>
+                  <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
+                </Animated.View>
+              </TouchableOpacity>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -652,6 +753,8 @@ const TaskRow = React.memo(function TaskRow({
     prev.task.date === next.task.date &&
     prev.task.priority === next.task.priority &&
     prev.task.timeSlot === next.task.timeSlot &&
+    prev.task.isRecurring === next.task.isRecurring &&
+    prev.task.recurrenceRule?.type === next.task.recurrenceRule?.type &&
     prev.task.subtasks === next.task.subtasks &&
     prev.task.tags === next.task.tags &&
     prev.isOverdue === next.isOverdue &&
@@ -667,25 +770,17 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    borderBottomWidth: 1,
-    borderBottomColor: isDark ? '#18181b' : colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
     backgroundColor: isDark ? '#000000' : colors.surface,
-    paddingVertical: 10,
-    paddingLeft: 4,
-    paddingRight: 4,
+    paddingVertical: 11,
+    paddingHorizontal: 8,
   },
   rowBody: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-  },
-  rightSide: {
-    alignItems: 'flex-end',
-    justifyContent: 'flex-start',
-    paddingLeft: 8,
-    paddingRight: 4,
-    minWidth: 80,
   },
   checkArea: {
     paddingRight: 12,
@@ -699,7 +794,7 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: isDark ? '#3A3A3C' : '#D1D1D6',
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.28)' : 'rgba(0, 0, 0, 0.22)',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: isDark ? 'transparent' : colors.surface2,
@@ -715,43 +810,119 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   content: {
     flex: 1,
     justifyContent: 'flex-start',
+    paddingRight: 6,
+  },
+  titleWrapper: {
+    position: 'relative',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    minHeight: 20,
+    maxWidth: '100%',
   },
   title: {
     fontFamily: 'Inter_500Medium',
-    fontSize: 14,
+    fontSize: 15,
     lineHeight: 20,
     color: colors.textPrimary,
+    letterSpacing: -0.2,
   },
   titleDone: {
     color: colors.textTertiary,
-    textDecorationLine: 'line-through',
   },
-
-  subtextRowRight: {
+  strikeLine: {
+    position: 'absolute',
+    left: 0,
+    top: '52%',
+    height: 1.5,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.45)' : 'rgba(0, 0, 0, 0.35)',
+    borderRadius: 1,
+    zIndex: 1,
+  },
+  // Apple Reminders Unified Metadata Line
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 20,
+    flexWrap: 'wrap',
+    marginTop: 3,
+    rowGap: 2,
   },
-  subtextRow: {
+  metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
   },
-  subtext: {
-    fontFamily: 'Inter_500Medium',
+  metaText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: colors.textTertiary,
+    letterSpacing: -0.1,
+  },
+  metaTimeText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: colors.textTertiary,
+    letterSpacing: -0.1,
+  },
+  metaDot: {
     fontSize: 11,
+    color: isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.25)',
+    marginHorizontal: 3.5,
   },
-  pill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+  liveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: colors.accentPrimary,
+    marginRight: 4,
   },
-  pillText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 10,
+  liveNowText: {
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    color: colors.accentPrimary,
+    letterSpacing: -0.1,
+  },
+  overdueDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#FF453A',
+    marginRight: 4,
+  },
+  overdueText: {
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    color: '#FF453A',
+    letterSpacing: -0.1,
+  },
+  tagItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tagDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginRight: 4,
+  },
+  tagText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    letterSpacing: -0.1,
+  },
+  subtaskInlineItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  subtaskInlineText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: colors.textTertiary,
+    letterSpacing: -0.1,
+  },
+  expandChevronBtn: {
+    paddingTop: 2,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   actionLeftContainer: {
     flexDirection: 'row',
@@ -769,53 +940,29 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     alignItems: 'center',
     width: 60,
   },
-  subtaskProgressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    paddingVertical: 2,
-  },
-  progressBarBg: {
-    width: 60,
-    height: 4,
-    backgroundColor: isDark ? '#3A3A3C' : '#E2E1EA',
-    borderRadius: 2,
-    marginRight: 8,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: colors.accentPrimary,
-    borderRadius: 2,
-  },
-  subtaskProgressText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 11,
-    color: colors.textTertiary,
-  },
   subtaskList: {
-    backgroundColor: isDark ? '#000000' : colors.surface2,
-    paddingLeft: 54,
-    paddingRight: 20,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: isDark ? '#18181b' : colors.border,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.02)' : colors.surface2,
+    paddingLeft: 44,
+    paddingRight: 16,
+    paddingVertical: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
   },
   subtaskItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 7,
   },
   subtaskCheckbox: {
     width: 16,
     height: 16,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: isDark ? '#3A3A3C' : '#D1D1D6',
+    borderRadius: 8,
+    borderWidth: 1.2,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.25)',
     marginRight: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: isDark ? 'transparent' : colors.surface,
+    backgroundColor: 'transparent',
   },
   subtaskCheckboxDone: {
     backgroundColor: colors.accentPrimary,
@@ -825,100 +972,11 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     fontSize: 13,
     color: colors.textPrimary,
+    letterSpacing: -0.1,
   },
   subtaskTitleDone: {
     color: colors.textTertiary,
     textDecorationLine: 'line-through',
   },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-    marginTop: 4,
-  },
-  tagPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 20,
-  },
-  tagPillText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 10,
-  },
-  priorityStripe: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 3.5,
-    borderTopLeftRadius: 16,
-    borderBottomLeftRadius: 16,
-    zIndex: 2,
-    shadowOffset: { width: 1, height: 0 },
-    shadowOpacity: isDark ? 0.6 : 0.25,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  titleWrapper: {
-    position: 'relative',
-    justifyContent: 'center',
-    alignSelf: 'flex-start',
-    minHeight: 20,
-    maxWidth: '100%',
-  },
-  strikeLine: {
-    position: 'absolute',
-    left: 0,
-    top: '52%',
-    height: 1.5,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)',
-    borderRadius: 1,
-    zIndex: 1,
-  },
-  liveNowPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: isDark ? 'rgba(165, 153, 255, 0.12)' : 'rgba(108, 92, 231, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(165, 153, 255, 0.35)' : 'rgba(108, 92, 231, 0.28)',
-    height: 20,
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.accentPrimary,
-    marginRight: 5,
-  },
-  liveNowText: {
-    fontSize: 10,
-    fontFamily: 'Inter_600SemiBold',
-    color: colors.accentPrimary,
-  },
-  overdueRadarPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: isDark ? 'rgba(255,105,97,0.12)' : 'rgba(255,59,48,0.08)',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,105,97,0.35)' : 'rgba(255,59,48,0.25)',
-    height: 20,
-  },
-  overdueDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#ff6961',
-    marginRight: 5,
-  },
-  overdueRadarText: {
-    fontSize: 10,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#ff6961',
-  },
 });
+
