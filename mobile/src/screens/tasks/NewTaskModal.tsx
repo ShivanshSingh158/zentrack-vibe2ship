@@ -135,8 +135,9 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       setNlpParsed(parsed.tokens.length > 0 ? parsed : null);
       if (parsed.date && parsed.tokens.some(t => t.type === 'date')) setTaskDate(parsed.date);
       if (parsed.timeSlot && parsed.tokens.some(t => t.type === 'time')) {
-        setStartTime(parsed.timeSlot);
-        if (parsed.endTimeSlot) setEndTime(parsed.endTimeSlot);
+        const timeParts = parsed.timeSlot.split(/[-–—]/).map(s => s.trim()).filter(Boolean);
+        setStartTime(timeParts[0] || '');
+        setEndTime(parsed.endTimeSlot || (timeParts.length > 1 ? timeParts[timeParts.length - 1] : ''));
       }
       if (parsed.tokens.some(t => t.type === 'priority') && parsed.priority !== priority) setPriority(parsed.priority);
       if (parsed.isRecurring && parsed.recurrenceRule && parsed.tokens.some(t => t.type === 'recurrence')) setRecurrenceRule(parsed.recurrenceRule);
@@ -258,15 +259,18 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       if (pt.date) setTaskDate(pt.date);
       if (pt.priority) setPriority(pt.priority);
       if (pt.timeSlot) {
-        if (typeof pt.timeSlot === 'string' && pt.timeSlot.includes(' - ')) {
-          const [s, e] = pt.timeSlot.split(' - ');
-          setStartTime(s.trim());
-          setEndTime(e.trim());
-        } else {
-          setStartTime(pt.timeSlot);
+        const timeParts = typeof pt.timeSlot === 'string'
+          ? pt.timeSlot.split(/[-–—]/).map((s: string) => s.trim()).filter(Boolean)
+          : [];
+        setStartTime(timeParts[0] || pt.timeSlot);
+        if (pt.endTimeSlot) {
+          setEndTime(pt.endTimeSlot);
+        } else if (timeParts.length > 1 && timeParts[timeParts.length - 1] !== timeParts[0]) {
+          setEndTime(timeParts[timeParts.length - 1]);
         }
+      } else if (pt.endTimeSlot) {
+        setEndTime(pt.endTimeSlot);
       }
-      if (pt.endTimeSlot) setEndTime(pt.endTimeSlot);
       if (pt.recurrenceRule) setRecurrenceRule(pt.recurrenceRule);
       if (pt.tags && Array.isArray(pt.tags)) {
         pt.tags.forEach((t: string) => addTag(t));
@@ -296,8 +300,10 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     const saveParsed = rawForParse.trim().length >= 2 ? parseNLTask(rawForParse) : null;
 
     let finalTitle = cleanTaskTitle(saveParsed?.title?.trim() || nlpParsed?.title?.trim() || rawForParse.trim());
-    let ts = startTime ? (endTime ? `${startTime} - ${endTime}` : startTime) : null;
-    let est = calcEstMinutes(startTime, endTime) || nlpDuration || saveParsed?.durationMinutes || 0;
+    let cleanStart = startTime ? startTime.split(/[-–—]/)[0].trim() : '';
+    let cleanEnd = endTime ? endTime.split(/[-–—]/).pop()?.trim() : '';
+    let ts = cleanStart ? (cleanEnd && cleanEnd !== cleanStart ? `${cleanStart} - ${cleanEnd}` : cleanStart) : null;
+    let est = calcEstMinutes(cleanStart, cleanEnd || '') || nlpDuration || saveParsed?.durationMinutes || 0;
     let finalPriority = priority;
     let finalDate = taskDate;
     let finalRecurrence = recurrenceRule;
@@ -306,7 +312,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     if (saveParsed?.tokens.length) {
       // Time: only if user didn't manually set start time
       if (!ts && saveParsed.timeSlot) {
-        ts = saveParsed.endTimeSlot ? `${saveParsed.timeSlot} - ${saveParsed.endTimeSlot}` : saveParsed.timeSlot;
+        ts = saveParsed.timeSlot;
       }
       // Priority: only override the default 'low'
       if (finalPriority === 'low' && saveParsed.priority !== 'low') finalPriority = saveParsed.priority;

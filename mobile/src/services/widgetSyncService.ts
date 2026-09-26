@@ -70,6 +70,25 @@ function parseTimeToMins(tStr?: string): number {
 function formatWidgetTime(raw?: string): string {
   if (!raw) return '';
   const trimmed = raw.trim();
+  const rangeMatch = trimmed.search(/[-–—•]| to /i);
+  if (rangeMatch !== -1) {
+    const rawParts = trimmed.split(/[-–—•]| to /i).map(s => s.trim()).filter(Boolean);
+    const formatted = rawParts.map(p => formatSingleWidgetTime(p));
+    const deduped: string[] = [];
+    for (const p of formatted) {
+      if (deduped.length === 0 || deduped[deduped.length - 1].toLowerCase() !== p.toLowerCase()) {
+        deduped.push(p);
+      }
+    }
+    if (deduped.length === 1) return deduped[0];
+    if (deduped.length > 2) return `${deduped[0]} - ${deduped[deduped.length - 1]}`;
+    return `${deduped[0]} - ${deduped[1]}`;
+  }
+  return formatSingleWidgetTime(trimmed);
+}
+
+function formatSingleWidgetTime(trimmed: string): string {
+  if (!trimmed) return '';
   // If already has AM/PM (case-insensitive), clean up spacing and return
   const alreadyAmPm = /\b(am|pm)\b/i.test(trimmed);
   if (alreadyAmPm) {

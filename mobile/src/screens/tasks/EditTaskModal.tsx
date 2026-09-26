@@ -184,9 +184,13 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
         setStartTime('21:00');
         setEndTime('22:00');
       } else {
-        const parts = trimmed.split(/[-–—]/).map((s: string) => s.trim());
+        const parts = trimmed.split(/[-–—]/).map((s: string) => s.trim()).filter(Boolean);
         setStartTime(parts[0] || '');
-        setEndTime(parts[1] || '');
+        if (parts.length > 1 && parts[parts.length - 1] !== parts[0]) {
+          setEndTime(parts[parts.length - 1]);
+        } else {
+          setEndTime('');
+        }
       }
     } else {
       setStartTime('');
@@ -211,8 +215,9 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
         setTaskDate(parsed.date);
       }
       if (parsed.timeSlot && parsed.tokens.some(t => t.type === 'time')) {
-        setStartTime(parsed.timeSlot);
-        if (parsed.endTimeSlot) setEndTime(parsed.endTimeSlot);
+        const timeParts = parsed.timeSlot.split(/[-–—]/).map(s => s.trim()).filter(Boolean);
+        setStartTime(timeParts[0] || '');
+        setEndTime(parsed.endTimeSlot || (timeParts.length > 1 ? timeParts[timeParts.length - 1] : ''));
         setIsReminder(true);
       }
       if (parsed.tokens.some(t => t.type === 'priority')) {
@@ -236,9 +241,13 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     if (type === 'date')       { setTaskDate(task?.date || today); }
     if (type === 'time')       {
       if (task?.timeSlot) {
-        const parts = task.timeSlot.split(/[-–—]/).map((s: string) => s.trim());
+        const parts = task.timeSlot.split(/[-–—]/).map((s: string) => s.trim()).filter(Boolean);
         setStartTime(parts[0] || '');
-        setEndTime(parts[1] || '');
+        if (parts.length > 1 && parts[parts.length - 1] !== parts[0]) {
+          setEndTime(parts[parts.length - 1]);
+        } else {
+          setEndTime('');
+        }
       } else {
         setStartTime('');
         setEndTime('');
@@ -384,15 +393,17 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     const saveParsed = rawForParse.trim().length >= 2 ? parseNLTask(rawForParse) : null;
 
     let finalTitle = cleanTaskTitle(saveParsed?.title?.trim() || nlpParsed?.title?.trim() || rawForParse.trim());
-    let ts = startTime ? (endTime ? `${startTime} - ${endTime}` : startTime) : null;
-    let est = calcEstMinutes(startTime, endTime) || nlpDuration || saveParsed?.durationMinutes || currentTask.estimatedMinutes || 0;
+    let cleanStart = startTime ? startTime.split(/[-–—]/)[0].trim() : '';
+    let cleanEnd = endTime ? endTime.split(/[-–—]/).pop()?.trim() : '';
+    let ts = cleanStart ? (cleanEnd && cleanEnd !== cleanStart ? `${cleanStart} - ${cleanEnd}` : cleanStart) : null;
+    let est = calcEstMinutes(cleanStart, cleanEnd || '') || nlpDuration || saveParsed?.durationMinutes || currentTask.estimatedMinutes || 0;
     let finalPriority = priority || 'low';
     let finalDate = taskDate;
     let finalRecurrence = recurrenceRule;
 
     if (saveParsed?.tokens.length) {
       if (!ts && saveParsed.timeSlot) {
-        ts = saveParsed.endTimeSlot ? `${saveParsed.timeSlot} - ${saveParsed.endTimeSlot}` : saveParsed.timeSlot;
+        ts = saveParsed.timeSlot;
       }
       if (saveParsed.tokens.some(t => t.type === 'priority')) finalPriority = saveParsed.priority;
       if (saveParsed.date && saveParsed.tokens.some(t => t.type === 'date')) finalDate = saveParsed.date;

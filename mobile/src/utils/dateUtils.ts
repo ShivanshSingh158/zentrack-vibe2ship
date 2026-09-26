@@ -1949,6 +1949,13 @@ export function parseNLEvent(raw: string): ParsedEvent {
 
   let startTime = task.timeSlot;
   let endTime = task.endTimeSlot || null;
+  if (startTime && /[-–—]/.test(startTime)) {
+    const parts = startTime.split(/[-–—]/).map((s: string) => s.trim()).filter(Boolean);
+    startTime = parts[0] || null;
+    if (!endTime && parts.length > 1 && parts[parts.length - 1] !== parts[0]) {
+      endTime = parts[parts.length - 1];
+    }
+  }
   if (startTime && !endTime) {
     const [hh, mm] = startTime.split(':').map(Number);
     const dur = task.durationMinutes || (type === 'exam' ? 120 : (type === 'job' ? 60 : 60));

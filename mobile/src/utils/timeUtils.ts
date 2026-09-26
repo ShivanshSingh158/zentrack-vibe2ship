@@ -54,9 +54,9 @@ export function parseTimeToMins(tStr: string): number {
  */
 export function getEndTimeMins(tStr: string, type = 'class'): number {
   if (!tStr) return 9999;
-  const parts = tStr.split(/[-–—•]| to /i);
+  const parts = tStr.split(/[-–—•]| to /i).map(s => s.trim()).filter(Boolean);
   const hasExplicitEnd = parts.length > 1;
-  const endStr = (hasExplicitEnd ? parts[1] : parts[0]).trim().toLowerCase();
+  const endStr = (hasExplicitEnd ? parts[parts.length - 1] : parts[0]).trim().toLowerCase();
   let h = 0;
   let m = 0;
   const isPM = endStr.includes('pm');
@@ -83,20 +83,44 @@ export function getEndTimeMins(tStr: string, type = 'class'): number {
  * Normalise a raw time string to compact 12-hour format.
  *
  * Examples:
- *   "14:30"          → "2:30pm"
- *   "9:00 AM"        → "9:00am"
- *   "9am - 10:30pm"  → "9am - 10:30pm"  (range — each half processed)
- *   ""               → ""
+ *   "14:30"                        → "2:30pm"
+ *   "9:00 AM"                      → "9:00am"
+ *   "9am - 10:30pm"                → "9am - 10:30pm"
+ *   "7:00pm - 9:00pm - 9:00pm"     → "7:00pm - 9:00pm"  (deduplicates duplicate end times)
+ *   "19:00 - 21:00 - 21:00"        → "7:00pm - 9:00pm"
+ *   ""                             → ""
  */
 export function formatTimeStr(tStr: string): string {
   if (!tStr) return '';
   const rangeMatch = tStr.search(/[-–—•]| to /i);
   if (rangeMatch !== -1) {
-    return tStr
-      .split(/[-–—•]| to /i)
-      .map(s => formatTimeStr(s.trim()))
-      .join(' - ');
+    const rawParts = tStr.split(/[-–—•]| to /i).map(s => s.trim()).filter(Boolean);
+    if (rawParts.length === 0) return '';
+    if (rawParts.length === 1) return formatSingleTimeStr(rawParts[0]);
+
+    // Format each individual segment
+    const formattedParts = rawParts.map(s => formatSingleTimeStr(s));
+
+    // Deduplicate consecutive identical segments
+    const deduped: string[] = [];
+    for (const p of formattedParts) {
+      if (deduped.length === 0 || deduped[deduped.length - 1].toLowerCase() !== p.toLowerCase()) {
+        deduped.push(p);
+      }
+    }
+
+    if (deduped.length === 1) {
+      return deduped[0];
+    }
+    if (deduped.length > 2) {
+      return `${deduped[0]} - ${deduped[deduped.length - 1]}`;
+    }
+    return `${deduped[0]} - ${deduped[1]}`;
   }
+  return formatSingleTimeStr(tStr);
+}
+
+function formatSingleTimeStr(tStr: string): string {
   const lower = tStr.toLowerCase();
   if (lower.includes('am') || lower.includes('pm')) {
     return lower.replace(/\s+/g, '');

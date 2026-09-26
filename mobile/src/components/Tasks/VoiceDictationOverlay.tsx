@@ -516,8 +516,9 @@ export default function VoiceDictationOverlay({
         updates.date = parsed.date;
       }
       if (parsed.timeSlot && parsed.tokens.some(t => t.type === 'time')) {
-        updates.timeSlot = parsed.timeSlot;
-        if (parsed.endTimeSlot) updates.endTimeSlot = parsed.endTimeSlot;
+        const timeParts = parsed.timeSlot.split(/[-–—]/).map(s => s.trim()).filter(Boolean);
+        updates.timeSlot = timeParts[0] || parsed.timeSlot;
+        updates.endTimeSlot = parsed.endTimeSlot || (timeParts.length > 1 ? timeParts[timeParts.length - 1] : null);
       }
       if (parsed.tokens.some(t => t.type === 'priority')) {
         updates.priority = parsed.priority as Priority;
@@ -600,12 +601,15 @@ export default function VoiceDictationOverlay({
     }
 
     const mappedTasks: EditableVoiceTask[] = parsedList.map((pt, idx) => {
+      const timeParts = pt.timeSlot ? pt.timeSlot.split(/[-–—]/).map((s: string) => s.trim()).filter(Boolean) : [];
+      const cleanStart = timeParts[0] || pt.timeSlot || null;
+      const cleanEnd = pt.endTimeSlot || (timeParts.length > 1 ? timeParts[timeParts.length - 1] : null);
       return {
         id: `voice_${Date.now()}_${idx}`,
         title: cleanTaskTitle(pt.title?.trim() || normalized.trim()),
         date: pt.date || selectedDate || today,
-        timeSlot: pt.timeSlot || null,
-        endTimeSlot: pt.endTimeSlot || null,
+        timeSlot: cleanStart,
+        endTimeSlot: cleanEnd,
         priority: (pt.priority as Priority) || 'low',
         isRecurring: pt.isRecurring || false,
         recurrenceRule: pt.recurrenceRule ? (pt.recurrenceRule as any) : null,
@@ -862,7 +866,9 @@ export default function VoiceDictationOverlay({
         const finalDate = t.date || parsedAgain.date || selectedDate || today;
         const timeSlotToUse = t.timeSlot || parsedAgain.timeSlot;
         const endTimeSlotToUse = t.endTimeSlot || parsedAgain.endTimeSlot;
-        const finalTime = timeSlotToUse ? (endTimeSlotToUse ? `${timeSlotToUse} - ${endTimeSlotToUse}` : timeSlotToUse) : null;
+        const cleanStart = timeSlotToUse ? timeSlotToUse.split(/[-–—]/)[0].trim() : '';
+        const cleanEnd = endTimeSlotToUse ? endTimeSlotToUse.split(/[-–—]/).pop()?.trim() : (timeSlotToUse && timeSlotToUse.includes('-') ? timeSlotToUse.split(/[-–—]/).pop()?.trim() : '');
+        const finalTime = cleanStart ? (cleanEnd && cleanEnd !== cleanStart ? `${cleanStart} - ${cleanEnd}` : cleanStart) : null;
         const finalPriority = (t.priority && t.priority !== 'low') ? t.priority : (parsedAgain.priority || t.priority || 'low');
         const estMinutes = t.durationMinutes || parsedAgain.durationMinutes || (timeSlotToUse && endTimeSlotToUse ? calcEstMinutes(timeSlotToUse, endTimeSlotToUse) : 0);
         const subtasksList = (t.subtasks && t.subtasks.length > 0) ? t.subtasks : (parsedAgain.subtasks || []);
