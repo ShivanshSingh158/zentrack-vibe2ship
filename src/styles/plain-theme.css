@@ -868,10 +868,10 @@ body.theme-light .class-btn-present,
 body.theme-plain .class-btn-present,
 body.theme-light .class-btn.present,
 body.theme-plain .class-btn.present {
-  background: #0d1a14 !important;
-  border: 1px solid rgba(94, 218, 158, 0.45) !important;
-  color: #5eda9e !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25) !important;
+  background: rgba(16, 185, 129, 0.10) !important;
+  border: 1px solid rgba(16, 185, 129, 0.25) !important;
+  color: #047857 !important;
+  box-shadow: 0 1px 2px rgba(16, 185, 129, 0.08) !important;
   font-weight: 700 !important;
   padding: 0.28rem 0.65rem !important;
   border-radius: 9999px !important;
@@ -887,11 +887,11 @@ body.theme-light .class-btn-present:hover,
 body.theme-plain .class-btn-present:hover,
 body.theme-light .class-btn.present:hover,
 body.theme-plain .class-btn.present:hover {
-  background: #152c21 !important;
-  border-color: #5eda9e !important;
-  color: #7bf5be !important;
+  background: rgba(16, 185, 129, 0.18) !important;
+  border-color: rgba(16, 185, 129, 0.42) !important;
+  color: #065f46 !important;
   transform: translateY(-1px) !important;
-  box-shadow: 0 3px 10px rgba(94, 218, 158, 0.3) !important;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.16) !important;
 }
 
 body.theme-light .class-btn-present:active,
@@ -905,10 +905,10 @@ body.theme-light .class-btn-absent,
 body.theme-plain .class-btn-absent,
 body.theme-light .class-btn.absent,
 body.theme-plain .class-btn.absent {
-  background: #1c0e12 !important;
-  border: 1px solid rgba(255, 105, 97, 0.45) !important;
-  color: #ff6961 !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25) !important;
+  background: rgba(239, 68, 68, 0.09) !important;
+  border: 1px solid rgba(239, 68, 68, 0.22) !important;
+  color: #b91c1c !important;
+  box-shadow: 0 1px 2px rgba(239, 68, 68, 0.08) !important;
   font-weight: 700 !important;
   padding: 0.28rem 0.65rem !important;
   border-radius: 9999px !important;
@@ -924,11 +924,11 @@ body.theme-light .class-btn-absent:hover,
 body.theme-plain .class-btn-absent:hover,
 body.theme-light .class-btn.absent:hover,
 body.theme-plain .class-btn.absent:hover {
-  background: #2e141a !important;
-  border-color: #ff6961 !important;
-  color: #ffa39e !important;
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(239, 68, 68, 0.40) !important;
+  color: #991b1b !important;
   transform: translateY(-1px) !important;
-  box-shadow: 0 3px 10px rgba(255, 105, 97, 0.3) !important;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.16) !important;
 }
 
 body.theme-light .class-btn-absent:active,
@@ -942,10 +942,10 @@ body.theme-light .class-btn-cancelled,
 body.theme-plain .class-btn-cancelled,
 body.theme-light .class-btn.cancel,
 body.theme-plain .class-btn.cancel {
-  background: #14141c !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
-  color: #a1a1aa !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2) !important;
+  background: rgba(100, 116, 139, 0.08) !important;
+  border: 1px solid rgba(100, 116, 139, 0.18) !important;
+  color: #475569 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
   padding: 0.28rem 0.5rem !important;
   border-radius: 9999px !important;
   font-size: 0.72rem !important;
@@ -959,9 +959,9 @@ body.theme-light .class-btn-cancelled:hover,
 body.theme-plain .class-btn-cancelled:hover,
 body.theme-light .class-btn.cancel:hover,
 body.theme-plain .class-btn.cancel:hover {
-  background: #20202c !important;
-  border-color: rgba(255, 255, 255, 0.25) !important;
-  color: #ffffff !important;
+  background: rgba(100, 116, 139, 0.15) !important;
+  border-color: rgba(100, 116, 139, 0.32) !important;
+  color: #1e293b !important;
   transform: translateY(-1px) !important;
 }
 
@@ -1525,15 +1525,6 @@ body.theme-plain .task-progress-card .progress-ring-fill {
   stroke: var(--task-progress-stroke, #2563eb) !important;
 }
 
-body.theme-light .task-progress-card .progress-ring-text,
-body.theme-plain .task-progress-card .progress-ring-text {
-  color: #0f172a !important;
-  font-weight: 700 !important;
-  font-feature-settings: 'tnum' 1 !important;
-}
-
-/* ── Task Row Badges & Pills (Subtle, Premium, Non-Cartoonish) ── */
-/* ── Task Row Badges & Pills (Dark Squircle Style) ── */
 body.theme-light .task-overdue-pill,
 body.theme-plain .task-overdue-pill {
   font-size: 0.65rem !important;
@@ -1542,14 +1533,14 @@ body.theme-plain .task-overdue-pill {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  background: #1c0e12 !important;
-  color: #ff6961 !important;
-  border: 1px solid rgba(255, 105, 97, 0.45) !important;
+  background: rgba(239, 68, 68, 0.09) !important;
+  color: #dc2626 !important;
+  border: 1px solid rgba(239, 68, 68, 0.22) !important;
   padding: 0.18rem 0.5rem !important;
   border-radius: 9999px !important;
-  letter-spacing: 0.04em !important;
+  letter-spacing: 0.03em !important;
   text-transform: uppercase !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+  box-shadow: 0 1px 2px rgba(239, 68, 68, 0.06) !important;
 }
 
 body.theme-light .task-time-pill,
@@ -1561,14 +1552,14 @@ body.theme-plain .task-time-pill {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  color: #e2e8f0 !important;
-  background: #14141c !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #4338ca !important;
+  background: rgba(99, 102, 241, 0.08) !important;
+  border: 1px solid rgba(99, 102, 241, 0.20) !important;
   padding: 0.2rem 0.55rem !important;
   border-radius: 9999px !important;
   letter-spacing: 0.01em !important;
   font-variant-numeric: tabular-nums !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.04) !important;
 }
 
 body.theme-light .upcoming-priority-tag,
@@ -1585,7 +1576,6 @@ body.theme-plain .task-p-badge {
   padding: 0.2rem 0.55rem !important;
   border-radius: 9999px !important;
   letter-spacing: 0.02em !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
 }
 
 body.theme-light .upcoming-priority-tag.p-high,
@@ -1594,27 +1584,30 @@ body.theme-light .upcoming-priority-tag.p-urgent,
 body.theme-plain .upcoming-priority-tag.p-urgent,
 body.theme-light .task-p-badge.p-high,
 body.theme-plain .task-p-badge.p-high {
-  color: #ff6961 !important;
-  background: #1c0e12 !important;
-  border: 1px solid rgba(255, 105, 97, 0.45) !important;
+  color: #dc2626 !important;
+  background: rgba(239, 68, 68, 0.09) !important;
+  border: 1px solid rgba(239, 68, 68, 0.22) !important;
+  box-shadow: 0 1px 2px rgba(239, 68, 68, 0.06) !important;
 }
 
 body.theme-light .upcoming-priority-tag.p-medium,
 body.theme-plain .upcoming-priority-tag.p-medium,
 body.theme-light .task-p-badge.p-medium,
 body.theme-plain .task-p-badge.p-medium {
-  color: #fbbf24 !important;
-  background: #1f160a !important;
-  border: 1px solid rgba(245, 158, 11, 0.45) !important;
+  color: #b45309 !important;
+  background: rgba(245, 158, 11, 0.10) !important;
+  border: 1px solid rgba(245, 158, 11, 0.24) !important;
+  box-shadow: 0 1px 2px rgba(245, 158, 11, 0.06) !important;
 }
 
 body.theme-light .upcoming-priority-tag.p-low,
 body.theme-plain .upcoming-priority-tag.p-low,
 body.theme-light .task-p-badge.p-low,
 body.theme-plain .task-p-badge.p-low {
-  color: #38bdf8 !important;
-  background: #0e1a1c !important;
-  border: 1px solid rgba(56, 189, 248, 0.45) !important;
+  color: #0284c7 !important;
+  background: rgba(14, 165, 233, 0.09) !important;
+  border: 1px solid rgba(14, 165, 233, 0.20) !important;
+  box-shadow: 0 1px 2px rgba(14, 165, 233, 0.06) !important;
 }
 
 body.theme-light .task-timer-icon-btn,
@@ -1622,22 +1615,23 @@ body.theme-plain .task-timer-icon-btn {
   width: 22px !important;
   height: 22px !important;
   border-radius: 7px !important;
-  color: #a599ff !important;
-  background: #14141c !important;
-  border: 1px solid rgba(165, 153, 255, 0.25) !important;
+  color: #6366f1 !important;
+  background: rgba(99, 102, 241, 0.08) !important;
+  border: 1px solid rgba(99, 102, 241, 0.22) !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   padding: 0 !important;
   cursor: pointer !important;
   transition: all 0.15s ease !important;
+  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.05) !important;
 }
 
 body.theme-light .task-timer-icon-btn:hover,
 body.theme-plain .task-timer-icon-btn:hover {
-  color: #ffffff !important;
-  background: rgba(165, 153, 255, 0.25) !important;
-  border-color: rgba(165, 153, 255, 0.5) !important;
+  color: #4f46e5 !important;
+  background: rgba(99, 102, 241, 0.16) !important;
+  border-color: rgba(99, 102, 241, 0.38) !important;
   transform: scale(1.08) !important;
 }
 
@@ -7530,82 +7524,83 @@ body.theme-plain .att-type-tag.lab {
   border: 1px solid #bae6fd !important;
 }
 
-/* Attendance Action Buttons (Present, Absent, Cancelled - Dark Squircle Style) */
+/* Attendance Action Buttons (Present, Absent, Cancelled - iOS Subtle Style) */
 body.theme-light .att-log-pill.present,
 body.theme-plain .att-log-pill.present {
-  background: #0d1a14 !important;
-  border-color: rgba(94, 218, 158, 0.45) !important;
-  color: #5eda9e !important;
+  background: rgba(16, 185, 129, 0.10) !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
+  color: #047857 !important;
   font-weight: 700 !important;
   border-radius: 9999px !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 1px 2px rgba(16, 185, 129, 0.08) !important;
 }
 
 body.theme-light .att-log-pill.present:hover,
 body.theme-plain .att-log-pill.present:hover {
-  background: #152c21 !important;
-  border-color: #5eda9e !important;
-  color: #7bf5be !important;
+  background: rgba(16, 185, 129, 0.18) !important;
+  border-color: rgba(16, 185, 129, 0.42) !important;
+  color: #065f46 !important;
   transform: translateY(-1px) !important;
-  box-shadow: 0 3px 10px rgba(94, 218, 158, 0.3) !important;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.16) !important;
 }
 
 body.theme-light .att-log-pill.absent,
 body.theme-plain .att-log-pill.absent {
-  background: #1c0e12 !important;
-  border-color: rgba(255, 105, 97, 0.45) !important;
-  color: #ff6961 !important;
+  background: rgba(239, 68, 68, 0.09) !important;
+  border-color: rgba(239, 68, 68, 0.22) !important;
+  color: #b91c1c !important;
   font-weight: 700 !important;
   border-radius: 9999px !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 1px 2px rgba(239, 68, 68, 0.08) !important;
 }
 
 body.theme-light .att-log-pill.absent:hover,
 body.theme-plain .att-log-pill.absent:hover {
-  background: #2e141a !important;
-  border-color: #ff6961 !important;
-  color: #ffa39e !important;
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(239, 68, 68, 0.40) !important;
+  color: #991b1b !important;
   transform: translateY(-1px) !important;
-  box-shadow: 0 3px 10px rgba(255, 105, 97, 0.3) !important;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.16) !important;
 }
 
 body.theme-light .att-cancel-circle-btn,
 body.theme-plain .att-cancel-circle-btn {
-  background: #14141c !important;
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
-  color: #a1a1aa !important;
+  background: rgba(100, 116, 139, 0.08) !important;
+  border: 1px solid rgba(100, 116, 139, 0.18) !important;
+  color: #475569 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
 }
 
 body.theme-light .att-cancel-circle-btn:hover,
 body.theme-plain .att-cancel-circle-btn:hover {
-  background: #20202c !important;
-  border-color: rgba(255, 255, 255, 0.25) !important;
-  color: #ffffff !important;
+  background: rgba(100, 116, 139, 0.15) !important;
+  border-color: rgba(100, 116, 139, 0.32) !important;
+  color: #1e293b !important;
   transform: translateY(-1px) !important;
 }
 
 body.theme-light .att-undo-pill.attended,
 body.theme-plain .att-undo-pill.attended {
-  background: #0d1a14 !important;
-  border: 1px solid rgba(94, 218, 158, 0.45) !important;
-  color: #5eda9e !important;
+  background: rgba(16, 185, 129, 0.10) !important;
+  border: 1px solid rgba(16, 185, 129, 0.25) !important;
+  color: #047857 !important;
   font-weight: 700 !important;
   border-radius: 9999px !important;
 }
 
 body.theme-light .att-undo-pill.missed,
 body.theme-plain .att-undo-pill.missed {
-  background: #1c0e12 !important;
-  border: 1px solid rgba(255, 105, 97, 0.45) !important;
-  color: #ff6961 !important;
+  background: rgba(239, 68, 68, 0.09) !important;
+  border: 1px solid rgba(239, 68, 68, 0.22) !important;
+  color: #b91c1c !important;
   font-weight: 700 !important;
   border-radius: 9999px !important;
 }
 
 body.theme-light .att-undo-pill.cancelled,
 body.theme-plain .att-undo-pill.cancelled {
-  background: #f1f5f9 !important;
-  border: 1px solid #e2e8f0 !important;
+  background: rgba(100, 116, 139, 0.08) !important;
+  border: 1px solid rgba(100, 116, 139, 0.18) !important;
   color: #475569 !important;
   font-weight: 700 !important;
 }

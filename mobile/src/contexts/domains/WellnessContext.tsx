@@ -9,7 +9,7 @@
  * even when offline. Firestore snapshots silently update the cache when online.
  */
 import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from "react";
-import { collection, query, where, onSnapshot, doc, setDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, setDoc, limit } from "firebase/firestore";
 import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates } from 'react-native';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { db } from "../../services/firebase";
@@ -170,7 +170,7 @@ export function WellnessProvider({
     // gymLogs and userGymPlan are shown on Dashboard via WellnessContext.
     // These MUST open immediately so the Gym screen shows real data on first paint.
     unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.GYM_LOGS), where("userId", "==", uid)),
+      query(collection(db, COLLECTION.GYM_LOGS), where("userId", "==", uid), limit(150)),
       snap => {
         // Skip the immediate local-pending echo of our own write.
         // When we do an optimistic write (logSetAndStartTimer → saveLog → setDoc),
@@ -205,7 +205,7 @@ export function WellnessProvider({
     ));
 
     unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.WATER_LOGS), where("userId", "==", uid)),
+      query(collection(db, COLLECTION.WATER_LOGS), where("userId", "==", uid), limit(150)),
       snap => {
         if (snap.docs.length === 0 && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
@@ -221,7 +221,7 @@ export function WellnessProvider({
       if (!subscribedRef.current) return;
 
       unsubsRef.current.push(onSnapshot(
-        query(collection(db, COLLECTION.SLEEP_LOGS), where("userId", "==", uid)),
+        query(collection(db, COLLECTION.SLEEP_LOGS), where("userId", "==", uid), limit(150)),
         snap => {
           if (snap.docs.length === 0 && hasCachedDataRef.current) return;
           unstable_batchedUpdates(() => {
@@ -234,7 +234,7 @@ export function WellnessProvider({
       ));
 
       unsubsRef.current.push(onSnapshot(
-        query(collection(db, 'weight_logs'), where("userId", "==", uid)),
+        query(collection(db, 'weight_logs'), where("userId", "==", uid), limit(150)),
         snap => {
           if (snap.docs.length === 0 && hasCachedDataRef.current) return;
           unstable_batchedUpdates(() => {

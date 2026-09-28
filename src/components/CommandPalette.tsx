@@ -7,6 +7,7 @@ import { db, auth } from '../services/firebase';
 import { usePomodoroContext } from '../contexts/PomodoroContext';
 import { getLocalDateString, formatDisplayDate, formatHoursDisplay } from '../utils/dateUtils';
 import { toast } from 'sonner';
+import { useGlobalData } from '../contexts/GlobalDataContext';
 
 interface SearchResult {
   type: 'todo' | 'learning' | 'log' | 'action' | 'note' | 'calendar';
@@ -28,6 +29,7 @@ export const CommandPalette = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { startTimer } = usePomodoroContext();
+  const { tasks, learningTopics, dailyLogs, notes, calendarEvents } = useGlobalData();
 
   // Global Ctrl+Shift+Z handler and Custom Event handler
   useEffect(() => {
@@ -69,92 +71,74 @@ export const CommandPalette = () => {
   }, [isOpen]);
 
 
-  const loadAllData = useCallback(async () => {
-    const user = auth.currentUser;
-    if (!user) return;
-
+  const loadAllData = useCallback(() => {
     const items: SearchResult[] = [];
 
-    try {
-      // Load todos
-      const todosSnap = await getDocs(query(collection(db, 'todos'), where('userId', '==', user.uid)));
-      todosSnap.forEach(doc => {
-        const d = doc.data();
-        items.push({
-          type: 'todo',
-          title: d.text,
-          subtitle: `Task • ${d.date} • ${d.priority} priority`,
-          route: '/todo'
-        });
+    // 1. Tasks
+    (tasks || []).forEach(d => {
+      items.push({
+        type: 'todo',
+        title: d.text,
+        subtitle: `Task • ${d.date || 'No date'} • ${d.priority || 'normal'} priority`,
+        route: '/todo'
       });
+    });
 
-      // Load learning topics + subtasks
-      const learningSnap = await getDocs(query(collection(db, 'learning_topics'), where('userId', '==', user.uid)));
-      learningSnap.forEach(doc => {
-        const d = doc.data();
+    // 2. Learning topics + subtasks
+    (learningTopics || []).forEach(d => {
+      items.push({
+        type: 'learning',
+        title: d.title,
+        subtitle: `Topic • ${d.subTasks?.length || 0} subtasks`,
+        route: '/learning'
+      });
+      d.subTasks?.forEach((st: { text: string; category?: string }) => {
         items.push({
           type: 'learning',
-          title: d.title,
-          subtitle: `Topic • ${d.subTasks?.length || 0} subtasks`,
+          title: st.text,
+          subtitle: `${d.title} • ${st.category || 'General'}`,
           route: '/learning'
         });
-        d.subTasks?.forEach((st: { text: string; category?: string }) => {
-          items.push({
-            type: 'learning',
-            title: st.text,
-            subtitle: `${d.title} • ${st.category || 'General'}`,
-            route: '/learning'
-          });
-        });
       });
+    });
 
-      // Load daily logs
-      const logsSnap = await getDocs(query(collection(db, 'daily_logs'), where('userId', '==', user.uid)));
-      logsSnap.forEach(doc => {
-        const d = doc.data();
-        const parts = [];
-        if (d.productiveHours) parts.push(`${formatHoursDisplay(d.productiveHours)} focus`);
-        if (d.gymNotes) parts.push('Gym');
-        if (d.extraWorks) parts.push('Extra notes');
-        items.push({
-          type: 'log',
-          title: `Daily Log — ${formatDisplayDate(d.date)}`,
-          subtitle: parts.join(' • ') || 'No data logged',
-          route: '/log'
-        });
+    // 3. Daily logs
+    (dailyLogs || []).forEach(d => {
+      const parts = [];
+      if (d.productiveHours) parts.push(`${formatHoursDisplay(d.productiveHours)} focus`);
+      if (d.gymNotes) parts.push('Gym');
+      if (d.extraWorks) parts.push('Extra notes');
+      items.push({
+        type: 'log',
+        title: `Daily Log — ${formatDisplayDate(d.date)}`,
+        subtitle: parts.join(' • ') || 'No data logged',
+        route: '/log'
       });
+    });
 
-      // Load notes
-      const notesSnap = await getDocs(query(collection(db, 'notes'), where('userId', '==', user.uid)));
-      notesSnap.forEach(doc => {
-        const d = doc.data();
-        items.push({
-          type: 'note',
-          title: d.title || 'Untitled Note',
-          subtitle: `Note • Updated ${new Date(d.updatedAt).toLocaleDateString()}`,
-          route: '/notes'
-        });
+    // 4. Notes
+    (notes || []).forEach(d => {
+      items.push({
+        type: 'note',
+        title: d.title || 'Untitled Note',
+        subtitle: `Note • Updated ${new Date(d.updatedAt || Date.now()).toLocaleDateString()}`,
+        route: '/notes'
       });
+    });
 
-      // Load calendar events
-      const calendarSnap = await getDocs(query(collection(db, 'calendar_events'), where('userId', '==', user.uid)));
-      calendarSnap.forEach(doc => {
-        const d = doc.data();
-        items.push({
-          type: 'calendar',
-          title: d.title || 'Event',
-          subtitle: `Event • ${d.start} - ${d.end}`,
-          route: '/calendar'
-        });
+    // 5. Calendar events
+    (calendarEvents || []).forEach(d => {
+      items.push({
+        type: 'calendar',
+        title: d.title || 'Event',
+        subtitle: `Event • ${d.start} - ${d.end}`,
+        route: '/calendar'
       });
-
-    } catch (err) {
-      console.error('Command palette load error:', err);
-    }
+    });
 
     setAllData(items);
     setIsLoaded(true);
-  }, []);
+  }, [tasks, learningTopics, dailyLogs, notes, calendarEvents]);
 
   // Focus input when opened
   useEffect(() => {

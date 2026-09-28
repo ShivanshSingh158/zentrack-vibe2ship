@@ -9,7 +9,7 @@
  */
 import React, { createContext, useContext, useEffect, useState, useMemo, useRef, useCallback } from "react";
 import * as Notifications from "expo-notifications";
-import { collection, query, where, doc, setDoc, onSnapshot } from "firebase/firestore";
+import { collection, query, where, doc, setDoc, onSnapshot, limit } from "firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates } from 'react-native';
@@ -346,7 +346,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
 
     // 3. Habit Logs Listener
     unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
+      query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid), limit(300)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) {
           setFirestoreReady(true);

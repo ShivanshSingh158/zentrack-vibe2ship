@@ -8,10 +8,46 @@ export const RING_STROKE = 6.5;
 export const RING_RADIUS = (RING_SIZE - RING_STROKE * 2) / 2;
 export const RING_CIRCUM = RING_RADIUS * 2 * Math.PI;
 
-export const FULLSCREEN_RING_SIZE = 296;
-export const FULLSCREEN_RING_STROKE = 7;
+export const FULLSCREEN_RING_SIZE = 340;
+export const FULLSCREEN_RING_STROKE = 8;
 export const FULLSCREEN_RING_RADIUS = (FULLSCREEN_RING_SIZE - FULLSCREEN_RING_STROKE * 2) / 2;
 export const FULLSCREEN_RING_CIRCUM = FULLSCREEN_RING_RADIUS * 2 * Math.PI;
+
+/**
+ * Responsive Apple iOS StandBy / Focus Mode Ring Scaler
+ * Proportional scale across iPads / Tablets (width >= 700) and iPhones / Android phones.
+ */
+export function getFullscreenRingDimensions(width: number, height: number) {
+  const isWide = width >= 700;
+  // Available vertical canvas space factoring in top header, task pill, mantra, and controls island
+  const reservedVertical = 330;
+  const availableHeight = Math.max(280, height - reservedVertical);
+  const availableWidth = isWide
+    ? Math.max(340, Math.min(width * 0.50, 480))
+    : Math.max(280, width * 0.86);
+
+  let size = Math.min(availableWidth, availableHeight);
+
+  if (isWide) {
+    // Commanding, luxurious circle on iPads and Tablets (380px to 440px)
+    size = Math.max(380, Math.min(Math.round(size), 440));
+  } else {
+    // Spacious, balanced circle on mobile screens (310px to 346px)
+    size = Math.max(300, Math.min(Math.round(size), 346));
+  }
+
+  const stroke = isWide ? 9 : 8;
+  const radius = (size - stroke * 2) / 2;
+  const circum = radius * 2 * Math.PI;
+
+  return {
+    size,
+    stroke,
+    radius,
+    circum,
+    isWide,
+  };
+}
 
 export function modeLabel(mode?: PomodoroMode): string {
   return 'DEEP FOCUS';
@@ -691,25 +727,32 @@ export function makeStyles(
       borderColor: 'rgba(255, 255, 255, 0.15)',
     },
 
-    /* Full Screen Linked Task Floating Banner */
+    /* Full Screen Linked Task Floating Banner (Apple Dynamic Island Capsule) */
     fullScreenTaskBanner: {
       flexDirection: 'row',
       alignItems: 'center',
       alignSelf: 'center',
-      gap: 8,
-      backgroundColor: 'rgba(255, 255, 255, 0.07)',
-      paddingHorizontal: 18,
-      paddingVertical: 9,
+      gap: 9,
+      backgroundColor: 'rgba(255, 255, 255, 0.08)',
+      paddingHorizontal: 20,
+      paddingVertical: 10,
       borderRadius: 999,
       borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.12)',
+      borderColor: 'rgba(255, 255, 255, 0.15)',
+      borderTopColor: 'rgba(255, 255, 255, 0.25)',
       marginTop: 14,
-      maxWidth: isWide ? 600 : '88%',
+      maxWidth: isWide ? 620 : '88%',
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.35,
+      shadowRadius: 14,
+      elevation: 6,
     },
     fullScreenTaskText: {
       fontFamily: 'Inter_600SemiBold',
-      fontSize: 13,
-      color: '#E2E8F0',
+      fontSize: 13.5,
+      color: '#F8FAFC',
+      letterSpacing: -0.1,
     },
 
     /* Full Screen Central Ring & Digits */
@@ -718,6 +761,8 @@ export function makeStyles(
       alignItems: 'center',
       justifyContent: 'center',
       position: 'relative',
+      width: '100%',
+      paddingVertical: 12,
     },
     fullScreenRingContainer: {
       alignItems: 'center',
@@ -726,60 +771,60 @@ export function makeStyles(
     },
     fullScreenRingAura: {
       position: 'absolute',
-      width: FULLSCREEN_RING_SIZE * 0.94,
-      height: FULLSCREEN_RING_SIZE * 0.94,
-      borderRadius: (FULLSCREEN_RING_SIZE * 0.94) / 2,
     },
     fullScreenCenterContent: {
       position: 'absolute',
       alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: 16,
+      paddingHorizontal: 8,
     },
     heroRow: {
+      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
+      width: '100%',
     },
     fullScreenDigits: {
       fontFamily: 'Inter_700Bold',
-      fontSize: isWide ? 76 : 70,
-      letterSpacing: -2.4,
+      fontSize: isWide ? 76 : 64,
+      letterSpacing: -2.2,
       color: '#FFFFFF',
       fontVariant: ['tabular-nums'],
-      lineHeight: isWide ? 84 : 78,
+      lineHeight: isWide ? 84 : 72,
       textAlign: 'center',
+      includeFontPadding: false,
     },
     fullScreenPercentSign: {
       fontFamily: 'Inter_600SemiBold',
-      fontSize: 32,
+      fontSize: isWide ? 34 : 28,
       color: '#C4B5FD',
       marginLeft: 4,
-      marginBottom: 8,
+      marginBottom: 6,
       includeFontPadding: false,
     },
     fullScreenMetaContainer: {
       alignItems: 'center',
       justifyContent: 'center',
-      marginTop: 10,
+      marginTop: 12,
     },
     fullScreenMetaRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 6,
+      gap: 7,
     },
     liveDot: {
-      width: 7,
-      height: 7,
-      borderRadius: 3.5,
+      width: 7.5,
+      height: 7.5,
+      borderRadius: 4,
       backgroundColor: '#34D399',
     },
     fullScreenMetaText: {
-      fontFamily: 'Inter_500Medium',
-      fontSize: 13.5,
-      color: 'rgba(255, 255, 255, 0.70)',
+      fontFamily: 'Inter_600SemiBold',
+      fontSize: isWide ? 14 : 13,
+      color: 'rgba(255, 255, 255, 0.76)',
       textAlign: 'center',
-      letterSpacing: 0.2,
+      letterSpacing: 0.3,
     },
     fullScreenMeta: {
       fontFamily: 'Inter_500Medium',
@@ -792,19 +837,19 @@ export function makeStyles(
       alignItems: 'center',
       justifyContent: 'center',
       paddingVertical: 10,
-      paddingHorizontal: 24,
-      marginTop: 18,
+      paddingHorizontal: 28,
+      marginTop: 22,
       alignSelf: 'center',
-      maxWidth: isWide ? 520 : '88%',
+      maxWidth: isWide ? 580 : '88%',
     },
     fullScreenMantraText: {
       fontFamily: 'Inter_500Medium',
-      fontSize: 13,
-      color: 'rgba(255, 255, 255, 0.42)',
+      fontSize: isWide ? 14.5 : 13.5,
+      color: 'rgba(255, 255, 255, 0.46)',
       fontStyle: 'italic',
       textAlign: 'center',
-      letterSpacing: 0.2,
-      lineHeight: 19,
+      letterSpacing: 0.3,
+      lineHeight: isWide ? 22 : 20,
     },
     fullScreenMantra: {
       fontFamily: 'Inter_500Medium',
@@ -816,12 +861,31 @@ export function makeStyles(
       paddingHorizontal: 24,
     },
 
-    /* Full Screen Bottom Floating Controls */
+    /* Full Screen Bottom Floating Controls (Apple iOS Control Dock) */
     fullScreenControlsWrap: {
-      paddingBottom: Math.max(insets.bottom + 16, 28),
+      paddingBottom: Math.max(insets.bottom + 20, 32),
       paddingHorizontal: 24,
       alignItems: 'center',
       gap: 16,
+      zIndex: 2,
+    },
+    fullScreenControlsIsland: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: isWide ? 30 : 22,
+      backgroundColor: 'rgba(255, 255, 255, 0.055)',
+      paddingHorizontal: isWide ? 32 : 22,
+      paddingVertical: 13,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.12)',
+      borderTopColor: 'rgba(255, 255, 255, 0.22)',
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 12 },
+      shadowOpacity: 0.50,
+      shadowRadius: 28,
+      elevation: 12,
     },
     fullScreenControlsRow: {
       flexDirection: 'row',
@@ -830,19 +894,64 @@ export function makeStyles(
       gap: 28,
     },
     fullScreenSecondaryBtn: {
-      width: 52,
-      height: 52,
-      borderRadius: 26,
-      backgroundColor: 'rgba(255, 255, 255, 0.10)',
       alignItems: 'center',
       justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.16)',
+    },
+    secondaryBtnInner: {
+      width: isWide ? 60 : 54,
+      height: isWide ? 60 : 54,
+      borderRadius: (isWide ? 60 : 54) / 2,
+      backgroundColor: 'rgba(255, 255, 255, 0.09)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1.5,
+      borderColor: 'rgba(255, 255, 255, 0.18)',
+      borderTopColor: 'rgba(255, 255, 255, 0.32)',
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.35,
+      shadowRadius: 10,
+    },
+    completeBtnInner: {
+      backgroundColor: 'rgba(52, 211, 153, 0.10)',
+      borderColor: 'rgba(52, 211, 153, 0.28)',
+      borderTopColor: 'rgba(52, 211, 153, 0.48)',
+      shadowColor: '#34D399',
+      shadowOpacity: 0.25,
+      shadowRadius: 12,
+    },
+    fullScreenPlayBtnOuter: {
+      width: isWide ? 88 : 80,
+      height: isWide ? 88 : 80,
+      borderRadius: (isWide ? 88 : 80) / 2,
+      padding: 4,
+      backgroundColor: 'rgba(165, 153, 255, 0.22)',
+      borderWidth: 1.5,
+      borderColor: 'rgba(165, 153, 255, 0.45)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#A599FF',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.55,
+      shadowRadius: 24,
+      elevation: 14,
+    },
+    fullScreenPlayBtnInner: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1.5,
+      borderTopColor: 'rgba(255, 255, 255, 0.55)',
+      borderBottomColor: 'rgba(0, 0, 0, 0.25)',
+      borderLeftColor: 'rgba(255, 255, 255, 0.30)',
+      borderRightColor: 'rgba(255, 255, 255, 0.30)',
     },
     fullScreenPlayBtn: {
-      width: 78,
-      height: 78,
-      borderRadius: 39,
+      width: isWide ? 84 : 78,
+      height: isWide ? 84 : 78,
+      borderRadius: (isWide ? 84 : 78) / 2,
       alignItems: 'center',
       justifyContent: 'center',
       shadowOffset: { width: 0, height: 8 },
@@ -859,18 +968,24 @@ export function makeStyles(
     fullScreenBoostBtn: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4.5,
-      paddingHorizontal: 16,
-      paddingVertical: 7,
+      gap: 5,
+      paddingHorizontal: isWide ? 18 : 15,
+      paddingVertical: isWide ? 9 : 8,
       borderRadius: 999,
       backgroundColor: 'rgba(255, 255, 255, 0.08)',
       borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.14)',
+      borderColor: 'rgba(255, 255, 255, 0.15)',
+      borderTopColor: 'rgba(255, 255, 255, 0.25)',
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 8,
     },
     fullScreenBoostBtnText: {
       fontFamily: 'Inter_600SemiBold',
-      fontSize: 12,
-      color: '#E2E8F0',
+      fontSize: 12.5,
+      color: '#F8FAFC',
+      letterSpacing: 0.2,
     },
   });
 }

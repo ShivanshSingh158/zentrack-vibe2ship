@@ -13,11 +13,13 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, Modal, Pressable, ScrollView, StyleSheet, StatusBar, useWindowDimensions,
+  Platform, BackHandler,
 } from 'react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, withRepeat, withSequence,
-  Easing, useAnimatedProps, withSpring, FadeIn, FadeOut,
+  Easing, useAnimatedProps, withSpring, FadeIn, FadeOut, runOnJS,
 } from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,9 +51,11 @@ import {
   FULLSCREEN_RING_CIRCUM,
   modeAccentDark,
   modeAccentLight,
+  getFullscreenRingDimensions,
   makeStyles,
 } from './pomodoroStyles';
 import PomodoroTaskPicker from './PomodoroTaskPicker';
+import AnimatedPressable from '../AnimatedPressable';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -106,18 +110,41 @@ export default function PomodoroSheet({
   } = usePomodoro();
 
   const isVisible = propVisible !== undefined ? propVisible : isSheetOpen;
+  const [mounted, setMounted] = useState<boolean>(isVisible);
 
   // Full Screen Immersive Focus Mode State
   const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
 
+  const initialSlide = windowHeight || 800;
+  const slideY = useSharedValue(initialSlide);
+  const sheetOpacity = useSharedValue(0);
+
+  // Smooth Apple iOS Closing Animation (identically matching TasksScreen's BottomSheet / Inbox)
   const handleClose = useCallback(() => {
     if (isFullScreen) {
       StatusBar.setHidden(false, 'fade');
       setIsFullScreen(false);
     }
-    if (propOnClose) propOnClose();
-    setIsSheetOpen(false);
-  }, [isFullScreen, propOnClose, setIsSheetOpen]);
+    // Apple iOS Critically Damped Exit Animation: smooth cubic fade and slide
+    sheetOpacity.value = withTiming(0, {
+      duration: 200,
+      easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+    });
+    slideY.value = withTiming(
+      windowHeight || 800,
+      {
+        duration: 220,
+        easing: Easing.bezier(0.32, 0, 0.67, 0),
+      },
+      (finished) => {
+        if (finished) {
+          runOnJS(setMounted)(false);
+          if (propOnClose) runOnJS(propOnClose)();
+          runOnJS(setIsSheetOpen)(false);
+        }
+      }
+    );
+  }, [isFullScreen, propOnClose, setIsSheetOpen, windowHeight]);
 
   const handleToggleFullScreen = useCallback(() => {
     feedback.tap();
@@ -131,6 +158,40 @@ export default function PomodoroSheet({
     setIsFullScreen(false);
     StatusBar.setHidden(false, 'fade');
   }, []);
+
+  // Synchronize opening and external closing transitions with Apple iOS spring physics
+  useEffect(() => {
+    if (isVisible) {
+      setMounted(true);
+      slideY.value = windowHeight || 800;
+      slideY.value = withSpring(0, {
+        damping: 32,
+        stiffness: 280,
+        mass: 0.85,
+      });
+      sheetOpacity.value = withTiming(1, {
+        duration: 200,
+        easing: Easing.bezier(0.16, 1, 0.3, 1),
+      });
+    } else if (mounted) {
+      handleClose();
+    }
+  }, [isVisible]);
+
+  // Android hardware back button handler
+  useEffect(() => {
+    if (!mounted) return;
+    const onBackPress = () => {
+      if (isFullScreen) {
+        handleExitFullScreen();
+        return true;
+      }
+      handleClose();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [mounted, isFullScreen, handleClose, handleExitFullScreen]);
 
   // Cleanup status bar when unmounting
   useEffect(() => {
@@ -157,9 +218,6 @@ export default function PomodoroSheet({
   const currentAccent = accentFn(mode);
 
   const [showTaskPicker, setShowTaskPicker] = useState<boolean>(false);
-
-  const slideY = useSharedValue(600);
-  const sheetOpacity = useSharedValue(0);
 
   // Breathing aura & live indicator animations
   const pulseScale = useSharedValue(1);
@@ -196,15 +254,7 @@ export default function PomodoroSheet({
     }
   }, [status, handlePlayPause, handleToggleDisplayMode]);
 
-  useEffect(() => {
-    if (isVisible) {
-      sheetOpacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
-      slideY.value = withTiming(0, { duration: 240, easing: Easing.out(Easing.cubic) });
-    } else {
-      sheetOpacity.value = withTiming(0, { duration: 140, easing: Easing.in(Easing.quad) });
-      slideY.value = withTiming(600, { duration: 160, easing: Easing.in(Easing.quad) });
-    }
-  }, [isVisible]);
+
 
   useEffect(() => {
     if (status === 'running') {
@@ -277,9 +327,15 @@ export default function PomodoroSheet({
     strokeDashoffset: RING_CIRCUM * (1 - progress.value),
   }));
 
+  // Responsive Apple iOS StandBy Ring Dimensions (dynamic across iPads, Tablets, and Phones)
+  const ringDim = useMemo(
+    () => getFullscreenRingDimensions(windowWidth, windowHeight),
+    [windowWidth, windowHeight]
+  );
+
   const animatedFullScreenRingProps = useAnimatedProps(() => ({
-    strokeDashoffset: FULLSCREEN_RING_CIRCUM * (1 - progress.value),
-  }));
+    strokeDashoffset: ringDim.circum * (1 - progress.value),
+  }), [ringDim.circum]);
 
   const [mantraIndex, setMantraIndex] = useState<number>(0);
   const cycleMantra = useCallback(() => {
@@ -342,6 +398,34 @@ export default function PomodoroSheet({
     [colors, isDark, currentAccent, insets, windowWidth, windowHeight]
   );
 
+  // Dynamic typography for StandBy hero numerals:
+  // Dynamically scales when duration includes hours (e.g. 1:48:44 has 7-8 chars)
+  // so the digits NEVER collide with the ring stroke.
+  const hasHours = timeLeft >= 3600;
+  const fullScreenDigitsDynamicStyle = useMemo(() => {
+    if (displayMode === 'percentage') {
+      return {
+        fontSize: isWide ? 84 : 68,
+        lineHeight: isWide ? 90 : 74,
+        letterSpacing: -2.4,
+      };
+    }
+    if (hasHours) {
+      // 7-8 chars like "1:48:44" — scaled so it has generous breathing room and never touches the stroke
+      return {
+        fontSize: isWide ? 58 : 45,
+        lineHeight: isWide ? 64 : 52,
+        letterSpacing: -1.4,
+      };
+    }
+    // Standard MM:SS (e.g. 25:00)
+    return {
+      fontSize: isWide ? 82 : 64,
+      lineHeight: isWide ? 88 : 72,
+      letterSpacing: -2.2,
+    };
+  }, [displayMode, hasHours, isWide]);
+
   // Dynamic non-redundant header subtitle
   const headerSubtitleText = useMemo(() => {
     if (status === 'running') {
@@ -362,7 +446,7 @@ export default function PomodoroSheet({
     return `Deep Work & Flow State • ${formatDurationLabel(config.focus)} cadence`;
   }, [status, linkedTask, currentTotal, timeLeft, config.focus]);
 
-  if (!isVisible) return null;
+  if (!mounted) return null;
 
   /* ─────────────────────────────────────────────────────────────────────────
      SHARED INNER COMPONENTS: Timer Ring + Controls Dock
@@ -441,7 +525,9 @@ export default function PomodoroSheet({
               <Text style={s.timerPercentSign}>%</Text>
             </View>
           ) : (
-            <Text style={s.timerDigits}>{formatTime(timeLeft)}</Text>
+            <Text style={[s.timerDigits, hasHours && { fontSize: 36, lineHeight: 42, letterSpacing: -1.0 }]}>
+              {formatTime(timeLeft)}
+            </Text>
           )}
         </Animated.View>
 
@@ -479,12 +565,13 @@ export default function PomodoroSheet({
     <>
       {/* Primary Controls Bar: Reset • Play/Pause • Complete */}
       <View style={s.controlsContainer}>
-        <Pressable style={s.secondaryControlBtn} onPress={resetTimer} hitSlop={8}>
+        <AnimatedPressable variant="subtle" style={s.secondaryControlBtn} onPress={resetTimer} hitSlop={8}>
           <Ionicons name="refresh-outline" size={20} color={colors.textSecondary} />
-        </Pressable>
+        </AnimatedPressable>
 
         <Animated.View style={playBtnAnimStyle}>
-          <Pressable
+          <AnimatedPressable
+            variant="cta"
             style={[s.primaryPlayBtn, { backgroundColor: currentAccent, shadowColor: currentAccent }]}
             onPress={handlePlayPause}
           >
@@ -494,25 +581,25 @@ export default function PomodoroSheet({
               color={isDark ? '#000000' : '#FFFFFF'}
               style={status === 'running' ? undefined : { marginLeft: 3 }}
             />
-          </Pressable>
+          </AnimatedPressable>
         </Animated.View>
 
-        <Pressable style={s.secondaryControlBtn} onPress={skipSession} hitSlop={8}>
+        <AnimatedPressable variant="subtle" style={s.secondaryControlBtn} onPress={skipSession} hitSlop={8}>
           <Ionicons name="checkmark-outline" size={22} color={colors.textSecondary} />
-        </Pressable>
+        </AnimatedPressable>
       </View>
 
       {/* Quick Boost Row (+5m / +15m) */}
       <View style={s.dualBoostRow}>
-        <Pressable style={s.boostBtn} onPress={() => extendTime(300)}>
+        <AnimatedPressable variant="subtle" style={s.boostBtn} onPress={() => extendTime(300)}>
           <Ionicons name="add" size={13} color={colors.textSecondary} />
           <Text style={s.boostBtnText}>+5m</Text>
-        </Pressable>
+        </AnimatedPressable>
 
-        <Pressable style={s.boostBtn} onPress={() => extendTime(900)}>
+        <AnimatedPressable variant="subtle" style={s.boostBtn} onPress={() => extendTime(900)}>
           <Ionicons name="add" size={13} color={colors.textSecondary} />
           <Text style={s.boostBtnText}>+15m</Text>
-        </Pressable>
+        </AnimatedPressable>
       </View>
     </>
   );
@@ -612,7 +699,7 @@ export default function PomodoroSheet({
   return (
     <Modal
       transparent
-      visible={isVisible}
+      visible={mounted}
       onRequestClose={() => {
         if (isFullScreen) {
           handleExitFullScreen();
@@ -644,7 +731,8 @@ export default function PomodoroSheet({
               </View>
 
               {/* Keep Awake Badge & Toggle */}
-              <Pressable
+              <AnimatedPressable
+                variant="subtle"
                 onPress={toggleKeepAwake}
                 style={[
                   s.fullScreenKeepAwakePill,
@@ -666,16 +754,22 @@ export default function PomodoroSheet({
                 >
                   {keepAwakeEnabled ? 'Always On' : 'Auto Sleep'}
                 </Text>
-              </Pressable>
+              </AnimatedPressable>
             </View>
 
             {/* Exit Full Screen Button */}
-            <Pressable onPress={handleExitFullScreen} style={s.fullScreenCloseBtn} hitSlop={12}>
+            <AnimatedPressable
+              variant="subtle"
+              onPress={handleExitFullScreen}
+              style={s.fullScreenCloseBtn}
+              hitSlop={12}
+              accessibilityLabel="Exit Full Screen"
+            >
               <Ionicons name="contract-outline" size={20} color="#FFFFFF" />
-            </Pressable>
+            </AnimatedPressable>
           </View>
 
-          {/* Floating Linked Task Banner */}
+          {/* Floating Linked Task Banner (Apple Dynamic Island Style) */}
           {linkedTask && (
             <View style={s.fullScreenTaskBanner}>
               <Ionicons name="pin" size={13} color="#A599FF" />
@@ -685,15 +779,24 @@ export default function PomodoroSheet({
             </View>
           )}
 
-          {/* Center Immersive StandBy Ring */}
+          {/* Center Immersive StandBy Ring (Responsively Sized, Zero Collisions) */}
           <View style={s.fullScreenCenter}>
             <View style={s.fullScreenRingContainer}>
               {/* Breathing Glow Aura */}
               <Animated.View
-                style={[s.fullScreenRingAura, { backgroundColor: currentAccent }, auraAnimStyle]}
+                style={[
+                  s.fullScreenRingAura,
+                  {
+                    width: ringDim.size * 0.90,
+                    height: ringDim.size * 0.90,
+                    borderRadius: (ringDim.size * 0.90) / 2,
+                    backgroundColor: currentAccent,
+                  },
+                  auraAnimStyle,
+                ]}
               />
 
-              <Svg width={FULLSCREEN_RING_SIZE} height={FULLSCREEN_RING_SIZE}>
+              <Svg width={ringDim.size} height={ringDim.size}>
                 <Defs>
                   <LinearGradient id="fsRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                     <Stop offset="0%" stopColor="#818CF8" />
@@ -704,32 +807,38 @@ export default function PomodoroSheet({
 
                 {/* Ambient Background Track */}
                 <Circle
-                  cx={FULLSCREEN_RING_SIZE / 2}
-                  cy={FULLSCREEN_RING_SIZE / 2}
-                  r={FULLSCREEN_RING_RADIUS}
+                  cx={ringDim.size / 2}
+                  cy={ringDim.size / 2}
+                  r={ringDim.radius}
                   stroke="rgba(255, 255, 255, 0.08)"
-                  strokeWidth={FULLSCREEN_RING_STROKE}
+                  strokeWidth={ringDim.stroke}
                   fill="none"
                 />
 
                 {/* Animated Progress Stroke */}
                 <AnimatedCircle
-                  cx={FULLSCREEN_RING_SIZE / 2}
-                  cy={FULLSCREEN_RING_SIZE / 2}
-                  r={FULLSCREEN_RING_RADIUS}
+                  cx={ringDim.size / 2}
+                  cy={ringDim.size / 2}
+                  r={ringDim.radius}
                   stroke="url(#fsRingGrad)"
-                  strokeWidth={FULLSCREEN_RING_STROKE}
+                  strokeWidth={ringDim.stroke}
                   fill="none"
-                  strokeDasharray={`${FULLSCREEN_RING_CIRCUM} ${FULLSCREEN_RING_CIRCUM}`}
+                  strokeDasharray={`${ringDim.circum} ${ringDim.circum}`}
                   animatedProps={animatedFullScreenRingProps}
                   strokeLinecap="round"
-                  transform={`rotate(-90 ${FULLSCREEN_RING_SIZE / 2} ${FULLSCREEN_RING_SIZE / 2})`}
+                  transform={`rotate(-90 ${ringDim.size / 2} ${ringDim.size / 2})`}
                 />
               </Svg>
 
-              {/* StandBy Numerals & Progress */}
+              {/* StandBy Numerals & Progress Lockup (Generously Centered, Never Collides) */}
               <Pressable
-                style={s.fullScreenCenterContent}
+                style={[
+                  s.fullScreenCenterContent,
+                  {
+                    width: ringDim.size * 0.82,
+                    height: ringDim.size * 0.82,
+                  },
+                ]}
                 onPress={handleCenterPress}
                 hitSlop={12}
                 accessibilityRole="button"
@@ -739,11 +848,15 @@ export default function PomodoroSheet({
                 <Animated.View style={[s.heroRow, centerAnimStyle]}>
                   {displayMode === 'percentage' ? (
                     <View style={s.percentContainer}>
-                      <Text style={s.fullScreenDigits}>{completionPct}</Text>
+                      <Text style={[s.fullScreenDigits, fullScreenDigitsDynamicStyle]}>
+                        {completionPct}
+                      </Text>
                       <Text style={s.fullScreenPercentSign}>%</Text>
                     </View>
                   ) : (
-                    <Text style={s.fullScreenDigits}>{formatTime(timeLeft)}</Text>
+                    <Text style={[s.fullScreenDigits, fullScreenDigitsDynamicStyle]}>
+                      {formatTime(timeLeft)}
+                    </Text>
                   )}
                 </Animated.View>
 
@@ -784,46 +897,90 @@ export default function PomodoroSheet({
             </Pressable>
           </View>
 
-          {/* Bottom Floating Minimalist Controls */}
+          {/* Bottom Apple iOS Control Island & Boost Chips */}
           <View style={s.fullScreenControlsWrap}>
-            <View style={s.fullScreenControlsRow}>
-              {/* Reset */}
-              <Pressable style={s.fullScreenSecondaryBtn} onPress={resetTimer} hitSlop={10}>
-                <Ionicons name="refresh-outline" size={22} color="#FFFFFF" />
-              </Pressable>
+            {/* Apple iOS Frosted Control Island */}
+            <View style={s.fullScreenControlsIsland}>
+              {/* Reset Button */}
+              <AnimatedPressable
+                variant="subtle"
+                style={s.fullScreenSecondaryBtn}
+                onPress={resetTimer}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Reset Timer"
+              >
+                <View style={s.secondaryBtnInner}>
+                  <Ionicons name="refresh-outline" size={isWide ? 24 : 21} color="#FFFFFF" />
+                </View>
+              </AnimatedPressable>
 
-              {/* Giant Play/Pause */}
+              {/* Giant Concentric Play/Pause Hero Button */}
               <Animated.View style={playBtnAnimStyle}>
-                <Pressable
-                  style={[s.fullScreenPlayBtn, { backgroundColor: '#A599FF', shadowColor: '#A599FF' }]}
+                <AnimatedPressable
+                  variant="cta"
+                  style={s.fullScreenPlayBtnOuter}
                   onPress={handlePlayPause}
+                  accessibilityRole="button"
+                  accessibilityLabel={status === 'running' ? 'Pause Focus Session' : 'Start Focus Session'}
                 >
-                  <Ionicons
-                    name={status === 'running' ? 'pause' : 'play'}
-                    size={34}
-                    color="#000000"
-                    style={status === 'running' ? undefined : { marginLeft: 3 }}
-                  />
-                </Pressable>
+                  <View style={[s.fullScreenPlayBtnInner, { backgroundColor: currentAccent }]}>
+                    <Ionicons
+                      name={status === 'running' ? 'pause' : 'play'}
+                      size={isWide ? 34 : 30}
+                      color="#0A0910"
+                      style={status === 'running' ? undefined : { marginLeft: 3 }}
+                    />
+                  </View>
+                </AnimatedPressable>
               </Animated.View>
 
-              {/* Complete / Skip */}
-              <Pressable style={s.fullScreenSecondaryBtn} onPress={skipSession} hitSlop={10}>
-                <Ionicons name="checkmark-outline" size={24} color="#FFFFFF" />
-              </Pressable>
+              {/* Complete / Skip Button */}
+              <AnimatedPressable
+                variant="subtle"
+                style={s.fullScreenSecondaryBtn}
+                onPress={skipSession}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Complete or Skip Session"
+              >
+                <View style={[s.secondaryBtnInner, s.completeBtnInner]}>
+                  <Ionicons name="checkmark" size={isWide ? 26 : 23} color="#34D399" />
+                </View>
+              </AnimatedPressable>
             </View>
 
-            {/* Quick Extension Chips */}
+            {/* Quick Extension Chips (Apple Capsule Pills) */}
             <View style={s.fullScreenBoostRow}>
-              <Pressable style={s.fullScreenBoostBtn} onPress={() => extendTime(300)}>
-                <Ionicons name="add" size={13} color="#FFFFFF" />
+              <AnimatedPressable
+                variant="subtle"
+                style={s.fullScreenBoostBtn}
+                onPress={() => extendTime(300)}
+                hitSlop={6}
+              >
+                <Ionicons name="add" size={13} color="#A599FF" />
                 <Text style={s.fullScreenBoostBtnText}>+5m</Text>
-              </Pressable>
+              </AnimatedPressable>
 
-              <Pressable style={s.fullScreenBoostBtn} onPress={() => extendTime(900)}>
-                <Ionicons name="add" size={13} color="#FFFFFF" />
+              <AnimatedPressable
+                variant="subtle"
+                style={s.fullScreenBoostBtn}
+                onPress={() => extendTime(900)}
+                hitSlop={6}
+              >
+                <Ionicons name="add" size={13} color="#A599FF" />
                 <Text style={s.fullScreenBoostBtnText}>+15m</Text>
-              </Pressable>
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                variant="subtle"
+                style={s.fullScreenBoostBtn}
+                onPress={() => extendTime(1800)}
+                hitSlop={6}
+              >
+                <Ionicons name="add" size={13} color="#A599FF" />
+                <Text style={s.fullScreenBoostBtnText}>+30m</Text>
+              </AnimatedPressable>
             </View>
           </View>
         </Animated.View>
@@ -833,14 +990,33 @@ export default function PomodoroSheet({
             ═══════════════════════════════════════════════════════════════════════ */
         <>
           <Animated.View style={[s.backdrop, backdropAnimStyle]}>
+            {Platform.OS === 'ios' ? (
+              <BlurView
+                intensity={isDark ? 30 : 20}
+                tint={isDark ? 'dark' : 'light'}
+                style={StyleSheet.absoluteFill}
+              />
+            ) : (
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  { backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.45)' },
+                ]}
+              />
+            )}
             <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
           </Animated.View>
 
           <Animated.View style={[s.sheet, sheetAnimStyle]}>
-            {/* Grab Handle */}
-            <View style={s.handleWrap}>
+            {/* Grab Handle — tap or pull down to close smoothly */}
+            <Pressable
+              onPress={handleClose}
+              hitSlop={{ top: 12, bottom: 12, left: 32, right: 32 }}
+              style={s.handleWrap}
+              accessibilityLabel="Dismiss focus timer sheet"
+            >
               <View style={s.handle} />
-            </View>
+            </Pressable>
 
             {/* Header: Title, Mindful Context, Full-Screen & Close buttons */}
             <View style={s.header}>

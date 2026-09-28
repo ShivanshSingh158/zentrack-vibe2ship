@@ -1,7 +1,7 @@
 import React, { useRef, useCallback, useMemo, useState, useEffect, Suspense } from 'react';
 import {
   View, Text, FlatList, SectionList, TouchableOpacity, ScrollView,
-  Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Animated, StyleSheet
+  Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Animated, StyleSheet, InteractionManager
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -17,7 +17,7 @@ import { useAcademicData } from '../contexts/domains/AcademicContext';
 const AddSubjectModal = React.lazy(() => import('../components/Academic/AddSubjectModal').then(m => ({ default: m.AddSubjectModal })));
 const TimetableModal = React.lazy(() => import('../components/Academic/TimetableModal').then(m => ({ default: m.TimetableModal })));
 const ClassNotifSettingsModal = React.lazy(() => import('../components/Academic/ClassNotifSettingsModal'));
-const SubjectHistoryModal = React.lazy(() => import('../components/Academic/SubjectHistoryModal'));
+const SubjectHistoryModal = React.lazy(() => import('../components/Academic/SubjectHistoryModal').then(m => ({ default: m.default || m.SubjectHistoryModal })));
 
 // --- NEW ATTENDANCE MODULE IMPORTS ---
 import { 
@@ -817,6 +817,17 @@ export default function AttendanceScreen() {
     lastScrollY.current = offsetY;
   }, [pillAnim]);
 
+  // Pre-warm lazy-loaded modals so first-tap opens with 0ms delay
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      import('../components/Academic/SubjectHistoryModal');
+      import('../components/Academic/AddSubjectModal');
+      import('../components/Academic/TimetableModal');
+      import('../components/Academic/ClassNotifSettingsModal');
+    });
+    return () => handle.cancel();
+  }, []);
+
   // 1. Core Data & State Hook
   const academic = useAcademicData();
   const { attendanceReady } = academic;
@@ -883,7 +894,7 @@ export default function AttendanceScreen() {
     setTimeout(() => {
       setEditSubject(null);
       setShowAddModal(true);
-    }, 120);
+    }, 240);
   };
 
   const handleEditSubject = useCallback((subject: AttendanceSubject) => {
@@ -891,7 +902,7 @@ export default function AttendanceScreen() {
     setTimeout(() => {
       setEditSubject(subject);
       setShowAddModal(true);
-    }, 120);
+    }, 240);
   }, []);
 
   const renderItem = useCallback(({ item: session }: { item: any }) => {

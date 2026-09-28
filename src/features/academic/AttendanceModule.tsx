@@ -20,6 +20,7 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { awardXP } from '../../services/xpSystem';
 import { TimetableModal } from './TimetableModal';
 import { AddSubjectModal } from './AddSubjectModal';
+import { useGlobalData } from '../../contexts/GlobalDataContext';
 
 // ── Constants & Helpers ──
 
@@ -170,12 +171,24 @@ export function calculateBunkMath(attended: number, total: number, target = 75) 
 }
 
 export const AttendanceModule = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [subjects, setSubjects] = useState<AttendanceSubject[]>([]);
-  const [logs, setLogs] = useState<any[]>([]);
-  const [holidays, setHolidays] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    attendanceSubjects,
+    attendanceLogs,
+    attendanceHolidays,
+    isLoading: isGlobalLoading,
+  } = useGlobalData();
 
+  const subjects = useMemo(() => {
+    const sorted = [...(attendanceSubjects || [])] as AttendanceSubject[];
+    sorted.sort((a, b) => (a.order || 0) - (b.order || 0));
+    return sorted;
+  }, [attendanceSubjects]);
+
+  const logs = attendanceLogs || [];
+  const holidays = attendanceHolidays || [];
+  const isLoading = isGlobalLoading;
+
+  const [user, setUser] = useState<User | null>(auth.currentUser);
   const [selectedDate, setSelectedDate] = useState<string>(getLocalDateString(new Date()));
   const [isTimetableModalOpen, setIsTimetableModalOpen] = useState(false);
   const [selectedHistorySubject, setSelectedHistorySubject] = useState<AttendanceSubject | null>(null);
@@ -188,50 +201,13 @@ export const AttendanceModule = () => {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(new Set());
 
-  // Listen to Auth & Firestore Subscriptions
+  // Track auth user
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      if (!currentUser) {
-        setSubjects([]);
-        setLogs([]);
-        setHolidays([]);
-        setIsLoading(false);
-      }
     });
     return () => unsubAuth();
   }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    setIsLoading(true);
-
-    const subQ = query(collection(db, 'attendance_subjects'), where('userId', '==', user.uid));
-    const unsubSub = onSnapshot(subQ, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as AttendanceSubject[];
-      data.sort((a, b) => (a.order || 0) - (b.order || 0));
-      setSubjects(data);
-      setIsLoading(false);
-    });
-
-    const logQ = query(collection(db, 'attendance_logs'), where('userId', '==', user.uid));
-    const unsubLog = onSnapshot(logQ, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setLogs(data);
-    });
-
-    const holQ = query(collection(db, 'attendance_holidays'), where('userId', '==', user.uid));
-    const unsubHol = onSnapshot(holQ, (snap) => {
-      const data = snap.docs.map(d => d.data().date);
-      setHolidays(data);
-    });
-
-    return () => {
-      unsubSub();
-      unsubLog();
-      unsubHol();
-    };
-  }, [user]);
 
   // Derived Data
   const selectedDayOfWeek = String(new Date(selectedDate + 'T00:00:00').getDay());

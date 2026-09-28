@@ -9,7 +9,7 @@
  * Firestore snapshots silently update the cache when online.
  */
 import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from "react";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { collection, query, where, onSnapshot, limit } from "firebase/firestore";
 import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates, AppState, AppStateStatus } from 'react-native';
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
@@ -289,7 +289,7 @@ export function AcademicProvider({
       scheduleListenerRestart("attendance")
     ));
     unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.ATTENDANCE_LOGS), where("userId", "==", uid)),
+      query(collection(db, COLLECTION.ATTENDANCE_LOGS), where("userId", "==", uid), limit(300)),
       snap => {
         if (snap.docs.length === 0 && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {

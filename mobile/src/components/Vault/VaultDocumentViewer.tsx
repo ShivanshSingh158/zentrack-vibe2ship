@@ -303,23 +303,21 @@ export default function VaultDocumentViewer({ node, onClose }: VaultDocumentView
             </View>
           </View>
 
-          {/* Right-side options: open external + reload + share */}
+          {/* Right-side options: open with + reload */}
           <View style={s.actions}>
-            {/* Open in external PDF / System Reader */}
-            {isPdf && (
-              <TouchableOpacity
-                onPress={() => {
-                  feedback.tap();
-                  handleOpenInSystemReader();
-                }}
-                style={[s.iconBtn, { backgroundColor: BTN_BG, borderColor: BTN_BORDER }]}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                activeOpacity={0.65}
-                accessibilityLabel="Open in external reader"
-              >
-                <Ionicons name="open-outline" size={17} color={colors.textPrimary} />
-              </TouchableOpacity>
-            )}
+            {/* Open with external app (Google Drive PDF Viewer, Adobe, etc.) */}
+            <TouchableOpacity
+              onPress={() => {
+                feedback.tap();
+                handleOpenInSystemReader();
+              }}
+              style={[s.iconBtn, { backgroundColor: BTN_BG, borderColor: BTN_BORDER }]}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={0.65}
+              accessibilityLabel="Open with external app"
+            >
+              <Ionicons name="open-outline" size={17} color={colors.textPrimary} />
+            </TouchableOpacity>
 
             {/* Reload Preview */}
             <TouchableOpacity
@@ -336,20 +334,6 @@ export default function VaultDocumentViewer({ node, onClose }: VaultDocumentView
               accessibilityLabel="Reload document"
             >
               <Ionicons name="reload-outline" size={17} color={colors.textPrimary} />
-            </TouchableOpacity>
-
-            {/* Share Sheet */}
-            <TouchableOpacity
-              onPress={() => {
-                feedback.tap();
-                handleShare();
-              }}
-              style={[s.iconBtn, { backgroundColor: BTN_BG, borderColor: BTN_BORDER }]}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              activeOpacity={0.65}
-              accessibilityLabel="Share document"
-            >
-              <Ionicons name="share-outline" size={18} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -419,11 +403,11 @@ export default function VaultDocumentViewer({ node, onClose }: VaultDocumentView
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[s.secondaryBtn, { borderColor: isDark ? '#2c2c2e' : '#e5e5ea' }]}
-                  onPress={handleShare}
+                  onPress={handleOpenInSystemReader}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="share-outline" size={16} color={colors.textSecondary} />
-                  <Text style={[s.secondaryBtnText, { color: colors.textSecondary }]}>Share File</Text>
+                  <Ionicons name="open-outline" size={16} color={colors.textSecondary} />
+                  <Text style={[s.secondaryBtnText, { color: colors.textSecondary }]}>Open with…</Text>
                 </TouchableOpacity>
               </View>
             </View>

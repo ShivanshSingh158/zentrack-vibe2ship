@@ -126,19 +126,47 @@ export function parseTimeToMinutes(timeStr: string | undefined): number {
  *  - timeStr: e.g. "11:20 AM"
  *  - isToday, isYesterday booleans
  */
-export function formatAttendanceHistoryDate(dateStr?: string, timestamp?: number): {
+let _cachedTodayStr = '';
+let _cachedYesterdayStr = '';
+let _lastCacheTime = 0;
+
+function getCachedDates() {
+  const now = Date.now();
+  if (now - _lastCacheTime > 60000 || !_cachedTodayStr) {
+    _cachedTodayStr = getLocalDateString(new Date());
+    const yDate = new Date();
+    yDate.setDate(yDate.getDate() - 1);
+    _cachedYesterdayStr = getLocalDateString(yDate);
+    _lastCacheTime = now;
+  }
+  return { today: _cachedTodayStr, yesterday: _cachedYesterdayStr };
+}
+
+export function formatAttendanceHistoryDate(dateInput?: any, timestamp?: any): {
   dayLabel: string;
   fullDateStr: string;
   timeStr: string;
   isToday: boolean;
   isYesterday: boolean;
 } {
-  const today = getLocalDateString(new Date());
-  const yDate = new Date();
-  yDate.setDate(yDate.getDate() - 1);
-  const yesterday = getLocalDateString(yDate);
+  const { today, yesterday } = getCachedDates();
 
-  const cleanDate = dateStr || '';
+  // Safely extract a YYYY-MM-DD string from ANY input type (string, number, Date, Firestore Timestamp)
+  let cleanDate = '';
+  if (typeof dateInput === 'string' && dateInput.length >= 10) {
+    cleanDate = dateInput.slice(0, 10);
+  } else if (typeof dateInput === 'number' && !isNaN(dateInput) && dateInput > 0) {
+    cleanDate = getLocalDateString(new Date(dateInput));
+  } else if (dateInput && typeof dateInput.toDate === 'function') {
+    try { cleanDate = getLocalDateString(dateInput.toDate()); } catch {}
+  } else if (dateInput && typeof dateInput.seconds === 'number') {
+    cleanDate = getLocalDateString(new Date(dateInput.seconds * 1000));
+  } else if (dateInput instanceof Date && !isNaN(dateInput.getTime())) {
+    cleanDate = getLocalDateString(dateInput);
+  } else if (typeof timestamp === 'number' && !isNaN(timestamp) && timestamp > 0) {
+    cleanDate = getLocalDateString(new Date(timestamp));
+  }
+
   const isToday = cleanDate === today;
   const isYesterday = cleanDate === yesterday;
 
@@ -147,23 +175,39 @@ export function formatAttendanceHistoryDate(dateStr?: string, timestamp?: number
   else if (isYesterday) dayLabel = 'Yesterday';
 
   let fullDateStr = '';
-  if (cleanDate) {
-    fullDateStr = formatDateWithDay(cleanDate);
-    const [y] = cleanDate.split('-').map(Number);
-    const currYear = new Date().getFullYear();
-    if (y && y !== currYear) {
-      fullDateStr += ` ${y}`;
+  if (cleanDate && cleanDate.length === 10) {
+    try {
+      fullDateStr = formatDateWithDay(cleanDate);
+      const [y] = cleanDate.split('-').map(Number);
+      const currYear = new Date().getFullYear();
+      if (y && !isNaN(y) && y !== currYear) {
+        fullDateStr += ` ${y}`;
+      }
+    } catch {
+      fullDateStr = cleanDate;
     }
+  } else if (cleanDate) {
+    fullDateStr = cleanDate;
   }
 
   let timeStr = '';
-  if (timestamp && typeof timestamp === 'number' && !isNaN(timestamp)) {
-    const d = new Date(timestamp);
-    const hours = d.getHours();
-    const minutes = d.getMinutes().toString().padStart(2, '0');
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const hr12 = hours % 12 || 12;
-    timeStr = `${hr12}:${minutes} ${ampm}`;
+  const numTimestamp = typeof timestamp === 'number' && !isNaN(timestamp) && timestamp > 0
+    ? timestamp
+    : typeof dateInput === 'number' && !isNaN(dateInput) && dateInput > 0
+    ? dateInput
+    : 0;
+
+  if (numTimestamp > 0) {
+    try {
+      const d = new Date(numTimestamp);
+      if (!isNaN(d.getTime())) {
+        const hours = d.getHours();
+        const minutes = d.getMinutes().toString().padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const hr12 = hours % 12 || 12;
+        timeStr = `${hr12}:${minutes} ${ampm}`;
+      }
+    } catch {}
   }
 
   return {

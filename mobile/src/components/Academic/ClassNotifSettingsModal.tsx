@@ -20,6 +20,9 @@ import {
   ActivityIndicator,
   Switch,
   Platform,
+  Dimensions,
+  BackHandler,
+  Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,8 +31,11 @@ import { BlurView } from 'expo-blur';
 import Reanimated, {
   FadeIn,
   FadeOut,
-  SlideInDown,
-  SlideOutDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  runOnJS,
   Easing,
 } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -38,6 +44,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 import { usePlannerData } from '../../contexts/domains/PlannerContext';
 import type { AttendanceSubject } from '../../contexts/MobileDataContext';
 import {
@@ -192,36 +200,70 @@ const ClassNotifSettingsModal = React.memo(function ClassNotifSettingsModal({ vi
     }
   }, [prefs, subjects, tasks, customEvents, gymLogs, habitLogs, allHabits, assignments, waterLogs, sleepLogs, onClose]);
 
-  const [modalVisible, setModalVisible] = useState(visible);
-  const [contentVisible, setContentVisible] = useState(visible);
+  const [mounted, setMounted] = useState(visible);
+  const translateY = useSharedValue(SCREEN_HEIGHT);
+  const backdropOpacity = useSharedValue(0);
   const isClosingRef = React.useRef(false);
-
-  useEffect(() => {
-    if (visible) {
-      isClosingRef.current = false;
-      setModalVisible(true);
-      setContentVisible(true);
-    } else if (modalVisible && !isClosingRef.current) {
-      isClosingRef.current = true;
-      setContentVisible(false);
-      const timer = setTimeout(() => {
-        setModalVisible(false);
-        isClosingRef.current = false;
-      }, 220);
-      return () => clearTimeout(timer);
-    }
-  }, [visible, modalVisible]);
 
   const handleRequestClose = useCallback(() => {
     if (isClosingRef.current) return;
     isClosingRef.current = true;
-    setContentVisible(false);
-    setTimeout(() => {
-      setModalVisible(false);
-      onClose();
+    Keyboard.dismiss();
+    backdropOpacity.value = withTiming(0, {
+      duration: 220,
+      easing: Easing.linear,
+    });
+    translateY.value = withTiming(
+      SCREEN_HEIGHT,
+      {
+        duration: 260,
+        easing: Easing.bezier(0.32, 0, 0.67, 0),
+      },
+      (finished) => {
+        if (finished) {
+          runOnJS(setMounted)(false);
+          runOnJS(onClose)();
+          isClosingRef.current = false;
+        }
+      }
+    );
+  }, [backdropOpacity, translateY, onClose]);
+
+  useEffect(() => {
+    if (visible) {
       isClosingRef.current = false;
-    }, 220);
-  }, [onClose]);
+      setMounted(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      translateY.value = SCREEN_HEIGHT;
+      translateY.value = withTiming(0, {
+        duration: 320,
+        easing: Easing.bezier(0.22, 1, 0.36, 1),
+      });
+      backdropOpacity.value = withTiming(1, {
+        duration: 260,
+        easing: Easing.out(Easing.quad),
+      });
+    } else if (mounted) {
+      handleRequestClose();
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      handleRequestClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, handleRequestClose]);
+
+  const sheetAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const backdropAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
 
   // ── Check if a subject has lab sessions ───────────────────────────────────
   const subjectHasLabs = (subj: AttendanceSubject) =>
@@ -229,34 +271,31 @@ const ClassNotifSettingsModal = React.memo(function ClassNotifSettingsModal({ vi
       (sch?.labs?.length > 0) || (sch?.labCount > 0)
     );
 
-  if (!modalVisible && !visible) return null;
+  if (!mounted) return null;
 
   return (
-    <Modal visible={modalVisible} animationType="none" transparent onRequestClose={handleRequestClose}>
+    <Modal visible={mounted} animationType="none" transparent onRequestClose={handleRequestClose} statusBarTranslucent>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-        {contentVisible && (
-          <Reanimated.View
-            entering={FadeIn.duration(200)}
-            exiting={FadeOut.duration(200)}
-            style={[StyleSheet.absoluteFill, styles.modalBg]}
-          >
-            {Platform.OS === 'ios' && (
-              <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
-            )}
-            <Pressable style={StyleSheet.absoluteFill} onPress={handleRequestClose} />
-          </Reanimated.View>
-        )}
+        <Reanimated.View
+          style={[StyleSheet.absoluteFill, styles.modalBg, backdropAnimatedStyle]}
+        >
+          {Platform.OS === 'ios' ? (
+            <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+          ) : (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.45)' }]} />
+          )}
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleRequestClose} />
+        </Reanimated.View>
 
-        {contentVisible && (
-          <Reanimated.View
-            entering={SlideInDown.duration(280).easing(Easing.bezier(0.16, 1, 0.3, 1))}
-            exiting={SlideOutDown.duration(200).easing(Easing.in(Easing.quad))}
-            style={styles.sheetContainer}
-          >
+        <Reanimated.View
+          style={[styles.sheetContainer, sheetAnimatedStyle]}
+        >
           {/* iOS Sheet Grab Handle */}
-          <View style={styles.handleContainer}>
-            <View style={styles.sheetHandle} />
-          </View>
+          <Pressable onPress={handleRequestClose} hitSlop={{ top: 12, bottom: 12, left: 30, right: 30 }}>
+            <View style={styles.handleContainer}>
+              <View style={styles.sheetHandle} />
+            </View>
+          </Pressable>
 
           {/* Header */}
           <View style={styles.header}>
@@ -535,7 +574,6 @@ const ClassNotifSettingsModal = React.memo(function ClassNotifSettingsModal({ vi
             </View>
           )}
         </Reanimated.View>
-        )}
       </View>
     </Modal>
   );

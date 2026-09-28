@@ -14,10 +14,13 @@ import {
   Modal,
   Pressable,
   Platform,
+  BackHandler,
 } from 'react-native';
 import Animated, {
-  FadeIn,
-  FadeOut,
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  runOnJS,
   Easing,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
@@ -115,10 +118,6 @@ function MenuActionRow({
   );
 }
 
-// Apple iOS Bloom Curves: smooth cubic bezier deceleration, zero overshoot/bounce
-const enterBloom = FadeIn.duration(200).easing(Easing.bezier(0.16, 1, 0.3, 1));
-const exitBloom = FadeOut.duration(150).easing(Easing.out(Easing.quad));
-
 export const SubjectContextMenuModal = React.memo(function SubjectContextMenuModal({
   visible,
   subject,
@@ -137,22 +136,60 @@ export const SubjectContextMenuModal = React.memo(function SubjectContextMenuMod
   }
   const currentSubject = subject || lastSubjectRef.current;
 
-  const [activeVisible, setActiveVisible] = useState(visible);
-
-  useEffect(() => {
-    setActiveVisible(visible);
-  }, [visible]);
+  const [mounted, setMounted] = useState(visible);
+  const opacity = useSharedValue(0);
+  const scale = useSharedValue(0.92);
+  const isClosingRef = React.useRef(false);
 
   const handleGracefulClose = useCallback((action?: () => void) => {
-    setActiveVisible(false);
-    setTimeout(() => {
-      onClose();
-      action?.();
-    }, 160);
-  }, [onClose]);
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
+    opacity.value = withTiming(0, { duration: 160, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
+    scale.value = withTiming(
+      0.94,
+      { duration: 160, easing: Easing.bezier(0.32, 0, 0.67, 0) },
+      (finished) => {
+        if (finished) {
+          runOnJS(setMounted)(false);
+          runOnJS(onClose)();
+          if (action) runOnJS(action)();
+          isClosingRef.current = false;
+        }
+      }
+    );
+  }, [opacity, scale, onClose]);
 
-  if (!visible && !activeVisible) return null;
-  if (!currentSubject) return null;
+  useEffect(() => {
+    if (visible) {
+      isClosingRef.current = false;
+      setMounted(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      opacity.value = withTiming(1, { duration: 200, easing: Easing.bezier(0.16, 1, 0.3, 1) });
+      scale.value = withTiming(1, { duration: 200, easing: Easing.bezier(0.16, 1, 0.3, 1) });
+    } else if (mounted) {
+      handleGracefulClose();
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      handleGracefulClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, handleGracefulClose]);
+
+  const animatedContainerStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ scale: scale.value }],
+  }));
+
+  const animatedBackdropStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
+
+  if (!mounted || !currentSubject) return null;
 
   const totalAtt = (currentSubject.classesAttended || 0) + (currentSubject.labsAttended || 0);
   const totalCls = (currentSubject.classesTotal || 0) + (currentSubject.labsTotal || 0);
@@ -170,7 +207,7 @@ export const SubjectContextMenuModal = React.memo(function SubjectContextMenuMod
 
   return (
     <Modal
-      visible={activeVisible}
+      visible={mounted}
       transparent
       animationType="none"
       onRequestClose={() => handleGracefulClose()}
@@ -178,26 +215,30 @@ export const SubjectContextMenuModal = React.memo(function SubjectContextMenuMod
     >
       <View style={styles.overlay}>
         {/* Frosted Glass Blur Backdrop */}
-        {Platform.OS === 'ios' && (
-          <BlurView
-            intensity={isDark ? 35 : 20}
-            tint={isDark ? 'dark' : 'light'}
+        <Animated.View style={[StyleSheet.absoluteFill, animatedBackdropStyle]}>
+          {Platform.OS === 'ios' ? (
+            <BlurView
+              intensity={isDark ? 35 : 20}
+              tint={isDark ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFill}
+            />
+          ) : (
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: isDark ? 'rgba(0, 0, 0, 0.65)' : 'rgba(0, 0, 0, 0.35)' },
+              ]}
+            />
+          )}
+          <Pressable
             style={StyleSheet.absoluteFill}
+            onPress={() => handleGracefulClose()}
           />
-        )}
-        <Pressable
-          style={[
-            StyleSheet.absoluteFill,
-            { backgroundColor: isDark ? 'rgba(0, 0, 0, 0.45)' : 'rgba(0, 0, 0, 0.25)' },
-          ]}
-          onPress={() => handleGracefulClose()}
-        />
+        </Animated.View>
 
         {/* Apple iOS Bloom Container */}
         <Animated.View
-          entering={enterBloom}
-          exiting={exitBloom}
-          style={styles.container}
+          style={[styles.container, animatedContainerStyle]}
         >
           {/* ── Elevated Subject Preview Card ── */}
           <View

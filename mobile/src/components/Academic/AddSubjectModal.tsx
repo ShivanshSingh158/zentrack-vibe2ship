@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, Pressable, Dimensions, BackHandler, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -9,12 +9,11 @@ import Reanimated, {
   FadeIn,
   FadeInDown,
   FadeOut,
-  SlideInDown,
-  SlideOutDown,
   useSharedValue,
   useAnimatedStyle,
   withTiming,
   withSpring,
+  runOnJS,
   Easing,
 } from 'react-native-reanimated';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
@@ -26,6 +25,7 @@ import type { AttendanceSubject } from '../../contexts/MobileDataContext';
 import { COLLECTION } from '../../config/constants';
 import { useTheme } from "../../contexts/ThemeContext";
 
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SCHEMA_VERSION = 1;
 const defaultSchedule = {
   '0': { classes: [], labs: [] },
@@ -41,7 +41,56 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 // Map visual index to actual Date.getDay() (0=Sun, 1=Mon)
 const DAY_MAP = [1, 2, 3, 4, 5, 6, 0];
 
-// ── WhatsApp-Grade Tactile Spring Pressable ──────────────────────────────────
+// ── Helper to resolve initial form values synchronously without 2nd-render flash ──
+function getInitialSubjectState(existingSubject?: AttendanceSubject | null) {
+  if (existingSubject) {
+    const hasExistingCounts = (existingSubject.classesTotal || 0) > 0 || (existingSubject.labsTotal || 0) > 0;
+    const subjectHasLabs = (existingSubject.labsTotal || 0) > 0 || (existingSubject.labsAttended || 0) > 0;
+    const migratedSchedule: any = {};
+    for (let i = 0; i < 7; i++) {
+      const dStr = i.toString();
+      const d = existingSubject.schedule?.[dStr] || { classCount: 0, labCount: 0, classes: [], labs: [] };
+      let newClasses = d.classes || [];
+      if (newClasses.length === 0 && d.classCount > 0) {
+        newClasses = Array.from({ length: d.classCount }).map(() => ({ time: '', room: '' }));
+      }
+      let newLabs = d.labs || [];
+      if (newLabs.length === 0 && d.labCount > 0) {
+        newLabs = Array.from({ length: d.labCount }).map(() => ({ time: '', room: '' }));
+      }
+      migratedSchedule[dStr] = {
+        classes: newClasses,
+        labs: newLabs,
+        classCount: newClasses.length,
+        labCount: newLabs.length,
+      };
+    }
+    return {
+      name: existingSubject.name || '',
+      targetPercentage: existingSubject.targetPercentage?.toString() || '75',
+      calibrationMode: (hasExistingCounts ? 'mid_semester' : 'fresh') as 'fresh' | 'mid_semester',
+      classesAttended: existingSubject.classesAttended ? existingSubject.classesAttended.toString() : '0',
+      classesTotal: existingSubject.classesTotal ? existingSubject.classesTotal.toString() : '0',
+      hasLabs: subjectHasLabs,
+      labsAttended: existingSubject.labsAttended ? existingSubject.labsAttended.toString() : '0',
+      labsTotal: existingSubject.labsTotal ? existingSubject.labsTotal.toString() : '0',
+      schedule: migratedSchedule,
+    };
+  }
+  return {
+    name: '',
+    targetPercentage: '75',
+    calibrationMode: 'fresh' as 'fresh' | 'mid_semester',
+    classesAttended: '',
+    classesTotal: '',
+    hasLabs: false,
+    labsAttended: '',
+    labsTotal: '',
+    schedule: defaultSchedule,
+  };
+}
+
+// ── Apple iOS-Grade Tactile Spring Pressable ──────────────────────────────────
 const SpringPressableBtn = React.memo(function SpringPressableBtn({
   onPress,
   children,
@@ -57,20 +106,6 @@ const SpringPressableBtn = React.memo(function SpringPressableBtn({
   activeScale?: number;
   haptic?: 'light' | 'medium';
 }) {
-  const scale = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = useCallback(() => {
-    if (disabled) return;
-    scale.value = withTiming(activeScale, { duration: 70 });
-  }, [activeScale, disabled, scale]);
-
-  const handlePressOut = useCallback(() => {
-    scale.value = withTiming(1.0, { duration: 110 });
-  }, [scale]);
-
   const handlePress = useCallback(() => {
     if (disabled) return;
     if (haptic === 'medium') {
@@ -83,14 +118,14 @@ const SpringPressableBtn = React.memo(function SpringPressableBtn({
 
   return (
     <Pressable
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       onPress={handlePress}
       disabled={disabled}
+      style={({ pressed }) => [
+        style,
+        pressed && !disabled && { opacity: 0.65, transform: [{ scale: activeScale }] },
+      ]}
     >
-      <Reanimated.View style={[style, animStyle]}>
-        {children}
-      </Reanimated.View>
+      {children}
     </Pressable>
   );
 });
@@ -104,72 +139,41 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const { user } = useCoreData();
   const { attendance, optimisticAddSubject, optimisticUpdateAttendance } = useAcademicData();
-  const [name, setName] = useState('');
-  const [targetPercentage, setTargetPercentage] = useState('75');
-  const [schedule, setSchedule] = useState<any>(defaultSchedule);
+
+  const [name, setName] = useState(() => getInitialSubjectState(existingSubject).name);
+  const [targetPercentage, setTargetPercentage] = useState(() => getInitialSubjectState(existingSubject).targetPercentage);
+  const [schedule, setSchedule] = useState<any>(() => getInitialSubjectState(existingSubject).schedule);
   const [loading, setLoading] = useState(false);
   const [activePicker, setActivePicker] = useState<{ dayIdx: number, type: 'classes' | 'labs', idx: number } | null>(null);
 
   // ── Mid-Semester Calibration State ──
-  const [calibrationMode, setCalibrationMode] = useState<'fresh' | 'mid_semester'>('fresh');
-  const [classesAttended, setClassesAttended] = useState('');
-  const [classesTotal, setClassesTotal] = useState('');
-  const [hasLabs, setHasLabs] = useState(false);
-  const [labsAttended, setLabsAttended] = useState('');
-  const [labsTotal, setLabsTotal] = useState('');
+  const [calibrationMode, setCalibrationMode] = useState<'fresh' | 'mid_semester'>(() => getInitialSubjectState(existingSubject).calibrationMode);
+  const [classesAttended, setClassesAttended] = useState(() => getInitialSubjectState(existingSubject).classesAttended);
+  const [classesTotal, setClassesTotal] = useState(() => getInitialSubjectState(existingSubject).classesTotal);
+  const [hasLabs, setHasLabs] = useState(() => getInitialSubjectState(existingSubject).hasLabs);
+  const [labsAttended, setLabsAttended] = useState(() => getInitialSubjectState(existingSubject).labsAttended);
+  const [labsTotal, setLabsTotal] = useState(() => getInitialSubjectState(existingSubject).labsTotal);
 
-  useEffect(() => {
+  // Synchronize state during render on open to avoid secondary re-render flash
+  const [prevVisible, setPrevVisible] = useState(visible);
+  const [prevSubjectId, setPrevSubjectId] = useState<string | null | undefined>(existingSubject?.id);
+
+  if (visible !== prevVisible || (visible && existingSubject?.id !== prevSubjectId)) {
+    setPrevVisible(visible);
+    setPrevSubjectId(existingSubject?.id);
     if (visible) {
-      if (existingSubject) {
-        setName(existingSubject.name);
-        setTargetPercentage(existingSubject.targetPercentage?.toString() || '75');
-        
-        const hasExistingCounts = (existingSubject.classesTotal || 0) > 0 || (existingSubject.labsTotal || 0) > 0;
-        setCalibrationMode(hasExistingCounts ? 'mid_semester' : 'fresh');
-        setClassesAttended(existingSubject.classesAttended ? existingSubject.classesAttended.toString() : '0');
-        setClassesTotal(existingSubject.classesTotal ? existingSubject.classesTotal.toString() : '0');
-        
-        const subjectHasLabs = (existingSubject.labsTotal || 0) > 0 || (existingSubject.labsAttended || 0) > 0;
-        setHasLabs(subjectHasLabs);
-        setLabsAttended(existingSubject.labsAttended ? existingSubject.labsAttended.toString() : '0');
-        setLabsTotal(existingSubject.labsTotal ? existingSubject.labsTotal.toString() : '0');
-
-        const migratedSchedule: any = {};
-        for (let i = 0; i < 7; i++) {
-          const dStr = i.toString();
-          const d = existingSubject.schedule?.[dStr] || { classCount: 0, labCount: 0, classes: [], labs: [] };
-          
-          let newClasses = d.classes || [];
-          if (newClasses.length === 0 && d.classCount > 0) {
-            newClasses = Array.from({ length: d.classCount }).map(() => ({ time: '', room: '' }));
-          }
-          
-          let newLabs = d.labs || [];
-          if (newLabs.length === 0 && d.labCount > 0) {
-            newLabs = Array.from({ length: d.labCount }).map(() => ({ time: '', room: '' }));
-          }
-          
-          migratedSchedule[dStr] = {
-            classes: newClasses,
-            labs: newLabs,
-            classCount: newClasses.length,
-            labCount: newLabs.length,
-          };
-        }
-        setSchedule(migratedSchedule);
-      } else {
-        setName('');
-        setTargetPercentage('75');
-        setCalibrationMode('fresh');
-        setClassesAttended('');
-        setClassesTotal('');
-        setHasLabs(false);
-        setLabsAttended('');
-        setLabsTotal('');
-        setSchedule(defaultSchedule);
-      }
+      const init = getInitialSubjectState(existingSubject);
+      setName(init.name);
+      setTargetPercentage(init.targetPercentage);
+      setCalibrationMode(init.calibrationMode);
+      setClassesAttended(init.classesAttended);
+      setClassesTotal(init.classesTotal);
+      setHasLabs(init.hasLabs);
+      setLabsAttended(init.labsAttended);
+      setLabsTotal(init.labsTotal);
+      setSchedule(init.schedule);
     }
-  }, [visible, existingSubject]);
+  }
 
   // ── Calibration Preview Calculations ──
   const previewData = useMemo(() => {
@@ -264,36 +268,70 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
     setLoading(false);
   };
 
-  const [modalVisible, setModalVisible] = useState(visible);
-  const [contentVisible, setContentVisible] = useState(visible);
+  const [mounted, setMounted] = useState(visible);
+  const translateY = useSharedValue(SCREEN_HEIGHT);
+  const backdropOpacity = useSharedValue(0);
   const isClosingRef = React.useRef(false);
-
-  useEffect(() => {
-    if (visible) {
-      isClosingRef.current = false;
-      setModalVisible(true);
-      setContentVisible(true);
-    } else if (modalVisible && !isClosingRef.current) {
-      isClosingRef.current = true;
-      setContentVisible(false);
-      const timer = setTimeout(() => {
-        setModalVisible(false);
-        isClosingRef.current = false;
-      }, 220);
-      return () => clearTimeout(timer);
-    }
-  }, [visible, modalVisible]);
 
   const handleRequestClose = useCallback(() => {
     if (isClosingRef.current) return;
     isClosingRef.current = true;
-    setContentVisible(false);
-    setTimeout(() => {
-      setModalVisible(false);
-      onClose();
+    Keyboard.dismiss();
+    backdropOpacity.value = withTiming(0, {
+      duration: 220,
+      easing: Easing.linear,
+    });
+    translateY.value = withTiming(
+      SCREEN_HEIGHT,
+      {
+        duration: 260,
+        easing: Easing.bezier(0.32, 0, 0.67, 0),
+      },
+      (finished) => {
+        if (finished) {
+          runOnJS(setMounted)(false);
+          runOnJS(onClose)();
+          isClosingRef.current = false;
+        }
+      }
+    );
+  }, [backdropOpacity, translateY, onClose]);
+
+  useEffect(() => {
+    if (visible) {
       isClosingRef.current = false;
-    }, 220);
-  }, [onClose]);
+      setMounted(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      translateY.value = SCREEN_HEIGHT;
+      translateY.value = withTiming(0, {
+        duration: 320,
+        easing: Easing.bezier(0.22, 1, 0.36, 1),
+      });
+      backdropOpacity.value = withTiming(1, {
+        duration: 260,
+        easing: Easing.out(Easing.quad),
+      });
+    } else if (mounted) {
+      handleRequestClose();
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      handleRequestClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, handleRequestClose]);
+
+  const sheetAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const backdropAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
 
   const addSession = (dayIdx: number, type: 'classes' | 'labs') => {
     setSchedule((prev: any) => {
@@ -331,34 +369,31 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
     });
   };
 
-  if (!modalVisible && !visible) return null;
+  if (!mounted) return null;
 
   return (
-    <Modal visible={modalVisible} animationType="none" transparent onRequestClose={handleRequestClose}>
+    <Modal visible={mounted} animationType="none" transparent onRequestClose={handleRequestClose} statusBarTranslucent>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
-        {contentVisible && (
-          <Reanimated.View
-            entering={FadeIn.duration(200)}
-            exiting={FadeOut.duration(200)}
-            style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(0,0,0,0.70)' : 'rgba(0,0,0,0.4)' }]}
-          >
-            {Platform.OS === 'ios' && (
-              <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
-            )}
-            <Pressable style={StyleSheet.absoluteFill} onPress={handleRequestClose} />
-          </Reanimated.View>
-        )}
+        <Reanimated.View
+          style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(0,0,0,0.70)' : 'rgba(0,0,0,0.4)' }, backdropAnimatedStyle]}
+        >
+          {Platform.OS === 'ios' ? (
+            <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
+          ) : (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.45)' }]} />
+          )}
+          <Pressable style={StyleSheet.absoluteFill} onPress={handleRequestClose} />
+        </Reanimated.View>
 
-        {contentVisible && (
-          <Reanimated.View
-            entering={SlideInDown.duration(280).easing(Easing.bezier(0.16, 1, 0.3, 1))}
-            exiting={SlideOutDown.duration(200).easing(Easing.in(Easing.quad))}
-            style={styles.modalSheet}
-          >
+        <Reanimated.View
+          style={[styles.modalSheet, sheetAnimatedStyle]}
+        >
           {/* iOS Sheet Grab Handle */}
-          <View style={styles.handleContainer}>
-            <View style={styles.sheetHandle} />
-          </View>
+          <Pressable onPress={handleRequestClose} hitSlop={{ top: 12, bottom: 12, left: 30, right: 30 }}>
+            <View style={styles.handleContainer}>
+              <View style={styles.sheetHandle} />
+            </View>
+          </Pressable>
 
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{existingSubject ? 'Edit Subject' : 'Add Subject'}</Text>
@@ -564,8 +599,7 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
                   {classes.map((cls: any, idx: number) => (
                     <Reanimated.View
                       key={`class-${idx}`}
-                      layout={LinearTransition.duration(220).easing(Easing.bezier(0.16, 1, 0.3, 1))}
-                      entering={FadeInDown.duration(180).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+                      layout={LinearTransition.duration(200).easing(Easing.bezier(0.16, 1, 0.3, 1))}
                       exiting={FadeOut.duration(140)}
                       style={styles.sessionRow}
                     >
@@ -588,8 +622,7 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
                   {labs.map((lab: any, idx: number) => (
                     <Reanimated.View
                       key={`lab-${idx}`}
-                      layout={LinearTransition.duration(220).easing(Easing.bezier(0.16, 1, 0.3, 1))}
-                      entering={FadeInDown.duration(180).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+                      layout={LinearTransition.duration(200).easing(Easing.bezier(0.16, 1, 0.3, 1))}
                       exiting={FadeOut.duration(140)}
                       style={styles.sessionRow}
                     >
@@ -650,7 +683,6 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
             />
           )}
         </Reanimated.View>
-        )}
       </KeyboardAvoidingView>
     </Modal>
   );

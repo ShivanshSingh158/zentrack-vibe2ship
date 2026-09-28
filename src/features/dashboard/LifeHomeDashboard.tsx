@@ -37,7 +37,7 @@ import {
 } from 'lucide-react';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { auth, db } from '../../services/firebase';
-import { doc, onSnapshot, updateDoc, addDoc, collection, deleteDoc, setDoc, query, where } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, addDoc, collection, deleteDoc, setDoc, query, where, limit } from 'firebase/firestore';
 import type { StorageNode } from '../../types';
 import { getLocalDateString, formatDisplayDate, formatTimeRangeDisplay, extractTaskDurationMinutes, parseNLTask } from '../../utils/dateUtils';
 import { calculateAppStreak } from '../../utils/streakUtils';
@@ -146,7 +146,7 @@ export const LifeHomeDashboard: React.FC = () => {
 
   useEffect(() => {
     if (!user?.uid) return;
-    const q = query(collection(db, 'storage_nodes'), where('userId', '==', user.uid));
+    const q = query(collection(db, 'storage_nodes'), where('userId', '==', user.uid), limit(25));
     const unsub = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(d => {
         const raw = d.data();
