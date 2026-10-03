@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { useGlobalData } from '../contexts/GlobalDataContext';
 import { getLocalDateString } from '../utils/dateUtils';
+import { prefetchRoute } from '../App';
 
 // ── Todoist Authentic Icons (Matching Image 2) ──
 const TodayCalendarIcon: React.FC<{ size?: number }> = ({ size = 17 }) => {
@@ -245,6 +246,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 {/* Profile Summary */}
                 <div
                   className="user-menu-profile-row"
+                  onMouseEnter={() => prefetchRoute('/tasks')}
+                  onPointerEnter={() => prefetchRoute('/tasks')}
+                  onTouchStart={() => prefetchRoute('/tasks')}
                   onClick={() => {
                     setIsUserMenuOpen(false);
                     navigate('/tasks');
@@ -300,6 +304,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 <button
                   type="button"
                   className="user-menu-item"
+                  onMouseEnter={() => prefetchRoute('/integrations')}
+                  onPointerEnter={() => prefetchRoute('/integrations')}
+                  onTouchStart={() => prefetchRoute('/integrations')}
                   onClick={() => {
                     setIsUserMenuOpen(false);
                     navigate('/integrations');
@@ -318,6 +325,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 <button
                   type="button"
                   className="user-menu-item"
+                  onMouseEnter={() => prefetchRoute('/attendance')}
+                  onPointerEnter={() => prefetchRoute('/attendance')}
+                  onTouchStart={() => prefetchRoute('/attendance')}
                   onClick={() => {
                     setIsUserMenuOpen(false);
                     navigate('/attendance');
@@ -334,6 +344,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 <button
                   type="button"
                   className="user-menu-item"
+                  onMouseEnter={() => prefetchRoute('/notes')}
+                  onPointerEnter={() => prefetchRoute('/notes')}
+                  onTouchStart={() => prefetchRoute('/notes')}
                   onClick={() => {
                     setIsUserMenuOpen(false);
                     navigate('/notes');
@@ -350,6 +363,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 <button
                   type="button"
                   className="user-menu-item"
+                  onMouseEnter={() => prefetchRoute('/review')}
+                  onPointerEnter={() => prefetchRoute('/review')}
+                  onTouchStart={() => prefetchRoute('/review')}
                   onClick={() => {
                     setIsUserMenuOpen(false);
                     navigate('/review');
@@ -366,6 +382,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 <button
                   type="button"
                   className="user-menu-item"
+                  onMouseEnter={() => prefetchRoute('/analytics')}
+                  onPointerEnter={() => prefetchRoute('/analytics')}
+                  onTouchStart={() => prefetchRoute('/analytics')}
                   onClick={() => {
                     setIsUserMenuOpen(false);
                     navigate('/analytics');
@@ -440,6 +459,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         {/* 1. Dashboard */}
         <NavLink
           to="/home"
+          onMouseEnter={() => prefetchRoute('/home')}
+          onPointerEnter={() => prefetchRoute('/home')}
+          onTouchStart={() => prefetchRoute('/home')}
           className={({ isActive }) => `todoist-nav-item ${isActive ? 'active' : ''}`}
           title="Dashboard"
         >
@@ -454,6 +476,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         {/* 2. Inbox */}
         <NavLink
           to="/tasks"
+          onMouseEnter={() => prefetchRoute('/tasks')}
+          onPointerEnter={() => prefetchRoute('/tasks')}
+          onTouchStart={() => prefetchRoute('/tasks')}
           className={({ isActive }) => `todoist-nav-item ${isActive ? 'active' : ''}`}
           title="Inbox"
         >
@@ -471,6 +496,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         {/* 3. Calendar */}
         <NavLink
           to="/calendar"
+          onMouseEnter={() => prefetchRoute('/calendar')}
+          onPointerEnter={() => prefetchRoute('/calendar')}
+          onTouchStart={() => prefetchRoute('/calendar')}
           className={({ isActive }) => `todoist-nav-item ${isActive ? 'active' : ''}`}
           title="Calendar"
         >
@@ -485,6 +513,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         {/* 5. Habits */}
         <NavLink
           to="/habits"
+          onMouseEnter={() => prefetchRoute('/habits')}
+          onPointerEnter={() => prefetchRoute('/habits')}
+          onTouchStart={() => prefetchRoute('/habits')}
           className={({ isActive }) => `todoist-nav-item ${isActive ? 'active' : ''}`}
           title="Habits"
         >
@@ -499,6 +530,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         {/* 6. Analytics */}
         <NavLink
           to="/analytics"
+          onMouseEnter={() => prefetchRoute('/analytics')}
+          onPointerEnter={() => prefetchRoute('/analytics')}
+          onTouchStart={() => prefetchRoute('/analytics')}
           className={({ isActive }) => `todoist-nav-item ${isActive ? 'active' : ''}`}
           title="Analytics"
         >
@@ -530,6 +564,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             {/* Notes & Docs */}
             <NavLink
               to="/notes"
+              onMouseEnter={() => prefetchRoute('/notes')}
+              onPointerEnter={() => prefetchRoute('/notes')}
+              onTouchStart={() => prefetchRoute('/notes')}
               className={({ isActive }) => `todoist-nav-item ${isActive ? 'active' : ''}`}
               title="Notes"
             >
@@ -544,6 +581,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             {/* Attendance */}
             <NavLink
               to="/attendance"
+              onMouseEnter={() => prefetchRoute('/attendance')}
+              onPointerEnter={() => prefetchRoute('/attendance')}
+              onTouchStart={() => prefetchRoute('/attendance')}
               className={({ isActive }) => `todoist-nav-item ${isActive ? 'active' : ''}`}
               title="Attendance"
             >
@@ -558,6 +598,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             {/* Learning Checklist */}
             <NavLink
               to="/learning"
+              onMouseEnter={() => prefetchRoute('/learning')}
+              onPointerEnter={() => prefetchRoute('/learning')}
+              onTouchStart={() => prefetchRoute('/learning')}
               className={({ isActive }) => `todoist-nav-item ${isActive ? 'active' : ''}`}
               title="Learning"
             >

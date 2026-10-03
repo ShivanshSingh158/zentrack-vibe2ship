@@ -882,3 +882,87 @@ body:not(.theme-light):not(.theme-plain) .user-menu-footer {
   color: #71717a !important;
 }
 
+/* ── Tactile Micro-Press Feedback for Smooth Navigation ── */
+.todoist-nav-item:active,
+.user-menu-item:active {
+  transform: scale(0.984) !important;
+  transition: transform 0.06s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* ── Seamless Module Fallback Loader ── */
+.module-page-loader {
+  width: 100%;
+  min-height: calc(100vh - 60px);
+  padding: 32px 40px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.module-loader-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2.5px;
+  z-index: 99999;
+  background: linear-gradient(90deg, #8b5cf6, #3b82f6, #06b6d4);
+  background-size: 200% 100%;
+  animation: module-loader-slide 1s ease-in-out infinite;
+}
+
+@keyframes module-loader-slide {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(0%); }
+  100% { transform: translateX(100%); }
+}
+
+.module-skeleton-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.module-skeleton-header {
+  height: 38px;
+  width: 240px;
+  border-radius: 8px;
+  background: rgba(140, 140, 160, 0.1);
+  animation: module-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.module-skeleton-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.module-skeleton-card {
+  border-radius: 12px;
+  background: rgba(140, 140, 160, 0.06);
+  border: 1px solid rgba(140, 140, 160, 0.08);
+  animation: module-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes module-skeleton-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.85; }
+}
+
+body.theme-light .module-skeleton-header,
+body.theme-plain .module-skeleton-header {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+body.theme-light .module-skeleton-card,
+body.theme-plain .module-skeleton-card {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+

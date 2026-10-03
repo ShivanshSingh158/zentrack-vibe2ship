@@ -213,70 +213,153 @@ const lazyWithRetry = (componentImport: () => Promise<{ default: React.Component
   });
 };
 
-// ——— Lazily-loaded page modules (~1.9 MB → ~300 KB initial bundle) —————————————————
-const TodoListModule = lazyWithRetry(() => import('./features/tasks/TodoListModule').then(m => ({ default: m.TodoListModule })), 'TodoListModule');
-const CalendarModule = lazyWithRetry(() => import('./features/calendar').then(m => ({ default: m.CalendarModule })), 'CalendarModule');
-const NotesModule = lazyWithRetry(() => import('./features/notes').then(m => ({ default: m.NotesModule })), 'NotesModule');
-const GoalsModule = lazyWithRetry(() => import('./features/goals').then(m => ({ default: m.GoalsModule })), 'GoalsModule');
-const AnalyticsModule = lazyWithRetry(() => import('./features/analytics/AnalyticsModule').then(m => ({ default: m.AnalyticsModule })), 'AnalyticsModule');
-const JobTracker = lazyWithRetry(() => import('./features/jobs/JobTracker').then(m => ({ default: m.JobTracker })), 'JobTracker');
-const HabitsModule = lazyWithRetry(() => import('./features/habits/HabitsModule').then(m => ({ default: m.HabitsModule })), 'HabitsModule');
-const LearningChecklistModule = lazyWithRetry(() => import('./features/learning/LearningChecklistModule').then(m => ({ default: m.LearningChecklistModule })), 'LearningChecklistModule');
+// ——— 0ms Ultra-Fast Module Cache & Preloading Engine —————————————————
+const moduleCache = new Map<string, Promise<{ default: React.ComponentType<any> }>>();
+const resolvedComponents = new Map<string, React.ComponentType<any>>();
 
-const IntegrationsModule = lazyWithRetry(() => import('./features/integrations/IntegrationsModule').then(m => ({ default: m.IntegrationsModule })), 'IntegrationsModule');
-const WeeklyReviewModule = lazyWithRetry(() => import('./features/review/WeeklyReviewModule').then(m => ({ default: m.WeeklyReviewModule })), 'WeeklyReviewModule');
-const AttendanceModule = lazyWithRetry(() => import('./features/academic/AttendanceModule').then(m => ({ default: m.AttendanceModule })), 'AttendanceModule');
-const GradeCalculatorModule = lazyWithRetry(() => import('./features/academic/GradeCalculatorModule').then(m => ({ default: m.GradeCalculatorModule })), 'GradeCalculatorModule');
-const GymModule = lazyWithRetry(() => import('./features/gym').then(m => ({ default: m.GymModule })), 'GymModule');
+const createPreloadableLazy = (
+  name: string,
+  componentImport: () => Promise<any>,
+  exportName?: string
+) => {
+  const load = (): Promise<{ default: React.ComponentType<any> }> => {
+    if (resolvedComponents.has(name)) {
+      return Promise.resolve({ default: resolvedComponents.get(name)! });
+    }
+    if (!moduleCache.has(name)) {
+      const p = (async () => {
+        try {
+          const mod = await componentImport();
+          const Comp = exportName ? (mod[exportName] || mod.default || mod) : (mod.default || mod);
+          resolvedComponents.set(name, Comp);
+          return { default: Comp };
+        } catch (error: unknown) {
+          moduleCache.delete(name);
+          const errMsg = ((error as { message?: string })?.message || String(error) || '');
+          const isChunkError = CHUNK_ERR_RE.test(errMsg);
+          if (isChunkError) {
+            const reloadKey = `chunk_reload_${name}`;
+            const lastReload = parseInt(localStorage.getItem(reloadKey) || '0', 10);
+            if (Date.now() - lastReload < 8000) {
+              throw new Error(`Module "${name}" failed to load after reload. Please close and reopen the app.`, { cause: error });
+            }
+            console.warn(`[lazyWithRetry] Stale chunk for "${name}", reloading…`);
+            localStorage.setItem(reloadKey, Date.now().toString());
+            try {
+              const cacheNames = await caches.keys();
+              await Promise.all(cacheNames.map(c => caches.delete(c)));
+            } catch { /* ignore */ }
+            window.location.reload();
+            return new Promise<{ default: React.ComponentType<any> }>(() => {});
+          }
+          throw error;
+        }
+      })();
+      moduleCache.set(name, p);
+    }
+    return moduleCache.get(name)!;
+  };
 
-// ——— 0ms Instant Route Prefetching & Warm Cache Engine —————————————————————
-export const routeLoaders: Record<string, () => Promise<any>> = {
-  '/tasks': () => import('./features/tasks/TodoListModule'),
-  '/calendar': () => import('./features/calendar'),
-  '/notes': () => import('./features/notes'),
-  '/goals': () => import('./features/goals'),
-  '/analytics': () => import('./features/analytics/AnalyticsModule'),
-  '/jobs': () => import('./features/jobs/JobTracker'),
-  '/habits': () => import('./features/habits/HabitsModule'),
-  '/learning': () => import('./features/learning/LearningChecklistModule'),
-  '/integrations': () => import('./features/integrations/IntegrationsModule'),
-  '/review': () => import('./features/review/WeeklyReviewModule'),
-  '/attendance': () => import('./features/academic/AttendanceModule'),
-  '/grades': () => import('./features/academic/GradeCalculatorModule'),
-  '/gym': () => import('./features/gym'),
+  const Component = lazy(load);
+  (Component as any).preload = load;
+  return { Component, preload: load };
+};
+
+// Lazily-loaded page modules with synchronous unwrapping once warmed
+const { Component: TodoListModule, preload: preloadTasks } = createPreloadableLazy('tasks', () => import('./features/tasks/TodoListModule'), 'TodoListModule');
+const { Component: CalendarModule, preload: preloadCalendar } = createPreloadableLazy('calendar', () => import('./features/calendar'), 'CalendarModule');
+const { Component: NotesModule, preload: preloadNotes } = createPreloadableLazy('notes', () => import('./features/notes'), 'NotesModule');
+const { Component: GoalsModule, preload: preloadGoals } = createPreloadableLazy('goals', () => import('./features/goals'), 'GoalsModule');
+const { Component: AnalyticsModule, preload: preloadAnalytics } = createPreloadableLazy('analytics', () => import('./features/analytics/AnalyticsModule'), 'AnalyticsModule');
+const { Component: JobTracker, preload: preloadJobs } = createPreloadableLazy('jobs', () => import('./features/jobs/JobTracker'), 'JobTracker');
+const { Component: HabitsModule, preload: preloadHabits } = createPreloadableLazy('habits', () => import('./features/habits/HabitsModule'), 'HabitsModule');
+const { Component: LearningChecklistModule, preload: preloadLearning } = createPreloadableLazy('learning', () => import('./features/learning/LearningChecklistModule'), 'LearningChecklistModule');
+const { Component: IntegrationsModule, preload: preloadIntegrations } = createPreloadableLazy('integrations', () => import('./features/integrations/IntegrationsModule'), 'IntegrationsModule');
+const { Component: WeeklyReviewModule, preload: preloadReview } = createPreloadableLazy('review', () => import('./features/review/WeeklyReviewModule'), 'WeeklyReviewModule');
+const { Component: AttendanceModule, preload: preloadAttendance } = createPreloadableLazy('attendance', () => import('./features/academic/AttendanceModule'), 'AttendanceModule');
+const { Component: GradeCalculatorModule, preload: preloadGrades } = createPreloadableLazy('grades', () => import('./features/academic/GradeCalculatorModule'), 'GradeCalculatorModule');
+const { Component: GymModule, preload: preloadGym } = createPreloadableLazy('gym', () => import('./features/gym'), 'GymModule');
+
+// Route -> Preloader mapping for hover and idle prewarming
+export const routePreloaders: Record<string, () => Promise<any>> = {
+  '/tasks': preloadTasks,
+  '/todo': preloadTasks,
+  '/calendar': preloadCalendar,
+  '/notes': preloadNotes,
+  '/goals': preloadGoals,
+  '/analytics': preloadAnalytics,
+  '/jobs': preloadJobs,
+  '/habits': preloadHabits,
+  '/learning': preloadLearning,
+  '/integrations': preloadIntegrations,
+  '/review': preloadReview,
+  '/attendance': preloadAttendance,
+  '/grades': preloadGrades,
+  '/gym': preloadGym,
 };
 
 export const prefetchRoute = (route: string) => {
-  const loader = routeLoaders[route];
-  if (loader) loader().catch(() => {});
+  if (!route) return;
+  const path = route.split('?')[0].split('#')[0];
+  const loader = routePreloaders[path];
+  if (loader) {
+    loader().catch(() => {});
+  }
 };
+
+// Legacy alias for compatibility
+export const routeLoaders = routePreloaders;
 
 // Automatically prewarm all modules after initial page load for 0ms transitions
 if (typeof window !== 'undefined') {
   const prewarm = () => {
-    Object.values(routeLoaders).forEach(l => l().catch(() => {}));
+    // Stage 1: Preload high-frequency navigation routes immediately on idle
+    const primary = [preloadTasks, preloadCalendar, preloadHabits, preloadAttendance];
+    primary.forEach(load => load().catch(() => {}));
+
+    // Stage 2: Preload secondary routes shortly after
+    setTimeout(() => {
+      const secondary = [preloadNotes, preloadAnalytics, preloadLearning, preloadGym, preloadGoals, preloadReview, preloadIntegrations];
+      secondary.forEach(load => load().catch(() => {}));
+    }, 1200);
   };
   if ('requestIdleCallback' in window) {
-    (window as any).requestIdleCallback(prewarm, { timeout: 1800 });
+    (window as any).requestIdleCallback(prewarm, { timeout: 1500 });
   } else {
-    setTimeout(prewarm, 1000);
+    setTimeout(prewarm, 600);
   }
 }
 
-// ——— Page loading skeleton (replaces spinner — feels like content is loading, not waiting) —
+// ——— Seamless page loading skeleton (feels like instant content layout) —
 const PageLoader = () => (
-  <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vault-primary)' }} />
+  <div className="module-page-loader" aria-busy="true" aria-label="Loading module">
+    <div className="module-loader-bar" />
+    <div className="module-skeleton-grid">
+      <div className="module-skeleton-header" />
+      <div className="module-skeleton-content">
+        <div className="module-skeleton-card" style={{ height: 160 }} />
+        <div className="module-skeleton-card" style={{ height: 240 }} />
+        <div className="module-skeleton-card" style={{ height: 200 }} />
+      </div>
+    </div>
+  </div>
 );
 
 // Ultra-fast hardware-accelerated instant page transition (0ms GPU composite, zero reflow lag)
 const PageTransition = ({ children }: { children: React.ReactNode }) => (
   <motion.div
     className="page-enter"
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    exit={{ opacity: 0, transition: { duration: 0.04 } }}
-    transition={{ duration: 0.1, ease: 'easeOut' }}
-    style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column', willChange: 'opacity' }}
+    initial={{ opacity: 0, y: 3 }}
+    animate={{ opacity: 1, y: 0 }}
+    exit={{ opacity: 0, transition: { duration: 0.06 } }}
+    transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+    style={{
+      width: '100%',
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      willChange: 'opacity, transform',
+    }}
   >
     {children}
   </motion.div>
@@ -285,6 +368,14 @@ const PageTransition = ({ children }: { children: React.ReactNode }) => (
 // ——— Animated Routes ——————————————————————————————————————————————————————
 const AnimatedRoutes = () => {
   const location = useLocation();
+
+  // Instant scroll-to-top on route navigation so the new module always starts clean
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    const mainEl = document.querySelector('.main-content');
+    if (mainEl) mainEl.scrollTop = 0;
+  }, [location.pathname]);
+
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
