@@ -40,78 +40,17 @@ function formatRestTime(seconds: number): string {
 
 /**
  * Updates or presents the lock screen active workout / rest timer notification.
- * Debounced to 2s to prevent visual "bumping" on rapid set completions.
+ * NOTE: OS notification shade updates for rest timer and set logging are disabled
+ * per user preference to prevent notification flooding. In-app floating HUD and audio
+ * timer cues remain active.
  */
 export async function updateActiveWorkoutNotification(
   payload: ActiveWorkoutNotificationPayload
 ): Promise<void> {
   lastNotificationState = payload;
-  isNotificationActive = true;
-
-  // For rest timer: update immediately (rest state is time-sensitive)
-  // For set logging: debounce to prevent notification shade bumping on every tap
-  const isRestUpdate = payload.isResting && (payload.restSecondsRemaining ?? 0) > 0;
-
-  if (isRestUpdate) {
-    // Rest timer updates are immediate — countdown accuracy matters
-    await _flushHudUpdate(payload);
-    return;
-  }
-
-  // Set-log updates: debounce so rapid set completions only cause one notification re-post
-  _pendingHudPayload = payload;
-  if (_hudUpdateDebounceTimer) {
-    clearTimeout(_hudUpdateDebounceTimer);
-  }
-  _hudUpdateDebounceTimer = setTimeout(async () => {
-    _hudUpdateDebounceTimer = null;
-    if (_pendingHudPayload) {
-      await _flushHudUpdate(_pendingHudPayload);
-      _pendingHudPayload = null;
-    }
-  }, 2000);
-}
-
-async function _flushHudUpdate(payload: ActiveWorkoutNotificationPayload): Promise<void> {
-  try {
-    const isRest = payload.isResting && (payload.restSecondsRemaining ?? 0) > 0;
-
-    let title = '';
-    let body = '';
-    let categoryIdentifier = '';
-
-    if (isRest) {
-      const timeStr = formatRestTime(payload.restSecondsRemaining || 0);
-      title = `⏱️ Rest Timer: ${timeStr} remaining`;
-      body = `Up Next: ${payload.exerciseName} • Set ${payload.currentSet}/${payload.totalSets} (${payload.weight}kg × ${payload.reps} reps)`;
-      categoryIdentifier = 'active_rest_timer';
-    } else {
-      title = `🏋️ ${payload.exerciseName}: Set ${payload.currentSet} of ${payload.totalSets}`;
-      body = `Target: ${payload.weight}kg × ${payload.reps} reps • Tap [✓ Done Set] when finished`;
-      categoryIdentifier = 'active_workout_ongoing';
-    }
-
-    await Notifications.scheduleNotificationAsync({
-      identifier: WORKOUT_NOTIFICATION_ID,
-      content: {
-        title,
-        body,
-        sound: undefined,
-        categoryIdentifier,
-        priority: Notifications.AndroidNotificationPriority.LOW,
-        sticky: true,
-        autoDismiss: false,
-        data: {
-          type: 'ACTIVE_WORKOUT_HUD',
-          exerciseName: payload.exerciseName,
-          currentSet: payload.currentSet,
-          isResting: isRest,
-        },
-      },
-      trigger: null, // trigger immediately
-    });
-  } catch (err) {
-    console.warn('[ActiveWorkoutNotification] Update failed:', err);
+  // Always dismiss any existing active workout notification to avoid shade clutter
+  if (isNotificationActive) {
+    await dismissActiveWorkoutNotification();
   }
 }
 

@@ -40,6 +40,7 @@ import {
   clearScheduleCache,
   sendTestNotification,
   runNotificationDiagnostic,
+  openExactAlarmSettings,
 } from '../services/notifications';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { useWellnessData } from '../contexts/domains/WellnessContext';
@@ -634,6 +635,29 @@ export default function NotificationsSettingsScreen() {
             </View>
             <Ionicons name="chevron-forward" size={15} color={colors.textTertiary} />
           </TouchableOpacity>
+
+          {Platform.OS === 'android' && (
+            <>
+              <Hairline />
+              <TouchableOpacity
+                style={s.row}
+                activeOpacity={0.7}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  openExactAlarmSettings();
+                }}
+              >
+                <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(251,191,36,0.15)' : 'rgba(217,119,6,0.12)' }]}>
+                  <Ionicons name="time-outline" size={16} color="#FBBF24" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.rowTitle}>Exact Alarms & Timely Delivery</Text>
+                  <Text style={s.rowSub}>Prevent Samsung/Android from firing reminders 2m early</Text>
+                </View>
+                <Ionicons name="open-outline" size={15} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         {/* ── 2. TASK NOTIFICATIONS ── */}

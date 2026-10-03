@@ -5,7 +5,6 @@ import { Bot, ShieldAlert, Ghost, Mail, Calendar, Target, Sun } from 'lucide-rea
 import { useVoice } from '../contexts/VoiceContext';
 import { FloatingDock } from './FloatingDock';
 import { CommandPalette } from './CommandPalette';
-import { VoiceQuickCaptureWidget } from '../features/_shared/VoiceQuickCaptureWidget';
 
 interface BottomHeaderProps {
   onOpenSara: () => void;
@@ -119,9 +118,6 @@ export const BottomHeader: React.FC<BottomHeaderProps> = ({ onOpenSara, showSara
 
       {/* ── RIGHT: Agent Controls ── */}
       <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '16px' }}>
-
-        {/* Voice Toggle (Floating Mic) - Hidden per user request */}
-        {/* {!isHomePage && <VoiceQuickCaptureWidget inline={true} />} */}
 
         {/* Bot / S.A.R.A Toggle */}
         <div style={{ position: 'relative' }}>

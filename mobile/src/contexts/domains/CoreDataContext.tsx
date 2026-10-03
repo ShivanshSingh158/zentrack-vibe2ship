@@ -47,7 +47,9 @@ export interface CoreDataContextType {
   optimisticAddTask: (task: Task) => void;
   optimisticUpdateTask: (taskId: string, partial: Partial<Task>) => void;
   optimisticDeleteTask: (taskId: string) => void;
+  optimisticAddHabit: (habit: Habit) => void;
   optimisticUpdateHabit: (habitId: string, partial: Partial<Habit>) => void;
+  optimisticDeleteHabit: (habitId: string) => void;
   optimisticAddHabitLog: (log: HabitLog) => void;
   optimisticUpdateHabitLog: (logId: string, partial: Partial<HabitLog>) => void;
   optimisticRemoveHabitLog: (habitId: string, date: string) => void;
@@ -70,7 +72,9 @@ const DEFAULT_CORE_DATA: CoreDataContextType = {
   optimisticAddTask: () => {},
   optimisticUpdateTask: () => {},
   optimisticDeleteTask: () => {},
+  optimisticAddHabit: () => {},
   optimisticUpdateHabit: () => {},
+  optimisticDeleteHabit: () => {},
   optimisticAddHabitLog: () => {},
   optimisticUpdateHabitLog: () => {},
   optimisticRemoveHabitLog: () => {},
@@ -477,10 +481,28 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
   };
+  const optimisticAddHabit = (habit: Habit) => {
+    lockHabits();
+    setHabits(prev => {
+      const next = [habit, ...prev];
+      writeCoreCacheMulti({ habits: next }, true);
+      updateL1Cache('habits', next);
+      return next;
+    });
+  };
   const optimisticUpdateHabit = (habitId: string, partial: Partial<Habit>) => {
     lockHabits();
     setHabits(prev => {
       const next = prev.map(h => h.id === habitId ? { ...h, ...partial } : h);
+      writeCoreCacheMulti({ habits: next }, true);
+      updateL1Cache('habits', next);
+      return next;
+    });
+  };
+  const optimisticDeleteHabit = (habitId: string) => {
+    lockHabits();
+    setHabits(prev => {
+      const next = prev.filter(h => h.id !== habitId);
       writeCoreCacheMulti({ habits: next }, true);
       updateL1Cache('habits', next);
       return next;
@@ -520,7 +542,8 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     pinnedModules, setPinnedModules, googleAccessToken,
     refreshCoreData,
     optimisticAddTask, optimisticUpdateTask, optimisticDeleteTask,
-    optimisticUpdateHabit, optimisticAddHabitLog, optimisticUpdateHabitLog, optimisticRemoveHabitLog
+    optimisticAddHabit, optimisticUpdateHabit, optimisticDeleteHabit,
+    optimisticAddHabitLog, optimisticUpdateHabitLog, optimisticRemoveHabitLog
   }), [
     user?.uid, tasks, activeHabits, habits, habitLogs,
     loading, firestoreReady, pendingTaskCount, todayHabits,

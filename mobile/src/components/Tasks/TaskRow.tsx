@@ -347,7 +347,8 @@ const TaskRow = React.memo(function TaskRow({
     priorityColor ||
     task.isRecurring ||
     (taskTags && taskTags.length > 0) ||
-    hasSubtasks
+    hasSubtasks ||
+    task.isReminder
   );
 
   // ── Relative Overdue Time Calculation ──
@@ -452,6 +453,14 @@ const TaskRow = React.memo(function TaskRow({
     (onPress as any)(task);
   }, [onPress, task]);
 
+  const handleDeletePress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    swipeableRef.current?.close();
+    if (onDelete) {
+      onDelete(task);
+    }
+  }, [onDelete, task]);
+
   const renderRightActions = useCallback((progress: any, _dragX: any) => {
     const scale = progress.interpolate({
       inputRange: [0, 0.6, 1],
@@ -462,26 +471,26 @@ const TaskRow = React.memo(function TaskRow({
     return (
       <View style={styles.actionRightContainer}>
         <TouchableOpacity
-          style={[styles.actionRight, { backgroundColor: '#0A84FF', width: 76 }]}
-          onPress={handleEditPress}
+          style={[styles.actionRight, { backgroundColor: '#FF453A', width: 76 }]}
+          onPress={handleDeletePress}
           activeOpacity={0.8}
         >
           <RNAnimated.View style={{ transform: [{ scale }], alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="create-outline" size={22} color="#ffffff" />
+            <Ionicons name="trash-outline" size={22} color="#ffffff" />
           </RNAnimated.View>
         </TouchableOpacity>
       </View>
     );
-  }, [styles, handleEditPress]);
+  }, [styles, handleDeletePress]);
 
   const handleSwipeOpen = useCallback((direction: string) => {
     if (direction === 'left') {
       handleComplete();
       swipeableRef.current?.close();
     } else if (direction === 'right') {
-      handleEditPress();
+      handleDeletePress();
     }
-  }, [handleComplete, handleEditPress]);
+  }, [handleComplete, handleDeletePress]);
 
   return (
     <Swipeable
@@ -497,9 +506,7 @@ const TaskRow = React.memo(function TaskRow({
       containerStyle={{ backgroundColor: 'transparent' }}
     >
       <Animated.View
-        entering={TASK_ENTER_ANIM}
         exiting={SlideOutLeft.duration(200)}
-        layout={LinearTransition.springify().damping(20).stiffness(200)}
         style={animatedRowStyle}
       >
         <View
@@ -624,10 +631,30 @@ const TaskRow = React.memo(function TaskRow({
                     </View>
                   )}
 
+                  {/* 4b. Alarm / Reminder Indicator (Option 1: Apple Reminders Style) */}
+                  {task.isReminder && (
+                    <>
+                      {(subtextData || isLiveNow || isOverdue || (!subtextData && priorityColor)) && (
+                        <Text style={styles.metaDot}>•</Text>
+                      )}
+                      <View style={styles.metaItem}>
+                        <Ionicons
+                          name="notifications"
+                          size={11}
+                          color="#f59e0b"
+                          style={{ marginRight: 3 }}
+                        />
+                        <Text style={[styles.metaText, { color: '#f59e0b', fontFamily: 'Inter_500Medium' }]}>
+                          Alarm
+                        </Text>
+                      </View>
+                    </>
+                  )}
+
                   {/* 5. Recurrence Indicator */}
                   {task.isRecurring && (
                     <>
-                      {(subtextData || isLiveNow || isOverdue || (!subtextData && priorityColor)) && (
+                      {(subtextData || isLiveNow || isOverdue || (!subtextData && priorityColor) || task.isReminder) && (
                         <Text style={styles.metaDot}>•</Text>
                       )}
                       <View style={styles.metaItem}>
@@ -649,7 +676,7 @@ const TaskRow = React.memo(function TaskRow({
                   {/* 6. Clean Tag Dots (NO UGLY PILLS!) */}
                   {taskTags && taskTags.length > 0 && (
                     <>
-                      {(subtextData || isOverdue || isLiveNow || task.isRecurring || (!subtextData && priorityColor)) && (
+                      {(subtextData || isOverdue || isLiveNow || task.isRecurring || (!subtextData && priorityColor) || task.isReminder) && (
                         <Text style={styles.metaDot}>•</Text>
                       )}
                       {taskTags.slice(0, 2).map((tag, idx) => {

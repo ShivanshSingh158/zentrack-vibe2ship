@@ -484,33 +484,14 @@ export default function ActiveLoggingScreen() {
       saveCachedLiveWorkoutData(widgetData);
       updateLiveWorkoutWidget(widgetData);
 
-      // Lock Screen Active Workout HUD Notification Sync
-      if (!log?.completed) {
-        const uncompletedSetIdx = (currentEx.setsLog || []).findIndex((s: any) => !s.completed);
-        const curSet = uncompletedSetIdx >= 0 ? currentEx.setsLog[uncompletedSetIdx] : currentEx.setsLog[0];
-        const targetWeight = Number(curSet?.weight) || Number(currentEx.setsLog?.[0]?.weight) || 20;
-        const targetReps = Number(curSet?.reps) || 10;
-        const isRestActive = Boolean(restTimerStartTime && restTimerDurationSecs);
-        const restSecsRemaining = (isRestActive && restTimerDurationSecs && restTimerStartTime)
-          ? Math.max(0, Math.ceil(restTimerDurationSecs - (Date.now() - restTimerStartTime) / 1000))
-          : 0;
-
-        updateActiveWorkoutNotification({
-          exerciseName: currentEx.name,
-          currentSet: (uncompletedSetIdx >= 0 ? uncompletedSetIdx : 0) + 1,
-          totalSets: currentEx.setsLog?.length || 4,
-          weight: targetWeight,
-          reps: targetReps,
-          isResting: isRestActive,
-          restSecondsRemaining: restSecsRemaining,
-          nextExerciseName: nextEx?.name,
-        });
-      }
+      // OS push notifications for rest timer/set logging are muted per user preference.
+      // Widget sync (Android home screen widget) remains active above.
     }, 500); // 500ms debounce — widget doesn't need 1Hz updates
   }, [activeExercises, safeIdx, log?.completed, log?.workoutDurationMinutes, restTimerStartTime, restTimerDurationSecs]);
 
-  // Clean up lock screen notification on unmount or workout completion
+  // Clean up lock screen notification on mount, unmount, or workout completion
   useEffect(() => {
+    dismissActiveWorkoutNotification();
     return () => {
       dismissActiveWorkoutNotification();
     };

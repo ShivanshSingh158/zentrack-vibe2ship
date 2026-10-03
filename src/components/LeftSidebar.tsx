@@ -346,22 +346,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   </div>
                 </button>
 
-                {/* Goals & OKRs */}
-                <button
-                  type="button"
-                  className="user-menu-item"
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    navigate('/goals');
-                  }}
-                  title="Life Goals & Milestones"
-                >
-                  <div className="user-menu-item-left">
-                    <Target size={15} />
-                    <span>Goals & Milestones</span>
-                  </div>
-                </button>
-
                 {/* Weekly Review */}
                 <button
                   type="button"
@@ -393,24 +377,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     <span>Analytics</span>
                   </div>
                   <span className="user-menu-shortcut">G then A</span>
-                </button>
-
-                <div className="user-menu-divider" />
-
-                {/* SARA AI Copilot */}
-                <button
-                  type="button"
-                  className="user-menu-item"
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    onOpenSara?.();
-                  }}
-                  title="SARA AI Voice Assistant"
-                >
-                  <div className="user-menu-item-left">
-                    <Sparkles size={15} style={{ color: 'var(--zen-purple, #7c3aed)' }} />
-                    <span style={{ fontWeight: 600, color: 'var(--zen-purple, #7c3aed)' }}>SARA AI Voice</span>
-                  </div>
                 </button>
 
                 <div className="user-menu-divider" />
@@ -603,48 +569,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               </div>
             </NavLink>
 
-            {/* Goals & OKRs */}
-            <NavLink
-              to="/goals"
-              className={({ isActive }) => `todoist-nav-item ${isActive ? 'active' : ''}`}
-              title="Goals"
-            >
-              <div className="todoist-nav-item-left">
-                <span className="todoist-nav-item-icon">
-                  <Target size={17} strokeWidth={1.8} />
-                </span>
-                {!isCollapsed && <span>Goals</span>}
-              </div>
-            </NavLink>
-
-            {/* Job Tracker */}
-            <NavLink
-              to="/jobs"
-              className={({ isActive }) => `todoist-nav-item ${isActive ? 'active' : ''}`}
-              title="Job Tracker"
-            >
-              <div className="todoist-nav-item-left">
-                <span className="todoist-nav-item-icon">
-                  <Briefcase size={17} strokeWidth={1.8} />
-                </span>
-                {!isCollapsed && <span>Job Tracker</span>}
-              </div>
-            </NavLink>
-
-            {/* SARA AI (Uniform typography & icon alignment matching all other items) */}
-            <button
-              type="button"
-              className="todoist-nav-item"
-              onClick={onOpenSara}
-              title="Sara AI Voice Assistant"
-            >
-              <div className="todoist-nav-item-left">
-                <span className="todoist-nav-item-icon">
-                  <Sparkles size={17} strokeWidth={1.8} />
-                </span>
-                {!isCollapsed && <span>Sara AI</span>}
-              </div>
-            </button>
           </>
         )}
       </nav>

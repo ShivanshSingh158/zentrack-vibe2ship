@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import React, { useMemo, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../contexts/ThemeContext';
+import AnimatedPressable from '../AnimatedPressable';
 import VoiceDictationOverlay from '../Tasks/VoiceDictationOverlay';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { WEEKDAY_TO_PLAN, GYM_PLAN } from '../../data/gymPlan';
@@ -21,6 +22,8 @@ interface AgendaWidgetProps {
   holidays?: string[];
   /** Pass data.user?.uid from DashboardScreen — avoids subscribing to the full CoreDataContext */
   userId?: string;
+  /** Direct task check-off callback from Home Dashboard */
+  onToggleTask?: (taskId: string, currentStatus: string) => void;
 }
 
 export const AgendaWidget = React.memo(function AgendaWidget({
@@ -33,6 +36,7 @@ export const AgendaWidget = React.memo(function AgendaWidget({
   nowDate,
   holidays = [],
   userId,
+  onToggleTask,
 }: AgendaWidgetProps) {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation<any>();
@@ -205,6 +209,9 @@ export const AgendaWidget = React.memo(function AgendaWidget({
 
       items.push({
         id: t.id,
+        taskId: t.id,
+        isTask: true,
+        taskStatus: t.status,
         title: t.title,
         timeStr: t.timeSlot ? formatTimeStr(t.timeSlot) : '',
         timeMins: t.timeSlot ? parseTimeToMins(t.timeSlot) : 9999,
@@ -247,29 +254,25 @@ export const AgendaWidget = React.memo(function AgendaWidget({
         </Text>
 
         <View style={styles.emptyActionsRow}>
-          <TouchableOpacity
+          <AnimatedPressable
+            variant="button"
             style={[styles.emptyActionBtn, { backgroundColor: colors.accentPrimary }]}
-            activeOpacity={0.8}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              navigation.navigate('Tasks');
-            }}
+            onPress={() => navigation.navigate('Tasks')}
+            haptic="light"
           >
             <Ionicons name="add" size={16} color={isDark ? '#000000' : '#FFFFFF'} />
             <Text style={[styles.emptyActionTextPrimary, { color: isDark ? '#000000' : '#FFFFFF' }]}>Add Task</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
 
-          <TouchableOpacity
+          <AnimatedPressable
+            variant="button"
             style={[styles.emptyActionBtn, styles.emptyVoiceBtn]}
-            activeOpacity={0.8}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              setIsVoiceDictationOpen(true);
-            }}
+            onPress={() => setIsVoiceDictationOpen(true)}
+            haptic="medium"
           >
             <Ionicons name="mic" size={16} color="#FFFFFF" />
             <Text style={styles.emptyVoiceText}>Voice</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
 
         {isVoiceDictationOpen && (
@@ -302,13 +305,38 @@ export const AgendaWidget = React.memo(function AgendaWidget({
         const shouldStrike = item.isCompleted || item.isMissed || item.isCancelled;
 
         return (
-          <TouchableOpacity key={item.id} style={[styles.agendaRow, { borderBottomColor: colors.border }]} activeOpacity={0.7} onPress={item.onPress}>
-            <Ionicons
-              name={item.icon}
-              size={18}
-              color={item.iconColor}
-              style={{ marginRight: 10 }}
-            />
+          <AnimatedPressable
+            key={item.id}
+            variant="row"
+            haptic="light"
+            style={[styles.agendaRow, { borderBottomColor: colors.border }]}
+            onPress={item.onPress}
+          >
+            {item.isTask && onToggleTask ? (
+              <AnimatedPressable
+                variant="subtle"
+                haptic="none"
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={styles.taskCheckTouch}
+                onPress={(e: any) => {
+                  e?.stopPropagation?.();
+                  onToggleTask(item.taskId, item.taskStatus);
+                }}
+              >
+                <Ionicons
+                  name={item.icon}
+                  size={19}
+                  color={item.iconColor}
+                />
+              </AnimatedPressable>
+            ) : (
+              <Ionicons
+                name={item.icon}
+                size={18}
+                color={item.iconColor}
+                style={{ marginRight: 10 }}
+              />
+            )}
             <Text style={[
               styles.agendaRowText,
               { color: textColor },
@@ -326,7 +354,7 @@ export const AgendaWidget = React.memo(function AgendaWidget({
                 {item.isOverdue ? (item.timeStr ? `${item.timeStr} • Overdue` : 'Overdue') : item.timeStr}
               </Text>
             )}
-          </TouchableOpacity>
+          </AnimatedPressable>
         );
       })}
 
@@ -355,6 +383,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACE.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  taskCheckTouch: {
+    paddingRight: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   agendaRowText: {
     fontFamily: FONT_FAMILY.regular,

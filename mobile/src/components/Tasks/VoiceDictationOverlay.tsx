@@ -974,7 +974,7 @@ export default function VoiceDictationOverlay({
 
           optimisticAddTask(newTaskPayload);
 
-          if (finalTime || isReminderFinal) {
+          if (isReminderFinal) {
             scheduleSingleTaskReminder(newTaskPayload).catch(e => console.warn('[VoiceDictation] Reminder schedule error:', e));
           }
 

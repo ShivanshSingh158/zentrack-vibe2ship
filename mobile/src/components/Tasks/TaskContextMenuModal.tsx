@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Modal,
   Pressable,
+  Platform,
 } from 'react-native';
 import Animated, {
   FadeIn,
@@ -152,16 +153,25 @@ export const TaskContextMenuModal = React.memo(function TaskContextMenuModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        {/* Frosted Glass Blur Backdrop */}
-        <BlurView
-          intensity={isDark ? 35 : 20}
-          tint={isDark ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFill}
-        />
+        {/* Frosted Glass Blur Backdrop on iOS, Hardware Composited View on Android */}
+        {Platform.OS === 'ios' ? (
+          <BlurView
+            intensity={isDark ? 35 : 20}
+            tint={isDark ? 'dark' : 'light'}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: isDark ? 'rgba(0, 0, 0, 0.72)' : 'rgba(0, 0, 0, 0.45)' },
+            ]}
+          />
+        )}
         <Pressable
           style={[
             StyleSheet.absoluteFill,
-            { backgroundColor: isDark ? 'rgba(0, 0, 0, 0.45)' : 'rgba(0, 0, 0, 0.25)' },
+            Platform.OS === 'ios' ? { backgroundColor: isDark ? 'rgba(0, 0, 0, 0.45)' : 'rgba(0, 0, 0, 0.25)' } : null,
           ]}
           onPress={onClose}
         />

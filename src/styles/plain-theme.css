@@ -1546,20 +1546,21 @@ body.theme-plain .task-overdue-pill {
 body.theme-light .task-time-pill,
 body.theme-plain .task-time-pill {
   font-family: var(--font-sans, 'Inter', sans-serif) !important;
-  font-size: 0.68rem !important;
-  font-weight: 600 !important;
+  font-size: 0.72rem !important;
+  font-weight: 500 !important;
   line-height: 1 !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  color: #4338ca !important;
-  background: rgba(99, 102, 241, 0.08) !important;
-  border: 1px solid rgba(99, 102, 241, 0.20) !important;
-  padding: 0.2rem 0.55rem !important;
-  border-radius: 9999px !important;
-  letter-spacing: 0.01em !important;
+  gap: 0.25rem !important;
+  color: #64748b !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  letter-spacing: -0.01em !important;
   font-variant-numeric: tabular-nums !important;
-  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.04) !important;
+  box-shadow: none !important;
 }
 
 body.theme-light .upcoming-priority-tag,
@@ -1567,15 +1568,18 @@ body.theme-plain .upcoming-priority-tag,
 body.theme-light .task-p-badge,
 body.theme-plain .task-p-badge {
   font-family: var(--font-sans, 'Inter', sans-serif) !important;
-  font-size: 0.68rem !important;
+  font-size: 0.73rem !important;
   font-weight: 700 !important;
   line-height: 1 !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  padding: 0.2rem 0.55rem !important;
-  border-radius: 9999px !important;
-  letter-spacing: 0.02em !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  letter-spacing: 0.01em !important;
 }
 
 body.theme-light .upcoming-priority-tag.p-high,
@@ -1585,29 +1589,43 @@ body.theme-plain .upcoming-priority-tag.p-urgent,
 body.theme-light .task-p-badge.p-high,
 body.theme-plain .task-p-badge.p-high {
   color: #dc2626 !important;
-  background: rgba(239, 68, 68, 0.09) !important;
-  border: 1px solid rgba(239, 68, 68, 0.22) !important;
-  box-shadow: 0 1px 2px rgba(239, 68, 68, 0.06) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 body.theme-light .upcoming-priority-tag.p-medium,
 body.theme-plain .upcoming-priority-tag.p-medium,
 body.theme-light .task-p-badge.p-medium,
 body.theme-plain .task-p-badge.p-medium {
-  color: #b45309 !important;
-  background: rgba(245, 158, 11, 0.10) !important;
-  border: 1px solid rgba(245, 158, 11, 0.24) !important;
-  box-shadow: 0 1px 2px rgba(245, 158, 11, 0.06) !important;
+  color: #d97706 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 body.theme-light .upcoming-priority-tag.p-low,
 body.theme-plain .upcoming-priority-tag.p-low,
 body.theme-light .task-p-badge.p-low,
 body.theme-plain .task-p-badge.p-low {
-  color: #0284c7 !important;
-  background: rgba(14, 165, 233, 0.09) !important;
-  border: 1px solid rgba(14, 165, 233, 0.20) !important;
-  box-shadow: 0 1px 2px rgba(14, 165, 233, 0.06) !important;
+  color: #2563eb !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+body.theme-light .task-timer-icon-btn,
+body.theme-plain .task-timer-icon-btn {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #94a3b8 !important;
+}
+
+body.theme-light .task-timer-icon-btn:hover,
+body.theme-plain .task-timer-icon-btn:hover {
+  background: rgba(124, 58, 237, 0.08) !important;
+  color: #7c3aed !important;
 }
 
 body.theme-light .task-timer-icon-btn,

@@ -740,19 +740,9 @@ export function useGymLog(dateStr: string) {
     });
 
     if (currentRestTimerNotifId) {
-      await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId);
+      await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId).catch(() => {});
+      currentRestTimerNotifId = null;
     }
-    currentRestTimerNotifId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Rest is over! ⏱️',
-        body: `Time for your next set of ${exerciseName || 'your workout'}. Let's go!`,
-        sound: 'default'
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: new Date(Date.now() + durationSecs * 1000)
-      } as any
-    });
   }, [saveLog]);
 
   const swapExercise = useCallback((exerciseIndex: number, newName: string, newVideoId?: string, newMuscle?: string) => {
@@ -993,19 +983,9 @@ export function useGymLog(dateStr: string) {
     });
 
     if (currentRestTimerNotifId) {
-      await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId);
+      await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId).catch(() => {});
+      currentRestTimerNotifId = null;
     }
-    currentRestTimerNotifId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Rest is over! ⏱️',
-        body: `Time for your next set of ${exerciseName || 'your workout'}. Let's go!`,
-        sound: 'default'
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: new Date(Date.now() + durationSecs * 1000)
-      } as any
-    });
   }, [saveLog]);
 
   const clearRestTimer = useCallback(async () => {
@@ -1040,15 +1020,9 @@ export function useGymLog(dateStr: string) {
       return updated;
     });
 
-    if (currentRestTimerNotifId && logRef.current?.restTimerStartTime) {
-      await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId);
-      currentRestTimerNotifId = await Notifications.scheduleNotificationAsync({
-        content: { title: 'Rest is over! ⏱️', body: 'Time for your next set.', sound: 'default' },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: new Date(logRef.current.restTimerStartTime + newDuration * 1000)
-        } as any
-      });
+    if (currentRestTimerNotifId) {
+      await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId).catch(() => {});
+      currentRestTimerNotifId = null;
     }
   }, [saveLog]);
 

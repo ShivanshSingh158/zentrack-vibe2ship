@@ -124,6 +124,7 @@ export function useTasksFirestore({
     optimisticUpdateTaskRef.current(task.id, { status: newStatus, completedAt });
     if (newStatus === 'completed') {
       import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
+      import('expo-notifications').then(N => N.cancelScheduledNotificationAsync(`task_${task.id}`)).catch(() => {});
     }
     (async () => {
       try {

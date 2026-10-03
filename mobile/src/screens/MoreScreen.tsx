@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView
+  ScrollView, Platform
 } from 'react-native';
 import Reanimated, { 
   FadeIn, 
@@ -18,6 +18,8 @@ import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { BlurView } from 'expo-blur';
 import { useTheme } from "../contexts/ThemeContext";
 import { DynamicCalendarIcon } from '../components/ui/DynamicCalendarIcon';
+
+const SheetContainer: any = Platform.OS === 'ios' ? BlurView : View;
 import { prefetchRemainingModules } from '../utils/ModulePrefetcher';
 
 // ─── Module Definitions ───────────────────────────────────────────────────────
@@ -148,7 +150,10 @@ export default function MoreScreen() {
         renderToHardwareTextureAndroid={true}
         shouldRasterizeIOS={true}
       >
-        <BlurView intensity={isDark ? 85 : 95} tint={isDark ? "dark" : "light"} style={styles.sheet}>
+        <SheetContainer
+          {...(Platform.OS === 'ios' ? { intensity: isDark ? 85 : 95, tint: isDark ? 'dark' : 'light' } : {})}
+          style={styles.sheet}
+        >
 
           {/* Header */}
           <View style={styles.headerRow}>
@@ -263,7 +268,7 @@ export default function MoreScreen() {
               )}
             </View>
           </ScrollView>
-        </BlurView>
+        </SheetContainer>
       </Reanimated.View>
     </View>
   );

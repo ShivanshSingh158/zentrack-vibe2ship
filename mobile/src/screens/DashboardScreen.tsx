@@ -191,6 +191,30 @@ export default function DashboardScreen() {
     data.setCaptureVisible(true);
   }, [data.setCaptureVisible]);
 
+  const handleToggleTask = useCallback((taskId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
+    const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
+    data.optimisticUpdateTask(taskId, { status: newStatus, completedAt });
+    if (newStatus === 'completed') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      import('../services/xpSystem').then(m => m.awardXP('TASK_COMPLETE')).catch(() => {});
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    import('../utils/safeWrite').then(({ safeUpdate }) => {
+      safeUpdate(
+        taskId,
+        'tasks',
+        { status: newStatus, completedAt },
+        async () => {
+          const { doc, updateDoc } = await import('firebase/firestore');
+          const { db } = await import('../services/firebase');
+          return updateDoc(doc(db, 'tasks', taskId), { status: newStatus, completedAt });
+        }
+      ).catch(console.warn);
+    });
+  }, [data.optimisticUpdateTask]);
+
   // ── Quick Profile BottomSheet State (Apple iOS 18 Grouped style) ──────────
   const [quickProfileVisible, setQuickProfileVisible] = useState(false);
 
@@ -382,6 +406,7 @@ export default function DashboardScreen() {
                     nowDate={data.nowDate}
                     holidays={data.holidays}
                     userId={data.user?.uid}
+                    onToggleTask={handleToggleTask}
                   />
                 </Animated.View>
               );

@@ -24,10 +24,14 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import BottomSheet from '../../components/ui/BottomSheet';
 import NLPTaskInput from '../../components/Tasks/NLPTaskInput';
-import VoiceDictationOverlay from '../../components/Tasks/VoiceDictationOverlay';
-import RecurrencePickerModal from '../../components/Tasks/RecurrencePickerModal';
-import UniversalCalendarModal from '../../components/UniversalCalendarModal';
 import AnimatedPressable from '../../components/AnimatedPressable';
+
+const VoiceDictationOverlay = React.lazy(() => import('../../components/Tasks/VoiceDictationOverlay'));
+const RecurrencePickerModal = React.lazy(() => import('../../components/Tasks/RecurrencePickerModal'));
+const UniversalCalendarModal = React.lazy(() => import('../../components/UniversalCalendarModal'));
+
+// Module-level tag library memory cache for 0ms Frame-0 read
+let cachedTagLibrary: string[] | null = null;
 import { parseNLTask, ParsedTask, NLPToken, parseLocalDate, toYMD, cleanTaskTitle, formatRecurrenceLabel } from '../../utils/dateUtils';
 import { isSilenceOrNoise } from '../../services/voiceEngine';
 import {
@@ -45,6 +49,188 @@ interface Props {
   selectedDate: string;
   listCount: number;
 }
+
+interface TaskQuickOptionsBarProps {
+  taskDate: string;
+  startTime: string;
+  endTime: string;
+  priority: Priority;
+  showSubtasks: boolean;
+  subtasksCount: number;
+  recurrenceRule: any;
+  showTagInput: boolean;
+  selectedTagsCount: number;
+  isReminder: boolean;
+  styles: any;
+  onOpenCalendar: () => void;
+  onOpenStartPicker: () => void;
+  onOpenEndPicker: () => void;
+  onCyclePriority: () => void;
+  onToggleSubtasks: () => void;
+  onOpenRecurrence: () => void;
+  onToggleTagInput: () => void;
+  onToggleReminder: () => void;
+}
+
+const TaskQuickOptionsBar = React.memo(function TaskQuickOptionsBar({
+  taskDate,
+  startTime,
+  endTime,
+  priority,
+  showSubtasks,
+  subtasksCount,
+  recurrenceRule,
+  showTagInput,
+  selectedTagsCount,
+  isReminder,
+  styles,
+  onOpenCalendar,
+  onOpenStartPicker,
+  onOpenEndPicker,
+  onCyclePriority,
+  onToggleSubtasks,
+  onOpenRecurrence,
+  onToggleTagInput,
+  onToggleReminder,
+}: TaskQuickOptionsBarProps) {
+  const tomorrowStr = useMemo(() => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }, []);
+
+  const timeLabel = startTime ? formatTimeDisplay(startTime) : 'Time';
+  const dateLabel = taskDate === today ? 'Today'
+    : taskDate === tomorrowStr
+      ? 'Tomorrow'
+      : formatDisplayDate(taskDate);
+
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.autoStyle1}>
+      <View style={styles.quickOptionsRow}>
+        <AnimatedPressable
+          style={[
+            styles.quickChip,
+            taskDate !== today && { backgroundColor: 'rgba(96, 165, 250, 0.08)', borderColor: 'rgba(96, 165, 250, 0.3)' }
+          ]}
+          onPress={onOpenCalendar}
+        >
+          <Ionicons name="calendar-outline" size={13} color={taskDate !== today ? '#60a5fa' : '#8e8e93'} />
+          <Text style={[styles.quickChipText, taskDate !== today && { color: '#60a5fa', fontWeight: '500' }]}>
+            {dateLabel}
+          </Text>
+        </AnimatedPressable>
+
+        <AnimatedPressable
+          style={[
+            styles.quickChip,
+            !!startTime && { backgroundColor: 'rgba(52, 211, 153, 0.08)', borderColor: 'rgba(52, 211, 153, 0.3)' }
+          ]}
+          onPress={onOpenStartPicker}
+        >
+          <Ionicons name="time-outline" size={13} color={startTime ? '#34d399' : '#8e8e93'} />
+          <Text style={[styles.quickChipText, startTime && { color: '#34d399', fontWeight: '500' }]}>
+            {timeLabel}
+          </Text>
+        </AnimatedPressable>
+
+        {startTime !== '' && (
+          <AnimatedPressable
+            style={[
+              styles.quickChip,
+              !!endTime && { backgroundColor: 'rgba(52, 211, 153, 0.08)', borderColor: 'rgba(52, 211, 153, 0.3)' }
+            ]}
+            onPress={onOpenEndPicker}
+          >
+            <Ionicons name="arrow-forward" size={13} color={endTime ? '#34d399' : '#8e8e93'} />
+            <Text style={[styles.quickChipText, endTime && { color: '#34d399', fontWeight: '500' }]}>
+              {endTime ? formatTimeDisplay(endTime) : 'End time'}
+            </Text>
+          </AnimatedPressable>
+        )}
+
+        <AnimatedPressable
+          style={[
+            styles.quickChip,
+            priority !== 'low' && {
+              backgroundColor: priority === 'high' ? 'rgba(248, 113, 113, 0.08)' : 'rgba(251, 146, 60, 0.08)',
+              borderColor: priority === 'high' ? 'rgba(248, 113, 113, 0.3)' : 'rgba(251, 146, 60, 0.3)',
+            }
+          ]}
+          onPress={onCyclePriority}
+        >
+          <View style={[
+            styles.priorityDot,
+            {
+              backgroundColor: priority === 'high' ? '#f87171' : priority === 'medium' ? '#fb923c' : 'transparent',
+              borderWidth: priority === 'low' ? 1.2 : 0,
+              borderColor: '#8e8e93',
+            }
+          ]} />
+          <Text style={[
+            styles.quickChipText,
+            priority !== 'low' && { color: priority === 'high' ? '#f87171' : '#fb923c', fontWeight: '500' }
+          ]}>
+            {priority === 'low' ? 'Priority' : priority === 'medium' ? 'Medium' : 'High'}
+          </Text>
+        </AnimatedPressable>
+
+        <AnimatedPressable
+          style={[
+            styles.quickChip,
+            (showSubtasks || subtasksCount > 0) && { backgroundColor: 'rgba(165, 153, 255, 0.08)', borderColor: 'rgba(165, 153, 255, 0.3)' }
+          ]}
+          onPress={onToggleSubtasks}
+        >
+          <Ionicons name="list-outline" size={13} color={showSubtasks || subtasksCount > 0 ? '#a599ff' : '#8e8e93'} />
+          <Text style={[styles.quickChipText, (showSubtasks || subtasksCount > 0) && { color: '#a599ff', fontWeight: '500' }]}>
+            Subtask{subtasksCount > 0 ? ` (${subtasksCount})` : ''}
+          </Text>
+        </AnimatedPressable>
+
+        <AnimatedPressable
+          style={[
+            styles.quickChip,
+            !!recurrenceRule && { backgroundColor: 'rgba(192, 132, 252, 0.08)', borderColor: 'rgba(192, 132, 252, 0.3)' }
+          ]}
+          onPress={onOpenRecurrence}
+        >
+          <Ionicons name={recurrenceRule ? 'repeat' : 'repeat-outline'} size={13} color={recurrenceRule ? '#c084fc' : '#8e8e93'} />
+          <Text style={[styles.quickChipText, recurrenceRule && { color: '#c084fc', fontWeight: '500' }]}>
+            {formatRecurrenceLabel(recurrenceRule)}
+          </Text>
+        </AnimatedPressable>
+
+        <AnimatedPressable
+          style={[
+            styles.quickChip,
+            (showTagInput || selectedTagsCount > 0) && { backgroundColor: 'rgba(56, 189, 248, 0.08)', borderColor: 'rgba(56, 189, 248, 0.3)' }
+          ]}
+          onPress={onToggleTagInput}
+        >
+          <Ionicons name="pricetag-outline" size={13} color={showTagInput || selectedTagsCount > 0 ? '#38bdf8' : '#8e8e93'} />
+          <Text style={[styles.quickChipText, (showTagInput || selectedTagsCount > 0) && { color: '#38bdf8', fontWeight: '500' }]}>
+            {selectedTagsCount > 0 ? `${selectedTagsCount} label${selectedTagsCount > 1 ? 's' : ''}` : 'Labels'}
+          </Text>
+        </AnimatedPressable>
+
+        {/* Reminder Mode Quick Chip */}
+        <AnimatedPressable
+          style={[
+            styles.quickChip,
+            isReminder && { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.4)' }
+          ]}
+          onPress={onToggleReminder}
+        >
+          <Ionicons name={isReminder ? "notifications" : "notifications-outline"} size={13} color={isReminder ? '#f59e0b' : '#8e8e93'} />
+          <Text style={[styles.quickChipText, isReminder && { color: '#f59e0b', fontWeight: '600' }]}>
+            {isReminder ? (startTime ? `Alarm ${formatTimeDisplay(startTime)}` : 'Alarm ON') : 'Reminder'}
+          </Text>
+        </AnimatedPressable>
+      </View>
+    </ScrollView>
+  );
+});
 
 export const NewTaskModal = React.memo(function NewTaskModal({
   visible, onClose, userId, selectedDate, listCount,
@@ -64,14 +250,18 @@ export const NewTaskModal = React.memo(function NewTaskModal({
 
   // Tags
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [tagLibrary, setTagLibrary] = useState<string[]>([]);
+  const [tagLibrary, setTagLibrary] = useState<string[]>(() => cachedTagLibrary || []);
   const [newTagInput, setNewTagInput] = useState('');
   const [showTagInput, setShowTagInput] = useState(false);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || cachedTagLibrary) return;
     AsyncStorage.getItem(TAG_STORAGE_KEY).then(raw => {
-      if (raw) setTagLibrary(JSON.parse(raw));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        cachedTagLibrary = parsed;
+        setTagLibrary(parsed);
+      }
     });
   }, [visible]);
 
@@ -81,6 +271,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     setSelectedTags(prev => prev.includes(clean) ? prev : [...prev, clean]);
     setTagLibrary(prev => {
       const next = prev.includes(clean) ? prev : [clean, ...prev];
+      cachedTagLibrary = next;
       AsyncStorage.setItem(TAG_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
@@ -138,6 +329,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
         const timeParts = parsed.timeSlot.split(/[-–—]/).map(s => s.trim()).filter(Boolean);
         setStartTime(timeParts[0] || '');
         setEndTime(parsed.endTimeSlot || (timeParts.length > 1 ? timeParts[timeParts.length - 1] : ''));
+        setIsReminder(true);
       }
       if (parsed.tokens.some(t => t.type === 'priority') && parsed.priority !== priority) setPriority(parsed.priority);
       if (parsed.isRecurring && parsed.recurrenceRule && parsed.tokens.some(t => t.type === 'recurrence')) setRecurrenceRule(parsed.recurrenceRule);
@@ -180,11 +372,25 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   }, [title, selectedDate]);
 
 
-  const timeLabel = startTime ? formatTimeDisplay(startTime) : 'Time';
-  const dateLabel = taskDate === today ? 'Today'
-    : taskDate === (() => { const d = new Date(today); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); })()
-      ? 'Tomorrow'
-      : formatDisplayDate(taskDate);
+  const handleOpenCalendar = useCallback(() => setIsCalendarOpen(true), []);
+  const handleOpenStartPicker = useCallback(() => setShowStartPicker(true), []);
+  const handleOpenEndPicker = useCallback(() => setShowEndPicker(true), []);
+  const handleCyclePriority = useCallback(() => {
+    setPriority(p => (p === 'low' ? 'medium' : p === 'medium' ? 'high' : 'low'));
+  }, []);
+  const handleToggleSubtasks = useCallback(() => setShowSubtasks(v => !v), []);
+  const handleOpenRecurrence = useCallback(() => setShowRecurrenceModal(true), []);
+  const handleToggleTagInput = useCallback(() => setShowTagInput(v => !v), []);
+  const handleToggleReminder = useCallback(() => {
+    import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Light));
+    setIsReminder(prev => {
+      const next = !prev;
+      if (next && !startTime) {
+        setShowStartPicker(true);
+      }
+      return next;
+    });
+  }, [startTime]);
 
   const calcEstMinutes = (s: string, e: string) => {
     if (!s || !e || !s.includes(':') || !e.includes(':')) return 0;
@@ -239,12 +445,35 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     setOneTimeDates(undefined);
   }, []);
 
+  // Internal visibility to allow BottomSheet to play its 210ms exit slide before unmounting
+  const [internalVisible, setInternalVisible] = useState(visible);
+  const [canFocusInput, setCanFocusInput] = useState(false);
 
-  const resetAndClose = useCallback(() => {
+  useEffect(() => {
+    setInternalVisible(visible);
+    if (visible) {
+      // 120ms: Smoothly synchronizes keyboard appearance with sheet entrance
+      const timer = setTimeout(() => {
+        setCanFocusInput(true);
+      }, 120);
+      return () => clearTimeout(timer);
+    } else {
+      setCanFocusInput(false);
+    }
+  }, [visible]);
+
+  const requestClose = useCallback(() => {
     Keyboard.dismiss();
+    setCanFocusInput(false);
+    setInternalVisible(false);
+  }, []);
+
+  const handleFinishClose = useCallback(() => {
     onClose();
-    setTimeout(resetForm, 250);
+    setTimeout(resetForm, 60);
   }, [onClose, resetForm]);
+
+  const resetAndClose = requestClose;
 
   const [showDictationOverlay, setShowDictationOverlay] = useState(false);
 
@@ -360,6 +589,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
           priority: finalPriority, date: dateStr, timeSlot: ts || undefined,
           estimatedMinutes: est, isRecurring: true, recurrenceRule: finalRecurrence || undefined,
           recurringSourceId: sourceId || undefined, subject: undefined, order: listCount, subtasks: subtaskObjects,
+          isReminder: (isReminder || !!ts) || undefined,
         });
 
         batch.set(docRef, {
@@ -368,6 +598,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
           estimatedMinutes: est, isRecurring: true, recurrenceRule: finalRecurrence,
           recurringSourceId: sourceId, subject: null, createdAt: serverTimestamp(),
           order: listCount, subtasks: subtaskObjects,
+          isReminder: (isReminder || !!ts) || false,
         });
 
         count++;
@@ -413,6 +644,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
           estimatedMinutes: est, isRecurring: false, recurrenceRule: undefined,
           recurringSourceId: undefined, subject: undefined, tags: selectedTags,
           order: listCount, subtasks: subtaskObjects,
+          isReminder: (isReminder || !!ts) || undefined,
         };
         optimisticAddTask(taskPayload);
         batch.set(docRef, {
@@ -421,6 +653,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
           estimatedMinutes: est, isRecurring: false, recurrenceRule: null,
           recurringSourceId: null, subject: null, tags: selectedTags,
           order: listCount, subtasks: subtaskObjects,
+          isReminder: (isReminder || !!ts) || false,
           createdAt: serverTimestamp(),
         });
       }
@@ -438,7 +671,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     } else {
       const newDocRef = doc(collection(db, COLLECTION.TASKS));
       const taskId = newDocRef.id;
-      const finalIsReminder = saveParsed?.isReminder ?? isReminder;
+      const finalIsReminder = saveParsed?.isReminder ?? (isReminder || !!ts);
 
       const taskPayload: any = {
         id: taskId,
@@ -485,7 +718,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   };
 
   return (
-    <BottomSheet visible={visible} onClose={resetAndClose}>
+    <BottomSheet visible={internalVisible} onClose={handleFinishClose}>
       <View>
         <View style={[styles.newTaskInputLarge, { paddingHorizontal: 0, paddingVertical: 0, height: 'auto', backgroundColor: 'transparent', borderWidth: 0 }]}>
           <NLPTaskInput
@@ -493,7 +726,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
             onChangeText={handleTitleChange}
             parsed={nlpParsed ?? { title, date: null, timeSlot: null, priority: 'low', isRecurring: false, recurrenceRule: null, tokens: [] }}
             onDismissToken={handleDismissToken}
-            autoFocus={visible}
+            autoFocus={canFocusInput}
             placeholder="Add a task... try 'report friday 3pm high'"
             onSubmitEditing={() => handleSave()}
             onAutoSubmit={(t) => handleSave(t)}
@@ -501,139 +734,27 @@ export const NewTaskModal = React.memo(function NewTaskModal({
           />
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.autoStyle1}>
-          <View style={styles.quickOptionsRow}>
-            <AnimatedPressable
-              style={[
-                styles.quickChip,
-                taskDate !== today && { backgroundColor: 'rgba(96, 165, 250, 0.08)', borderColor: 'rgba(96, 165, 250, 0.3)' }
-              ]}
-              onPress={() => setIsCalendarOpen(true)}
-            >
-              <Ionicons name="calendar-outline" size={13} color={taskDate !== today ? '#60a5fa' : '#8e8e93'} />
-              <Text style={[styles.quickChipText, taskDate !== today && { color: '#60a5fa', fontWeight: '500' }]}>
-                {dateLabel}
-              </Text>
-            </AnimatedPressable>
-
-            <AnimatedPressable
-              style={[
-                styles.quickChip,
-                !!startTime && { backgroundColor: 'rgba(52, 211, 153, 0.08)', borderColor: 'rgba(52, 211, 153, 0.3)' }
-              ]}
-              onPress={() => setShowStartPicker(true)}
-            >
-              <Ionicons name="time-outline" size={13} color={startTime ? '#34d399' : '#8e8e93'} />
-              <Text style={[styles.quickChipText, startTime && { color: '#34d399', fontWeight: '500' }]}>
-                {timeLabel}
-              </Text>
-            </AnimatedPressable>
-
-            {startTime !== '' && (
-              <AnimatedPressable
-                style={[
-                  styles.quickChip,
-                  !!endTime && { backgroundColor: 'rgba(52, 211, 153, 0.08)', borderColor: 'rgba(52, 211, 153, 0.3)' }
-                ]}
-                onPress={() => setShowEndPicker(true)}
-              >
-                <Ionicons name="arrow-forward" size={13} color={endTime ? '#34d399' : '#8e8e93'} />
-                <Text style={[styles.quickChipText, endTime && { color: '#34d399', fontWeight: '500' }]}>
-                  {endTime ? formatTimeDisplay(endTime) : 'End time'}
-                </Text>
-              </AnimatedPressable>
-            )}
-
-            <AnimatedPressable
-              style={[
-                styles.quickChip,
-                priority !== 'low' && {
-                  backgroundColor: priority === 'high' ? 'rgba(248, 113, 113, 0.08)' : 'rgba(251, 146, 60, 0.08)',
-                  borderColor: priority === 'high' ? 'rgba(248, 113, 113, 0.3)' : 'rgba(251, 146, 60, 0.3)',
-                }
-              ]}
-              onPress={() => setPriority(priority === 'low' ? 'medium' : priority === 'medium' ? 'high' : 'low')}
-            >
-              <View style={[
-                styles.priorityDot,
-                {
-                  backgroundColor: priority === 'high' ? '#f87171' : priority === 'medium' ? '#fb923c' : 'transparent',
-                  borderWidth: priority === 'low' ? 1.2 : 0,
-                  borderColor: '#8e8e93',
-                }
-              ]} />
-              <Text style={[
-                styles.quickChipText,
-                priority !== 'low' && { color: priority === 'high' ? '#f87171' : '#fb923c', fontWeight: '500' }
-              ]}>
-                {priority === 'low' ? 'Priority' : priority === 'medium' ? 'Medium' : 'High'}
-              </Text>
-            </AnimatedPressable>
-
-            <AnimatedPressable
-              style={[
-                styles.quickChip,
-                (showSubtasks || subtasks.length > 0) && { backgroundColor: 'rgba(165, 153, 255, 0.08)', borderColor: 'rgba(165, 153, 255, 0.3)' }
-              ]}
-              onPress={() => setShowSubtasks(v => !v)}
-            >
-              <Ionicons name="list-outline" size={13} color={showSubtasks || subtasks.length > 0 ? '#a599ff' : '#8e8e93'} />
-              <Text style={[styles.quickChipText, (showSubtasks || subtasks.length > 0) && { color: '#a599ff', fontWeight: '500' }]}>
-                Subtask{subtasks.length > 0 ? ` (${subtasks.length})` : ''}
-              </Text>
-            </AnimatedPressable>
-
-            <AnimatedPressable
-              style={[
-                styles.quickChip,
-                !!recurrenceRule && { backgroundColor: 'rgba(192, 132, 252, 0.08)', borderColor: 'rgba(192, 132, 252, 0.3)' }
-              ]}
-              onPress={() => setShowRecurrenceModal(true)}
-            >
-              <Ionicons name={recurrenceRule ? 'repeat' : 'repeat-outline'} size={13} color={recurrenceRule ? '#c084fc' : '#8e8e93'} />
-              <Text style={[styles.quickChipText, recurrenceRule && { color: '#c084fc', fontWeight: '500' }]}>
-                {formatRecurrenceLabel(recurrenceRule)}
-              </Text>
-            </AnimatedPressable>
-
-            <AnimatedPressable
-              style={[
-                styles.quickChip,
-                (showTagInput || selectedTags.length > 0) && { backgroundColor: 'rgba(56, 189, 248, 0.08)', borderColor: 'rgba(56, 189, 248, 0.3)' }
-              ]}
-              onPress={() => setShowTagInput(v => !v)}
-            >
-              <Ionicons name="pricetag-outline" size={13} color={showTagInput || selectedTags.length > 0 ? '#38bdf8' : '#8e8e93'} />
-              <Text style={[styles.quickChipText, (showTagInput || selectedTags.length > 0) && { color: '#38bdf8', fontWeight: '500' }]}>
-                {selectedTags.length > 0 ? `${selectedTags.length} label${selectedTags.length > 1 ? 's' : ''}` : 'Labels'}
-              </Text>
-            </AnimatedPressable>
-
-            {/* Reminder Mode Quick Chip */}
-            <AnimatedPressable
-              style={[
-                styles.quickChip,
-                isReminder && { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.4)' }
-              ]}
-              onPress={() => {
-                import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Light));
-                if (!isReminder) {
-                  setIsReminder(true);
-                  if (!startTime) {
-                    setShowStartPicker(true);
-                  }
-                } else {
-                  setIsReminder(false);
-                }
-              }}
-            >
-              <Ionicons name={isReminder ? "notifications" : "notifications-outline"} size={13} color={isReminder ? '#f59e0b' : '#8e8e93'} />
-              <Text style={[styles.quickChipText, isReminder && { color: '#f59e0b', fontWeight: '600' }]}>
-                {isReminder ? (startTime ? `Alarm ${formatTimeDisplay(startTime)}` : 'Alarm ON') : 'Reminder'}
-              </Text>
-            </AnimatedPressable>
-          </View>
-        </ScrollView>
+        <TaskQuickOptionsBar
+          taskDate={taskDate}
+          startTime={startTime}
+          endTime={endTime}
+          priority={priority}
+          showSubtasks={showSubtasks}
+          subtasksCount={subtasks.length}
+          recurrenceRule={recurrenceRule}
+          showTagInput={showTagInput}
+          selectedTagsCount={selectedTags.length}
+          isReminder={isReminder}
+          styles={styles}
+          onOpenCalendar={handleOpenCalendar}
+          onOpenStartPicker={handleOpenStartPicker}
+          onOpenEndPicker={handleOpenEndPicker}
+          onCyclePriority={handleCyclePriority}
+          onToggleSubtasks={handleToggleSubtasks}
+          onOpenRecurrence={handleOpenRecurrence}
+          onToggleTagInput={handleToggleTagInput}
+          onToggleReminder={handleToggleReminder}
+        />
 
         {showTagInput && (
           <View style={styles.tagsPanel}>
@@ -735,13 +856,17 @@ export const NewTaskModal = React.memo(function NewTaskModal({
           />
         )}
 
-        <UniversalCalendarModal
-          visible={isCalendarOpen}
-          onClose={() => setIsCalendarOpen(false)}
-          selectedDate={taskDate}
-          onDateSelect={(d) => setTaskDate(d)}
-          title="Pick a Date"
-        />
+        {isCalendarOpen && (
+          <React.Suspense fallback={null}>
+            <UniversalCalendarModal
+              visible={isCalendarOpen}
+              onClose={() => setIsCalendarOpen(false)}
+              selectedDate={taskDate}
+              onDateSelect={(d) => setTaskDate(d)}
+              title="Pick a Date"
+            />
+          </React.Suspense>
+        )}
 
         {/* One-time multi-day hint banner */}
         {oneTimeDates && oneTimeDates.length > 1 && (
@@ -787,23 +912,31 @@ export const NewTaskModal = React.memo(function NewTaskModal({
           </Text>
         </AnimatedPressable>
       </View>
-      <RecurrencePickerModal
-        visible={showRecurrenceModal}
-        onClose={() => setShowRecurrenceModal(false)}
-        initialRule={recurrenceRule}
-        onSave={setRecurrenceRule}
-      />
-      <VoiceDictationOverlay 
-        visible={showDictationOverlay}
-        onClose={() => setShowDictationOverlay(false)}
-        onTasksExtracted={handleVoiceTasksExtracted}
-        onTaskCreated={() => {
-          setShowDictationOverlay(false);
-          resetAndClose();
-        }}
-        selectedDate={taskDate || selectedDate}
-        userId={userId}
-      />
+      {showRecurrenceModal && (
+        <React.Suspense fallback={null}>
+          <RecurrencePickerModal
+            visible={showRecurrenceModal}
+            onClose={() => setShowRecurrenceModal(false)}
+            initialRule={recurrenceRule}
+            onSave={setRecurrenceRule}
+          />
+        </React.Suspense>
+      )}
+      {showDictationOverlay && (
+        <React.Suspense fallback={null}>
+          <VoiceDictationOverlay 
+            visible={showDictationOverlay}
+            onClose={() => setShowDictationOverlay(false)}
+            onTasksExtracted={handleVoiceTasksExtracted}
+            onTaskCreated={() => {
+              setShowDictationOverlay(false);
+              resetAndClose();
+            }}
+            selectedDate={taskDate || selectedDate}
+            userId={userId}
+          />
+        </React.Suspense>
+      )}
     </BottomSheet>
   );
 });

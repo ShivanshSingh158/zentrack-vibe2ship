@@ -1159,81 +1159,91 @@ export default function NotesScreen() {
       />
 
       {/* Sleek Floating Options Popover Menu */}
-      <StorageContextMenuModal
-        visible={!!contextMenuNode}
-        item={contextMenuNode}
-        anchorPosition={contextMenuAnchor}
-        onClose={() => {
-          setContextMenuNode(null);
-          setContextMenuAnchor(null);
-        }}
-        onPin={handlePin}
-        onRename={(node) => setRenameTarget(node)}
-        onMove={(node) => setMoveTarget(node)}
-        onDelete={handleDelete}
-        onSelect={(node) => {
-          setSelectionMode(true);
-          setSelectedIds(new Set([node.id!]));
-        }}
-      />
+      {!!contextMenuNode && (
+        <StorageContextMenuModal
+          visible={!!contextMenuNode}
+          item={contextMenuNode}
+          anchorPosition={contextMenuAnchor}
+          onClose={() => {
+            setContextMenuNode(null);
+            setContextMenuAnchor(null);
+          }}
+          onPin={handlePin}
+          onRename={(node) => setRenameTarget(node)}
+          onMove={(node) => setMoveTarget(node)}
+          onDelete={handleDelete}
+          onSelect={(node) => {
+            setSelectionMode(true);
+            setSelectedIds(new Set([node.id!]));
+          }}
+        />
+      )}
 
       {/* New Folder Modal */}
-      <NewFolderModal
-        visible={showNewFolder}
-        title={isCreatingFolderWithSelection ? "New Folder with Selection" : "New Folder"}
-        subtitle={
-          isCreatingFolderWithSelection
-            ? `Move ${selectedIds.size} selected item${selectedIds.size > 1 ? 's' : ''} into new folder`
-            : undefined
-        }
-        submitText={isCreatingFolderWithSelection ? "Create & Move" : "Create"}
-        onClose={() => {
-          setShowNewFolder(false);
-          setIsCreatingFolderWithSelection(false);
-        }}
-        onCreate={handleCreateFolder}
-        colors={colors}
-        isDark={isDark}
-      />
+      {showNewFolder && (
+        <NewFolderModal
+          visible={showNewFolder}
+          title={isCreatingFolderWithSelection ? "New Folder with Selection" : "New Folder"}
+          subtitle={
+            isCreatingFolderWithSelection
+              ? `Move ${selectedIds.size} selected item${selectedIds.size > 1 ? 's' : ''} into new folder`
+              : undefined
+          }
+          submitText={isCreatingFolderWithSelection ? "Create & Move" : "Create"}
+          onClose={() => {
+            setShowNewFolder(false);
+            setIsCreatingFolderWithSelection(false);
+          }}
+          onCreate={handleCreateFolder}
+          colors={colors}
+          isDark={isDark}
+        />
+      )}
 
       {/* iOS Sort Menu Modal */}
-      <SortMenuModal
-        visible={showSortMenu}
-        activeSort={currentSortMode}
-        onSelectSort={setCurrentSortMode}
-        onClose={() => setShowSortMenu(false)}
-        onSelectMultiple={() => {
-          setShowSortMenu(false);
-          setSelectionMode(true);
-        }}
-        colors={colors}
-        isDark={isDark}
-      />
+      {showSortMenu && (
+        <SortMenuModal
+          visible={showSortMenu}
+          activeSort={currentSortMode}
+          onSelectSort={setCurrentSortMode}
+          onClose={() => setShowSortMenu(false)}
+          onSelectMultiple={() => {
+            setShowSortMenu(false);
+            setSelectionMode(true);
+          }}
+          colors={colors}
+          isDark={isDark}
+        />
+      )}
 
       {/* Rename Modal */}
-      <RenameNodeModal
-        node={renameTarget}
-        onClose={() => setRenameTarget(null)}
-        onSave={handleSaveRename}
-        colors={colors}
-        isDark={isDark}
-      />
+      {!!renameTarget && (
+        <RenameNodeModal
+          node={renameTarget}
+          onClose={() => setRenameTarget(null)}
+          onSave={handleSaveRename}
+          colors={colors}
+          isDark={isDark}
+        />
+      )}
 
       {/* Move Modal */}
-      <MoveNodeModal
-        node={moveTarget}
-        batchCount={isBatchMoving ? selectedIds.size : 0}
-        selectedIds={selectedIds}
-        folders={allVaultFolders}
-        currentFolderId={currentFolderId}
-        onClose={() => {
-          setMoveTarget(null);
-          setIsBatchMoving(false);
-        }}
-        onMove={handleExecuteMove}
-        colors={colors}
-        isDark={isDark}
-      />
+      {(!!moveTarget || isBatchMoving) && (
+        <MoveNodeModal
+          node={moveTarget}
+          batchCount={isBatchMoving ? selectedIds.size : 0}
+          selectedIds={selectedIds}
+          folders={allVaultFolders}
+          currentFolderId={currentFolderId}
+          onClose={() => {
+            setMoveTarget(null);
+            setIsBatchMoving(false);
+          }}
+          onMove={handleExecuteMove}
+          colors={colors}
+          isDark={isDark}
+        />
+      )}
 
       {/* Note Editor Modal */}
       {editorNote && user && (

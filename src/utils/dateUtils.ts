@@ -208,6 +208,8 @@ export function cleanTaskTitle(rawTitle: string): string {
     /^(?:mujhe\s+)?(?:aaj|kal|parso)?\s*(?:subah|shaam|dopahar|raat)?\s*(?:ko)?\s*(?:ek\s+)?task\s+(?:bana\s+(?:do|o)|add\s+(?:karo|kar\s+do)|create\s+(?:karo|kar\s+do))\s*/i,
     /^mujhe\s+/i,
     /^(?:yaad\s+(?:dilana|dila\s+do|rakhna))\s+(?:ki\s+)?/i,
+    /^(?:ek\s+kaam|ek\s+task|mere\s+liye|meri\s+help)[,\s]+/i,
+    /^(?:padhai|padhna|likhna)\s+(?:ka\s+|ki\s+)?(?:task|kaam|reminder)\s*/i,
   ];
 
   let changed = true;
@@ -272,7 +274,9 @@ export function cleanTaskTitle(rawTitle: string): string {
   t = t.replace(/\s+with\s+(?:a(?:n)?\s+)?(?:alarm|reminder|alert|notification|buzz|ping|bell|chime|sound|vibration|notify|toast|pop.?up|snooze|push\s+notification)s?$/i, '').trim();
   t = t.replace(/\s+(?:with\s+)?(?:set(?:\s+an?)?\s+)?(?:alarm|reminder|alert|notification)\s+(?:for|at|on|to)\s*$/i, '').trim();
   t = t.replace(/\s+and\s+(?:remind\s+(?:me\s+)?(?:to\s+|about\s+)?|set\s+(?:a[n]?\s+)?(?:alarm|reminder)|notify\s+(?:me\s+)?)$/i, '').trim();
-  t = t.replace(/\s+at\s+\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm|a\.?m\.?|p\.?m\.?)?$/i, '').trim();
+  // Only strip trailing "at <time>" when am/pm is explicitly present — prevents eating
+  // things like "at step 3", "at page 5", "at level 2" etc.
+  t = t.replace(/\s+at\s+\d{1,2}(?:[:.\]]\d{2})?\s*(?:am|pm|a\.?m\.?|p\.?m\.?)+$/i, '').trim();
   t = t.replace(/\s+(?:today|tomorrow|tonight|aaj|kal|parso)$/i, '').trim();
   t = t.replace(/\s+(?:by|around|sharp|at|on|for|due)\s*$/i, '').trim();
   t = t.replace(/\s+(?:right\s+now|at\s+the\s+earliest|on\s+urgent\s+basis|urgent\s+basis)$/i, '').trim();
@@ -318,6 +322,8 @@ export function cleanTaskTitle(rawTitle: string): string {
     if (ACRONYMS[cleanWord]) {
       return w.replace(new RegExp(cleanWord, 'i'), ACRONYMS[cleanWord]);
     }
+    // Don't capitalise tokens that start with a digit (e.g. "3pm", "10am", "50")
+    if (/^\d/.test(w)) return w;
     if (w.length > 0 && (idx === 0 || !MINOR_WORDS.has(w.toLowerCase()))) {
       return w.charAt(0).toUpperCase() + w.slice(1);
     }
@@ -391,9 +397,19 @@ export function parseNLTask(rawInput: string): ParsedTask {
   const now = new Date();
 
   const raw = (rawInput || '')
+    // Normalise a.m./p.m. dot forms → am/pm
     .replace(/\b([ap])\s*\.\s*m\s*\.?(?=\s|[.,;:!?]|$)/gi, (m, p1) => p1.toLowerCase() + 'm')
     .replace(/\b([ap])\s*\.\s*m\b/gi, (m, p1) => p1.toLowerCase() + 'm')
-    .replace(/\b([ap])\s*m\s*\./gi, (m, p1) => p1.toLowerCase() + 'm');
+    .replace(/\b([ap])\s*m\s*\./gi, (m, p1) => p1.toLowerCase() + 'm')
+    // Fix spaced colon: "4: 30 am" or "4 : 30am" → "4:30am"
+    .replace(/(\d{1,2})\s*:\s*(\d{2})/g, '$1:$2')
+    // "9.30pm" → "9:30pm" (dot as time separator)
+    .replace(/(\d{1,2})\.(\d{2})\s*(am|pm)\b/gi, '$1:$2$3')
+    // Fix compact time — process longest match first to avoid "1230am" → "1:23" bug.
+    // 4-digit: "1230am" / "1030 pm" → "12:30am" / "10:30pm"  (10, 11, 12 hour prefix)
+    .replace(/\b(1[0-2])(\d{2})\s*(am|pm)\b/gi, '$1:$2$3')
+    // 3-digit: "430am" / "900 pm"  → "4:30am"  / "9:00pm"   (1–9 hour prefix)
+    .replace(/\b([1-9])(\d{2})\s*(am|pm)\b/gi, '$1:$2$3');
 
   let text = raw;
   const tokens: NLPToken[] = [];
@@ -408,9 +424,9 @@ export function parseNLTask(rawInput: string): ParsedTask {
   let durationMinutes: number | null = null;
   const extractedTags: string[] = [];
 
-  function registerToken(type: NLPToken['type'], matchStr: string, display: string) {
-    const idx = text.toLowerCase().indexOf(matchStr.toLowerCase());
-    if (idx === -1) return;
+  function registerToken(type: NLPToken['type'], matchStr: string, display: string, knownIdx?: number) {
+    const idx = knownIdx !== undefined ? knownIdx : text.toLowerCase().indexOf(matchStr.toLowerCase());
+    if (idx === -1 || idx + matchStr.length > text.length) return;
     tokens.push({ type, start: idx, end: idx + matchStr.length, display });
     text = text.slice(0, idx) + ' '.repeat(matchStr.length) + text.slice(idx + matchStr.length);
   }
@@ -520,8 +536,8 @@ export function parseNLTask(rawInput: string): ParsedTask {
     [/\b(urgent|critical|asap|p1|fire|blocker|top\s+priority|highest\s+priority|max\s+priority|super\s+important|crucial|vital|must\s+do)\b/i, 'high', 'High'],
     [/\b(important|p2|kinda\s+important|semi.?urgent|normal\s+priority)\b/i,             'medium', 'Medium'],
     [/\b(p3|someday|whenever|not\s+urgent|low\s+key|no\s+rush|chill|when\s+free)\b/i,     'low',    'Low'],
-    [/\bhigh\b/i,                                                                        'high',   'High'],
-    [/\bmedium\b/i,                                                                      'medium', 'Medium'],
+    // NOTE: bare /high/ and /medium/ intentionally removed — too broad ("high school", "medium effort")
+    // Explicit priority phrases above are sufficient.
   ];
   for (const [pat, pri, label] of priorityPatterns) {
     const m = text.match(pat);
@@ -532,7 +548,10 @@ export function parseNLTask(rawInput: string): ParsedTask {
   const durationPatterns: Array<[RegExp, (m: RegExpMatchArray) => number]> = [
     [/\bhalf\s+an?\s+hour\b/i,                                             _ => 30],
     [/\ban?\s+hour\s+and\s+a\s+half\b/i,                                  _ => 90],
+    [/\b(\d+)\s+and\s+a\s+half\s+hours?\b/i,                             m => parseInt(m[1])*60 + 30],
     [/\ba\s+couple\s+(?:of\s+)?hours?\b/i,                                _ => 120],
+    [/\bcouple\s+(?:of\s+)?hours?\b/i,                                    _ => 120],
+    [/\ba\s+few\s+hours?\b/i,                                              _ => 180],
     [/\ban?\s+hour\s*(?:block|session)?\b/i,                              _ => 60],
     [/\ba\s+few\s+minutes?\b/i,                                           _ => 10],
     [/\b(\d+(?:\.\d+)?)\s*h(?:(?:ou)?rs?)?\s*(?:block|time\s*block|time|session)?\b/i, m => Math.round(parseFloat(m[1])*60)],
@@ -696,8 +715,8 @@ export function parseNLTask(rawInput: string): ParsedTask {
     recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [0, 6] };
     dateResult = nextWeekday(6);
     registerToken('recurrence', m[0], 'Weekends');
-  } else if (/\b(fortnightly|bi-?weekly|every\s+two\s+weeks|every\s+other\s+week)\b/i.test(text)) {
-    const m = text.match(/\b(fortnightly|bi-?weekly|every\s+two\s+weeks|every\s+other\s+week)\b/i)!;
+  } else if (/\b(fortnightly|bi-?weekly|every\s+two\s+weeks|every\s+other\s+week|every\s+alternate\s+week|alternate\s+weeks?|every\s+alternate\s+week|alternate\s+weeks?)\b/i.test(text)) {
+    const m = text.match(/\b(fortnightly|bi-?weekly|every\s+two\s+weeks|every\s+other\s+week|every\s+alternate\s+week|alternate\s+weeks?)\b/i)!;
     isRecurring = true;
     recurrenceRule = { type: 'weekly', interval: 2 };
     dateResult = new Date(now);
@@ -791,17 +810,30 @@ export function parseNLTask(rawInput: string): ParsedTask {
 
   // 4. TIME (RANGES + SINGLE + HINGLISH BAJE + NAMED)
   if (!timeSlot) {
-    const rangePattern = /\b(?:at\s+|from\s+|between\s+)?(\d{1,2})(?:[:\s](\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)?\s*(?:to|-|until|till|and|through)\s*(\d{1,2})(?:[:\s](\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)?\b/i;
+    // Only match explicit time separators (colon) — no space-as-separator to avoid eating
+    // page/chapter ranges like "50 to 60" or "pages 5 to 6".
+    const rangePattern = /\b(?:at\s+|from\s+|between\s+)?(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)?\s*(?:to|-|until|till|through)\s*(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)?\b/i;
     const rangeMatch = text.match(rangePattern);
 
     if (rangeMatch) {
       const h1Num = parseInt(rangeMatch[1], 10);
       const h2Num = parseInt(rangeMatch[4], 10);
-      const isHourRange = h1Num >= 1 && h1Num <= 24 && h2Num >= 1 && h2Num <= 24;
+      // Both hours must be valid clock values (1-12 for 12h, 0-23 for 24h)
+      const isValidHour = (n: number) => n >= 0 && n <= 23;
       const hasAmPm = rangeMatch[3] || rangeMatch[6];
       const hasColon = rangeMatch[2] || rangeMatch[5];
-      const hasKeyword = /\b(?:at|from|between)\b/i.test(rangeMatch[0]);
-      if (hasAmPm || hasColon || hasKeyword || isHourRange) {
+      // "at/from/between" keyword must appear WITHIN the matched substring
+      const hasKeyword = /^(?:at|from|between)\s/i.test(rangeMatch[0]);
+      // Bare "N to M" (no am/pm, no colon, no keyword) is ONLY a time range when
+      // both numbers are valid hours AND at most 12 (unambiguous 12-hour clock).
+      // Numbers like 50, 60, 100 etc. are clearly page/count references — skip them.
+      const isUnambiguousHourRange = h1Num >= 1 && h1Num <= 12 && h2Num >= 1 && h2Num <= 12;
+      // Detect page/chapter/count context — if text before the match ends with words
+      // like 'pages', 'chapter', a digit etc., skip: it is NOT a time range.
+      const _matchIdx = text.indexOf(rangeMatch[0]);
+      const _precedingText = _matchIdx > 0 ? text.slice(0, _matchIdx).trimEnd().toLowerCase() : '';
+      const isCountContext = /\b(?:pages?|chapters?|problems?|questions?|exercises?|slides?|sections?|items?|no\.?|q\.?|ex\.?|\d+)\s*$/.test(_precedingText);
+      if (!isCountContext && (hasAmPm || hasColon || hasKeyword || (isValidHour(h1Num) && isValidHour(h2Num) && isUnambiguousHourRange))) {
         const rawP2 = (rangeMatch[6] || '').toLowerCase().replace(/[^a-z]/g, '');
         const rawP1 = (rangeMatch[3] || '').toLowerCase().replace(/[^a-z]/g, '');
         let p2 = rawP2 || rawP1 || '';
@@ -909,6 +941,29 @@ export function parseNLTask(rawInput: string): ParsedTask {
       }
     }
 
+    // "a quarter to 5" / "a quarter past 3" aliases
+    if (!timeSlot) {
+      const aQuarterTo = text.match(/\ba\s+quarter\s+to\s+(\d{1,2})\b/i);
+      if (aQuarterTo) {
+        let h = parseInt(aQuarterTo[1], 10);
+        if (h < 8 && !hasMorningHint) h += 12;
+        const baseH = h - 1;
+        timeSlot = `${baseH.toString().padStart(2, '0')}:45`;
+        const hr12 = baseH % 12 || 12;
+        registerToken('time', aQuarterTo[0], `${hr12}:45${baseH >= 12 ? 'pm' : 'am'}`);
+      }
+    }
+    if (!timeSlot) {
+      const aQuarterPast = text.match(/\ba\s+quarter\s+past\s+(\d{1,2})\b/i);
+      if (aQuarterPast) {
+        let h = parseInt(aQuarterPast[1], 10);
+        if (h < 8 && !hasMorningHint) h += 12;
+        timeSlot = `${h.toString().padStart(2, '0')}:15`;
+        const hr12 = h % 12 || 12;
+        registerToken('time', aQuarterPast[0], `${hr12}:15${h >= 12 ? 'pm' : 'am'}`);
+      }
+    }
+
     if (!timeSlot) {
       const quarterToM = text.match(/\bquarter\s+to\s+(\d{1,2})\b/i);
       if (quarterToM) {
@@ -954,6 +1009,16 @@ export function parseNLTask(rawInput: string): ParsedTask {
       }
     }
 
+    // "4 30 pm" — H space MM space am/pm (missed by compact normalizer)
+    if (!timeSlot) {
+      const spaceSepM = text.match(/\b([1-9]|1[0-2])\s+(\d{2})\s+(am|pm)\b/i);
+      if (spaceSepM) {
+        const s = parseSingleTime(spaceSepM[1], spaceSepM[2], spaceSepM[3]);
+        timeSlot = `${s.hh}:${s.mm}`;
+        registerToken('time', spaceSepM[0], s.display);
+      }
+    }
+
     if (!timeSlot) {
       const namedTimes: Array<[RegExp, string, string]> = [
         [/\bnoon\b/i,                        '12:00', 'Noon'],
@@ -966,6 +1031,11 @@ export function parseNLTask(rawInput: string): ParsedTask {
         [/\b(evening|sundown)\b/i,           '18:00', 'Evening (6pm)'],
         [/\blate\s+night\b/i,                '23:00', 'Late Night (11pm)'],
         [/\b(night|tonight)\b/i,             '21:00', 'Night (9pm)'],
+        [/\bdawn\b/i,                         '05:00', 'Dawn (5am)'],
+        [/\bdusk\b/i,                         '18:30', 'Dusk (6:30pm)'],
+        [/\blunch\s+time\b/i,                '13:00', 'Lunch Time (1pm)'],
+        [/\bdinnertime\b/i,                   '20:00', 'Dinner Time (8pm)'],
+        [/\bbreakfast\s*time\b/i,            '08:00', 'Breakfast Time (8am)'],
       ];
       for (const [pat, slot, label] of namedTimes) {
         const m = text.match(pat);
@@ -1127,6 +1197,65 @@ export function parseNLTask(rawInput: string): ParsedTask {
       registerToken('date', m[0], 'This Afternoon');
     }
 
+    // ── Extended relative date keywords ──────────────────────────────────────
+    // Spelled-out "end of week/month", "start of week", "next week", "this week"
+    if (!dateResult && /\bend\s+of\s+(?:the\s+)?week\b/i.test(text)) {
+      const m = text.match(/\bend\s+of\s+(?:the\s+)?week\b/i)!;
+      dateResult = nextWeekday(5);
+      registerToken('date', m[0], 'End of Week (Fri)');
+    }
+    if (!dateResult && /\bend\s+of\s+(?:the\s+)?month\b/i.test(text)) {
+      const m = text.match(/\bend\s+of\s+(?:the\s+)?month\b/i)!;
+      dateResult = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      registerToken('date', m[0], 'End of Month');
+    }
+    if (!dateResult && /\bstart\s+of\s+(?:the\s+)?week\b/i.test(text)) {
+      const m = text.match(/\bstart\s+of\s+(?:the\s+)?week\b/i)!;
+      dateResult = nextWeekday(1, true);
+      registerToken('date', m[0], 'Start of Week (Mon)');
+    }
+    if (!dateResult && /\bnext\s+week\b/i.test(text) && !isRecurring) {
+      const m = text.match(/\bnext\s+week\b/i)!;
+      dateResult = nextWeekday(1, true);
+      registerToken('date', m[0], 'Next Week (Mon)');
+    }
+    if (!dateResult && /\bthis\s+week\b/i.test(text) && !isRecurring) {
+      const m = text.match(/\bthis\s+week\b/i)!;
+      dateResult = nextWeekday(1, false);
+      registerToken('date', m[0], 'This Week (Mon)');
+    }
+
+    // "1st of March" / "3rd of june"
+    if (!dateResult) {
+      const ordinalOfMonthRe = new RegExp(
+        `\\b(\\d{1,2})(?:st|nd|rd|th)\\s+of\\s+(${"september|february|november|december|january|october|august|march|april|june|july|sept|janu|febr|octo|octu|dece|may|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec"})\\b`, 'i'
+      );
+      const ordinalOfMonth = text.match(ordinalOfMonthRe);
+      if (ordinalOfMonth) {
+        const d = resolveMonthDay(ordinalOfMonth[2], parseInt(ordinalOfMonth[1], 10));
+        if (d) {
+          dateResult = d;
+          const mL = ordinalOfMonth[2].charAt(0).toUpperCase() + ordinalOfMonth[2].slice(1).toLowerCase();
+          registerToken('date', ordinalOfMonth[0], `${ordinalOfMonth[1]} ${mL}`);
+        }
+      }
+    }
+
+    // "on the 5th" / "by the 12th" — ordinal-only (current or next month)
+    if (!dateResult) {
+      const ordinalOnly = text.match(/\b(?:on\s+|by\s+)?(?:the\s+)?(\d{1,2})(st|nd|rd|th)\b(?!\s+of)/i);
+      if (ordinalOnly) {
+        const dayNum = parseInt(ordinalOnly[1], 10);
+        if (dayNum >= 1 && dayNum <= 31) {
+          const today2 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          let candidate = new Date(now.getFullYear(), now.getMonth(), dayNum);
+          if (candidate < today2) candidate = new Date(now.getFullYear(), now.getMonth() + 1, dayNum);
+          dateResult = candidate;
+          registerToken('date', ordinalOnly[0], `${ordinalOnly[1]}${ordinalOnly[2]}`);
+        }
+      }
+    }
+
     // Standard relative date keywords
     if (!dateResult) {
       if (/\btoday\b/i.test(text)) {
@@ -1246,17 +1375,21 @@ export function parseNLTask(rawInput: string): ParsedTask {
 
   // 6. BUILD CLEAN TITLE
   let title = raw;
+  // Sort descending by start so slicing doesn't shift later indices
   const sortedTokens = [...tokens].sort((a, b) => b.start - a.start);
   for (const tok of sortedTokens) {
-    title = title.slice(0, tok.start) + title.slice(tok.end);
+    if (tok.start < 0 || tok.end > title.length || tok.start >= tok.end) continue;
+    title = title.slice(0, tok.start) + ' ' + title.slice(tok.end);
   }
+  // Collapse multiple spaces left by token removal
+  title = title.replace(/\s{2,}/g, ' ').trim();
   title = cleanTaskTitle(title);
   if (!title) title = cleanTaskTitle(raw) || raw.trim();
 
   // 7. SMART SEMANTIC DOMAIN TAG INFERENCE
   if (extractedTags.length === 0) {
     const combinedContext = `${title} ${raw}`.toLowerCase();
-    if (/\b(lab|report|assignment|exam|exams|lecture|lectures|professor|prof|quiz|viva|midsem|endsem|semester|syllabus|attendance|bunk|hod|faculty|coursework|homework|thesis|dissertation|classes|class|college|university|campus|operating\s+systems?|os|dbms|computer\s+networks?|cn|theory\s+of\s+computation|toc|physics|chemistry|math|mathematics|calculus|biology)\b/i.test(combinedContext)) {
+    if (/\b(lab|report|assignment|exam|exams|lecture|lectures|professor|prof|quiz|viva|midsem|endsem|semester|syllabus|attendance|bunk|hod|faculty|coursework|homework|thesis|dissertation|classes|class|college|university|campus|operating\s+systems?|os|dbms|computer\s+networks?|cn|theory\s+of\s+computation|toc|physics|chemistry|math|mathematics|calculus|biology|notes|revision|revise|chapter|chapters|pages?|practicals?|internals?|backlogs?|arrears?|tutorial|project\s+report|minor\s+project|major\s+project|practical\s+file)\b/i.test(combinedContext)) {
       extractedTags.push('college');
     } else if (/\b(workout|gym|chest|back|legs|biceps|triceps|shoulders|push\s+day|pull\s+day|leg\s+day|squat|squats|bench\s+press|bench|deadlift|deadlifts|cardio|treadmill|hiit|protein|creatine|sets|reps|abs|fitness)\b/i.test(combinedContext)) {
       extractedTags.push('gym');
@@ -1266,7 +1399,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
       extractedTags.push('finance');
     } else if (/\b(doctor|dentist|medicine|medicines|pills|vitamins|appointment|checkup|hospital|clinic|blood\s+test|prescription|physio)\b/i.test(combinedContext)) {
       extractedTags.push('health');
-    } else if (/\b(groceries|grocery|haircut|laundry|clean\s+room|call\s+(?:mom|dad|mummy|papa|mother|father|parents|bro|brother|sister)|birthday|anniversary|shopping)\b/i.test(combinedContext)) {
+    } else if (/\b(groceries|grocery|haircut|laundry|clean\s+room|call\s+(?:mom|dad|mummy|papa|mother|father|parents|bro|brother|sister)|birthday|anniversary|shopping|family|friends|outing|trip|travel|vacation|picnic|dinner|lunch|breakfast|party|celebration|gift|present)\b/i.test(combinedContext)) {
       extractedTags.push('personal');
     }
   }
@@ -1275,7 +1408,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
   const hasExplicitPriority = tokens.some(t => t.type === 'priority');
   if (!hasExplicitPriority) {
     const urgencyContext = `${title} ${raw}`.toLowerCase();
-    if (/\b(urgent|critical|emergency|asap|deadline|blocker|fire|exam|midsem|endsem|interview|doctor|hospital|immediately)\b/i.test(urgencyContext)) {
+    if (/\b(urgent|critical|emergency|asap|deadline|blocker|fire|exam|midsem|endsem|interview|doctor|hospital|immediately|submission|due\s+today|due\s+tomorrow|overdue|last\s+date|final\s+submission|presentation|viva|placement)\b/i.test(urgencyContext)) {
       priority = 'high';
     }
   }
@@ -1287,8 +1420,10 @@ export function parseNLTask(rawInput: string): ParsedTask {
       durationMinutes = 60;
     } else if (/\b(exam|exams|midsem|endsem|lab\s+exam|practical|viva)\b/i.test(durationContext)) {
       durationMinutes = 90;
-    } else if (/\b(meeting|sync|standup|interview|call\s+with|discussion|1:1|one\s+on\s+one)\b/i.test(durationContext)) {
+    } else if (/\b(meeting|sync|standup|interview|call\s+with|discussion|1:1|one\s+on\s+one|review\s+meeting|catch\s+up)\b/i.test(durationContext)) {
       durationMinutes = 30;
+    } else if (/\b(study|revision|revise|notes|assignment|homework|reading|chapter|lecture)\b/i.test(durationContext)) {
+      durationMinutes = 60;
     } else if (/\b(bill|recharge|pay|call\s+(?:mom|dad|mummy|papa)|haircut|quick|medicine|pills)\b/i.test(durationContext) || extractedTags.includes('finance')) {
       durationMinutes = 15;
     }

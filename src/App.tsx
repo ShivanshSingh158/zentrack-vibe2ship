@@ -30,7 +30,6 @@ import { OfflineIndicator } from './components/ui/OfflineIndicator';
 import { useClassNotifications } from './hooks/useClassNotifications';
 import { useGlobalData } from './contexts/GlobalDataContext';
 import { FloatingExtraWorks } from './features/_shared';
-import { HomeDashboard } from './features/dashboard/HomeDashboard';
 import { LifeHomeDashboard } from './features/dashboard/LifeHomeDashboard';
 import { MissionReport } from './features/dashboard/MissionReport';
 import { ReportArchive } from './features/dashboard/ReportArchive';
@@ -228,6 +227,7 @@ const IntegrationsModule = lazyWithRetry(() => import('./features/integrations/I
 const WeeklyReviewModule = lazyWithRetry(() => import('./features/review/WeeklyReviewModule').then(m => ({ default: m.WeeklyReviewModule })), 'WeeklyReviewModule');
 const AttendanceModule = lazyWithRetry(() => import('./features/academic/AttendanceModule').then(m => ({ default: m.AttendanceModule })), 'AttendanceModule');
 const GradeCalculatorModule = lazyWithRetry(() => import('./features/academic/GradeCalculatorModule').then(m => ({ default: m.GradeCalculatorModule })), 'GradeCalculatorModule');
+const GymModule = lazyWithRetry(() => import('./features/gym').then(m => ({ default: m.GymModule })), 'GymModule');
 
 // ——— 0ms Instant Route Prefetching & Warm Cache Engine —————————————————————
 export const routeLoaders: Record<string, () => Promise<any>> = {
@@ -243,6 +243,7 @@ export const routeLoaders: Record<string, () => Promise<any>> = {
   '/review': () => import('./features/review/WeeklyReviewModule'),
   '/attendance': () => import('./features/academic/AttendanceModule'),
   '/grades': () => import('./features/academic/GradeCalculatorModule'),
+  '/gym': () => import('./features/gym'),
 };
 
 export const prefetchRoute = (route: string) => {
@@ -304,6 +305,7 @@ const AnimatedRoutes = () => {
         <Route path="/review"      element={<PageTransition><ErrorBoundary name="Review"><Suspense fallback={<PageLoader />}><WeeklyReviewModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/attendance"  element={<PageTransition><ErrorBoundary name="Attendance"><Suspense fallback={<PageLoader />}><AttendanceModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/grades"      element={<PageTransition><ErrorBoundary name="Grades"><Suspense fallback={<PageLoader />}><GradeCalculatorModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/gym"         element={<PageTransition><ErrorBoundary name="Gym"><Suspense fallback={<PageLoader />}><GymModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/landing"     element={<PageTransition><Landing onTryNow={() => {}} /></PageTransition>} />
         <Route path="*"            element={<Navigate to="/home" replace />} />
       </Routes>

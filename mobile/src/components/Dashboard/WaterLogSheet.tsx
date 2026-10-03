@@ -180,11 +180,10 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
 
   const goalLitres = (target / 1000).toFixed(1);
 
-  return (
-    <Modal visible={visible} transparent animationType="slide">
-      <BlurView intensity={isDark ? 50 : 20} tint={isDark ? "dark" : "light"} style={s.overlay}>
-        <TouchableOpacity style={{ flex: 1, width: '100%' }} activeOpacity={1} onPress={onClose} />
-        <View style={s.sheet}>
+  const sheetContent = (
+    <>
+      <TouchableOpacity style={{ flex: 1, width: '100%' }} activeOpacity={1} onPress={onClose} />
+      <View style={s.sheet}>
           <View style={s.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.xs }}>
               <Ionicons name="water" size={22} color={colors.accentBlue} />
@@ -335,7 +334,20 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
             </TouchableOpacity>
           )}
         </View>
-      </BlurView>
+    </>
+  );
+
+  return (
+    <Modal visible={visible} transparent animationType="slide">
+      {Platform.OS === 'ios' ? (
+        <BlurView intensity={isDark ? 50 : 20} tint={isDark ? "dark" : "light"} style={s.overlay}>
+          {sheetContent}
+        </BlurView>
+      ) : (
+        <View style={[s.overlay, { backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.45)' }]}>
+          {sheetContent}
+        </View>
+      )}
     </Modal>
   );
 }

@@ -110,6 +110,13 @@ export default function NLPTaskInput({
     };
   }, []);
 
+  // Imperatively focus TextInput when autoFocus is activated
+  useEffect(() => {
+    if (autoFocus) {
+      inputRef.current?.focus();
+    }
+  }, [autoFocus]);
+
   const handleToggleVoice = async () => {
     if (voiceState === 'recording') {
       // Stop native STT — will finalize and fire the final result
@@ -142,11 +149,6 @@ export default function NLPTaskInput({
       },
     });
   };
-
-  // ─── Build highlighted text segments ─────────────────────────────────────
-  // We render a transparent TextInput on top of a View that shows
-  // colored text segments. This is the exact technique Todoist uses.
-  const segments = buildSegments(value, parsed.tokens);
 
   // ─── Chips row below input ────────────────────────────────────────────────
   const visibleTokens = parsed.tokens.filter(
@@ -221,28 +223,6 @@ export default function NLPTaskInput({
       )}
     </View>
   );
-}
-
-// ─── Build segments ──────────────────────────────────────────────────────────
-// Split text into plain vs token spans for the highlighted render layer.
-function buildSegments(text: string, tokens: NLPToken[]): Array<{ text: string; token?: NLPToken }> {
-  if (!tokens.length || !text) return [{ text }];
-
-  const sorted = [...tokens].sort((a, b) => a.start - b.start);
-  const segs: Array<{ text: string; token?: NLPToken }> = [];
-  let cursor = 0;
-
-  for (const tok of sorted) {
-    if (tok.start > cursor) {
-      segs.push({ text: text.slice(cursor, tok.start) });
-    }
-    segs.push({ text: text.slice(tok.start, tok.end), token: tok });
-    cursor = tok.end;
-  }
-  if (cursor < text.length) {
-    segs.push({ text: text.slice(cursor) });
-  }
-  return segs;
 }
 
 const styles = StyleSheet.create({

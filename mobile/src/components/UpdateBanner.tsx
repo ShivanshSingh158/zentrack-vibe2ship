@@ -171,9 +171,11 @@ export function UpdateBanner() {
 
   if (!visible) return null;
 
+  const BackdropComponent: any = Platform.OS === 'ios' ? BlurView : View;
+
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={dismiss}>
-      <BlurView intensity={30} tint="dark" style={styles.backdrop}>
+      <BackdropComponent {...(Platform.OS === 'ios' ? { intensity: 30, tint: 'dark' } : {})} style={styles.backdrop}>
         <Animated.View style={[styles.card, { opacity: opacityAnim, transform: [{ translateY: slideAnim }] }]}>
 
           {/* Premium Mesh Gradient Background Orbs */}
@@ -223,7 +225,7 @@ export function UpdateBanner() {
           </TouchableOpacity>
 
         </Animated.View>
-      </BlurView>
+      </BackdropComponent>
     </Modal>
   );
 }

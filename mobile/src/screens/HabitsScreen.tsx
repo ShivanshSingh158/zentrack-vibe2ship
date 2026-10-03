@@ -9,7 +9,7 @@ import {
   View, Text, StyleSheet, ScrollView,
   TextInput, Modal, KeyboardAvoidingView, Platform, Alert, Animated, TouchableOpacity, DeviceEventEmitter, InteractionManager
 } from 'react-native';
-import Reanimated, { useSharedValue, useAnimatedStyle, withSpring, FadeInDown, withSequence, withTiming } from 'react-native-reanimated';
+import Reanimated, { useSharedValue, useAnimatedStyle, withSpring, FadeInDown, withSequence, withTiming, Easing } from 'react-native-reanimated';
 import AnimatedPressable from '../components/AnimatedPressable';
 import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
@@ -50,6 +50,8 @@ const getPastDays = (numDays: number) => {
   return dates;
 };
 
+const EMPTY_LOGS: HabitLog[] = [];
+
 // ─── Create Habit Modal ────────────────────────────────────────────────────────
 
 function CreateHabitModal({ visible, userId, onClose }: {
@@ -57,6 +59,7 @@ function CreateHabitModal({ visible, userId, onClose }: {
 }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const { optimisticAddHabit } = useCoreData();
   const [type, setType] = useState<'positive' | 'negative'>('positive');
   const [cost, setCost] = useState('');
   const [name, setName] = useState('');
@@ -80,21 +83,30 @@ function CreateHabitModal({ visible, userId, onClose }: {
     // Optimistic UI update: instantly close modal and trigger haptic
     import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
     
+    const todayStr = getTodayStr();
+    const habitDocRef = doc(collection(db, COLLECTION.HABITS));
+    const newHabitData: Habit = {
+      id: habitDocRef.id,
+      userId,
+      name: name.trim(),
+      emoji: emoji.trim() || (type === 'positive' ? '⭐' : '🚫'),
+      frequency: frequency === 'custom' && customDays.length > 0 ? customDays.join(', ') : frequency,
+      streak: 0,
+      longestStreak: 0,
+      color,
+      type,
+      startDate: todayStr,
+      costPerDay: type === 'negative' && cost.trim() ? parseFloat(cost.trim()) : 0,
+      targetCount: type === 'positive' && targetCount.trim() ? parseInt(targetCount.trim()) : undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    optimisticAddHabit(newHabitData);
+
     // Fire-and-forget network request, deferred to prevent animation frame drops
     setTimeout(() => {
-      const todayStr = getTodayStr();
-      addDoc(collection(db, COLLECTION.HABITS), {
-        userId,
-        name: name.trim(),
-        emoji: emoji.trim() || (type === 'positive' ? '⭐' : '🚫'),
-        frequency: frequency === 'custom' && customDays.length > 0 ? customDays.join(', ') : frequency,
-        streak: 0,
-        longestStreak: 0,
-        color,
-        type,
-        startDate: todayStr,
-        costPerDay: type === 'negative' && cost.trim() ? parseFloat(cost.trim()) : 0,
-        targetCount: type === 'positive' && targetCount.trim() ? parseInt(targetCount.trim()) : null,
+      setDoc(habitDocRef, {
+        ...newHabitData,
         createdAt: serverTimestamp(),
       }).catch(handleSyncError);
     }, 150);
@@ -283,9 +295,9 @@ const HabitCard = React.memo(function HabitCard({
   habit: Habit;
   isCompleted: boolean;
   todayLog?: HabitLog;
-  onToggle: (x?: number, y?: number) => void;
-  onArchive: () => void;
-  onDelete: () => void;
+  onToggle: (habit: Habit, x?: number, y?: number) => void;
+  onArchive: (habitId: string) => void;
+  onDelete: (habitId: string) => void;
   habitLogs: HabitLog[];
   onFireConfetti: (x: number, y: number, color: string) => void;
   freezesLeft?: number;
@@ -373,7 +385,7 @@ const HabitCard = React.memo(function HabitCard({
       if (isCompleted) {
         Alert.alert("Undo Relapse", "Remove the relapse logged for today?", [
           { text: "Cancel", style: "cancel" },
-          { text: "Remove", onPress: () => onToggle(pageX, pageY) }
+          { text: "Remove", onPress: () => onToggle(habit, pageX, pageY) }
         ]);
       } else {
         Alert.alert(
@@ -385,7 +397,7 @@ const HabitCard = React.memo(function HabitCard({
               text: "Yes, I relapsed", 
               style: "destructive",
               onPress: () => {
-                onToggle(pageX, pageY);
+                onToggle(habit, pageX, pageY);
                 import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));
               }
             }
@@ -395,17 +407,17 @@ const HabitCard = React.memo(function HabitCard({
       return;
     }
 
-    onToggle(pageX, pageY);
+    onToggle(habit, pageX, pageY);
     import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
-    checkScale.value = withSpring(1.25, { damping: 10, stiffness: 300 }, () => {
-      checkScale.value = withSpring(1, { damping: 14, stiffness: 200 });
-    });
-    emojiScale.value = withSequence(
-      withTiming(0.85, { duration: 80 }),
-      withSpring(1.2, { damping: 8, stiffness: 250 }),
-      withSpring(1.0, { damping: 14, stiffness: 200 })
+    checkScale.value = withSequence(
+      withTiming(1.18, { duration: 90, easing: Easing.out(Easing.quad) }),
+      withSpring(1, { damping: 16, stiffness: 320, mass: 0.5 })
     );
-  }, [isNegative, isCompleted, onToggle, habit.name, checkScale, emojiScale]);
+    emojiScale.value = withSequence(
+      withTiming(0.88, { duration: 80, easing: Easing.out(Easing.quad) }),
+      withSpring(1.0, { damping: 15, stiffness: 350, mass: 0.5 })
+    );
+  }, [isNegative, isCompleted, onToggle, habit, checkScale, emojiScale]);
 
   const handleLongPress = useCallback(() => {
     import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
@@ -414,8 +426,8 @@ const HabitCard = React.memo(function HabitCard({
       habit.name,
       [
         { text: "View Full Analytics", onPress: () => onOpenDetail && onOpenDetail(habit) },
-        { text: habit.archived ? "Unarchive" : "Archive", onPress: onArchive },
-        { text: "Delete", onPress: onDelete, style: 'destructive' },
+        { text: habit.archived ? "Unarchive" : "Archive", onPress: () => onArchive(habit.id) },
+        { text: "Delete", onPress: () => onDelete(habit.id), style: 'destructive' },
         { text: "Cancel", style: 'cancel' }
       ]
     );
@@ -677,7 +689,7 @@ const HabitCard = React.memo(function HabitCard({
 export default function HabitsScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-  const { allHabits, habitLogs, user, loading, optimisticUpdateHabit, optimisticAddHabitLog, optimisticRemoveHabitLog, optimisticUpdateHabitLog } = useCoreData();
+  const { allHabits, habitLogs, user, loading, optimisticUpdateHabit, optimisticDeleteHabit, optimisticAddHabitLog, optimisticRemoveHabitLog, optimisticUpdateHabitLog } = useCoreData();
   const isInitialLoading = loading && (!allHabits || allHabits.length === 0);
   const [createVisible, setCreateVisible] = useState(false);
   const [showReminderModal, setShowReminderModal] = useState(false);
@@ -1101,20 +1113,24 @@ export default function HabitsScreen() {
   }, [user, today, todayLogs, todayLogsByHabitId, handleQuantitativeUndo, optimisticUpdateHabitLog, optimisticAddHabitLog, optimisticUpdateHabit, optimisticRemoveHabitLog, allHabits]);
 
   const handleArchive = useCallback(async (habitId: string) => {
+    import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Medium));
+    optimisticUpdateHabit(habitId, { archived: true });
     try {
       await updateDoc(doc(db, COLLECTION.HABITS, habitId), { archived: true });
     } catch (e) {
       console.error('Error archiving habit', e);
     }
-  }, []);
+  }, [optimisticUpdateHabit]);
 
   const handleDelete = useCallback(async (habitId: string) => {
+    import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Medium));
+    optimisticDeleteHabit(habitId);
     try {
       await deleteDoc(doc(db, COLLECTION.HABITS, habitId));
     } catch (e) {
       console.error('Error deleting habit', e);
     }
-  }, []);
+  }, [optimisticDeleteHabit]);
 
   const handleFireConfetti = useCallback((x: number, y: number, color: string) => {
     setConfettiOpts({ x, y, color });
@@ -1145,25 +1161,23 @@ export default function HabitsScreen() {
     const h = item as Habit;
     const todayLog = todayLogsByHabitId.get(h.id);
     const isCompleted = h.targetCount && h.targetCount > 0 ? (todayLog?.count || 0) >= h.targetCount : !!todayLog;
-    const logsForHabit = logsByHabitId.get(h.id) || [];
+    const logsForHabit = logsByHabitId.get(h.id) || EMPTY_LOGS;
 
     return (
-      <Reanimated.View entering={FadeInDown.delay(index * 40).springify()}>
-        <HabitCard
-          habit={h}
-          isCompleted={isCompleted}
-          todayLog={todayLog}
-          habitLogs={logsForHabit}
-          onToggle={(x, y) => toggleHabit(h, x, y)}
-          onArchive={() => handleArchive(h.id)}
-          onDelete={() => handleDelete(h.id)}
-          onFireConfetti={handleFireConfetti}
-          freezesLeft={freezes}
-          onOpenDetail={(habit) => setDetailHabit(habit)}
-          onToggleHistoricalDate={handleToggleHistoricalDate}
-          cardViewMode={cardViewMode}
-        />
-      </Reanimated.View>
+      <HabitCard
+        habit={h}
+        isCompleted={isCompleted}
+        todayLog={todayLog}
+        habitLogs={logsForHabit}
+        onToggle={toggleHabit}
+        onArchive={handleArchive}
+        onDelete={handleDelete}
+        onFireConfetti={handleFireConfetti}
+        freezesLeft={freezes}
+        onOpenDetail={setDetailHabit}
+        onToggleHistoricalDate={handleToggleHistoricalDate}
+        cardViewMode={cardViewMode}
+      />
     );
   }, [positiveHabits.length, negativeHabits.length, styles.sectionHeader, todayLogsByHabitId, logsByHabitId, toggleHabit, handleArchive, handleDelete, handleFireConfetti, freezes, handleToggleHistoricalDate, cardViewMode]);
 

@@ -33,7 +33,10 @@ import {
   FileText,
   FileDown,
   Image as ImageIcon,
-  ExternalLink
+  ExternalLink,
+  Brain,
+  Play,
+  PenLine
 } from 'lucide-react';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { auth, db } from '../../services/firebase';
@@ -48,6 +51,7 @@ import { XPConstellationModal } from './XPConstellationModal';
 import { FlashcardReviewModal } from '../learning/FlashcardReviewModal';
 import { LEVEL_THRESHOLDS, LEVEL_TITLES } from '../../services/xpSystem';
 import { resolveSubjectDaySchedule, parseTimeToMinutes, calculateBunkMath } from '../academic/AttendanceModule';
+import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../gym/data/gymPlan';
 
 const MASCOT_FILES: Record<string, string> = {
   'Seeker': '/mascots/level0.png',
@@ -1048,6 +1052,29 @@ export const LifeHomeDashboard: React.FC = () => {
     return `${dayName}, ${dayNum} ${monthName} · ${timeStr} IST`;
   }, [timeStr]);
 
+  // ── Executive Life Bento: Single-Responsibility Data Pipelines ──
+
+  // 1. Today Gym Plan Split & Status
+  const todayGymSplit = useMemo(() => {
+    const dayOfWeek = new Date().getDay();
+    const planIdx = WEEKDAY_TO_PLAN[dayOfWeek] || 7;
+    const plan = GYM_PLAN.find(p => p.dayIndex === planIdx);
+    const isDone = (gymLogs || []).some((g: any) => {
+      if (!g) return false;
+      if (g.date === todayStr) return true;
+      if (g.timestamp) {
+        return getLocalDateString(new Date(g.timestamp)) === todayStr;
+      }
+      return false;
+    });
+    return {
+      name: plan?.name || (planIdx === 7 ? 'Rest & Recovery' : 'Workout'),
+      subtitle: plan?.subtitle || (planIdx === 7 ? 'Light stretch or rest day' : 'Scheduled gym routine'),
+      isRest: planIdx === 7,
+      isDone,
+    };
+  }, [gymLogs, todayStr]);
+
   // Real Quests dynamically compiled from user's live data:
   // 1. Time-sorted Classes/Labs & Tasks (Chronological from morning to evening, with Class/Lab pills)
   // 2. Instead of XP, show scheduled time from when to when on tasks and classes
@@ -1080,12 +1107,10 @@ export const LifeHomeDashboard: React.FC = () => {
       const clean = timeStr.trim();
       if (!clean || !/\d/.test(clean)) return '';
 
-      // If already a range (e.g. "09:00 - 10:00", "9 AM to 10 AM", "09:00–10:00")
       if (/[-–—]|(?:\s+to\s+)/i.test(clean)) {
         return formatTimeRangeDisplay(clean);
       }
 
-      // Single time: e.g. "10:00 AM", "09:00", "14:30"
       const startMins = parseTimeToMinutes(clean);
       if (startMins === 999) return clean;
 
@@ -1106,7 +1131,7 @@ export const LifeHomeDashboard: React.FC = () => {
 
     const scheduledQuests: QuestItem[] = [];
 
-    // 1. Classes & Labs (with Class / Lab pill badge)
+    // 1. Classes & Labs
     if (todayClasses.length > 0) {
       todayClasses.forEach(cls => {
         let mins = cls.timeMins !== undefined && cls.timeMins !== 999 ? cls.timeMins : parseItemTimeMinutes(cls.time);
@@ -1203,16 +1228,13 @@ export const LifeHomeDashboard: React.FC = () => {
       });
     });
 
-    // ── Sorting Rules ──
-    // 1. Active scheduled items (classes, labs, timed tasks morning-to-evening, untimed next)
+    // Sorting Rules:
     const activeScheduled = scheduledQuests
       .filter(q => !q.isDone)
       .sort((a, b) => a.timeMinutes - b.timeMinutes);
 
-    // 2. Active habits
     const activeHabits = habitQuests.filter(q => !q.isDone);
 
-    // 3. Completed, absent, or cancelled items strictly sink to the very end ("gone to the last")
     const completedScheduled = scheduledQuests
       .filter(q => q.isDone)
       .sort((a, b) => a.timeMinutes - b.timeMinutes);
@@ -1349,63 +1371,107 @@ export const LifeHomeDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Today's Quests */}
-            <div className="quests-section">
-              <div className="quests-header-label">Today's quests</div>
-              <div className="quests-list">
-                {quests.map(q => (
-                  <div
-                    key={q.id}
-                    className={`quest-item ${q.isDone ? 'done' : ''} ${q.status || ''}`}
-                    onClick={q.action}
-                    title="Click to advance or toggle quest"
-                  >
-                    <div className="quest-left">
-                      <div className={`quest-checkbox ${q.isDone ? 'checked' : ''} ${q.status || ''}`}>
-                        {q.status === 'missed' ? (
-                          <X size={10} strokeWidth={3} />
-                        ) : q.status === 'cancelled' ? (
-                          <Ban size={10} strokeWidth={2.5} />
-                        ) : q.isDone ? (
-                          <Check size={11} strokeWidth={3.2} />
-                        ) : null}
-                      </div>
-                      <span className="quest-title">{q.title}</span>
-                      {q.badge && (
-                        <span className={`quest-pill ${q.badgeType}`}>
-                          {q.badge}
-                        </span>
-                      )}
-                      {q.status === 'missed' && (
-                        <span className="quest-status-chip missed">Absent</span>
-                      )}
-                      {q.status === 'cancelled' && (
-                        <span className="quest-status-chip cancelled">Cancelled</span>
+            {/* ── DAILY HABITS (Only Here) ── */}
+            <div className="col1-section-divider" />
+            <div className="col1-section-label">
+              <Link to="/habits" className="col1-section-label-link">Daily Habits</Link>
+            </div>
+            <div className="col1-habits-list">
+              {(habits || []).length === 0 ? (
+                <div className="col1-habits-empty">No habits yet — <Link to="/habits">add one</Link></div>
+              ) : (
+                (habits || []).slice(0, 5).map((h: any) => {
+                  const done = isHabitDone(h.id);
+                  const streak = h.streak || h.currentStreak || 0;
+                  return (
+                    <div
+                      key={h.id}
+                      className={`col1-habit-row ${done ? 'done' : ''}`}
+                      onClick={() => toggleHabit(h.id)}
+                      title={done ? 'Tap to unmark' : 'Tap to mark done'}
+                    >
+                      <button
+                        type="button"
+                        className={`col1-habit-check ${done ? 'checked' : ''}`}
+                        aria-label="Toggle habit"
+                      >
+                        {done && <Check size={9} strokeWidth={3.5} />}
+                      </button>
+                      <span className="col1-habit-name">{h.name || h.title}</span>
+                      {streak > 0 && (
+                        <span className="col1-habit-streak">{streak}d</span>
                       )}
                     </div>
-                    {q.timeDisplay ? (
-                      <span className="quest-time-badge">{q.timeDisplay}</span>
-                    ) : q.type === 'habit' ? (
-                      <span className="quest-xp-badge">+{q.xp} XP</span>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
+                  );
+                })
+              )}
+
+              {/* Gym split row inside habits */}
+              {todayGymSplit && todayGymSplit.name && (
+                <Link
+                  to="/gym"
+                  className={`col1-habit-row col1-gym-row ${todayGymSplit.isDone ? 'done' : ''}`}
+                  title="Open Gym & Fitness Coach"
+                >
+                  <span className={`col1-habit-check ${todayGymSplit.isDone ? 'checked' : ''}`}>
+                    {todayGymSplit.isDone
+                      ? <Check size={9} strokeWidth={3.5} />
+                      : <Dumbbell size={9} strokeWidth={2.5} />
+                    }
+                  </span>
+                  <span className="col1-habit-name">
+                    {todayGymSplit.isRest ? 'Rest & Recovery' : todayGymSplit.name}
+                  </span>
+                  {todayGymSplit.isDone && (
+                    <span className="col1-habit-streak">✓</span>
+                  )}
+                </Link>
+              )}
             </div>
 
-            {/* Bottom Streak Row */}
-            <Link to="/habits" className="progress-streak-row" title="View Habit Streaks">
-              <div className="progress-streak-left">
-                <span className="streak-flame-icon">🔥</span>
-                <span className="streak-label">Streak</span>
+            {/* ── HYDRATION DOCK ── */}
+            <div className="col1-section-divider" />
+            <div className="col1-section-label">
+              <span>Hydration</span>
+              <button
+                type="button"
+                className="col1-water-target-btn"
+                onClick={() => setIsWaterTargetModalOpen(true)}
+                title="Set daily water goal"
+              >
+                {(waterTarget / 1000).toFixed(1)}L goal
+              </button>
+            </div>
+            <div className="col1-water-bar-row">
+              <div className="col1-water-bar-track">
+                <div
+                  className="col1-water-bar-fill"
+                  style={{ width: `${Math.min(100, Math.round((waterAmount / (waterTarget || 1)) * 100))}%` }}
+                />
               </div>
-              <span className="streak-val">{appStreak} {appStreak === 1 ? 'day' : 'days'}</span>
-            </Link>
+              <span className="col1-water-pct">
+                {(waterAmount / 1000).toFixed(1)} / {(waterTarget / 1000).toFixed(1)} L
+              </span>
+            </div>
+            <div className="col1-water-btns">
+              <button type="button" className="col1-water-btn" onClick={() => logWater(250)}>+250 ml</button>
+              <button type="button" className="col1-water-btn" onClick={() => logWater(500)}>+500 ml</button>
+              <button type="button" className="col1-water-btn col1-water-reset" onClick={resetWater} title="Reset today's water">↺</button>
+            </div>
+
+            {/* ── DISCIPLINE SCORE ── */}
+            <div className="col1-section-divider" />
+            <div className="col1-discipline-row">
+              <span className="col1-discipline-label">🔥 Discipline score</span>
+              <span className={`col1-discipline-val ${disciplineScore >= 80 ? 'high' : disciplineScore >= 50 ? 'mid' : 'low'}`}>
+                {disciplineScore}%
+              </span>
+            </div>
           </div>
         </div>
 
         {/* ══════════════════════════════════════════════════════════════
-            COLUMN 2 (CENTER): TASKS & CLASSES COMMAND CENTER
+            COLUMN 2 (CENTER): TASKS & TIMELINE COMMAND CENTER
             ══════════════════════════════════════════════════════════════ */}
         <div className="box-col box-col-tasks">
           <div className="card-tasks">
@@ -1508,21 +1574,39 @@ export const LifeHomeDashboard: React.FC = () => {
                 </div>
               )}
 
-              {/* ── TODAY ── */}
+              {/* ── TODAY'S TASKS & SCHEDULED ROUTINE ── */}
               <div className="tasks-section-today">
                 <div className="classes-subhead-row">
                   <span className="classes-subhead-title">Today</span>
                 </div>
 
-                {todayTasks.length === 0 ? (
-                  <div
-                    className="tasks-empty-banner"
-                    onClick={handleTriggerAddTask}
-                    title="Click to add a task for today"
-                  >
-                    <span className="tasks-empty-check">✓</span>
-                    <span>Nothing due today — good time for a focus block.</span>
+                {/* Scheduled Workout for Today (Integrated into Today Schedule) */}
+                {todayGymSplit && todayGymSplit.name && !todayGymSplit.isRest && (
+                  <div className={`task-row-today scheduled-workout-row ${todayGymSplit.isDone ? 'done' : ''}`} style={{ opacity: todayGymSplit.isDone ? 0.6 : 1 }}>
+                    <Link to="/gym" className="scheduled-workout-click-area" title="Open Gym & Fitness Coach">
+                      <span className="task-row-title scheduled-workout-heading">
+                        {todayGymSplit.name}
+                      </span>
+                    </Link>
+                    <div className="task-row-badges-cluster">
+                      <span className="task-workout-sub-text">
+                        {todayGymSplit.isDone ? '✓ Completed' : (todayGymSplit.subtitle || 'Workout')}
+                      </span>
+                    </div>
                   </div>
+                )}
+
+                {todayTasks.length === 0 ? (
+                  !(todayGymSplit && todayGymSplit.name && !todayGymSplit.isRest) && (
+                    <div
+                      className="tasks-empty-banner"
+                      onClick={handleTriggerAddTask}
+                      title="Click to add a task for today"
+                    >
+                      <span className="tasks-empty-check">✓</span>
+                      <span>Nothing due today — good time for a focus block.</span>
+                    </div>
+                  )
                 ) : (
                   <div className="tasks-list-today">
                     {todayTasks.map(task => {
@@ -1636,11 +1720,11 @@ export const LifeHomeDashboard: React.FC = () => {
         </div>
 
         {/* ══════════════════════════════════════════════════════════════
-            COLUMN 3 (RIGHT): ATTENDANCE, HABITS & VITALITY, GOALS & NOTES
+            COLUMN 3 (RIGHT): ATTENDANCE, HABITS & VITALITY, RECENT DOC
             ══════════════════════════════════════════════════════════════ */}
         <div className="box-col box-col-stack">
           
-          {/* Box 3A: Attendance */}
+          {/* Box 3A: Attendance (Matches Image 1) */}
           <div className="card-mini card-attendance">
             <div className="card-mini-header">
               <span className="card-mini-title">Attendance</span>
@@ -1678,96 +1762,33 @@ export const LifeHomeDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Box 3B: Habits & vitality */}
+          {/* Box 3B: Active Recall */}
           <div className="card-mini card-habits-vitality">
             <div className="card-mini-header">
-              <span className="card-mini-title">Habits & vitality</span>
-              <Link to="/habits" className="card-link">Streaks</Link>
+              <span className="card-mini-title">Active Recall</span>
+              <Link to="/habits" className="card-link">Flashcards</Link>
             </div>
 
-            {/* Hydration Tracker */}
-            <div className="water-mini-block">
-              <div className="water-mini-header">
-                <div
-                  className="water-mini-label"
-                  onClick={() => {
-                    setCustomGoalInput(String(waterTarget));
-                    setIsWaterTargetModalOpen(true);
-                  }}
-                  title="Click to customize daily water goal"
-                >
-                  Water — {(waterAmount / 1000).toFixed(1)}/{(waterTarget / 1000).toFixed(1)} L
-                </div>
-                <span className="water-mini-pct">
-                  {Math.round((waterAmount / (waterTarget || 1)) * 100)}%
-                </span>
+            <div
+              className="recall-mini-row"
+              onClick={() => setIsFlashcardModalOpen(true)}
+              title="Click to review Active Recall Deck"
+              style={{ cursor: 'pointer' }}
+            >
+              <div className="recall-mini-left">
+                <span className="recall-mini-name">Active recall deck</span>
+                <span className="recall-mini-sub">SM-2 spaced repetition</span>
               </div>
-              <div className="water-mini-track">
-                <div
-                  className="water-mini-fill"
-                  style={{ width: `${Math.min(100, Math.round((waterAmount / (waterTarget || 1)) * 100))}%` }}
-                />
-              </div>
-              <div className="water-chips-row">
-                <button type="button" className="water-btn-chip" onClick={() => logWater(250)}>+250 ml</button>
-                <button type="button" className="water-btn-chip" onClick={() => logWater(500)}>+500 ml</button>
-                {waterAmount > 0 && (
-                  <button type="button" className="water-btn-chip reset" onClick={resetWater} title="Reset water">
-                    <RotateCcw size={10} />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Habits List */}
-            <div className="habits-mini-list">
-              {(habits.length > 2 ? habits.slice(0, 5) : habits.slice(0, 2)).map(h => {
-                const isDone = isHabitDone(h.id);
-                const habitStreak = h.streak || h.currentStreak || 1;
-                return (
-                  <div key={h.id} className="habit-mini-row" onClick={() => toggleHabit(h.id)}>
-                    <div className="habit-mini-left">
-                      <span className="habit-mini-name">{h.name || h.title}</span>
-                      <span className="habit-mini-streak-label">{habitStreak}-day streak</span>
-                    </div>
-                    <button
-                      type="button"
-                      className={`habit-circle-check ${isDone ? 'checked' : ''}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleHabit(h.id);
-                      }}
-                      aria-label="Toggle habit"
-                    >
-                      {isDone && <Check size={11} strokeWidth={3} />}
-                    </button>
-                  </div>
-                );
-              })}
-
-              {/* Active Recall Deck row — hidden if habits > 2 */}
-              {habits.length <= 2 && (
-                <div
-                  className="recall-mini-row"
-                  onClick={() => setIsFlashcardModalOpen(true)}
-                  title="Review Flashcards with SM-2 Spaced Repetition"
-                >
-                  <div className="recall-mini-left">
-                    <span className="recall-mini-name">Active recall deck</span>
-                    <span className="recall-mini-sub">SM-2 repetition</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="recall-review-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsFlashcardModalOpen(true);
-                    }}
-                  >
-                    Review
-                  </button>
-                </div>
-              )}
+              <button
+                type="button"
+                className="recall-review-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsFlashcardModalOpen(true);
+                }}
+              >
+                Review
+              </button>
             </div>
           </div>
 

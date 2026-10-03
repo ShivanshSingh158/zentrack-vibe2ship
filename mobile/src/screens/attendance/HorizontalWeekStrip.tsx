@@ -5,7 +5,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   PanResponder,
-  Animated as RNAnimated,
+  Dimensions,
+  LayoutChangeEvent,
 } from 'react-native';
 import Reanimated, {
   useSharedValue,
@@ -13,6 +14,7 @@ import Reanimated, {
   withSpring,
   withSequence,
   withTiming,
+  runOnJS,
   Easing,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -24,6 +26,15 @@ interface HorizontalWeekStripProps {
   onSelectDate: (date: string) => void;
   holidays?: string[];
   today: string;
+}
+
+interface WeekDayItem {
+  dateStr: string;
+  dayNum: number;
+  dayName: string;
+  isSel: boolean;
+  isToday: boolean;
+  isHol: boolean;
 }
 
 function parseDateToMidnight(dateStr: string): Date {
@@ -46,6 +57,27 @@ function getSundayOfDate(dateStr: string): Date {
   return dt;
 }
 
+function generateWeekDays(sundayDate: Date, selectedDate: string, today: string, holidays: string[]): WeekDayItem[] {
+  const baseMs = sundayDate.getTime();
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(baseMs + i * 86400000);
+    const dateStr = getLocalDateString(d);
+    const dayNum = d.getDate();
+    const isSel = selectedDate === dateStr;
+    const isToday = today === dateStr;
+    const isHol = holidays.includes(dateStr);
+
+    return {
+      dateStr,
+      dayNum,
+      dayName: DAY_SHORT[i],
+      isSel,
+      isToday,
+      isHol,
+    };
+  });
+}
+
 const WeekDayCol = React.memo(function WeekDayCol({
   item,
   today,
@@ -54,7 +86,7 @@ const WeekDayCol = React.memo(function WeekDayCol({
   styles,
   onPress,
 }: {
-  item: any;
+  item: WeekDayItem;
   today: string;
   colors: any;
   isDark: boolean;
@@ -119,57 +151,71 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
 }: HorizontalWeekStripProps) {
   const { colors, isDark } = useTheme();
 
-  // Animations for week slide transition
-  const translateXAnim = useRef(new RNAnimated.Value(0)).current;
-  const opacityAnim = useRef(new RNAnimated.Value(1)).current;
+  const initialWidth = Dimensions.get('window').width;
+  const containerWidthRef = useRef(initialWidth);
+  const [containerWidth, setContainerWidth] = useState(initialWidth);
 
-  // Stably keep current active date in ref to prevent recreating PanResponder on every day selection
+  // Stably track current active date in ref for gesture callbacks
   const currentDateRef = useRef(selectedDate || today);
   currentDateRef.current = selectedDate || today;
 
-  // Derive the active week's Sunday directly from selectedDate (or today)
-  const activeSunday = useMemo(() => {
-    return getSundayOfDate(selectedDate || today);
+  // Active anchor Sunday
+  const [anchorSundayStr, setAnchorSundayStr] = useState(() => {
+    return getLocalDateString(getSundayOfDate(selectedDate || today));
+  });
+  const anchorSundayRef = useRef(anchorSundayStr);
+  anchorSundayRef.current = anchorSundayStr;
+
+  // Sync anchor when selectedDate navigates outside current visible week
+  useEffect(() => {
+    const curSun = getLocalDateString(getSundayOfDate(selectedDate || today));
+    if (curSun !== anchorSundayRef.current) {
+      setAnchorSundayStr(curSun);
+    }
   }, [selectedDate, today]);
 
-  // Compute the 7 days for the active week
-  const weekDays = useMemo(() => {
-    const baseMs = activeSunday.getTime();
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(baseMs + i * 86400000);
-      const dateStr = getLocalDateString(d);
-      const dayNum = d.getDate();
-      const isSel = selectedDate === dateStr;
-      const isToday = today === dateStr;
-      const isHol = holidays.includes(dateStr);
+  const activeSunday = useMemo(() => {
+    return parseDateToMidnight(anchorSundayStr);
+  }, [anchorSundayStr]);
 
-      return {
-        dateStr,
-        dayNum,
-        dayName: DAY_SHORT[i],
-        isSel,
-        isToday,
-        isHol,
-      };
-    });
+  const prevSunday = useMemo(() => {
+    return new Date(activeSunday.getTime() - 7 * 86400000);
+  }, [activeSunday]);
+
+  const nextSunday = useMemo(() => {
+    return new Date(activeSunday.getTime() + 7 * 86400000);
+  }, [activeSunday]);
+
+  // Compute 3 weeks of items: Prev, Current, Next (continuous sliding viewport)
+  const prevWeekDays = useMemo(() => {
+    return generateWeekDays(prevSunday, selectedDate, today, holidays);
+  }, [prevSunday, selectedDate, today, holidays]);
+
+  const currentWeekDays = useMemo(() => {
+    return generateWeekDays(activeSunday, selectedDate, today, holidays);
   }, [activeSunday, selectedDate, today, holidays]);
 
-  // Magnetic Sliding Pill Worklet
-  const selectedIndex = useMemo(() => {
-    const idx = weekDays.findIndex((d) => d.isSel);
-    return idx >= 0 ? idx : 0;
-  }, [weekDays]);
+  const nextWeekDays = useMemo(() => {
+    return generateWeekDays(nextSunday, selectedDate, today, holidays);
+  }, [nextSunday, selectedDate, today, holidays]);
 
-  const pillPosition = useSharedValue(selectedIndex);
+  // Magnetic active pill for current week
+  const colWidth = containerWidth > 0 ? containerWidth / 7 : 0;
+  const selectedIndex = useMemo(() => {
+    const idx = currentWeekDays.findIndex((d) => d.isSel);
+    return idx >= 0 ? idx : -1;
+  }, [currentWeekDays]);
+
+  const pillPosition = useSharedValue(selectedIndex >= 0 ? selectedIndex : 0);
   const isFirstMount = useRef(true);
 
   useEffect(() => {
+    if (selectedIndex < 0) return;
     if (isFirstMount.current) {
       isFirstMount.current = false;
       pillPosition.value = selectedIndex;
       return;
     }
-    // Apple iOS Critically Damped Spring: zero wobble, zero overshoot, silky-smooth glide
     pillPosition.value = withSpring(selectedIndex, {
       damping: 30,
       stiffness: 260,
@@ -177,110 +223,114 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
     });
   }, [selectedIndex]);
 
-  const [rowWidth, setRowWidth] = useState(0);
-  const colWidth = rowWidth > 0 ? rowWidth / 7 : 0;
-
   const animPillStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: pillPosition.value * colWidth + 1.5 }],
     width: Math.max(0, colWidth - 3),
-    opacity: colWidth > 0 ? 1 : 0,
+    opacity: selectedIndex >= 0 && colWidth > 0 ? 1 : 0,
   }));
 
-  // Navigation handlers with smooth directional animation
-  const animateTransition = useCallback(
-    (direction: 'left' | 'right', commitAction: () => void) => {
-      const exitValue = direction === 'left' ? -24 : 24;
-      const enterValue = direction === 'left' ? 24 : -24;
+  // Reanimated continuous translation across the 3 weeks
+  const translateX = useSharedValue(-initialWidth);
+  const isAnimatingRef = useRef(false);
 
-      RNAnimated.parallel([
-        RNAnimated.timing(translateXAnim, {
-          toValue: exitValue,
-          duration: 90,
-          useNativeDriver: true,
-        }),
-        RNAnimated.timing(opacityAnim, {
-          toValue: 0.2,
-          duration: 90,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        commitAction();
-        translateXAnim.setValue(enterValue);
-        RNAnimated.parallel([
-          RNAnimated.spring(translateXAnim, {
-            toValue: 0,
-            friction: 12,
-            tension: 80,
-            useNativeDriver: true,
-          }),
-          RNAnimated.timing(opacityAnim, {
-            toValue: 1,
-            duration: 120,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      });
-    },
-    [translateXAnim, opacityAnim]
-  );
+  useEffect(() => {
+    translateX.value = -containerWidth;
+  }, [containerWidth, translateX]);
 
-  const goToNextWeek = useCallback(() => {
-    Haptics.selectionAsync();
-    animateTransition('left', () => {
-      const cur = parseDateToMidnight(currentDateRef.current);
-      cur.setDate(cur.getDate() + 7);
-      onSelectDate(getLocalDateString(cur));
-    });
-  }, [onSelectDate, animateTransition]);
+  const animatedPagerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+    width: containerWidth * 3,
+  }));
 
-  const goToPrevWeek = useCallback(() => {
-    Haptics.selectionAsync();
-    animateTransition('right', () => {
-      const cur = parseDateToMidnight(currentDateRef.current);
-      cur.setDate(cur.getDate() - 7);
-      onSelectDate(getLocalDateString(cur));
-    });
-  }, [onSelectDate, animateTransition]);
+  const onContainerLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w > 0 && Math.abs(w - containerWidthRef.current) > 2) {
+      containerWidthRef.current = w;
+      setContainerWidth(w);
+      translateX.value = -w;
+    }
+  }, [translateX]);
 
-  // PanResponder to allow horizontal week swiping without blocking vertical scrolling (stable instance)
+  const commitNextWeek = useCallback(() => {
+    const cur = parseDateToMidnight(currentDateRef.current);
+    cur.setDate(cur.getDate() + 7);
+    const nextDateStr = getLocalDateString(cur);
+    const nextSunStr = getLocalDateString(getSundayOfDate(nextDateStr));
+    setAnchorSundayStr(nextSunStr);
+    onSelectDate(nextDateStr);
+    translateX.value = -containerWidthRef.current;
+    isAnimatingRef.current = false;
+  }, [onSelectDate, translateX]);
+
+  const commitPrevWeek = useCallback(() => {
+    const cur = parseDateToMidnight(currentDateRef.current);
+    cur.setDate(cur.getDate() - 7);
+    const prevDateStr = getLocalDateString(cur);
+    const prevSunStr = getLocalDateString(getSundayOfDate(prevDateStr));
+    setAnchorSundayStr(prevSunStr);
+    onSelectDate(prevDateStr);
+    translateX.value = -containerWidthRef.current;
+    isAnimatingRef.current = false;
+  }, [onSelectDate, translateX]);
+
+  // PanResponder with 1:1 real-time finger tracking & zero strobe flicker
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) => {
           return (
-            Math.abs(gestureState.dx) > 18 &&
-            Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5
+            Math.abs(gestureState.dx) > 14 &&
+            Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.4 &&
+            !isAnimatingRef.current
           );
         },
+        onPanResponderMove: (_, gestureState) => {
+          if (isAnimatingRef.current) return;
+          translateX.value = -containerWidthRef.current + gestureState.dx;
+        },
         onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dx < -35) {
-            goToNextWeek();
-          } else if (gestureState.dx > 35) {
-            goToPrevWeek();
+          if (isAnimatingRef.current) return;
+          const w = containerWidthRef.current;
+          const threshold = Math.min(w * 0.22, 60);
+
+          if (gestureState.dx < -threshold) {
+            // Advance to next week
+            isAnimatingRef.current = true;
+            Haptics.selectionAsync();
+            translateX.value = withSpring(
+              -2 * w,
+              { damping: 28, stiffness: 260, mass: 0.85 },
+              (finished) => {
+                if (finished) runOnJS(commitNextWeek)();
+              }
+            );
+          } else if (gestureState.dx > threshold) {
+            // Advance to prev week
+            isAnimatingRef.current = true;
+            Haptics.selectionAsync();
+            translateX.value = withSpring(
+              0,
+              { damping: 28, stiffness: 260, mass: 0.85 },
+              (finished) => {
+                if (finished) runOnJS(commitPrevWeek)();
+              }
+            );
+          } else {
+            // Cancel and snap back to center
+            translateX.value = withSpring(-w, {
+              damping: 30,
+              stiffness: 280,
+              mass: 0.8,
+            });
           }
         },
       }),
-    [goToNextWeek, goToPrevWeek]
+    [commitNextWeek, commitPrevWeek, translateX]
   );
 
-  return (
-    <View style={styles.container} {...panResponder.panHandlers}>
-      <RNAnimated.View
-        style={[
-          styles.weekRow,
-          {
-            transform: [{ translateX: translateXAnim }],
-            opacity: opacityAnim,
-          },
-        ]}
-        onLayout={(e) => {
-          const w = e.nativeEvent.layout.width;
-          if (w > 0 && w !== rowWidth) {
-            setRowWidth(w);
-          }
-        }}
-      >
-        {/* WhatsApp Magnetic Sliding Pill Indicator */}
+  const renderWeekRow = (days: WeekDayItem[], keySuffix: string, hasPill: boolean) => (
+    <View key={keySuffix} style={[styles.weekRow, { width: containerWidth }]}>
+      {hasPill && (
         <Reanimated.View
           pointerEvents="none"
           style={[
@@ -292,22 +342,31 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
             animPillStyle,
           ]}
         />
+      )}
+      {days.map((item) => (
+        <WeekDayCol
+          key={item.dateStr}
+          item={item}
+          today={today}
+          colors={colors}
+          isDark={isDark}
+          styles={styles}
+          onPress={() => {
+            Haptics.selectionAsync();
+            onSelectDate(item.dateStr);
+          }}
+        />
+      ))}
+    </View>
+  );
 
-        {weekDays.map((item) => (
-          <WeekDayCol
-            key={item.dateStr}
-            item={item}
-            today={today}
-            colors={colors}
-            isDark={isDark}
-            styles={styles}
-            onPress={() => {
-              Haptics.selectionAsync();
-              onSelectDate(item.dateStr);
-            }}
-          />
-        ))}
-      </RNAnimated.View>
+  return (
+    <View style={styles.container} onLayout={onContainerLayout} {...panResponder.panHandlers}>
+      <Reanimated.View style={[styles.pagerTrack, animatedPagerStyle]}>
+        {renderWeekRow(prevWeekDays, 'prev', false)}
+        {renderWeekRow(currentWeekDays, 'curr', true)}
+        {renderWeekRow(nextWeekDays, 'next', false)}
+      </Reanimated.View>
     </View>
   );
 });
@@ -319,12 +378,15 @@ const styles = StyleSheet.create({
     marginTop: 0,
     marginBottom: 8,
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  pagerTrack: {
+    flexDirection: 'row',
   },
   weekRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 2,
-    width: '100%',
     position: 'relative',
   },
   slidingActivePill: {

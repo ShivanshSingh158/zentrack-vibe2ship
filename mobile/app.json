@@ -66,6 +66,18 @@
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/logo_white.png",
+          "color": "#a599ff",
+          "sounds": [
+            "./assets/sounds/alert.wav",
+            "./assets/sounds/heavy.wav",
+            "./assets/sounds/chime.wav"
+          ]
+        }
+      ],
       "expo-font",
       [
         "expo-av",

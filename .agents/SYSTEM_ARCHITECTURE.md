@@ -83,12 +83,7 @@ zentrack-vibe2ship/
 │   ├── components/
 │   │   ├── SaraInterface.tsx       Main voice orb UI: pulsing orb, terminal feed, controls (~39KB)
 │   │   ├── LeftSidebar.tsx         Todoist-style left navigation sidebar (Dashboard, Inbox, Calendar, Habits, Analytics, Workspace, Settings, Theme toggle, Help)
-│   │   ├── Sidebar.tsx             Desktop navigation sidebar + agent dock
-│   │   ├── TopNav.tsx              Top bar: logo, search, Gemini auth badge, settings
-│   │   ├── BottomNav.tsx           Mobile bottom navigation tabs
 │   │   ├── CommandPalette.tsx      Keyboard command palette (Cmd+K)
-│   │   ├── AgentDataStream.tsx     Terminal feed: subscribes to agent-log CustomEvents
-│   │   ├── GoogleWorkspaceBanner.tsx Banner prompting Google OAuth when disconnected
 │   │   ├── Landing.tsx             Public landing page (unauthenticated)
 │   │   ├── Login.tsx               Auth page: Google Sign In + Firebase Auth
 │   │   ├── AnimatedPressable.tsx   Reusable pressable with micro-animation
@@ -113,15 +108,10 @@ zentrack-vibe2ship/
 │   │   └── PomodoroContext.tsx     Pomodoro timer state machine
 │   ├── features/                   Domain modules (lazy-loaded via React.lazy)
 │   │   ├── _shared/
-│   │   │   ├── FloatingExtraWorks.tsx Cross-feature floating widget
-│   │   │   └── VoiceQuickCaptureWidget.tsx Floating voice-to-text quick capture (~22KB)
+│   │   │   └── FloatingExtraWorks.tsx Cross-feature floating widget
 │   │   ├── dashboard/
-│   │   │   ├── HomeDashboard.tsx   Main app screen: agent orchestration entry point (~50KB)
-│   │   │   ├── LifeHomeDashboard.tsx Unified life dashboard (Balanced 3-column Bento Grid: Col 1 Life Matrix & Daily Vitality, Col 2 Master Flow & Upcoming Radar, Col 3 Attendance, Habits & Vitality with dynamic Active Recall, Recent Document / Vault Preview card)
-│   │   │   ├── AgentShutter.tsx    Animated panel revealing agent fleet during missions
-│   │   │   ├── MissionReport.tsx   Structured mission report display
-│   │   │   ├── VaultOrb.tsx        Animated 3D orb visualization (~20KB)
-│   │   │   └── ConflictCard.tsx    Scheduling conflict notification card
+│   │   │   ├── LifeHomeDashboard.tsx Unified life dashboard (Balanced 3-column Bento Grid: Col 1 Life Matrix & Daily Vitality, Col 2 Master Flow, Scheduled Tasks & Today's Workout, Col 3 Attendance, Habits & Active Recall, Studio Vault)
+│   │   │   └── MissionReport.tsx   Structured mission report display
 │   │   ├── tasks/
 │   │   │   ├── TodoListModule.tsx  Full task management UI (~46KB)
 │   │   │   ├── NewTaskModal.tsx    Todoist-style Quick Add task bar (real-time NLP, dynamic action pills, Date/Priority/Time/Tags popovers, dual-theme, task-modal.css)
@@ -138,7 +128,6 @@ zentrack-vibe2ship/
 │   │   │   ├── CategoryFilterTabs.tsx Category filter strip (All, Documents, Images, Notes) with dynamic count badges
 │   │   │   ├── BatchActionBar.tsx  Floating bottom action bar for multi-item selection (Select All, Move, Delete, New Folder with Selection)
 │   │   │   ├── MoveNodeModal.tsx   Move destination dialog (single and batch move to folders or root)
-│   │   │   ├── PdfCompressorModal.tsx PDF Compressor Studio modal (Strategies A, B, C, <10MB Cloudinary Gate, folder selector, 1-click upload)
 │   │   │   ├── NotesSidebar.tsx    Vault folders and storage meter sidebar
 │   │   │   ├── NotesEditor.tsx     Rich text editor component
 │   │   │   └── NotesAIPanel.tsx    AI suggestions panel for notes
@@ -181,18 +170,14 @@ zentrack-vibe2ship/
 │   │   │   └── IntegrationsModule.tsx Google Workspace integration settings
 │   │   ├── pomodoro/
 │   │   │   └── PomodoroStatsPanel.tsx Pomodoro statistics
-│   │   ├── review/
-│   │   │   └── WeeklyReviewModule.tsx Weekly reflection + review
-│   │   └── tools/
-│   │       └── ToolsHubModule.tsx  Tools hub (placeholder)
+│   │   └── review/
+│   │       └── WeeklyReviewModule.tsx Weekly reflection + review
 │   ├── hooks/
 │   │   ├── useProactiveAgent.ts    Background AI: periodic deadline/habit/risk checks (~41KB)
 │   │   ├── useDeadlineWatcher.ts   Watches tasks approaching deadline, fires browser notifs
 │   │   ├── useDocumentTitle.ts     Dynamic Todoist-style document title sync engine
-│   │   ├── useAgentVoice.ts        Integrates agent output with TTS
 │   │   └── useClassNotifications.ts Class schedule notification hook
 │   ├── services/
-│   │   ├── pdfCompressor.ts        In-app 3-Strategy PDF Compression Engine (Strategy A Canvas Raster, Strategy B Flate Object Stream / Lossless Text, Strategy C iLovePDF REST API, <10MB Cloudinary Gate)
 │   │   ├── firebase.ts             Firebase client: Auth + Firestore (offline persistence + multi-tab)
 │   │   ├── googleCalendar.ts       Google Calendar API: OAuth, event CRUD, token refresh, polling
 │   │   ├── googleWorkspace.ts      Gmail, Drive, Docs, Meet, Sheets API wrappers
@@ -232,8 +217,7 @@ zentrack-vibe2ship/
 │       ├── networkLogger.ts        API call logger: logApi(), logWebSocket() for DeveloperMatrix
 │       ├── notifications.ts        Browser notification helpers
 │       ├── validateInput.ts        Input sanitization utilities
-│       ├── sound.ts                UI sound effects
-│       └── seedDemoData.ts         Demo data seeder for onboarding
+│       └── sound.ts                UI sound effects
 ├── server/
 │   └── sarvamGateway.js            Local dev Express Sarvam TTS proxy (npm run dev:server)
 ├── backend/                        ⚠️ LEGACY — NOT used by web app. Render/Socket.IO server (deprecated for web).
@@ -738,6 +722,50 @@ User clicks "Connect Google" → signInWithGoogle() in googleCalendar.ts
      - Top action bar: Added "Compress PDF" action pill button (`.notes-action-pill-btn.compress-pill`) with Zap icon to compress any PDF on demand.
      - File viewer toolbar: Added "Compress" button when viewing stored PDFs to compress directly from the viewer.
 - **VERIFIED**: `npx tsc --noEmit` passed with 0 errors.
+
+### 2026-10-03 — Executive Life Bento Overhaul & Zero-Redundancy Space Optimization
+- **ARCHITECTURE & IMPLEMENTATION**:
+  1. **Zero-Redundancy Single Ownership**:
+     - **Column 1 (Identity & Vitality)**: Removed duplicate tasks from Quests. Now owns Character level/XP donut, Daily Habits checklist with streaks (`completedHabitsCount/habits.length`), Today's Gym Split dock (`WEEKDAY_TO_PLAN` + `GYM_PLAN`), and Hydration Station (`waterAmount/waterTarget` with `+250ml`, `+500ml`, `Reset`).
+     - **Column 2 (Tasks & Execution Command)**: Added **Up Next Spotlight** banner at top (next unlogged class or timed task with 1-click Focus launch). Today's tasks with priority tag, time slot, and Pomodoro timer. Replaced the empty "Upcoming" void with a **Deep Work & Focus Station** (minutes focused today, Pomodoro sessions completed, 1-click 25m Focus sprint, "Plan Tomorrow" button, and auto-saving scratchpad).
+     - **Column 3 (Academics & Knowledge Station)**: Attendance module upgraded with real-time **Bunk Safety Math tags** (`calculateBunkMath`: `✓ Can miss X` / `⚠️ Need X to safe`). Dedicated **Active Recall (SM-2)** study card with 1-click modal review. Compact, sleek **Studio Vault** card replacing oversized grey PDF boxes.
+  2. **Navigation Sidebar (`src/components/LeftSidebar.tsx`)**:
+     - Hid Goals, Job Tracker, and Sara AI from the Workspace collapsible menu per user directive.
+  3. **Styles (`src/styles/dashboard.css`)**:
+     - Added comprehensive styling for all new components with full dual-theme support (light and dark mode).
+- **VERIFIED**: `npx tsc --noEmit` passed with 0 errors. Dev server running at `http://localhost:5173/`.
+
+### 2026-10-03 — Codebase Dead Weight Purge, Minimalist Styling & Workflow Polish
+- **DEAD WEIGHT PURGE (29 Files Deleted, ~300KB Removed)**:
+  - *Styles*: `agent-dashboard.css`, `overhaul.css`, `vault-os.css`, `quantum-deck.css`, `bottom-nav.css`
+  - *Components*: `Sidebar.tsx`, `TopNav.tsx`, `BottomNav.tsx`, `MobileAppDrawer.tsx`, `GoogleWorkspaceBanner.tsx`, `AppLoader.tsx`, `AgentDataStream.tsx`, `AgentHistoryPanel.tsx`, `AgentApprovalToast.tsx`
+  - *Features*: `HomeDashboard.tsx` (unrendered 50KB duplicate), `AgentShutter.tsx`, `ConflictCard.tsx`, `VaultOrb.tsx`, `AgentCommandBar.tsx`, `FocusLockOverlay.tsx`, `PanicModeWarRoom.tsx`, `SnoozeInterventionDialog.tsx`, `src/features/dashboard/widgets/` (all 5 files), `ToolsHubModule.tsx`, `VoiceQuickCaptureWidget.tsx`
+  - *Hooks & Utils*: `useAgentVoice.ts`, `useUrgencyState.ts`, `useSubjects.ts`, `seedDemoData.ts`
+  - *Barrels*: Cleaned dead exports from `src/hooks/index.ts`, `src/features/_shared/index.ts`, and `src/index.css`.
+- **MINIMALIST TYPOGRAPHY & UI POLISH**:
+  - **No AI Pills**: Replaced rounded bubble pills on task times, priority tags (`.task-p-badge`, `.upcoming-priority-tag`), and timers with crisp, bold minimalist typography (Todoist aesthetic) matching the theme without colored bubble backgrounds/borders in `dashboard.css` and `plain-theme.css`.
+  - **Workout Split Relocated**: Removed standalone workout dock from Column 1 and integrated it cleanly as a scheduled item in Column 2 (`tasks-list-today`) whenever a workout is scheduled for today.
+  - **Gym Route (`/gym`)**: Added lazy-loaded `GymModule` route and prefetcher to `src/App.tsx` so clicking workout split items navigates directly to the Gym tracker.
+  - **Sidebar Popover Cleaned**: Removed `Goals & Milestones` and `SARA AI Voice` buttons from the user profile popover in `LeftSidebar.tsx`.
+  - **Active Recall & Vault Restyled**: Modernized Active Recall card and Studio Vault preview to calm, subtle theme tokens, replacing aggressive gradient buttons and oversized grey boxes.
+  - **VERIFIED**: `npx tsc --noEmit` passed with 0 errors. `npm run build` completed successfully (built in 12.92s, 147 PWA precache entries).
+
+### 2026-10-03 — Layout Restoration: Todoist-Style Minimalist Bento Matching Reference
+- **COLUMN 1 (IDENTITY & PROGRESS)**:
+  - Preserved "Your progress" hero card with rank donut ring, active XP, and Next Rank delta.
+  - Restored dynamic **Today's quests** pipeline and bottom streak row.
+  - Standalone workout dock completely removed.
+- **COLUMN 2 (TODAY'S SCHEDULE & UPCOMING)**:
+  - **Scheduled Workout Integration**: When a gym split is scheduled for today (`todayGymSplit && !todayGymSplit.isRest`), rendered cleanly inside the Today's scheduled section as `.task-row-today.scheduled-workout-row` with dumbbell glyph, split title, subtitle, and Todoist-style "Start ↗" / "✓ Logged" action link.
+  - Today's tasks rendered with crisp, bold minimalist typography (no bubbly AI pills).
+  - Upcoming tasks section with clean relative date groupings.
+- **COLUMN 3 (ATTENDANCE, HABITS & RECENT DOC — EXACT MATCH TO REFERENCE IMAGE 1)**:
+  - **Box 3A (Attendance)**: Clean card with "Details" link, overall percentage, and streamlined course progress bars with green/red indicator fills.
+  - **Box 3B (Habits & Vitality)**: Restored hydration tracker with `+250 ml` and `+500 ml` chips, daily habits with streak labels and circular outline checkboxes, and the **Active Recall deck ("flashback")** row with subtle amber `[Review]` button linking directly to `FlashcardReviewModal`.
+  - **Box 3C (Recent Document)**: Restored clean, subtle document card with thumbnail/icon, metadata row, and "Open Vault" empty state.
+- **VERIFIED**: `npx tsc --noEmit` exited with code 0.
+
+
 
 
 

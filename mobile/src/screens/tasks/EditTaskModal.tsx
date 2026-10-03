@@ -30,9 +30,10 @@ import { safeUpdate, safeDelete } from '../../utils/safeWrite';
 import { useTheme } from '../../contexts/ThemeContext';
 import BottomSheet from '../../components/ui/BottomSheet';
 import NLPTaskInput from '../../components/Tasks/NLPTaskInput';
-import RecurrencePickerModal from '../../components/Tasks/RecurrencePickerModal';
-import UniversalCalendarModal from '../../components/UniversalCalendarModal';
 import AnimatedPressable from '../../components/AnimatedPressable';
+
+const RecurrencePickerModal = React.lazy(() => import('../../components/Tasks/RecurrencePickerModal'));
+const UniversalCalendarModal = React.lazy(() => import('../../components/UniversalCalendarModal'));
 import { scheduleSingleTaskReminder } from '../../services/notifications';
 import { parseNLTask, ParsedTask, NLPToken, cleanTaskTitle } from '../../utils/dateUtils';
 import { isSilenceOrNoise } from '../../services/voiceEngine';
@@ -75,6 +76,21 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     lastTaskRef.current = task;
   }
   const currentTask = task || lastTaskRef.current;
+
+  // Internal visibility to allow BottomSheet to play its 210ms exit slide before unmounting
+  const [internalVisible, setInternalVisible] = useState(visible);
+  useEffect(() => {
+    setInternalVisible(visible);
+  }, [visible]);
+
+  const requestClose = useCallback(() => {
+    Keyboard.dismiss();
+    setInternalVisible(false);
+  }, []);
+
+  const handleFinishClose = useCallback(() => {
+    onClose();
+  }, [onClose]);
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -332,7 +348,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
       Alert.alert('Delete Recurring Task', 'Do you want to delete only this instance, or this and all future instances?', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'This instance only', style: 'destructive', onPress: () => {
-          onClose();
+          requestClose();
           optimisticDeleteTask(currentTask.id);
           safeDelete(
             currentTask.id,
@@ -341,7 +357,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
           );
         }},
         { text: 'All future instances', style: 'destructive', onPress: async () => {
-          onClose();
+          requestClose();
           optimisticDeleteTask(currentTask.id);
           try {
             const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', currentTask.userId));
@@ -368,7 +384,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            onClose();
+            requestClose();
             optimisticDeleteTask(currentTask.id);
             safeDelete(
               currentTask.id,
@@ -410,7 +426,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
       if (saveParsed.isRecurring && saveParsed.recurrenceRule && saveParsed.tokens.some(t => t.type === 'recurrence')) finalRecurrence = saveParsed.recurrenceRule;
     }
 
-    const finalIsReminder = saveParsed?.isReminder ?? isReminder;
+    const finalIsReminder = saveParsed?.isReminder ?? (isReminder || !!ts);
 
     const updatePayload = {
       title: finalTitle,
@@ -437,12 +453,10 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
 
     optimisticUpdateTask(currentTask.id, updatePayload);
 
-    if (finalIsReminder || ts) {
-      scheduleSingleTaskReminder({
-        id: currentTask.id,
-        ...updatePayload,
-      } as any).catch(console.warn);
-    }
+    scheduleSingleTaskReminder({
+      id: currentTask.id,
+      ...updatePayload,
+    } as any).catch(console.warn);
 
     if (currentTask.isRecurring || finalRecurrence) {
       Alert.alert('Edit Recurring Task', 'Apply changes to this instance only, or recreate all future instances?', [
@@ -486,12 +500,12 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
               }
               await createBatch.commit();
             }
-            onClose();
+            requestClose();
           } catch (e) { console.error(e); }
         }},
       ]);
     } else {
-      onClose();
+      requestClose();
       safeUpdate(
         currentTask.id,
         COLLECTION.TASKS,
@@ -502,21 +516,36 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
   };
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} fullHeight={false} avoidKeyboard={true}>
+    <BottomSheet visible={internalVisible} onClose={handleFinishClose} fullHeight={false} avoidKeyboard={true}>
       <View style={styles.container}>
         {/* iOS 18 Navigation Bar */}
         <View style={styles.headerBar}>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <TouchableOpacity
+            onPress={requestClose}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={styles.headerLeft}
+          >
             <Text style={styles.cancelBtnText}>Cancel</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Details</Text>
-          <TouchableOpacity
-            onPress={() => handleSave()}
-            disabled={!title.trim()}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Text style={[styles.doneBtnText, !title.trim() && { opacity: 0.35 }]}>Done</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRightActions}>
+            <TouchableOpacity
+              onPress={handleDelete}
+              hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
+              style={styles.headerDeleteBtn}
+              activeOpacity={0.7}
+              accessibilityLabel="Delete Task"
+            >
+              <Ionicons name="trash-outline" size={20} color="#FF453A" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleSave()}
+              disabled={!title.trim()}
+              hitSlop={{ top: 12, bottom: 12, left: 10, right: 12 }}
+            >
+              <Text style={[styles.doneBtnText, !title.trim() && { opacity: 0.35 }]}>Done</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView
@@ -966,20 +995,28 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
           />
         )}
 
-        <UniversalCalendarModal
-          visible={showCalendar}
-          onClose={() => setShowCalendar(false)}
-          selectedDate={taskDate}
-          onDateSelect={(d) => setTaskDate(d)}
-          title="Pick a Date"
-        />
+        {showCalendar && (
+          <React.Suspense fallback={null}>
+            <UniversalCalendarModal
+              visible={showCalendar}
+              onClose={() => setShowCalendar(false)}
+              selectedDate={taskDate}
+              onDateSelect={(d) => setTaskDate(d)}
+              title="Pick a Date"
+            />
+          </React.Suspense>
+        )}
 
-        <RecurrencePickerModal
-          visible={showRecurrenceModal}
-          onClose={() => setShowRecurrenceModal(false)}
-          initialRule={recurrenceRule}
-          onSave={setRecurrenceRule}
-        />
+        {showRecurrenceModal && (
+          <React.Suspense fallback={null}>
+            <RecurrencePickerModal
+              visible={showRecurrenceModal}
+              onClose={() => setShowRecurrenceModal(false)}
+              initialRule={recurrenceRule}
+              onSave={setRecurrenceRule}
+            />
+          </React.Suspense>
+        )}
       </View>
     </BottomSheet>
   );
@@ -1001,6 +1038,11 @@ const makeEditModalStyles = (colors: any, isDark: boolean = true) => StyleSheet.
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
   },
+  headerLeft: {
+    flex: 1,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
   cancelBtnText: {
     fontFamily: 'Inter_400Regular',
     fontSize: 16,
@@ -1010,6 +1052,19 @@ const makeEditModalStyles = (colors: any, isDark: boolean = true) => StyleSheet.
     fontFamily: 'Inter_600SemiBold',
     fontSize: 17,
     color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  headerRightActions: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 16,
+  },
+  headerDeleteBtn: {
+    padding: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   doneBtnText: {
     fontFamily: 'Inter_600SemiBold',

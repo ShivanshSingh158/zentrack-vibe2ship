@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pressable, Platform, StatusBar, Linking, PanResponder } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, Pressable, Platform, StatusBar, Linking, PanResponder, InteractionManager } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import Animated, {
   FadeIn,
   FadeInUp,
@@ -7,6 +8,8 @@ import Animated, {
   FadeOut,
   SlideInRight,
   SlideInLeft,
+  SlideInDown,
+  SlideOutLeft,
   LinearTransition,
   useSharedValue,
   useAnimatedStyle,
@@ -48,8 +51,8 @@ const UniversalCalendarModal = React.lazy(() => import('../components/UniversalC
 const BulkRescheduleSheet = React.lazy(() => import('../components/Tasks/BulkRescheduleSheet'));
 const TaskTemplatesSheet = React.lazy(() => import('../components/Tasks/TaskTemplatesSheet'));
 const TaskTimeLogSheet = React.lazy(() => import('../components/Tasks/TaskTimeLogSheet'));
-const EditTaskModal = React.lazy(() => import('./tasks/EditTaskModal'));
-const NewTaskModal = React.lazy(() => import('./tasks/NewTaskModal'));
+import EditTaskModal from './tasks/EditTaskModal';
+import NewTaskModal from './tasks/NewTaskModal';
 const VoiceDictationOverlay = React.lazy(() => import('../components/Tasks/VoiceDictationOverlay'));
 
 // Extracted Task Components
@@ -180,6 +183,15 @@ export default function TasksScreen() {
     }
   }, [route.params?.openAddTask, route.params?.timestamp]);
 
+  // Pre-warm primary modals after initial paint so tapping "+ Add task" has 0ms latency
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      import('./tasks/NewTaskModal');
+      import('./tasks/EditTaskModal');
+    });
+    return () => handle.cancel?.();
+  }, []);
+
   const [contextMenuTask, setContextMenuTask] = useState<Task | null>(null);
 
   // Morphing View Switcher Animation
@@ -270,30 +282,6 @@ export default function TasksScreen() {
     setSelectedDate(newDate);
   }, [selectedDate, setSelectedDate]);
 
-  // PanResponder allowing horizontal swiping anywhere across the task view to navigate dates
-  const taskViewPanResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) => {
-          // Do not steal touches in kanban mode (which has horizontal columns)
-          if (viewMode === 'kanban') return false;
-          // Only claim gesture if it's primarily horizontal with enough displacement
-          return (
-            Math.abs(gestureState.dx) > 28 &&
-            Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.8
-          );
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dx < -40) {
-            goToNextDay();
-          } else if (gestureState.dx > 40) {
-            goToPrevDay();
-          }
-        },
-      }),
-    [goToNextDay, goToPrevDay, viewMode]
-  );
-
   const displayedTasks = selectedDateTasks;
 
   const sections = useMemo(() => {
@@ -316,9 +304,47 @@ export default function TasksScreen() {
     setSelectedTaskIds(new Set([taskId]));
     setBulkRescheduleModal(true);
   }, [setSelectedTaskIds, setBulkRescheduleModal]);
-  const onPressRef = useCallback((task: any) => setEditingTask(task), [setEditingTask]);
-  const onLongPressRef = useCallback((task: any) => setContextMenuTask(task), []);
-  const onDeleteRef = useCallback((task: any) => { if (task.id) deleteTask(task.id); }, [deleteTask]);
+
+  // Floating Undo Toast State for Task Deletion
+  const [recentlyDeletedTask, setRecentlyDeletedTask] = useState<Task | null>(null);
+  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleUndoDelete = useCallback(() => {
+    if (recentlyDeletedTask) {
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+      optimisticAddTask(recentlyDeletedTask);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setRecentlyDeletedTask(null);
+    }
+  }, [recentlyDeletedTask, optimisticAddTask]);
+
+  const onDeleteRef = useCallback((task: any) => {
+    if (!task?.id) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    deleteTask(task.id);
+    setRecentlyDeletedTask(task);
+    if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+    undoTimeoutRef.current = setTimeout(() => {
+      setRecentlyDeletedTask(null);
+    }, 4500);
+  }, [deleteTask]);
+
+  const onPressRef = useCallback((task: any) => {
+    if (isBulkEdit) {
+      toggleTaskSelection(task.id);
+    } else {
+      setEditingTask(task);
+    }
+  }, [isBulkEdit, toggleTaskSelection, setEditingTask]);
+
+  const onLongPressRef = useCallback((task: any) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (!isBulkEdit) {
+      setIsBulkEdit(true);
+      toggleTaskSelection(task.id);
+    }
+  }, [isBulkEdit, toggleTaskSelection, setIsBulkEdit]);
+
   const onToggleSelectRef = useCallback((taskId: string) => toggleTaskSelection(taskId), [toggleTaskSelection]);
   const onUpdateTaskRef = useCallback((id: string, updates: any) => updateTask(id, updates), [updateTask]);
 
@@ -359,11 +385,17 @@ export default function TasksScreen() {
     />
   ), [isBulkEdit, selectedTaskIds, todayDateStr, onCompleteRef, onRescheduleRef, onPressRef, onLongPressRef, onDeleteRef, onToggleSelectRef, onUpdateTaskRef]);
 
-  const renderSectionHeader = useCallback(({ section: { title } }: any) => (
-    <View style={styles.listSectionHeader}>
-      <Text style={[styles.listSectionTitle, { color: colors.textTertiary, fontSize: 11, letterSpacing: 1 }]}>{title}</Text>
-    </View>
-  ), [styles.listSectionHeader, styles.listSectionTitle, colors.textTertiary]);
+  const listHeaderComponent = useMemo(() => {
+    if (displayedTasks.length === 0) return null;
+    const title = selectedDate === todayDateStr ? 'TODAY' : formatDateWithDay(selectedDate).toUpperCase();
+    return (
+      <View style={styles.listSectionHeader}>
+        <Text style={[styles.listSectionTitle, { color: colors.textTertiary, fontSize: 11, letterSpacing: 1 }]}>
+          {title}
+        </Text>
+      </View>
+    );
+  }, [displayedTasks.length, selectedDate, todayDateStr, styles.listSectionHeader, styles.listSectionTitle, colors.textTertiary]);
 
   const taskConflicts = useMemo(() => {
     return conflicts.filter(c => c.modules.includes('tasks') && !c.modules.includes('academic'));
@@ -547,16 +579,12 @@ export default function TasksScreen() {
         </Suspense>
       )}
 
-      {/* Edit & New Task Modals — strictly conditional (0 lines executed on mount) */}
+      {/* Edit & New Task Modals — 0ms instant Frame-0 response */}
       {!!editingTask && (
-        <Suspense fallback={null}>
-          <EditTaskModal visible={!!editingTask} onClose={() => setEditingTask(null)} task={editingTask} />
-        </Suspense>
+        <EditTaskModal visible={!!editingTask} onClose={() => setEditingTask(null)} task={editingTask} />
       )}
       {isNewTaskOpen && !!user && (
-        <Suspense fallback={null}>
-          <NewTaskModal visible={isNewTaskOpen} onClose={() => setIsNewTaskOpen(false)} userId={user.uid} selectedDate={selectedDate} listCount={selectedDateTasks.length} />
-        </Suspense>
+        <NewTaskModal visible={isNewTaskOpen} onClose={() => setIsNewTaskOpen(false)} userId={user.uid} selectedDate={selectedDate} listCount={selectedDateTasks.length} />
       )}
       {isVoiceDictationOpen && (
         <Suspense fallback={null}>
@@ -570,7 +598,7 @@ export default function TasksScreen() {
       )}
 
       {/* VIEWS */}
-      <View style={{ flex: 1 }} {...taskViewPanResponder.panHandlers}>
+      <View style={{ flex: 1 }}>
         {isInitialLoading ? (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
             <TasksSkeleton />
@@ -607,56 +635,56 @@ export default function TasksScreen() {
             </Suspense>
           </Animated.View>
         ) : (
-          <Animated.View
-            key={`list-${selectedDate}`}
-            entering={
-              swipeDirection === 'forward'
-                ? SlideInRight.duration(200).easing(Easing.out(Easing.cubic))
-                : SlideInLeft.duration(200).easing(Easing.out(Easing.cubic))
-            }
-            exiting={FadeOut.duration(120)}
-            style={{ flex: 1 }}
-          >
-          <SectionList
-            style={{ flex: 1 }}
-            contentContainerStyle={[
-              styles.listContent,
-              displayedTasks.length === 0 
-                ? { flexGrow: 1, justifyContent: 'center', paddingBottom: 80 } 
-                : { paddingBottom: 140 }
-            ]}
-            scrollEnabled={displayedTasks.length > 0}
-            bounces={displayedTasks.length > 0}
-            showsVerticalScrollIndicator={false}
-            removeClippedSubviews={Platform.OS === 'android'}
-            maxToRenderPerBatch={10}
-            windowSize={5}
-            initialNumToRender={8}
-            onScroll={handleScroll}
-            scrollEventThrottle={64}
-            onScrollEndDrag={(e: any) => {
-              if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
-            }}
-            onMomentumScrollEnd={(e: any) => {
-              if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
-            }}
-            sections={sections as any}
-            keyExtractor={taskKeyExtractor}
-            ListEmptyComponent={
-              <EmptyState
-                mascot="running"
-                title="All clear!"
-                subtitle="No tasks for today. Add one to stay on track."
-                mascotSize={110}
-                style={{ marginTop: 0, paddingVertical: 10 }}
-              />
-            }
-            renderSectionHeader={renderSectionHeader}
-            renderItem={renderItem}
-          />
-          </Animated.View>
+          <View style={{ flex: 1 }}>
+            <FlashList
+              data={displayedTasks}
+              renderItem={renderItem}
+              keyExtractor={taskKeyExtractor}
+              ListHeaderComponent={listHeaderComponent}
+              contentContainerStyle={[
+                styles.listContent,
+                displayedTasks.length === 0 
+                  ? { flexGrow: 1, justifyContent: 'center', paddingBottom: 80 } 
+                  : { paddingBottom: 140 }
+              ]}
+              showsVerticalScrollIndicator={false}
+              onScroll={handleScroll}
+              scrollEventThrottle={64}
+              onScrollEndDrag={(e: any) => {
+                if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
+              }}
+              onMomentumScrollEnd={(e: any) => {
+                if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
+              }}
+              ListEmptyComponent={
+                <EmptyState
+                  mascot="running"
+                  title="All clear!"
+                  subtitle="No tasks for today. Add one to stay on track."
+                  mascotSize={110}
+                  style={{ marginTop: 0, paddingVertical: 10 }}
+                />
+              }
+            />
+          </View>
         )}
       </View>
+
+      {/* FLOATING UNDO TOAST */}
+      {recentlyDeletedTask && (
+        <Animated.View
+          entering={SlideInDown.duration(200).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+          exiting={FadeOut.duration(150)}
+          style={[styles.undoToast, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}
+        >
+          <Text style={[styles.undoToastText, { color: colors.textPrimary }]} numberOfLines={1}>
+            Task deleted
+          </Text>
+          <AnimatedPressable variant="button" onPress={handleUndoDelete} style={styles.undoToastBtn}>
+            <Text style={styles.undoToastBtnText}>Undo</Text>
+          </AnimatedPressable>
+        </Animated.View>
+      )}
 
       {/* FLOATING ACTION PILLS */}
       <View style={[styles.floatingAddContainer, { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 }]}>
@@ -825,26 +853,28 @@ export default function TasksScreen() {
       )}
 
       {/* WHATSAPP-GRADE FLOATING CONTEXT MENU */}
-      <TaskContextMenuModal
-        visible={!!contextMenuTask}
-        task={contextMenuTask}
-        onClose={() => setContextMenuTask(null)}
-        onToggleComplete={(t) => {
-          completeTask(t);
-        }}
-        onReschedule={(t) => {
-          if (t.id) {
-            setSelectedTaskIds(new Set([t.id]));
-            setBulkRescheduleModal(true);
-          }
-        }}
-        onEdit={(t) => {
-          setEditingTask(t);
-        }}
-        onDelete={(t) => {
-          if (t.id) deleteTask(t.id);
-        }}
-      />
+      {!!contextMenuTask && (
+        <TaskContextMenuModal
+          visible={!!contextMenuTask}
+          task={contextMenuTask}
+          onClose={() => setContextMenuTask(null)}
+          onToggleComplete={(t) => {
+            completeTask(t);
+          }}
+          onReschedule={(t) => {
+            if (t.id) {
+              setSelectedTaskIds(new Set([t.id]));
+              setBulkRescheduleModal(true);
+            }
+          }}
+          onEdit={(t) => {
+            setEditingTask(t);
+          }}
+          onDelete={(t) => {
+            if (t.id) deleteTask(t.id);
+          }}
+        />
+      )}
 
     </View>
   );

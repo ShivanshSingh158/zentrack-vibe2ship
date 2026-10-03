@@ -24,7 +24,7 @@ import { buildTodayAgendaData, saveCachedWidgetData, updateTodayAgendaWidget, ge
 import { readAcademicCache } from '../../utils/domainCache';
 import { formatLocalDateStr } from '../../utils/dateUtils';
 import { readCoreCacheMulti } from '../../utils/coreCache';
-import { cancelClassNotificationsImmediately, clearScheduleCache } from '../../services/notifications';
+import { cancelClassNotificationsImmediately, cancelAllClassNotificationsForDate, clearScheduleCache } from '../../services/notifications';
 
 // Set the notification handler once at module level (previously in AttendanceScreen top-level)
 Notifications.setNotificationHandler({
@@ -429,7 +429,14 @@ export function useAttendanceFirestore({
         });
 
         await batch.commit();
+        clearScheduleCache();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
+        // Immediately cancel any pending scheduled OS notifications (60m, 30m, checkpoint, post-log)
+        // for all classes/labs on this date so they do not fire on a holiday!
+        cancelAllClassNotificationsForDate(currentSelectedDate).catch(() => {});
+        clearScheduleCache();
+
         const batch = writeBatch(db);
         const holidayDocRef = doc(collection(db, COLLECTION.ATTENDANCE_HOLIDAYS));
         batch.set(holidayDocRef, { userId: currentUser.uid, date: currentSelectedDate });
@@ -482,6 +489,7 @@ export function useAttendanceFirestore({
         });
 
         await batch.commit();
+        clearScheduleCache();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 

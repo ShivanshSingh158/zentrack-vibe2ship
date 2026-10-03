@@ -6,7 +6,7 @@
  */
 
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+import { Platform, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
@@ -70,6 +70,20 @@ import {
 
 export { requestNotificationPermissions };
 
+export async function openExactAlarmSettings(): Promise<void> {
+  if (Platform.OS === 'android') {
+    try {
+      await Linking.sendIntent('android.settings.REQUEST_SCHEDULE_EXACT_ALARM', [
+        { key: 'package', value: 'package:com.shiv157.zentrack' },
+      ]);
+    } catch {
+      Linking.openSettings();
+    }
+  } else {
+    Linking.openSettings();
+  }
+}
+
 // â”€â”€ Time & Date Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function parseTimeString(t?: string): { hours: number; minutes: number } | null {
@@ -127,6 +141,7 @@ export interface ScheduleParams {
   userGymPlan?: UserGymPlanDoc | null;
   flashcards?: Array<{ nextReviewDate: string }>;
   userName?: string;
+  holidays?: string[];
 }
 
 // â”€â”€ Data Fingerprint Cache (Persisted to Disk) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -262,6 +277,12 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     kv['zentrack_notif_weekly_review'] || 'true',
   ].join(',') : '';
 
+  const holidayFingerprint = (params.holidays || [])
+    .map((h: any) => typeof h === 'string' ? h.trim().slice(0, 10) : (h?.date ? String(h.date).trim().slice(0, 10) : ''))
+    .filter(Boolean)
+    .sort()
+    .join(',');
+
   return [
     taskFingerprint,
     eventFingerprint,
@@ -275,6 +296,7 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     attendanceLogFingerprint,
     (params.attendance || []).length,
     attendanceFingerprint,
+    holidayFingerprint,
     flashcardDueCount,
     prefsFingerprint,
     todayDateStr,
@@ -370,7 +392,20 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         attendanceLogs = [],
         userGymPlan = null,
         flashcards = [],
+        holidays = [],
       } = currentParams;
+
+      const rawHolidays = (holidays && holidays.length > 0)
+        ? holidays
+        : (getBootManifestSync()?.holidays || []);
+      const normalizedHolidays = new Set<string>(
+        (rawHolidays || []).map((h: any) => {
+          if (!h) return '';
+          if (typeof h === 'string') return h.trim().slice(0, 10);
+          if (typeof h.date === 'string') return h.date.trim().slice(0, 10);
+          return String(h).slice(0, 10);
+        }).filter(Boolean)
+      );
 
       const now = new Date();
       const y = now.getFullYear();
@@ -479,31 +514,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         return;
       }
 
-      // Snapshot scheduled notifications so we can restore gym rest timers afterward
-      const preExisting = await Notifications.getAllScheduledNotificationsAsync();
-      const restTimers = preExisting.filter(
-        n =>
-          n.content?.data?.type === 'rest_over' ||
-          (n.content?.title as string | undefined)?.includes('Rest is over') ||
-          n.identifier?.startsWith('rest_timer')
-      );
-
       await Notifications.cancelAllScheduledNotificationsAsync();
-
-      // Restore active gym rest-timer notifications that were wiped
-      if (restTimers.length > 0) {
-        for (const rt of restTimers) {
-          const trigger = rt.trigger as any;
-          const fireDate = trigger?.value ?? trigger?.date;
-          if (fireDate && new Date(fireDate).getTime() > Date.now()) {
-            await Notifications.scheduleNotificationAsync({
-              identifier: rt.identifier,
-              content: rt.content as any,
-              trigger: { type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date', date: new Date(fireDate) } as any,
-            }).catch(() => {});
-          }
-        }
-      }
 
       const boolVal = (suffix: string, def = true) => {
         const v = kv[`zentrack_notif_${suffix}`];
@@ -692,16 +703,15 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         const eligibleTasks = tasks
           .filter(t => {
             if (t.status === 'completed' || !t.date) return false;
+            // Must have a scheduled timeSlot OR explicit reminder enabled
+            if (!t.timeSlot && !t.isReminder) return false;
             const [y, m, d] = t.date.split('-').map(Number);
             if (!y) return false;
             const target = new Date(y, m - 1, d);
             const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
             const diffDays = Math.round((target.getTime() - todayMid.getTime()) / (24 * 60 * 60 * 1000));
-            // Include today & tomorrow for daily targets, or up to 7 days ahead for timed/reminder tasks
-            if (t.timeSlot || t.isReminder) {
-              return diffDays >= 0 && diffDays <= 7;
-            }
-            return diffDays === 0 || diffDays === 1;
+            // 7-day rolling horizon for scheduled tasks
+            return diffDays >= 0 && diffDays <= 7;
           })
           .sort((a, b) => {
             if (a.date !== b.date) return (a.date || '').localeCompare(b.date || '');
@@ -792,77 +802,16 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
 
             // â”€â”€ Exact Time Alert (Full Screen & Heads-Up) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             if (base > now) {
+              const isUrgent = !!task.isReminder;
               enqueue(
-                PRIORITY.CRITICAL,
-                task.title,
-                'Time to start. Tap to open or mark as done.',
+                isUrgent ? PRIORITY.CRITICAL : PRIORITY.HIGH,
+                isUrgent ? `⏰ REMINDER: ${task.title}` : task.title,
+                isUrgent
+                  ? `🚨 Urgent reminder: "${task.title}". Time to start!`
+                  : `Scheduled task: ${task.timeSlot || 'Starting now'}. Tap to open or mark as done.`,
                 base,
-                { taskId: task.id, taskTitle: task.title },
-                'task_alarm',
-                actionableNotifs ? 'task_reminder' : undefined
-              );
-            }
-          } else if (task.date === todayStr) {
-            base.setHours(defaultTime.hours, defaultTime.minutes, 0, 0);
-            if (base > now) {
-              enqueue(
-                PRIORITY.MEDIUM,
-                'Today\'s Focus',
-                getRandomMessage(TASK_DAILY_POOLS(task.title)),
-                base,
-                { taskId: task.id, taskTitle: task.title },
-                'default',
-                actionableNotifs ? 'task_reminder' : undefined
-              );
-            } else {
-              // Task added or app synced AFTER morning default time (e.g. after 8 AM)
-              // Schedule upcoming smart check-ins throughout the day so tasks aren't forgotten!
-              const checkPoints = [
-                { h: 13, m: 30, label: 'Midday Progress', body: `You have "${task.title}" scheduled for today.` },
-                { h: 17, m: 30, label: 'Afternoon Check-in', body: `"${task.title}" is still pending on your list.` },
-                { h: 20, m: 30, label: 'Evening Review', body: `Finish strong: "${task.title}" is still pending.` },
-                { h: 21, m: 45, label: 'Night Wrap-up', body: `Final check for today: "${task.title}".` },
-              ];
-              const upcomingCheckpoint = checkPoints.find(cp => {
-                const cpDate = dateAtHM(now, cp.h, cp.m);
-                return cpDate.getTime() > now.getTime() + 5 * 60 * 1000;
-              });
-              if (upcomingCheckpoint) {
-                const triggerCp = dateAtHM(now, upcomingCheckpoint.h, upcomingCheckpoint.m);
-                enqueue(
-                  PRIORITY.MEDIUM,
-                  upcomingCheckpoint.label,
-                  upcomingCheckpoint.body,
-                  triggerCp,
-                  { taskId: task.id, taskTitle: task.title },
-                  'reminders',
-                  actionableNotifs ? 'task_reminder' : undefined
-                );
-              } else {
-                // If all daytime checkpoints passed today, schedule a next morning reminder
-                const tomorrowMorning = dateAtHM(tomorrow, defaultTime.hours, defaultTime.minutes);
-                enqueue(
-                  PRIORITY.MEDIUM,
-                  'Pending Task',
-                  `Pending from yesterday: "${task.title}"`,
-                  tomorrowMorning,
-                  { taskId: task.id, taskTitle: task.title },
-                  'default',
-                  actionableNotifs ? 'task_reminder' : undefined
-                );
-              }
-            }
-          } else {
-            // Task is scheduled for a future day (e.g. tomorrow or upcoming) without a time slot
-            const targetMorning = dateAtHM(base, defaultTime.hours, defaultTime.minutes);
-            if (targetMorning > now) {
-              enqueue(
-                PRIORITY.MEDIUM,
-                'Upcoming Task',
-                `Scheduled for today: "${task.title}"`,
-                targetMorning,
-                { taskId: task.id, taskTitle: task.title },
-                'default',
+                { taskId: task.id, taskTitle: task.title, isReminder: isUrgent },
+                isUrgent ? 'task_urgent_alarm_v1' : 'reminders',
                 actionableNotifs ? 'task_reminder' : undefined
               );
             }
@@ -1166,7 +1115,8 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
 
         // Academic Classes & Labs
-        if (modAttendance) {
+        // If this date is marked as a holiday, skip all class and lab scheduling for this day
+        if (modAttendance && !normalizedHolidays.has(dateStr)) {
           interface DaySession {
             subject: string;
             subjectId: string;
@@ -1848,16 +1798,12 @@ export async function runNotificationDiagnostic(): Promise<string> {
       }
     }
 
-    // 4. Cancel existing
-    // IMPORTANT: After cancelling, clear the fingerprint cache so the next
-    // BackgroundNotificationWatcher run performs a full reschedule instead of
-    // hitting the stale cache and skipping (which was leaving the user with 0 alarms).
+    // 4. Inspect existing scheduled alarms without cancelling them
     try {
-      await Notifications.cancelAllScheduledNotificationsAsync();
-      clearScheduleCache();
-      lines.push(`${ok} cancelAllScheduledNotificationsAsync: OK (cache cleared)`);
+      const scheduledBefore = await Notifications.getAllScheduledNotificationsAsync();
+      lines.push(`${ok} Existing Active Alarms: ${scheduledBefore.length} alarm(s) queued in OS`);
     } catch (e: any) {
-      lines.push(`${fail} cancelAllScheduledNotificationsAsync: ${e?.message}`);
+      lines.push(`${fail} Inspect Existing Alarms: ${e?.message}`);
     }
 
     // 5. Try scheduling a test notification 30s from now using DATE trigger (same as real scheduler)
@@ -1896,6 +1842,9 @@ export async function runNotificationDiagnostic(): Promise<string> {
     await new Promise(r => setTimeout(r, 600));
     let scheduled = await Notifications.getAllScheduledNotificationsAsync();
     lines.push(`${scheduled.length > 0 ? ok : fail} getAllScheduledNotificationsAsync: ${scheduled.length} alarm(s) in OS queue`);
+    if (scheduledId) {
+      await Notifications.cancelScheduledNotificationAsync(scheduledId).catch(() => {});
+    }
 
     // 7. Long-range DATE probe (1h) â€” representative of real multi-hour notifications
     if (Platform.OS === 'android') {
@@ -1966,6 +1915,10 @@ export async function runNotificationDiagnostic(): Promise<string> {
 
 // â”€â”€ Immediate / Direct Task Reminder Scheduler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function scheduleSingleTaskReminder(task: Task) {
+  if (task.id) {
+    // If reminder was turned off or task completed, ensure any direct notification is cancelled
+    await Notifications.cancelScheduledNotificationAsync(`task_${task.id}`).catch(() => {});
+  }
   if (!task.title || task.status === 'completed') return;
   const parsedTime = parseTimeString(task.timeSlot);
   if (!parsedTime && !task.isReminder) return;
@@ -1987,16 +1940,24 @@ export async function scheduleSingleTaskReminder(task: Task) {
     }
   }
 
+  // If the target time is already in the past by more than 30 seconds, do not schedule an immediate alarm
+  if (targetDate.getTime() < now.getTime() - 30 * 1000) {
+    console.log(`[Notifications] Skipping past task reminder for "${task.title}" at ${targetDate.toLocaleTimeString()}`);
+    return;
+  }
+
   const triggerTime = targetDate.getTime() <= now.getTime() ? now.getTime() + 1500 : targetDate.getTime();
   const delaySeconds = Math.max(2, Math.round((triggerTime - Date.now()) / 1000));
 
   try {
+    const isUrgent = !!task.isReminder;
+    const targetChannel = isUrgent ? 'task_urgent_alarm_v1' : 'reminders';
     const targetDateObj = new Date(triggerTime);
     const triggerConfig: any = Platform.OS === 'android'
       ? {
           type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
           date: targetDateObj,
-          channelId: 'task_alarm',
+          channelId: targetChannel,
         }
       : {
           type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
@@ -2006,11 +1967,13 @@ export async function scheduleSingleTaskReminder(task: Task) {
     await Notifications.scheduleNotificationAsync({
       identifier: task.id ? `task_${task.id}` : undefined,
       content: {
-        title: task.title,
-        body: 'Time to start. Tap to open or mark as done.',
-        data: Platform.OS === 'ios' ? { taskId: task.id, taskTitle: task.title } : undefined,
-        channelId: 'task_alarm',
-        ...(Platform.OS === 'ios' ? { sound: 'default' } : {}),
+        title: isUrgent ? `⏰ REMINDER: ${task.title}` : task.title,
+        body: isUrgent
+          ? `🚨 Urgent reminder: "${task.title}". Time to start!`
+          : `Scheduled task: ${task.timeSlot || 'Starting now'}. Tap to open or mark as done.`,
+        data: Platform.OS === 'ios' ? { taskId: task.id, taskTitle: task.title, isReminder: isUrgent } : undefined,
+        channelId: targetChannel,
+        ...(Platform.OS === 'ios' ? { sound: isUrgent ? 'default' : undefined } : {}),
         priority: Notifications.AndroidNotificationPriority?.MAX ?? ('max' as any),
         categoryIdentifier: 'task_reminder',
       } as any,
@@ -2076,6 +2039,7 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_SYNC_TASK, async () => {
     const [
       tasksSnap, eventsSnap, gymSnap, attendanceSnap, attendanceLogsSnap,
       habitsSnap, habitLogsSnap, assignmentsSnap, waterSnap, sleepSnap, gymPlanSnap, flashcardsSnap,
+      holidaysSnap,
     ] = await Promise.all([
       getDocs(query(collection(db, COLLECTION.TASKS), where('userId', '==', userId), where('status', 'in', ['pending', 'in_progress']))),
       getDocs(query(collection(db, COLLECTION.CALENDAR_EVENTS), where('userId', '==', userId))),
@@ -2089,10 +2053,15 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_SYNC_TASK, async () => {
       getDocs(query(collection(db, COLLECTION.SLEEP_LOGS), where('userId', '==', userId), where('date', '>=', todayStr))),
       getDocs(query(collection(db, COLLECTION.USER_GYM_PLANS), where('userId', '==', userId))),
       getDocs(query(collection(db, COLLECTION.FLASHCARDS), where('userId', '==', userId))),
+      getDocs(query(collection(db, COLLECTION.ATTENDANCE_HOLIDAYS), where('userId', '==', userId))),
     ]);
 
     const rawGymPlanDoc = gymPlanSnap.docs[0];
     const fetchedUserGymPlan = rawGymPlanDoc ? ({ id: rawGymPlanDoc.id, ...rawGymPlanDoc.data() } as UserGymPlanDoc) : null;
+    const fetchedHolidays = holidaysSnap.docs.map(d => {
+      const raw = (d.data() as any)?.date;
+      return typeof raw === 'string' ? raw.trim().slice(0, 10) : '';
+    }).filter(Boolean);
 
     await scheduleAllNotifications({
       tasks: tasksSnap.docs.map(d => ({ id: d.id, ...d.data() } as Task)),
@@ -2107,6 +2076,7 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_SYNC_TASK, async () => {
       sleepLogs: sleepSnap.docs.map(d => ({ id: d.id, ...d.data() } as SleepLog)),
       userGymPlan: fetchedUserGymPlan,
       flashcards: flashcardsSnap.docs.map(d => d.data() as any),
+      holidays: fetchedHolidays,
     });
 
     return BackgroundFetch.BackgroundFetchResult.NewData;
@@ -2170,6 +2140,73 @@ export async function getAppNotificationSettings(): Promise<{ summary: string }>
     };
   } catch {
     return { summary: 'Default notification settings active' };
+  }
+}
+
+/**
+ * Cancels all pending scheduled class and lab notifications (upcoming, mid-lab checkpoint, post-class logging)
+ * for a specific date (e.g. when that day is marked as a holiday).
+ */
+export async function cancelAllClassNotificationsForDate(dateStr?: string): Promise<void> {
+  try {
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    if (!scheduled || scheduled.length === 0) return;
+
+    const targetDateStr = (dateStr ? dateStr.slice(0, 10) : formatLocalDateStr(new Date())).trim();
+    const toCancel: string[] = [];
+
+    for (const notif of scheduled) {
+      const id = notif.identifier || '';
+      const data = (notif.content?.data || {}) as any;
+
+      // Class/lab notification identification
+      const isClassIdentifier = id.startsWith('class_') || id.startsWith('lab_');
+      const isClassData =
+        data.type === 'class_pre' ||
+        data.type === 'class_log' ||
+        data.type === 'lab_mid' ||
+        data.type === 'lab_log' ||
+        data.type === 'class_reminder';
+
+      if (!isClassIdentifier && !isClassData) continue;
+
+      // Date matching
+      let matchesDate = false;
+      const trigger = notif.trigger as any;
+      const fireTimestamp = trigger?.value ?? trigger?.date;
+      if (fireTimestamp) {
+        const fireDate = new Date(fireTimestamp);
+        if (!isNaN(fireDate.getTime())) {
+          const fireDateStr = formatLocalDateStr(fireDate);
+          if (fireDateStr === targetDateStr) matchesDate = true;
+        }
+      } else if (data.date && String(data.date).slice(0, 10) === targetDateStr) {
+        matchesDate = true;
+      } else if (isClassIdentifier) {
+        // Fallback: identifier format class_{subjectId}_{sessionIdx}_{unixSec}
+        const parts = id.split('_');
+        if (parts.length >= 4) {
+          const sec = parseInt(parts[3], 10);
+          if (!isNaN(sec) && sec > 0) {
+            const fireDateStr = formatLocalDateStr(new Date(sec * 1000));
+            if (fireDateStr === targetDateStr) matchesDate = true;
+          }
+        }
+      }
+
+      if (matchesDate) {
+        toCancel.push(notif.identifier);
+      }
+    }
+
+    if (toCancel.length > 0) {
+      console.log(`[Notifications] cancelAllClassNotificationsForDate: cancelling ${toCancel.length} notif(s) on ${targetDateStr}`);
+      await Promise.all(toCancel.map(id => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
+    } else {
+      console.log(`[Notifications] cancelAllClassNotificationsForDate: no scheduled class notifs found for ${targetDateStr}`);
+    }
+  } catch (err) {
+    console.warn('[Notifications] Failed to cancel all class notifications for date:', err);
   }
 }
 

@@ -102,6 +102,27 @@ export async function ensureNotificationChannels(): Promise<void> {
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       bypassDnd: false,
     });
+    // ── Urgent Task Alarm: Heavy multi-pulse alarm stream with max audibility ──
+    await Notifications.setNotificationChannelAsync('task_urgent_alarm_v1', {
+      name: 'Urgent Reminders & Alarms',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 800, 300, 800, 300, 800, 300, 1200],
+      lightColor: '#ff3b30',
+      sound: 'default',
+      audioAttributes: {
+        usage: Notifications.AndroidAudioUsage?.ALARM ?? 4,
+        contentType: Notifications.AndroidAudioContentType?.SONIFICATION ?? 4,
+        flags: {
+          enforceAudibility: true,
+          requestHardwareAudioVideoSynchronization: false,
+        },
+      },
+      enableLights: true,
+      enableVibrate: true,
+      showBadge: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      bypassDnd: true,
+    });
   } catch (e) {
     console.warn('[NotificationChannels] Channel creation warning:', e);
   }

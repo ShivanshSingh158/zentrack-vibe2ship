@@ -1,18 +1,26 @@
-import React, { useMemo, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, PanResponder, Animated as RNAnimated } from 'react-native';
+import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  PanResponder,
+  Dimensions,
+  LayoutChangeEvent,
+} from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
   withSequence,
   withTiming,
+  runOnJS,
   Easing,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { Ionicons } from '@expo/vector-icons';
 import AnimatedPressable from '../AnimatedPressable';
 import { useTheme } from '../../contexts/ThemeContext';
-import { offsetDateStr, formatLocalDateStr } from '../../utils/dateUtils';
+import { offsetDateStr, formatLocalDateStr, parseLocalDate } from '../../utils/dateUtils';
 
 export interface DateObj {
   dateStr: string;
@@ -32,19 +40,19 @@ interface TaskDateStripProps {
   style?: any;
 }
 
-const generateDates = (baseDateStr: string) => {
+const generateDatesForAnchor = (anchorDateStr: string, selectedDateStr: string) => {
   const dates: DateObj[] = [];
-  const base = new Date(baseDateStr + 'T00:00:00');
+  const base = parseLocalDate(anchorDateStr);
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const dayFullNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const dayShortNames = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   const todayStr = formatLocalDateStr(new Date());
 
-  // Centered sequence of 7 days around the active date (-3 to +3)
+  // Centered sequence of 7 days around the anchor date (-3 to +3)
   for (let i = -3; i <= 3; i++) {
     const d = new Date(base);
     d.setDate(base.getDate() + i);
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dateStr = formatLocalDateStr(d);
 
     dates.push({
       dateStr,
@@ -53,7 +61,7 @@ const generateDates = (baseDateStr: string) => {
       dateNum: d.getDate().toString(),
       dayFull: dayFullNames[d.getDay()],
       dayShort: dayShortNames[d.getDay()],
-      active: i === 0,
+      active: dateStr === selectedDateStr,
       isToday: dateStr === todayStr,
     });
   }
@@ -76,7 +84,7 @@ const DatePillItem = React.memo(function DatePillItem({
   const isActive = dateObj.active;
   const numScale = useSharedValue(isActive ? 1.08 : 1);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isActive) {
       numScale.value = withSequence(
         withTiming(1.08, { duration: 100, easing: Easing.out(Easing.cubic) }),
@@ -136,97 +144,188 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({
 }: TaskDateStripProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-  const dates = useMemo(() => generateDates(selectedDate), [selectedDate]);
 
-  // Extract month and year from the active date (at index 3 in our -3 to +3 array)
-  const activeDateObj = dates[3];
+  // Window geometry
+  const initialWidth = Dimensions.get('window').width;
+  const containerWidthRef = useRef(initialWidth);
+  const [containerWidth, setContainerWidth] = useState(initialWidth);
+
+  // Anchor date represents the center (index 3) of the currently visible 7-day strip.
+  const [anchorDate, setAnchorDate] = useState(selectedDate);
+  const anchorDateRef = useRef(anchorDate);
+  anchorDateRef.current = anchorDate;
 
   const currentDateRef = useRef(selectedDate);
   currentDateRef.current = selectedDate;
 
-  // Slide animation for swipe transition
-  const translateXAnim = useRef(new RNAnimated.Value(0)).current;
-  const opacityAnim = useRef(new RNAnimated.Value(1)).current;
+  // Keep anchor in sync if selectedDate moves outside the current 7-day window
+  useEffect(() => {
+    if (!anchorDateRef.current) return;
+    const base = parseLocalDate(anchorDateRef.current);
+    const minD = new Date(base);
+    minD.setDate(base.getDate() - 3);
+    const maxD = new Date(base);
+    maxD.setDate(base.getDate() + 3);
+    const cur = parseLocalDate(selectedDate);
+    if (cur < minD || cur > maxD) {
+      setAnchorDate(selectedDate);
+    }
+  }, [selectedDate]);
 
-  const animateSlide = useCallback((direction: 'left' | 'right', commitAction: () => void) => {
-    const exitVal = direction === 'left' ? -18 : 18;
-    const enterVal = direction === 'left' ? 18 : -18;
+  // 3-Week Data: Prev Week (-7 days), Current Week (anchor), Next Week (+7 days)
+  const prevWeekDates = useMemo(() => {
+    const prevAnchor = offsetDateStr(anchorDate, -7);
+    return generateDatesForAnchor(prevAnchor, selectedDate);
+  }, [anchorDate, selectedDate]);
 
-    RNAnimated.parallel([
-      RNAnimated.timing(translateXAnim, {
-        toValue: exitVal,
-        duration: 75,
-        useNativeDriver: true,
-      }),
-      RNAnimated.timing(opacityAnim, {
-        toValue: 0.35,
-        duration: 75,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      commitAction();
-      translateXAnim.setValue(enterVal);
-      RNAnimated.parallel([
-        RNAnimated.spring(translateXAnim, {
-          toValue: 0,
-          friction: 12,
-          tension: 90,
-          useNativeDriver: true,
-        }),
-        RNAnimated.timing(opacityAnim, {
-          toValue: 1,
-          duration: 110,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    });
-  }, [translateXAnim, opacityAnim]);
+  const currentWeekDates = useMemo(() => {
+    return generateDatesForAnchor(anchorDate, selectedDate);
+  }, [anchorDate, selectedDate]);
 
-  const handleNextDay = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    animateSlide('left', () => {
-      const nextDate = offsetDateStr(currentDateRef.current, 1);
-      onSelectDate(nextDate);
-    });
-  }, [animateSlide, onSelectDate]);
+  const nextWeekDates = useMemo(() => {
+    const nextAnchor = offsetDateStr(anchorDate, 7);
+    return generateDatesForAnchor(nextAnchor, selectedDate);
+  }, [anchorDate, selectedDate]);
 
-  const handlePrevDay = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    animateSlide('right', () => {
-      const prevDate = offsetDateStr(currentDateRef.current, -1);
-      onSelectDate(prevDate);
-    });
-  }, [animateSlide, onSelectDate]);
+  // Active date object for the header display (DayFull, Month, Year)
+  const activeDateObj = useMemo(() => {
+    const found = currentWeekDates.find((d) => d.active);
+    if (found) return found;
+    const base = parseLocalDate(selectedDate);
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const dayFullNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const todayStr = formatLocalDateStr(new Date());
+    return {
+      dateStr: selectedDate,
+      month: months[base.getMonth()],
+      year: base.getFullYear().toString(),
+      dateNum: base.getDate().toString(),
+      dayFull: dayFullNames[base.getDay()],
+      dayShort: 'S',
+      active: true,
+      isToday: selectedDate === todayStr,
+    };
+  }, [currentWeekDates, selectedDate]);
+
+  // Continuous Worklet Translation: starts centered at -containerWidth
+  const translateX = useSharedValue(-initialWidth);
+  const isAnimatingRef = useRef(false);
+
+  useEffect(() => {
+    translateX.value = -containerWidth;
+  }, [containerWidth, translateX]);
+
+  const animatedPagerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+    width: containerWidth * 3,
+  }));
+
+  const onContainerLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w > 0 && Math.abs(w - containerWidthRef.current) > 2) {
+      containerWidthRef.current = w;
+      setContainerWidth(w);
+      translateX.value = -w;
+    }
+  }, [translateX]);
+
+  const commitNextWeek = useCallback(() => {
+    const nextAnchor = offsetDateStr(anchorDateRef.current, 7);
+    const nextSelected = offsetDateStr(currentDateRef.current, 7);
+    setAnchorDate(nextAnchor);
+    onSelectDate(nextSelected);
+    translateX.value = -containerWidthRef.current;
+    isAnimatingRef.current = false;
+  }, [onSelectDate, translateX]);
+
+  const commitPrevWeek = useCallback(() => {
+    const prevAnchor = offsetDateStr(anchorDateRef.current, -7);
+    const prevSelected = offsetDateStr(currentDateRef.current, -7);
+    setAnchorDate(prevAnchor);
+    onSelectDate(prevSelected);
+    translateX.value = -containerWidthRef.current;
+    isAnimatingRef.current = false;
+  }, [onSelectDate, translateX]);
 
   const handleJumpToToday = useCallback(() => {
     Haptics.selectionAsync();
     const todayStr = formatLocalDateStr(new Date());
+    setAnchorDate(todayStr);
     onSelectDate(todayStr);
-  }, [onSelectDate]);
+    translateX.value = -containerWidthRef.current;
+  }, [onSelectDate, translateX]);
 
-  // PanResponder to allow horizontal day swiping across the date strip
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) => {
+          if (isAnimatingRef.current) return false;
           return (
-            Math.abs(gestureState.dx) > 16 &&
-            Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.4
+            Math.abs(gestureState.dx) > 12 &&
+            Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5
           );
         },
+        onPanResponderGrant: () => {
+          // Ready to track gesture
+        },
+        onPanResponderMove: (_, gestureState) => {
+          if (isAnimatingRef.current) return;
+          const w = containerWidthRef.current;
+          translateX.value = -w + gestureState.dx;
+        },
         onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dx < -28) {
-            handleNextDay();
-          } else if (gestureState.dx > 28) {
-            handlePrevDay();
+          if (isAnimatingRef.current) return;
+          const w = containerWidthRef.current;
+          const dx = gestureState.dx;
+          const vx = gestureState.vx;
+
+          if (dx < -32 || vx < -0.35) {
+            // Swiped left -> Go to Next Week (+7 days)
+            isAnimatingRef.current = true;
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            translateX.value = withTiming(-2 * w, {
+              duration: 200,
+              easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+            }, (finished) => {
+              if (finished) {
+                runOnJS(commitNextWeek)();
+              }
+            });
+          } else if (dx > 32 || vx > 0.35) {
+            // Swiped right -> Go to Last Week (-7 days)
+            isAnimatingRef.current = true;
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            translateX.value = withTiming(0, {
+              duration: 200,
+              easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+            }, (finished) => {
+              if (finished) {
+                runOnJS(commitPrevWeek)();
+              }
+            });
+          } else {
+            // Did not cross threshold -> spring snap back to center
+            translateX.value = withSpring(-w, {
+              damping: 28,
+              stiffness: 300,
+              mass: 0.8,
+            });
           }
         },
+        onPanResponderTerminate: () => {
+          if (isAnimatingRef.current) return;
+          translateX.value = withSpring(-containerWidthRef.current, {
+            damping: 28,
+            stiffness: 300,
+            mass: 0.8,
+          });
+        },
       }),
-    [handleNextDay, handlePrevDay]
+    [commitNextWeek, commitPrevWeek, translateX]
   );
 
   return (
-    <View style={[styles.container, style]} {...panResponder.panHandlers}>
+    <View style={[styles.container, style]} onLayout={onContainerLayout} {...panResponder.panHandlers}>
       {/* Header Row: Day • Month Year + Navigation Actions */}
       <View style={styles.headerRow}>
         <View style={styles.headerLeftCol}>
@@ -261,30 +360,55 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({
         </View>
       </View>
 
-      {/* Dates Row with slide animation */}
-      <RNAnimated.View
-        style={[
-          styles.dateRow,
-          {
-            transform: [{ translateX: translateXAnim }],
-            opacity: opacityAnim,
-          },
-        ]}
-      >
-        {dates.map((d) => (
-          <DatePillItem
-            key={d.dateStr}
-            dateObj={d}
-            taskDates={taskDates}
-            onSelectDate={onSelectDate}
-            colors={colors}
-            styles={styles}
-          />
-        ))}
-      </RNAnimated.View>
+      {/* 3-Week Continuous Sliding Viewport (Zero Flicker, 120fps Native Thread) */}
+      <Animated.View style={[styles.pagerRow, animatedPagerStyle]}>
+        {/* Page -1: Last Week */}
+        <View style={[styles.weekPage, { width: containerWidth }]}>
+          {prevWeekDates.map((d) => (
+            <DatePillItem
+              key={d.dateStr}
+              dateObj={d}
+              taskDates={taskDates}
+              onSelectDate={onSelectDate}
+              colors={colors}
+              styles={styles}
+            />
+          ))}
+        </View>
+
+        {/* Page 0: Current Week */}
+        <View style={[styles.weekPage, { width: containerWidth }]}>
+          {currentWeekDates.map((d) => (
+            <DatePillItem
+              key={d.dateStr}
+              dateObj={d}
+              taskDates={taskDates}
+              onSelectDate={onSelectDate}
+              colors={colors}
+              styles={styles}
+            />
+          ))}
+        </View>
+
+        {/* Page +1: Next Week */}
+        <View style={[styles.weekPage, { width: containerWidth }]}>
+          {nextWeekDates.map((d) => (
+            <DatePillItem
+              key={d.dateStr}
+              dateObj={d}
+              taskDates={taskDates}
+              onSelectDate={onSelectDate}
+              colors={colors}
+              styles={styles}
+            />
+          ))}
+        </View>
+      </Animated.View>
     </View>
   );
 });
+
+export default TaskDateStrip;
 
 const makeStyles = (colors: any, isDark: boolean = true) =>
   StyleSheet.create({
@@ -293,6 +417,7 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       paddingBottom: 4,
       backgroundColor: 'transparent',
       width: '100%',
+      overflow: 'hidden',
     },
     headerRow: {
       width: '100%',
@@ -334,18 +459,10 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       fontSize: 11,
       letterSpacing: 0.1,
     },
-    chevronBtn: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : colors.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.border,
+    pagerRow: {
+      flexDirection: 'row',
     },
-    dateRow: {
-      width: '100%',
+    weekPage: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       gap: 6,

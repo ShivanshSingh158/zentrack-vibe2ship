@@ -96,7 +96,7 @@ async function fetchWeekStats(userId: string, start: string, end: string) {
     }
 
     const dailyBreakdown = days.map(date => {
-      const dayTodos = tasks.filter(t => t.date === date);
+      const dayTodos = todos.filter(t => t.date === date);
       const dayLogs = logs.filter(l => l.date === date);
       const dayHabits = habitLogs.filter((h: any) => h.date === date && h.completed);
       const dayGym = gymLogs.filter((g: any) => g.date === date);
@@ -129,7 +129,7 @@ async function fetchWeekStats(userId: string, start: string, end: string) {
 
     return {
       todosCompleted,
-      todosTotal: tasks.length,
+      todosTotal: todos.length,
       productiveHours: Math.round(productiveHours * 10) / 10,
       learningSubtasksDone,
       learningSubtasksTotal,

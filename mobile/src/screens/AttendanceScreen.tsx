@@ -537,7 +537,7 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
       <View style={styles.bySubjectBunkRow}>
         <Ionicons name="alert-circle-outline" size={13.5} color={colors.priorityMed || '#FF9F0A'} style={{ marginRight: 4 }} />
         <Text style={{ color: colors.priorityMed || '#FF9F0A', fontSize: 12, fontFamily: FONT_FAMILY.medium }}>
-          0 misses left â€” attend all next classes
+          0 misses left — attend all next classes
         </Text>
       </View>
     );
@@ -998,7 +998,7 @@ export default function AttendanceScreen() {
               const need = Math.max(0, Math.ceil((targetPct * tot - 100 * att) / (100 - targetPct)));
               return (
                 <Text key={s.id} style={styles.warningText}>
-                  {s.name} at {pct}% â€” attend {need} more to recover
+                  {s.name} at {pct}% — attend {need} more to recover
                 </Text>
               );
             })}
@@ -1232,146 +1232,159 @@ export default function AttendanceScreen() {
         />
       )}
 
-      {/* â”€â”€ Lazy Loaded Modals â”€â”€ */}
+      {/* ── Lazy Loaded Modals ── */}
       <Suspense fallback={null}>
         {/* Timetable Modal */}
-        <TimetableModal
-          visible={isTimetableOpen}
-          onClose={() => setIsTimetableOpen(false)}
-          subjects={subjects}
-          handleAddSubject={handleAddSubject}
-          onEditSubject={handleEditSubject}
-          handleDeleteSubject={handleDeleteSubject}
-          handleResetSemester={handleResetSemester}
-        />
+        {isTimetableOpen && (
+          <TimetableModal
+            visible={isTimetableOpen}
+            onClose={() => setIsTimetableOpen(false)}
+            subjects={subjects}
+            handleAddSubject={handleAddSubject}
+            onEditSubject={handleEditSubject}
+            handleDeleteSubject={handleDeleteSubject}
+            handleResetSemester={handleResetSemester}
+          />
+        )}
 
         {/* History Modal */}
-        <SubjectHistoryModal
-          visible={!!selectedHistorySubject}
-          subject={selectedHistorySubject}
-          logs={logs}
-          subjects={subjects}
-          colors={colors}
-          isDark={isDark}
-          styles={styles}
-          onClose={() => setSelectedHistorySubject(null)}
-          onUndo={handleUndo}
-        />
+        {!!selectedHistorySubject && (
+          <SubjectHistoryModal
+            visible={!!selectedHistorySubject}
+            subject={selectedHistorySubject}
+            logs={logs}
+            subjects={subjects}
+            colors={colors}
+            isDark={isDark}
+            styles={styles}
+            onClose={() => setSelectedHistorySubject(null)}
+            onUndo={handleUndo}
+          />
+        )}
 
         {/* Add Subject Modal */}
-        <AddSubjectModal 
-          visible={showAddModal} 
-          onClose={() => setShowAddModal(false)} 
-          existingSubject={editSubject} 
-        />
+        {showAddModal && (
+          <AddSubjectModal 
+            visible={showAddModal} 
+            onClose={() => setShowAddModal(false)} 
+            existingSubject={editSubject} 
+          />
+        )}
 
         {/* Class Notification Preferences Modal */}
-        <ClassNotifSettingsModal
-          visible={showClassNotifModal}
-          onClose={() => setShowClassNotifModal(false)}
-        />
+        {showClassNotifModal && (
+          <ClassNotifSettingsModal
+            visible={showClassNotifModal}
+            onClose={() => setShowClassNotifModal(false)}
+          />
+        )}
 
         {/* WhatsApp-Grade Floating Action Context Menu for Subjects */}
-        <SubjectContextMenuModal
-          visible={!!contextMenuSubject}
-          subject={contextMenuSubject}
-          onClose={() => setContextMenuSubject(null)}
-          onQuickLogExtra={(subj) => {
-            setContextMenuSubject(null);
-            setTimeout(() => {
-              setExtraSubjectId(subj.id);
-              setIsExtraOpen(true);
-            }, 100);
-          }}
-          onViewHistory={(subj) => {
-            setContextMenuSubject(null);
-            setTimeout(() => {
-              setSelectedHistorySubject(subj);
-            }, 100);
-          }}
-          onEditSubject={(subj) => {
-            setContextMenuSubject(null);
-            handleEditSubject(subj);
-          }}
-          onResetSubject={(subj) => {
-            Alert.alert(
-              'Reset Attendance',
-              `Are you sure you want to reset attendance for "${subj.name}"? This will set attended and total counts to 0.`,
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Reset',
-                  style: 'destructive',
-                  onPress: () => {
-                    academic.optimisticUpdateAttendance(subj.id, {
-                      classesAttended: 0,
-                      classesTotal: 0,
-                      labsAttended: 0,
-                      labsTotal: 0,
-                    });
+        {!!contextMenuSubject && (
+          <SubjectContextMenuModal
+            visible={!!contextMenuSubject}
+            subject={contextMenuSubject}
+            onClose={() => setContextMenuSubject(null)}
+            onQuickLogExtra={(subj) => {
+              setContextMenuSubject(null);
+              setTimeout(() => {
+                setExtraSubjectId(subj.id);
+                setIsExtraOpen(true);
+              }, 100);
+            }}
+            onViewHistory={(subj) => {
+              setContextMenuSubject(null);
+              setTimeout(() => {
+                setSelectedHistorySubject(subj);
+              }, 100);
+            }}
+            onEditSubject={(subj) => {
+              setContextMenuSubject(null);
+              handleEditSubject(subj);
+            }}
+            onResetSubject={(subj) => {
+              Alert.alert(
+                'Reset Attendance',
+                `Are you sure you want to reset attendance for "${subj.name}"? This will set attended and total counts to 0.`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Reset',
+                    style: 'destructive',
+                    onPress: () => {
+                      academic.optimisticUpdateAttendance(subj.id, {
+                        classesAttended: 0,
+                        classesTotal: 0,
+                        labsAttended: 0,
+                        labsTotal: 0,
+                      });
+                    },
                   },
-                },
-              ]
-            );
-          }}
-        />
+                ]
+              );
+            }}
+          />
+        )}
       </Suspense>
 
       {/* Unlogged / Pending Classes & Labs Drawer */}
-      <BottomSheet visible={isUnloggedOpen} onClose={() => setIsUnloggedOpen(false)} avoidKeyboard={false}>
-        <View style={{ width: '100%', maxHeight: 480 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-            <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={styles.sheetTitle}>Unlogged Classes & Labs</Text>
-              <Text style={{ fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
-                {unloggedSessions.length} {unloggedSessions.length === 1 ? 'past session' : 'past sessions'} pending • Newest first
-              </Text>
+      {isUnloggedOpen && (
+        <BottomSheet visible={isUnloggedOpen} onClose={() => setIsUnloggedOpen(false)} avoidKeyboard={false}>
+          <View style={{ width: '100%', maxHeight: 480 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <View style={{ flex: 1, marginRight: 10 }}>
+                <Text style={styles.sheetTitle}>Unlogged Classes & Labs</Text>
+                <Text style={{ fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
+                  {unloggedSessions.length} {unloggedSessions.length === 1 ? 'past session' : 'past sessions'} pending • Newest first
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsUnloggedOpen(false)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={() => setIsUnloggedOpen(false)} style={{ padding: 4 }}>
-              <Ionicons name="close" size={20} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
 
-          {unloggedSessions.length === 0 ? (
-            <Reanimated.View
-              entering={FadeIn.duration(220).easing(Easing.bezier(0.16, 1, 0.3, 1))}
-              style={{ paddingVertical: 36, alignItems: 'center', gap: 10 }}
-            >
-              <Ionicons name="checkmark-done-circle-outline" size={48} color={isDark ? '#34D399' : '#059669'} />
-              <Text style={{ fontSize: 16, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
-                All Caught Up! 🎉
-              </Text>
-              <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', paddingHorizontal: 20 }}>
-                No unlogged classes or labs found in the past 30 days. Everything is up to date.
-              </Text>
-            </Reanimated.View>
-          ) : (
-            <ScrollView style={{ marginTop: 12, marginBottom: 8 }} showsVerticalScrollIndicator={false}>
-              {unloggedSessions.map(item => (
-                <UnloggedSessionRow
-                  key={item.id}
-                  item={item}
-                  colors={colors}
-                  isDark={isDark}
-                  styles={styles}
-                  onSelectDate={date => {
-                    setSelectedDate(date);
-                    setIsUnloggedOpen(false);
-                  }}
-                  onLog={handleLog}
-                />
-              ))}
-            </ScrollView>
-          )}
-        </View>
-      </BottomSheet>
+            {unloggedSessions.length === 0 ? (
+              <Reanimated.View
+                entering={FadeIn.duration(220).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+                style={{ paddingVertical: 36, alignItems: 'center', gap: 10 }}
+              >
+                <Ionicons name="checkmark-done-circle-outline" size={48} color={isDark ? '#34D399' : '#059669'} />
+                <Text style={{ fontSize: 16, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
+                  All Caught Up! 🎉
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', paddingHorizontal: 20 }}>
+                  No unlogged classes or labs found in the past 30 days. Everything is up to date.
+                </Text>
+              </Reanimated.View>
+            ) : (
+              <ScrollView style={{ marginTop: 12, marginBottom: 8 }} showsVerticalScrollIndicator={false}>
+                {unloggedSessions.map(item => (
+                  <UnloggedSessionRow
+                    key={item.id}
+                    item={item}
+                    colors={colors}
+                    isDark={isDark}
+                    styles={styles}
+                    onSelectDate={date => {
+                      setSelectedDate(date);
+                      setIsUnloggedOpen(false);
+                    }}
+                    onLog={handleLog}
+                  />
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </BottomSheet>
+      )}
 
       {/* Extra Class Modal */}
-      <BottomSheet visible={isExtraOpen} onClose={() => setIsExtraOpen(false)} avoidKeyboard={false}>
+      {isExtraOpen && (
+        <BottomSheet visible={isExtraOpen} onClose={() => setIsExtraOpen(false)} avoidKeyboard={false}>
           <View style={{ width: '100%' }}>
             <Text style={[styles.sheetTitle, { marginBottom: 16 }]}>Log Extra Class</Text>
 
-            {/* Subject selector â€” vertical full-width pills */}
+            {/* Subject selector — vertical full-width pills */}
             <ScrollView style={{ maxHeight: 180, marginBottom: 20 }} showsVerticalScrollIndicator={false}>
               {subjects.map(s => (
                 <TouchableOpacity
@@ -1389,7 +1402,7 @@ export default function AttendanceScreen() {
               ))}
             </ScrollView>
 
-            {/* Action rows â€” CLASS and LAB */}
+            {/* Action rows — CLASS and LAB */}
             {(['class', 'lab'] as const).map(type => (
               <View key={type} style={styles.extraTypeRow}>
                 <Text style={styles.extraTypeLabel}>{type === 'class' ? 'Class' : 'Lab'}</Text>
@@ -1419,6 +1432,7 @@ export default function AttendanceScreen() {
             </TouchableOpacity>
           </View>
         </BottomSheet>
+      )}
 
       {/* Custom Confirm Modal */}
       {confirmConfig.visible && (

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Modal, Pressable } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text, Modal, Pressable, Platform } from 'react-native';
 import { Calendar, DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -34,10 +34,21 @@ export const UniversalCalendarModal = React.memo(function UniversalCalendarModal
       animationType="fade"
       onRequestClose={onClose}
     >
-      <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={styles.centeredView}>
-          <View style={styles.calendarCard} onStartShouldSetResponder={() => true}>
+      {Platform.OS === 'ios' ? (
+        <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        </BlurView>
+      ) : (
+        <Pressable
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.45)' }
+          ]}
+          onPress={onClose}
+        />
+      )}
+      <View style={styles.centeredView} pointerEvents="box-none">
+        <View style={styles.calendarCard} onStartShouldSetResponder={() => true}>
             
             {/* Header */}
             <View style={styles.header}>
@@ -90,7 +101,6 @@ export const UniversalCalendarModal = React.memo(function UniversalCalendarModal
             />
           </View>
         </View>
-      </BlurView>
     </Modal>
   );
 });

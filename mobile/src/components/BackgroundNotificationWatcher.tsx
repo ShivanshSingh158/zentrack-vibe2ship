@@ -72,6 +72,7 @@ export function BackgroundNotificationWatcher() {
           waterLogs: wellness.waterLogs,
           sleepLogs: wellness.sleepLogs,
           userGymPlan: wellness.userGymPlan,
+          holidays: academic.holidays,
         }).catch(console.warn);
       });
     }, delay);
@@ -83,7 +84,7 @@ export function BackgroundNotificationWatcher() {
   }, [
     core.tasks, planner.customEvents, wellness.gymLogs, academic.attendance,
     academic.attendanceLogs, core.habitLogs, core.allHabits, academic.assignments,
-    wellness.waterLogs, wellness.sleepLogs, wellness.userGymPlan,
+    wellness.waterLogs, wellness.sleepLogs, wellness.userGymPlan, academic.holidays,
   ]);
 
   return null;
