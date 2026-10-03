@@ -1585,21 +1585,21 @@ body.notes-fullscreen-active .app-layout-sidebar .main-content,
   opacity: 0.85;
 }
 
-/* ── 1. LEFT SIDEBAR (Streamlined 220px) ── */
+/* ── 1. LEFT SIDEBAR (Spacious 280px Knowledge Vault) ── */
 .notes-left-sidebar {
-  width: 220px;
-  min-width: 220px;
-  max-width: 220px;
+  width: 280px;
+  min-width: 280px;
+  max-width: 280px;
   height: 100%;
   max-height: 100%;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.75rem;
   background: var(--notes-bg-surface);
   border: 1px solid var(--notes-border-subtle);
   border-radius: 14px;
-  padding: 0.6rem;
+  padding: 0.75rem 0.65rem;
   overflow-y: auto;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
@@ -1621,7 +1621,7 @@ body.notes-fullscreen-active .app-layout-sidebar .main-content,
   background: #18181b;
   border: 1px solid #27272a;
   border-radius: 12px;
-  padding: 0.5rem 0.55rem;
+  padding: 0.55rem 0.6rem;
   box-sizing: border-box;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1631,13 +1631,13 @@ body.notes-fullscreen-active .app-layout-sidebar .main-content,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.1rem 0.2rem 0.2rem 0.2rem;
+  padding: 0.15rem 0.25rem 0.3rem 0.25rem;
 }
 
 .sidebar-section-title {
-  font-size: 0.65rem;
+  font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--notes-text-muted);
   text-transform: uppercase;
   font-family: var(--font-sans, 'Inter', sans-serif);
@@ -1648,9 +1648,9 @@ body.notes-fullscreen-active .app-layout-sidebar .main-content,
   background: transparent;
   border: 1px solid transparent;
   color: var(--notes-text-muted);
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1667,20 +1667,21 @@ body.notes-fullscreen-active .app-layout-sidebar .main-content,
 .sidebar-nav-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .sidebar-nav-item {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.3rem 0.48rem;
-  border-radius: 8px;
+  gap: 0.55rem;
+  padding: 0.42rem 0.65rem;
+  min-height: 36px;
+  border-radius: 9px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--notes-text-secondary);
   font-family: var(--font-sans, 'Inter', sans-serif);
-  font-size: 0.76rem;
+  font-size: 0.84rem;
   font-weight: 500;
   text-align: left;
   cursor: pointer;
@@ -1722,10 +1723,10 @@ body.notes-fullscreen-active .app-layout-sidebar .main-content,
 }
 
 .nav-item-count {
-  font-size: 0.62rem;
+  font-size: 0.70rem;
   color: var(--notes-text-muted);
   background: rgba(255, 255, 255, 0.08);
-  padding: 1px 6px;
+  padding: 2px 7px;
   border-radius: 9999px;
   font-weight: 600;
   margin-left: auto;
@@ -1824,11 +1825,11 @@ body.notes-fullscreen-active .app-layout-sidebar .main-content,
   transition: width 0.3s ease;
 }
 
-/* ── 2. CENTER FEED (Streamlined 285px Todoist Feed) ── */
+/* ── 2. CENTER FEED (Spacious 400px Knowledge Feed) ── */
 .notes-center-feed {
-  width: 285px;
-  min-width: 285px;
-  max-width: 285px;
+  width: 400px;
+  min-width: 380px;
+  max-width: 400px;
   height: 100%;
   max-height: 100%;
   flex-shrink: 0;
@@ -1846,11 +1847,11 @@ body.notes-fullscreen-active .app-layout-sidebar .main-content,
 .notes-feed-command-bar {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.6rem;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--notes-border-subtle);
   background: var(--notes-bg-surface-elevated);
-  height: 44px;
+  height: 48px;
   box-sizing: border-box;
   flex-shrink: 0;
 }
@@ -1859,12 +1860,12 @@ body.notes-fullscreen-active .app-layout-sidebar .main-content,
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
   background: #18181b;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
-  padding: 0 0.6rem;
-  height: 32px;
+  padding: 0 0.75rem;
+  height: 36px;
   box-sizing: border-box;
   transition: all 0.15s ease;
   min-width: 0;
@@ -1891,7 +1892,7 @@ body.notes-fullscreen-active .app-layout-sidebar .main-content,
   margin: 0 !important;
   color: #f4f4f5;
   font-family: inherit;
-  font-size: 0.78rem;
+  font-size: 0.84rem;
   width: 100%;
   height: 100% !important;
   line-height: normal;
@@ -1926,16 +1927,16 @@ body.notes-fullscreen-active .app-layout-sidebar .main-content,
 .feed-sort-btn {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
   background: #18181b;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
-  padding: 0 0.55rem;
-  height: 32px;
+  padding: 0 0.65rem;
+  height: 36px;
   box-sizing: border-box;
   color: #a1a1aa;
   font-family: inherit;
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -2037,8 +2038,8 @@ body.notes-fullscreen-active .app-layout-sidebar .main-content,
   background: #18181b;
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #71717a;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -2223,8 +2224,8 @@ body.theme-plain .feed-select-done-btn:hover {
   background: #18181b;
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #71717a;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -2323,7 +2324,7 @@ body.theme-plain .feed-sort-item.select-multiple .feed-sort-item-icon {
 
 /* ── CATEGORY FILTER TABS CONTAINER ── */
 .feed-category-tabs-container {
-  padding: 0.35rem 0.6rem;
+  padding: 0.45rem 0.75rem;
   border-bottom: 1px solid var(--notes-border-subtle);
   background: var(--notes-bg-surface-elevated);
   flex-shrink: 0;
@@ -2338,7 +2339,7 @@ body.theme-plain .feed-category-tabs-container {
 .notes-category-filter-strip {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.45rem;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -2350,14 +2351,14 @@ body.theme-plain .feed-category-tabs-container {
 .notes-category-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.22rem 0.55rem;
+  gap: 0.4rem;
+  padding: 0.28rem 0.65rem;
   border-radius: 9999px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: #18181b;
   color: #a1a1aa;
   font-family: inherit;
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -2405,11 +2406,11 @@ body.theme-plain .notes-category-pill.active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
   border-radius: 9999px;
-  font-size: 0.62rem;
+  font-size: 0.68rem;
   font-weight: 700;
   background: rgba(255, 255, 255, 0.08);
   color: #a1a1aa;
@@ -3383,44 +3384,61 @@ body.theme-plain .move-empty-search {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 2.5rem 1rem;
-  gap: 0.4rem;
+  padding: 4rem 1.5rem;
+  gap: 0.6rem;
+}
+
+.feed-empty-icon-wrap {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(124, 58, 237, 0.1);
+  color: #8b5cf6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.6rem;
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.12);
 }
 
 .feed-empty-state h4 {
-  font-size: 0.86rem;
+  font-size: 1.05rem;
+  font-weight: 600;
   color: #f4f4f5;
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
 }
 
 .feed-empty-state p {
-  font-size: 0.72rem;
-  color: #71717a;
+  font-size: 0.82rem;
+  color: #a1a1aa;
   margin: 0;
-  max-width: 190px;
+  max-width: 280px;
+  line-height: 1.55;
+  margin-bottom: 0.75rem;
 }
 
 .feed-empty-create-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.45rem;
   background: #7c3aed;
   color: #ffffff;
   border: none;
-  padding: 0.35rem 0.75rem;
-  border-radius: 6px;
-  font-size: 0.73rem;
+  padding: 0.55rem 1.25rem;
+  border-radius: 10px;
+  font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
-  margin-top: 0.35rem;
-  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
-  transition: all 0.15s ease;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .feed-empty-create-btn:hover {
   background: #8b5cf6;
   transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.45);
 }
 
 /* ── 3. RIGHT STUDIO & FULL-SPACE PDF VIEWER (Box 3) ── */
@@ -3437,6 +3455,21 @@ body.theme-plain .move-empty-search {
   flex-direction: column;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   box-sizing: border-box;
+}
+
+@media (max-width: 1200px) {
+  .notes-power-workspace.no-active-doc .notes-center-feed {
+    width: auto !important;
+    max-width: 100% !important;
+    flex: 1 !important;
+  }
+  .notes-power-workspace.no-active-doc .notes-feed-motion-pane {
+    width: auto !important;
+    flex: 1 !important;
+  }
+  .notes-power-workspace.no-active-doc .notes-studio-container {
+    display: none !important;
+  }
 }
 
 .notes-studio-split-layout {

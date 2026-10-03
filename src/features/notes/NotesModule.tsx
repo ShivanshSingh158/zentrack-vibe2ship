@@ -970,7 +970,7 @@ export const NotesModule = () => {
       </div>
 
       {/* ── 3-PANE POWER KNOWLEDGE WORKSPACE ── */}
-      <div className="notes-power-workspace">
+      <div className={`notes-power-workspace ${activeNote || viewingFile ? 'has-active-doc' : 'no-active-doc'}`}>
         {/* 1. LEFT SIDEBAR: Folders, Tags, Pinned, Storage Gauge */}
         <AnimatePresence initial={false}>
           {isSidebarOpen ? (
@@ -978,7 +978,7 @@ export const NotesModule = () => {
               key="notes-sidebar-pane"
               className="notes-sidebar-motion-pane"
               initial={{ width: 0, opacity: 0, marginRight: 0 }}
-              animate={{ width: 220, opacity: 1, marginRight: '0.65rem' }}
+              animate={{ width: 280, opacity: 1, marginRight: '0.85rem' }}
               exit={{ width: 0, opacity: 0, marginRight: 0 }}
               transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
               style={{ overflow: 'hidden', height: '100%', flexShrink: 0 }}
@@ -1005,14 +1005,14 @@ export const NotesModule = () => {
               type="button"
               className="notes-collapsed-rail-btn"
               initial={{ width: 0, opacity: 0, marginRight: 0 }}
-              animate={{ width: 32, opacity: 1, marginRight: '0.65rem' }}
+              animate={{ width: 34, opacity: 1, marginRight: '0.85rem' }}
               exit={{ width: 0, opacity: 0, marginRight: 0 }}
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
               onClick={() => setIsSidebarOpen(true)}
               title="Expand Vault (Left Sidebar)"
               aria-label="Expand Vault"
             >
-              <PanelLeftOpen size={14} className="rail-icon" />
+              <PanelLeftOpen size={15} className="rail-icon" />
               <span className="rail-label">VAULT</span>
             </motion.button>
           )}
@@ -1025,7 +1025,7 @@ export const NotesModule = () => {
               key="notes-feed-pane"
               className="notes-feed-motion-pane"
               initial={{ width: 0, opacity: 0, marginRight: 0 }}
-              animate={{ width: 285, opacity: 1, marginRight: '0.65rem' }}
+              animate={{ width: 400, opacity: 1, marginRight: '0.85rem' }}
               exit={{ width: 0, opacity: 0, marginRight: 0 }}
               transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
               style={{ overflow: 'hidden', height: '100%', flexShrink: 0 }}

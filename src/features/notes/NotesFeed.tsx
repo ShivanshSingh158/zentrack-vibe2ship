@@ -589,8 +589,10 @@ export const NotesFeed: React.FC<NotesFeedProps> = ({
 
         {allDocs.length === 0 ? (
           <div className="feed-empty-state">
-            <FileText size={32} color="rgba(165, 153, 255, 0.4)" />
-            <h4>{searchQuery ? 'No matching files found' : 'Empty folder'}</h4>
+            <div className="feed-empty-icon-wrap">
+              <FileText size={32} strokeWidth={1.8} />
+            </div>
+            <h4>{searchQuery ? 'No matching files found' : (currentFolderId ? 'This folder is empty' : 'No documents yet')}</h4>
             <p>
               {searchQuery
                 ? `No documents matching "${searchQuery}" in this view.`
@@ -598,7 +600,7 @@ export const NotesFeed: React.FC<NotesFeedProps> = ({
             </p>
             {!searchQuery && (
               <button type="button" onClick={onCreateNote} className="feed-empty-create-btn">
-                <Plus size={14} />
+                <Plus size={15} strokeWidth={2.2} />
                 <span>Create New Note</span>
               </button>
             )}
