@@ -1130,9 +1130,10 @@ export const TodoListModule: React.FC = () => {
           }}
           onSave={async (updated) => {
             if (updated.id) {
-              await updateDoc(doc(db, 'todos', updated.id), { ...updated });
-              setEditingTask(null);
+              setEditingTask(null); // ← instant dismiss
               toast.success('Task updated');
+              updateDoc(doc(db, 'todos', updated.id), { ...updated })
+                .catch(err => console.error('Failed to update task:', err));
             }
           }}
         />

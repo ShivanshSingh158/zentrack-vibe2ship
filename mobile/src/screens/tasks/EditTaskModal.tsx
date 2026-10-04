@@ -461,47 +461,54 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     if (currentTask.isRecurring || finalRecurrence) {
       Alert.alert('Edit Recurring Task', 'Apply changes to this instance only, or recreate all future instances?', [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'This instance only', onPress: async () => {
-          try { await updateDoc(doc(db, COLLECTION.TASKS, currentTask.id), firestorePayload); onClose(); } catch (e) { console.error(e); }
+        { text: 'This instance only', onPress: () => {
+          // Dismiss immediately — Firestore runs fire-and-forget in background
+          requestClose();
+          (async () => {
+            try { await updateDoc(doc(db, COLLECTION.TASKS, currentTask.id), firestorePayload); } catch (e) { console.error(e); }
+          })();
         }},
-        { text: 'All future instances', onPress: async () => {
-          try {
-            await updateDoc(doc(db, COLLECTION.TASKS, currentTask.id), firestorePayload);
-            const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', currentTask.userId));
-            const snap = await getDocs(q);
-            const deleteBatch = writeBatch(db);
-            snap.docs.forEach(d => {
-              const data = d.data();
-              if (data.title === currentTask.title && data.isRecurring === true && data.date && currentTask.date && data.date > currentTask.date) deleteBatch.delete(d.ref);
-            });
-            await deleteBatch.commit();
-            if (finalRecurrence) {
-              const createBatch = writeBatch(db);
-              let current = new Date(finalDate);
-              if (finalRecurrence.type === 'daily' || finalRecurrence.type === 'custom') { current.setDate(current.getDate() + (finalRecurrence.interval || 1)); }
-              else if (finalRecurrence.type === 'weekly') {
-                if (finalRecurrence.daysOfWeek?.length > 0) { do { current.setDate(current.getDate() + 1); } while (!finalRecurrence.daysOfWeek.includes(current.getDay())); }
-                else { current.setDate(current.getDate() + 7 * (finalRecurrence.interval || 1)); }
-              } else if (finalRecurrence.type === 'monthly') { current.setMonth(current.getMonth() + (finalRecurrence.interval || 1)); }
-              const end = finalRecurrence.endDate ? new Date(finalRecurrence.endDate) : new Date(new Date(finalDate).getTime() + 90 * 24 * 60 * 60 * 1000);
-              let count = 0;
-              const MAX_INSTANCES = 90;
-              const sourceId = currentTask.recurringSourceId || `rec_${Date.now()}`;
-              while (current <= end && count < MAX_INSTANCES) {
-                const docRef = doc(collection(db, COLLECTION.TASKS));
-                createBatch.set(docRef, { ...firestorePayload, userId: currentTask.userId, date: current.toISOString().slice(0, 10), recurringSourceId: sourceId, createdAt: serverTimestamp(), status: 'pending', order: currentTask.order || 0 });
-                count++;
+        { text: 'All future instances', onPress: () => {
+          // Dismiss immediately — all Firestore work runs fire-and-forget
+          requestClose();
+          (async () => {
+            try {
+              await updateDoc(doc(db, COLLECTION.TASKS, currentTask.id), firestorePayload);
+              const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', currentTask.userId));
+              const snap = await getDocs(q);
+              const deleteBatch = writeBatch(db);
+              snap.docs.forEach(d => {
+                const data = d.data();
+                if (data.title === currentTask.title && data.isRecurring === true && data.date && currentTask.date && data.date > currentTask.date) deleteBatch.delete(d.ref);
+              });
+              await deleteBatch.commit();
+              if (finalRecurrence) {
+                const createBatch = writeBatch(db);
+                let current = new Date(finalDate);
                 if (finalRecurrence.type === 'daily' || finalRecurrence.type === 'custom') { current.setDate(current.getDate() + (finalRecurrence.interval || 1)); }
                 else if (finalRecurrence.type === 'weekly') {
                   if (finalRecurrence.daysOfWeek?.length > 0) { do { current.setDate(current.getDate() + 1); } while (!finalRecurrence.daysOfWeek.includes(current.getDay())); }
                   else { current.setDate(current.getDate() + 7 * (finalRecurrence.interval || 1)); }
                 } else if (finalRecurrence.type === 'monthly') { current.setMonth(current.getMonth() + (finalRecurrence.interval || 1)); }
-                else break;
+                const end = finalRecurrence.endDate ? new Date(finalRecurrence.endDate) : new Date(new Date(finalDate).getTime() + 90 * 24 * 60 * 60 * 1000);
+                let count = 0;
+                const MAX_INSTANCES = 90;
+                const sourceId = currentTask.recurringSourceId || `rec_${Date.now()}`;
+                while (current <= end && count < MAX_INSTANCES) {
+                  const docRef = doc(collection(db, COLLECTION.TASKS));
+                  createBatch.set(docRef, { ...firestorePayload, userId: currentTask.userId, date: current.toISOString().slice(0, 10), recurringSourceId: sourceId, createdAt: serverTimestamp(), status: 'pending', order: currentTask.order || 0 });
+                  count++;
+                  if (finalRecurrence.type === 'daily' || finalRecurrence.type === 'custom') { current.setDate(current.getDate() + (finalRecurrence.interval || 1)); }
+                  else if (finalRecurrence.type === 'weekly') {
+                    if (finalRecurrence.daysOfWeek?.length > 0) { do { current.setDate(current.getDate() + 1); } while (!finalRecurrence.daysOfWeek.includes(current.getDay())); }
+                    else { current.setDate(current.getDate() + 7 * (finalRecurrence.interval || 1)); }
+                  } else if (finalRecurrence.type === 'monthly') { current.setMonth(current.getMonth() + (finalRecurrence.interval || 1)); }
+                  else break;
+                }
+                await createBatch.commit();
               }
-              await createBatch.commit();
-            }
-            requestClose();
-          } catch (e) { console.error(e); }
+            } catch (e) { console.error(e); }
+          })();
         }},
       ]);
     } else {

@@ -382,27 +382,21 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
     const finalRecurrence = (finalParsed.tokens.some(t => t.type === 'recurrence') && finalParsed.recurrenceRule) ? finalParsed.recurrenceRule : recurrenceRule;
     const finalTags = Array.from(new Set([...selectedTags, ...(finalParsed.tags || [])]));
 
-    setSaving(true);
-    try {
-      await onSave({
-        title: resolvedTitle,
-        text: resolvedTitle,
-        date: finalDate,
-        priority: finalPriority,
-        timeSlot: finalTimeSlot,
-        subtasks: subtasks.length > 0 ? subtasks : [],
-        tags: finalTags,
-        isRecurring: finalRecurrence && finalRecurrence.type !== 'once',
-        recurrenceRule: finalRecurrence && finalRecurrence.type !== 'once' ? finalRecurrence : null,
-        oneTimeDates: finalParsed.oneTimeDates && finalParsed.oneTimeDates.length > 1 ? finalParsed.oneTimeDates : oneTimeDates,
-        durationMinutes: finalDuration || null,
-      });
-      onClose();
-    } catch (err) {
-      console.error('Failed to create task:', err);
-    } finally {
-      setSaving(false);
-    }
+    // ── Optimistic dismiss: close immediately, write in background ──────────
+    onClose();
+    onSave({
+      title: resolvedTitle,
+      text: resolvedTitle,
+      date: finalDate,
+      priority: finalPriority,
+      timeSlot: finalTimeSlot,
+      subtasks: subtasks.length > 0 ? subtasks : [],
+      tags: finalTags,
+      isRecurring: finalRecurrence && finalRecurrence.type !== 'once',
+      recurrenceRule: finalRecurrence && finalRecurrence.type !== 'once' ? finalRecurrence : null,
+      oneTimeDates: finalParsed.oneTimeDates && finalParsed.oneTimeDates.length > 1 ? finalParsed.oneTimeDates : oneTimeDates,
+      durationMinutes: finalDuration || null,
+    }).catch(err => console.error('Failed to create task:', err));
   };
 
   // Mini Calendar Generation

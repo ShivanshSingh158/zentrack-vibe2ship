@@ -978,7 +978,7 @@ export const NotesModule = () => {
               key="notes-sidebar-pane"
               className="notes-sidebar-motion-pane"
               initial={{ width: 0, opacity: 0, marginRight: 0 }}
-              animate={{ width: 280, opacity: 1, marginRight: '0.85rem' }}
+              animate={{ width: 260, opacity: 1, marginRight: 0 }}
               exit={{ width: 0, opacity: 0, marginRight: 0 }}
               transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
               style={{ overflow: 'hidden', height: '100%', flexShrink: 0 }}
@@ -1005,7 +1005,7 @@ export const NotesModule = () => {
               type="button"
               className="notes-collapsed-rail-btn"
               initial={{ width: 0, opacity: 0, marginRight: 0 }}
-              animate={{ width: 34, opacity: 1, marginRight: '0.85rem' }}
+              animate={{ width: 34, opacity: 1, marginRight: 0 }}
               exit={{ width: 0, opacity: 0, marginRight: 0 }}
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
               onClick={() => setIsSidebarOpen(true)}
@@ -1025,7 +1025,7 @@ export const NotesModule = () => {
               key="notes-feed-pane"
               className="notes-feed-motion-pane"
               initial={{ width: 0, opacity: 0, marginRight: 0 }}
-              animate={{ width: 400, opacity: 1, marginRight: '0.85rem' }}
+              animate={{ width: 360, opacity: 1, marginRight: 0 }}
               exit={{ width: 0, opacity: 0, marginRight: 0 }}
               transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
               style={{ overflow: 'hidden', height: '100%', flexShrink: 0 }}
@@ -1086,7 +1086,7 @@ export const NotesModule = () => {
               type="button"
               className="notes-collapsed-rail-btn"
               initial={{ width: 0, opacity: 0, marginRight: 0 }}
-              animate={{ width: 32, opacity: 1, marginRight: '0.65rem' }}
+              animate={{ width: 32, opacity: 1, marginRight: 0 }}
               exit={{ width: 0, opacity: 0, marginRight: 0 }}
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
               onClick={() => setIsFeedOpen(true)}

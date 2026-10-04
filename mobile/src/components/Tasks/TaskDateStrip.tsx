@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react';
+﻿import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,6 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  withSequence,
   withTiming,
   runOnJS,
   Easing,
@@ -48,12 +47,10 @@ const generateDatesForAnchor = (anchorDateStr: string, selectedDateStr: string) 
   const dayShortNames = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   const todayStr = formatLocalDateStr(new Date());
 
-  // Centered sequence of 7 days around the anchor date (-3 to +3)
   for (let i = -3; i <= 3; i++) {
     const d = new Date(base);
     d.setDate(base.getDate() + i);
     const dateStr = formatLocalDateStr(d);
-
     dates.push({
       dateStr,
       month: months[d.getMonth()],
@@ -68,74 +65,177 @@ const generateDatesForAnchor = (anchorDateStr: string, selectedDateStr: string) 
   return dates;
 };
 
+// ── DatePillItem ──────────────────────────────────────────────────────────────
+// All props are primitives so React.memo shallow-compare actually prevents
+// re-renders. The active highlight is drawn by the parent WeekRow pill — this
+// component never changes its own background, eliminating the flicker entirely.
 const DatePillItem = React.memo(function DatePillItem({
-  dateObj,
-  taskDates,
+  dateStr,
+  dateNum,
+  dayShort,
+  isActive,
+  isToday,
+  hasDot,
   onSelectDate,
   colors,
-  styles,
+  isDark,
 }: {
-  dateObj: DateObj;
-  taskDates?: Set<string>;
+  dateStr: string;
+  dateNum: string;
+  dayShort: string;
+  isActive: boolean;
+  isToday: boolean;
+  hasDot: boolean;
   onSelectDate: (dateStr: string) => void;
   colors: any;
-  styles: any;
+  isDark: boolean;
 }) {
-  const isActive = dateObj.active;
-  const numScale = useSharedValue(isActive ? 1.08 : 1);
-
-  useEffect(() => {
-    if (isActive) {
-      numScale.value = withSequence(
-        withTiming(1.08, { duration: 100, easing: Easing.out(Easing.cubic) }),
-        withSpring(1.0, { damping: 26, stiffness: 260 })
-      );
-    } else {
-      numScale.value = withTiming(1, { duration: 140, easing: Easing.out(Easing.cubic) });
-    }
-  }, [isActive]);
-
-  const animNumStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: numScale.value }],
-  }));
-
   const handlePress = useCallback(() => {
     Haptics.selectionAsync();
-    onSelectDate(dateObj.dateStr);
-  }, [onSelectDate, dateObj.dateStr]);
+    onSelectDate(dateStr);
+  }, [onSelectDate, dateStr]);
+
+  const activeTextColor = isDark ? '#000000' : '#FFFFFF';
+  const dayColor  = isActive ? activeTextColor : isToday ? colors.accentPrimary : colors.textTertiary;
+  const numColor  = isActive ? activeTextColor : isToday ? colors.accentPrimary : colors.textPrimary;
+  const dotColor  = isActive ? activeTextColor : isToday ? colors.accentPrimary : colors.textTertiary;
 
   return (
     <AnimatedPressable
-      style={[styles.dateItem, isActive && styles.dateItemActive]}
+      style={styles_dateItem}
       scaleTo={0.95}
       onPress={handlePress}
     >
-      <Text style={[styles.dateDay, isActive && styles.dateDayActive, dateObj.isToday && !isActive && { color: colors.accentPrimary }]}>
-        {dateObj.dayShort}
+      <Text style={[styles_dateDay, { color: dayColor }]}>
+        {dayShort}
       </Text>
-      <Animated.Text
+      <Text
         style={[
-          styles.dateNum,
-          isActive && styles.dateNumActive,
-          dateObj.isToday && !isActive && { color: colors.accentPrimary },
-          animNumStyle,
+          styles_dateNum,
+          { color: numColor, fontFamily: isActive ? 'Inter_700Bold' : 'Inter_600SemiBold' },
         ]}
       >
-        {dateObj.dateNum}
-      </Animated.Text>
-      {/* Dot indicator */}
-      <View
-        style={[
-          styles.dot,
-          isActive ? styles.dotActive : null,
-          taskDates?.has(dateObj.dateStr) ? styles.dotVisible : null,
-          dateObj.isToday && !isActive && { backgroundColor: colors.accentPrimary },
-        ]}
-      />
+        {dateNum}
+      </Text>
+      {hasDot
+        ? <View style={[styles_dot, { backgroundColor: dotColor }]} />
+        : <View style={styles_dotPlaceholder} />
+      }
     </AnimatedPressable>
+  );
+}, (prev, next) => (
+  prev.dateStr    === next.dateStr    &&
+  prev.dateNum    === next.dateNum    &&
+  prev.dayShort   === next.dayShort   &&
+  prev.isActive   === next.isActive   &&
+  prev.isToday    === next.isToday    &&
+  prev.hasDot     === next.hasDot     &&
+  prev.onSelectDate === next.onSelectDate &&
+  prev.colors     === next.colors     &&
+  prev.isDark     === next.isDark
+));
+
+// Module-level static styles for DatePillItem (never rebuilt)
+const styles_dateItem = {
+  flex: 1,
+  alignItems: 'center' as const,
+  justifyContent: 'center' as const,
+  height: 56,
+  borderRadius: 14,
+};
+const styles_dateDay = {
+  fontFamily: 'Inter_500Medium',
+  fontSize: 11,
+  marginBottom: 4,
+};
+const styles_dateNum = {
+  fontSize: 15,
+};
+const styles_dot = {
+  width: 3.5,
+  height: 3.5,
+  borderRadius: 2,
+  marginTop: 4,
+};
+const styles_dotPlaceholder = {
+  width: 3.5,
+  height: 3.5,
+  marginTop: 4,
+};
+
+// ── WeekRow ───────────────────────────────────────────────────────────────────
+// Renders a 7-day row with a SINGLE native-thread sliding pill indicator.
+// Only the pill's translateX animates — no per-cell background changes.
+const WeekRow = React.memo(function WeekRow({
+  dates,
+  taskDates,
+  onSelectDate,
+  colors,
+  isDark,
+  pillWidth,
+  pillActiveStyle,
+}: {
+  dates: DateObj[];
+  taskDates?: Set<string>;
+  onSelectDate: (d: string) => void;
+  colors: any;
+  isDark: boolean;
+  pillWidth: number;
+  pillActiveStyle: any;
+}) {
+  const activeIndex = dates.findIndex(d => d.active);
+
+  // Pill starts at the correct position immediately (no wrong initial value)
+  const pillX = useSharedValue(activeIndex >= 0 ? activeIndex * pillWidth : -999);
+
+  useEffect(() => {
+    const target = activeIndex >= 0 ? activeIndex * pillWidth : -999;
+    pillX.value = withSpring(target, {
+      damping: 26,
+      stiffness: 280,
+      mass: 0.75,
+    });
+  }, [activeIndex, pillWidth]);
+
+  const pillStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: pillX.value }],
+  }));
+
+  return (
+    <View style={[styles_weekPage, { width: pillWidth * 7 }]}>
+      {pillWidth > 0 && (
+        <Animated.View
+          style={[pillActiveStyle, { width: pillWidth - 6 }, pillStyle]}
+          pointerEvents="none"
+        />
+      )}
+      {dates.map((d) => (
+        <DatePillItem
+          key={d.dateStr}
+          dateStr={d.dateStr}
+          dateNum={d.dateNum}
+          dayShort={d.dayShort}
+          isActive={d.active}
+          isToday={d.isToday}
+          hasDot={!!(taskDates?.has(d.dateStr))}
+          onSelectDate={onSelectDate}
+          colors={colors}
+          isDark={isDark}
+        />
+      ))}
+    </View>
   );
 });
 
+const styles_weekPage = {
+  flexDirection: 'row' as const,
+  justifyContent: 'space-between' as const,
+  gap: 6,
+  paddingHorizontal: 8,
+  position: 'relative' as const,
+};
+
+// ── TaskDateStrip ─────────────────────────────────────────────────────────────
 export const TaskDateStrip = React.memo(function TaskDateStrip({
   selectedDate,
   onSelectDate,
@@ -145,12 +245,10 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
-  // Window geometry
   const initialWidth = Dimensions.get('window').width;
   const containerWidthRef = useRef(initialWidth);
   const [containerWidth, setContainerWidth] = useState(initialWidth);
 
-  // Anchor date represents the center (index 3) of the currently visible 7-day strip.
   const [anchorDate, setAnchorDate] = useState(selectedDate);
   const anchorDateRef = useRef(anchorDate);
   anchorDateRef.current = anchorDate;
@@ -162,20 +260,14 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({
   useEffect(() => {
     if (!anchorDateRef.current) return;
     const base = parseLocalDate(anchorDateRef.current);
-    const minD = new Date(base);
-    minD.setDate(base.getDate() - 3);
-    const maxD = new Date(base);
-    maxD.setDate(base.getDate() + 3);
+    const minD = new Date(base); minD.setDate(base.getDate() - 3);
+    const maxD = new Date(base); maxD.setDate(base.getDate() + 3);
     const cur = parseLocalDate(selectedDate);
-    if (cur < minD || cur > maxD) {
-      setAnchorDate(selectedDate);
-    }
+    if (cur < minD || cur > maxD) setAnchorDate(selectedDate);
   }, [selectedDate]);
 
-  // 3-Week Data: Prev Week (-7 days), Current Week (anchor), Next Week (+7 days)
   const prevWeekDates = useMemo(() => {
-    const prevAnchor = offsetDateStr(anchorDate, -7);
-    return generateDatesForAnchor(prevAnchor, selectedDate);
+    return generateDatesForAnchor(offsetDateStr(anchorDate, -7), selectedDate);
   }, [anchorDate, selectedDate]);
 
   const currentWeekDates = useMemo(() => {
@@ -183,17 +275,15 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({
   }, [anchorDate, selectedDate]);
 
   const nextWeekDates = useMemo(() => {
-    const nextAnchor = offsetDateStr(anchorDate, 7);
-    return generateDatesForAnchor(nextAnchor, selectedDate);
+    return generateDatesForAnchor(offsetDateStr(anchorDate, 7), selectedDate);
   }, [anchorDate, selectedDate]);
 
-  // Active date object for the header display (DayFull, Month, Year)
   const activeDateObj = useMemo(() => {
     const found = currentWeekDates.find((d) => d.active);
     if (found) return found;
     const base = parseLocalDate(selectedDate);
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    const dayFullNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const dayFullNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     const todayStr = formatLocalDateStr(new Date());
     return {
       dateStr: selectedDate,
@@ -207,7 +297,8 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({
     };
   }, [currentWeekDates, selectedDate]);
 
-  // Continuous Worklet Translation: starts centered at -containerWidth
+  const pillWidth = containerWidth / 7;
+
   const translateX = useSharedValue(-initialWidth);
   const isAnimatingRef = useRef(false);
 
@@ -258,67 +349,35 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) => {
+        onMoveShouldSetPanResponder: (_, gs) => {
           if (isAnimatingRef.current) return false;
-          return (
-            Math.abs(gestureState.dx) > 12 &&
-            Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5
-          );
+          return Math.abs(gs.dx) > 12 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5;
         },
-        onPanResponderGrant: () => {
-          // Ready to track gesture
+        onPanResponderGrant: () => {},
+        onPanResponderMove: (_, gs) => {
+          if (isAnimatingRef.current) return;
+          translateX.value = -containerWidthRef.current + gs.dx;
         },
-        onPanResponderMove: (_, gestureState) => {
+        onPanResponderRelease: (_, gs) => {
           if (isAnimatingRef.current) return;
           const w = containerWidthRef.current;
-          translateX.value = -w + gestureState.dx;
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          if (isAnimatingRef.current) return;
-          const w = containerWidthRef.current;
-          const dx = gestureState.dx;
-          const vx = gestureState.vx;
-
-          if (dx < -32 || vx < -0.35) {
-            // Swiped left -> Go to Next Week (+7 days)
+          if (gs.dx < -32 || gs.vx < -0.35) {
             isAnimatingRef.current = true;
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            translateX.value = withTiming(-2 * w, {
-              duration: 200,
-              easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-            }, (finished) => {
-              if (finished) {
-                runOnJS(commitNextWeek)();
-              }
-            });
-          } else if (dx > 32 || vx > 0.35) {
-            // Swiped right -> Go to Last Week (-7 days)
+            translateX.value = withTiming(-2 * w, { duration: 200, easing: Easing.bezier(0.25, 0.1, 0.25, 1) },
+              (finished) => { if (finished) runOnJS(commitNextWeek)(); });
+          } else if (gs.dx > 32 || gs.vx > 0.35) {
             isAnimatingRef.current = true;
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            translateX.value = withTiming(0, {
-              duration: 200,
-              easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-            }, (finished) => {
-              if (finished) {
-                runOnJS(commitPrevWeek)();
-              }
-            });
+            translateX.value = withTiming(0, { duration: 200, easing: Easing.bezier(0.25, 0.1, 0.25, 1) },
+              (finished) => { if (finished) runOnJS(commitPrevWeek)(); });
           } else {
-            // Did not cross threshold -> spring snap back to center
-            translateX.value = withSpring(-w, {
-              damping: 28,
-              stiffness: 300,
-              mass: 0.8,
-            });
+            translateX.value = withSpring(-w, { damping: 28, stiffness: 300, mass: 0.8 });
           }
         },
         onPanResponderTerminate: () => {
           if (isAnimatingRef.current) return;
-          translateX.value = withSpring(-containerWidthRef.current, {
-            damping: 28,
-            stiffness: 300,
-            mass: 0.8,
-          });
+          translateX.value = withSpring(-containerWidthRef.current, { damping: 28, stiffness: 300, mass: 0.8 });
         },
       }),
     [commitNextWeek, commitPrevWeek, translateX]
@@ -326,83 +385,30 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({
 
   return (
     <View style={[styles.container, style]} onLayout={onContainerLayout} {...panResponder.panHandlers}>
-      {/* Header Row: Day • Month Year + Navigation Actions */}
       <View style={styles.headerRow}>
         <View style={styles.headerLeftCol}>
           <Text style={styles.dayFullText}>{activeDateObj.dayFull}</Text>
-          <Text style={styles.monthYearText}>
-            {activeDateObj.month} {activeDateObj.year}
-          </Text>
+          <Text style={styles.monthYearText}>{activeDateObj.month} {activeDateObj.year}</Text>
         </View>
-
         <View style={styles.headerNavRow}>
           {!activeDateObj.isToday && (
             <TouchableOpacity
               onPress={handleJumpToToday}
-              style={[
-                styles.todayPill,
-                { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.12)' },
-              ]}
+              style={[styles.todayPill, { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.12)' }]}
               hitSlop={8}
               accessibilityRole="button"
               accessibilityLabel="Jump to today"
             >
-              <Text
-                style={[
-                  styles.todayPillText,
-                  { color: isDark ? '#C4B5FD' : colors.accentPrimary },
-                ]}
-              >
-                Today
-              </Text>
+              <Text style={[styles.todayPillText, { color: isDark ? '#C4B5FD' : colors.accentPrimary }]}>Today</Text>
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {/* 3-Week Continuous Sliding Viewport (Zero Flicker, 120fps Native Thread) */}
       <Animated.View style={[styles.pagerRow, animatedPagerStyle]}>
-        {/* Page -1: Last Week */}
-        <View style={[styles.weekPage, { width: containerWidth }]}>
-          {prevWeekDates.map((d) => (
-            <DatePillItem
-              key={d.dateStr}
-              dateObj={d}
-              taskDates={taskDates}
-              onSelectDate={onSelectDate}
-              colors={colors}
-              styles={styles}
-            />
-          ))}
-        </View>
-
-        {/* Page 0: Current Week */}
-        <View style={[styles.weekPage, { width: containerWidth }]}>
-          {currentWeekDates.map((d) => (
-            <DatePillItem
-              key={d.dateStr}
-              dateObj={d}
-              taskDates={taskDates}
-              onSelectDate={onSelectDate}
-              colors={colors}
-              styles={styles}
-            />
-          ))}
-        </View>
-
-        {/* Page +1: Next Week */}
-        <View style={[styles.weekPage, { width: containerWidth }]}>
-          {nextWeekDates.map((d) => (
-            <DatePillItem
-              key={d.dateStr}
-              dateObj={d}
-              taskDates={taskDates}
-              onSelectDate={onSelectDate}
-              colors={colors}
-              styles={styles}
-            />
-          ))}
-        </View>
+        <WeekRow dates={prevWeekDates}    taskDates={taskDates} onSelectDate={onSelectDate} colors={colors} isDark={isDark} pillWidth={pillWidth} pillActiveStyle={styles.activePill} />
+        <WeekRow dates={currentWeekDates} taskDates={taskDates} onSelectDate={onSelectDate} colors={colors} isDark={isDark} pillWidth={pillWidth} pillActiveStyle={styles.activePill} />
+        <WeekRow dates={nextWeekDates}    taskDates={taskDates} onSelectDate={onSelectDate} colors={colors} isDark={isDark} pillWidth={pillWidth} pillActiveStyle={styles.activePill} />
       </Animated.View>
     </View>
   );
@@ -462,62 +468,18 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
     pagerRow: {
       flexDirection: 'row',
     },
-    weekPage: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      gap: 6,
-      paddingHorizontal: 8,
-    },
-    dateItem: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
+    // Single native-thread sliding pill — all 3 WeekRows share this style
+    activePill: {
+      position: 'absolute',
+      top: 0,
+      left: 8,    // matches weekPage paddingHorizontal
       height: 56,
       borderRadius: 14,
-      backgroundColor: isDark ? '#141416' : colors.surface,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255, 255, 255, 0.07)' : colors.border,
-    },
-    dateItemActive: {
       backgroundColor: colors.accentPrimary,
-      borderColor: colors.accentPrimary,
       shadowColor: colors.accentPrimary,
       shadowOffset: { width: 0, height: 3 },
       shadowOpacity: isDark ? 0.35 : 0.2,
       shadowRadius: 8,
       elevation: 4,
-    },
-    dateDay: {
-      fontFamily: 'Inter_500Medium',
-      fontSize: 11,
-      color: colors.textTertiary,
-      marginBottom: 4,
-    },
-    dateDayActive: {
-      color: isDark ? '#000000' : '#FFFFFF',
-      fontWeight: '700',
-    },
-    dateNum: {
-      fontFamily: 'Inter_600SemiBold',
-      fontSize: 15,
-      color: colors.textPrimary,
-    },
-    dateNumActive: {
-      color: isDark ? '#000000' : '#FFFFFF',
-      fontWeight: '700',
-    },
-    dot: {
-      width: 3.5,
-      height: 3.5,
-      borderRadius: 2,
-      backgroundColor: colors.textTertiary,
-      marginTop: 4,
-      opacity: 0,
-    },
-    dotVisible: {
-      opacity: 1,
-    },
-    dotActive: {
-      backgroundColor: isDark ? '#000000' : '#FFFFFF',
     },
   });

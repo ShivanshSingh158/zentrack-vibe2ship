@@ -798,19 +798,27 @@ export const AttendanceModule = () => {
 
         {isSelectedHoliday ? (
           <div className="att-overview-card att-empty-card">
-            <span style={{ fontSize: '2rem' }}>🌴</span>
-            <h3 className="att-empty-day-title">Holiday</h3>
-            <p className="att-empty-day-desc">
-              Enjoy your day off! No classes scheduled for this date.
-            </p>
+            <div className="att-empty-icon-wrap holiday">
+              <span>🌴</span>
+            </div>
+            <div className="att-empty-text-wrap">
+              <h4 className="att-empty-day-title">Holiday</h4>
+              <p className="att-empty-day-desc">
+                Enjoy your day off! No classes scheduled for this date.
+              </p>
+            </div>
           </div>
         ) : todaySessions.length === 0 ? (
           <div className="att-overview-card att-empty-card">
-            <CheckCircle2 size={26} color="currentColor" className="att-all-clear-icon" />
-            <h3 className="att-empty-day-title">All clear!</h3>
-            <p className="att-empty-day-desc">
-              No classes scheduled for this day. Relax or catch up on work.
-            </p>
+            <div className="att-empty-icon-wrap">
+              <CheckCircle2 size={18} color="currentColor" className="att-all-clear-icon" />
+            </div>
+            <div className="att-empty-text-wrap">
+              <h4 className="att-empty-day-title">All clear for today</h4>
+              <p className="att-empty-day-desc">
+                No classes scheduled for this day. Relax or catch up on work.
+              </p>
+            </div>
           </div>
         ) : (
           <div className="att-sessions-list">

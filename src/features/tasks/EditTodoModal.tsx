@@ -393,38 +393,36 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({
     if (e) e.preventDefault();
     if (!rawInput.trim() || saving || !todo) return;
 
-    setSaving(true);
-    try {
-      const parsed = parseNLTask(rawInput);
-      const cleanTitle = (cleanTaskTitle(parsed.title || title || rawInput) || rawInput).trim();
+    const parsed = parseNLTask(rawInput);
+    const cleanTitle = (cleanTaskTitle(parsed.title || title || rawInput) || rawInput).trim();
 
-      let fullTimeSlot: string | null = null;
-      if (startTime) {
-        fullTimeSlot = endTime ? `${startTime} - ${endTime}` : startTime;
-      }
-
-      const resolvedDuration = durationMinutes
-        || (fullTimeSlot ? extractTaskDurationMinutes(null, fullTimeSlot, cleanTitle) : undefined);
-
-      const isRec = recurrenceRule && recurrenceRule.type !== 'once';
-
-      await onSave({
-        ...todo,
-        title: cleanTitle,
-        text: cleanTitle,
-        date: date || null,
-        priority: priority || 'medium',
-        timeSlot: fullTimeSlot,
-        estimatedMinutes: resolvedDuration ? Number(resolvedDuration) : undefined,
-        subtasks,
-        tags: selectedTags,
-        isRecurring: isRec,
-        recurrenceRule: isRec ? recurrenceRule : null,
-      });
-    } finally {
-      setSaving(false);
+    let fullTimeSlot: string | null = null;
+    if (startTime) {
+      fullTimeSlot = endTime ? `${startTime} - ${endTime}` : startTime;
     }
+
+    const resolvedDuration = durationMinutes
+      || (fullTimeSlot ? extractTaskDurationMinutes(null, fullTimeSlot, cleanTitle) : undefined);
+
+    const isRec = recurrenceRule && recurrenceRule.type !== 'once';
+
+    // ── Optimistic dismiss: close immediately, write in background ──────────
+    onClose();
+    onSave({
+      ...todo,
+      title: cleanTitle,
+      text: cleanTitle,
+      date: date || null,
+      priority: priority || 'medium',
+      timeSlot: fullTimeSlot,
+      estimatedMinutes: resolvedDuration ? Number(resolvedDuration) : undefined,
+      subtasks,
+      tags: selectedTags,
+      isRecurring: isRec,
+      recurrenceRule: isRec ? recurrenceRule : null,
+    }).catch(err => console.error('Failed to save task:', err));
   };
+
 
   if (!todo) return null;
 
