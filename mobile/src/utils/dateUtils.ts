@@ -1,57 +1,52 @@
-// ─── NL Task Parser — Best-in-Class NLP ────────────────────────────────────────
+// ─── NL Task Parser — Best-in-Class Universal NLP Engine (Web & Mobile) ─────────────
 // DATES:      "16 aug to 19 aug"  "16 september to 25 october"  "aug 16 to aug 19"
 //             "kal"  "aaj"  "parso"  "tonight"  "this morning"  "this evening"
 //             "in 30 minutes"  "in 2 hours"  "EOW"  "EOM"  "EOQ"  "SOW"
-//             "16/8"  "16/8/2026"  "16-08-2026"  "Aug 15 2026"
-//             "first monday of september"  "last friday of this month"
-// TIMES:      "noon"  "midnight"  "morning"  "afternoon"  "evening"  "night"
-//             "EOD"  "COB"  "3 o'clock"  bare "3" without am/pm → smart-PM
-// PRIORITY:   "🔴" "!1" "p:high" "urgent"  "🟡" "medium"  "🟢" "low"
-// DURATION:   "half an hour"  "a couple hours"  "2.5h"  "1h30m"  "45min"
-// RECURRENCE: "fortnightly"  "biweekly"  "quarterly"  "annually"  "twice a week"
-//             "every morning"  "every evening"  "every other tuesday"
-// Returns:    parsed fields + token spans for live inline text highlighting
+//             "16/8"  "16/8/2026"  "16-08-2026"  "Aug 15 2026"  "1st of March"  "on the 5th"
+//             "first monday of september"  "last friday of this month"  "last day of august"
+// TIMES:      "noon"  "midnight"  "morning"  "afternoon"  "evening"  "night"  "dawn"  "dusk"
+//             "EOD"  "COB"  "3 o'clock"  "half past 3"  "a quarter to 5"  "quarter past 6"
+//             "before lunch"  "after lunch"  "5 baje"  "shaam 6 baje"  bare "3" → smart-PM
+//             "4 30 pm"  "9.30pm"  "430pm"  "1030am"  "1230pm"  "10am to 12pm"
+// PRIORITY:   "🔴" "!1" "p:high" "urgent"  "🟡" "medium"  "🟢" "low"  "critical"  "asap"
+// DURATION:   "half an hour"  "a couple hours"  "2.5h"  "1h30m"  "45min"  "block of 2 hours"
+// RECURRENCE: "fortnightly"  "biweekly"  "quarterly"  "annually"  "twice a week"  "3x a week"
+//             "every morning"  "every evening"  "every other tuesday"  "every mon, wed, fri"
+//             "monday to saturday"  "daily from monday to friday"  "mon and wed"
+// SUBTASKS:   "with subtasks: a, b, c"  "checklist: a, b"  "buy groceries: milk, eggs, bread"
+// MULTI-TASK: "1. task one 2. task two"  "task one and then task two"  "task one; task two"
 
-const DAY_NAMES = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-const DAY_SHORT  = ['sun','mon','tue','wed','thu','fri','sat'];
-const MONTH_SHORT = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-const MONTH_LONG  = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+export const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+export const DAY_SHORT = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+export const MONTH_SHORT = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+export const MONTH_LONG = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+
+const MONTHS_SHORT_CAP = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS_LONG_CAP = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DAYS_SHORT_CAP = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAYS_LONG_CAP = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 /**
- * Alternate / common typo spellings → canonical 3-letter index
- * Lets users write "sept", "octo", "dece", "janu" etc. and still get a match.
+ * Alternate / common typo spellings → canonical 1-indexed month number (1-12)
  */
-const MONTH_ALIASES: Record<string, number> = {
-  // Jan
-  jan:1,january:1,janu:1,
-  // Feb
-  feb:2,february:2,febr:2,
-  // Mar
-  mar:3,march:3,
-  // Apr
-  apr:4,april:4,
-  // May
-  may:5,
-  // Jun
-  jun:6,june:6,
-  // Jul
-  jul:7,july:7,
-  // Aug
-  aug:8,august:8,
-  // Sep  — most common alternate is "sept"
-  sep:9,sept:9,september:9,
-  // Oct
-  oct:10,octo:10,october:10,octu:10,
-  // Nov
-  nov:11,november:11,
-  // Dec
-  dec:12,dece:12,december:12,
+export const MONTH_ALIASES: Record<string, number> = {
+  jan: 1, january: 1, janu: 1,
+  feb: 2, february: 2, febr: 2,
+  mar: 3, march: 3,
+  apr: 4, april: 4,
+  may: 5,
+  jun: 6, june: 6,
+  jul: 7, july: 7,
+  aug: 8, august: 8,
+  sep: 9, sept: 9, september: 9,
+  oct: 10, octo: 10, october: 10, octu: 10,
+  nov: 11, november: 11,
+  dec: 12, dece: 12, december: 12,
 };
 
-/** All spellings the regex pattern will accept (for use inside RegExp alternation) */
-const ALL_MONTH_FORMS = Object.keys(MONTH_ALIASES).sort((a,b) => b.length - a.length);
+export const ALL_MONTH_FORMS = Object.keys(MONTH_ALIASES).sort((a, b) => b.length - a.length);
 
-/** A single detected token in the raw text (for inline highlighting) */
+/** A single detected token in the raw text (for inline highlighting & chips) */
 export interface NLPToken {
   type: 'date' | 'time' | 'priority' | 'recurrence' | 'tag' | 'duration' | 'reminder' | 'subtask' | 'location';
   start: number;
@@ -67,27 +62,28 @@ export interface ParsedTask {
   endTimeSlot?: string | null;
   priority: 'high' | 'medium' | 'low';
   isRecurring: boolean;
-  recurrenceRule: { type: 'daily' | 'weekly' | 'monthly'; interval: number; daysOfWeek?: number[] } | null;
+  recurrenceRule: { type: 'daily' | 'weekly' | 'monthly' | 'custom'; interval?: number; daysOfWeek?: number[]; endDate?: string } | null;
   multiDays?: number;
-  /**
-   * One-time multi-day list: resolved YYYY-MM-DD dates for THIS week.
-   * Set when user says "only this monday, tuesday and friday" or a bare
-   * comma-list of days without "every". The modal batch-creates one task
-   * per date. The first date is also stored in `date`.
-   */
   oneTimeDates?: string[];
-  /** Auto-extracted #hashtag values, lowercased, without the # */
   tags?: string[];
-  /** Parsed duration in minutes (e.g. "for 45m" → 45, "1h30m" → 90) */
   durationMinutes?: number | null;
-  /** Flag indicating high-priority scheduled reminder */
   isReminder?: boolean;
-  /** Auto-extracted subtasks list */
   subtasks?: string[];
-  /** Auto-detected location reminder configuration */
   locationReminder?: any;
-  /** Auto-detected location name */
   locationName?: string;
+  tokens: NLPToken[];
+}
+
+/** Parsed calendar event structure */
+export interface ParsedEvent {
+  title: string;
+  date: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  type: 'exam' | 'assignment_due' | 'holiday' | 'todo' | 'job';
+  typeLabel: string;
+  typeIcon: string;
+  typeColor: string;
   tokens: NLPToken[];
 }
 
@@ -104,22 +100,57 @@ function parseSingleTime(hStr: string, mStr: string, pStr: string): { hh: string
   return { hh, mm, display: `${hr12}:${mm}${ampm}` };
 }
 
-
 export function toYMD(d: Date): string {
-  // Use local date parts to avoid UTC timezone shift (critical for IST UTC+5:30)
   const y = d.getFullYear();
   const m = (d.getMonth() + 1).toString().padStart(2, '0');
   const day = d.getDate().toString().padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
+export function getLocalDateString(date: Date = new Date()): string {
+  return toYMD(date);
+}
+
+export const formatLocalDateStr = getLocalDateString;
+
+export function getTodayLocalDateStr(): string {
+  return getLocalDateString(new Date());
+}
+
+/**
+ * Parse a YYYY-MM-DD string safely as a LOCAL date (avoids UTC midnight shift).
+ */
+export function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/**
+ * Safely adds/subtracts days to a local "YYYY-MM-DD" string without UTC shifts.
+ */
+export function offsetDateStr(dateStr: string, offsetDays: number): string {
+  try {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + offsetDays);
+    const year = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  } catch {
+    const dt = new Date();
+    dt.setDate(dt.getDate() + offsetDays);
+    const year = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+}
+
 export function nextWeekday(targetDayIndex: number, forceNext = false): Date {
   const d = new Date();
   const currentDay = d.getDay();
   let diff = targetDayIndex - currentDay;
-  // Only push to next week if forceNext is explicitly true,
-  // OR if diff is negative (the target day already passed this week).
-  // diff === 0 means TODAY is the target day — return today, not next week.
   if (diff < 0 || (diff === 0 && forceNext)) {
     diff += 7;
   }
@@ -127,16 +158,7 @@ export function nextWeekday(targetDayIndex: number, forceNext = false): Date {
   return d;
 }
 
-/**
- * Extracts an ordered list of unique day indices from a comma/"and"-separated
- * day-name string like "friday, saturday and monday" or "mon, wed, fri".
- *
- * Returns [] if fewer than 2 distinct days are found.
- * The caller decides whether 2 days should also use this path or fall back
- * to the existing andPat (which handles the 2-day case already).
- */
 export function extractDayListFromText(raw: string): number[] {
-  // Tokenise: split on commas, " and ", " & ", " + "
   const parts = raw
     .toLowerCase()
     .split(/[,&+]|\band\b/)
@@ -147,7 +169,6 @@ export function extractDayListFromText(raw: string): number[] {
   const result: number[] = [];
 
   for (const part of parts) {
-    // Try full name first, then 3-letter short form
     let idx = DAY_NAMES.findIndex(d => part.startsWith(d));
     if (idx === -1) idx = DAY_SHORT.findIndex(d => part.startsWith(d));
     if (idx !== -1 && !seen.has(idx)) {
@@ -159,85 +180,65 @@ export function extractDayListFromText(raw: string): number[] {
   return result;
 }
 
-/**
- * Resolve a day index to its YYYY-MM-DD date in the CURRENT week
- * (Mon-Sun window that contains today).
- * Unlike nextWeekday(), this never jumps to next week — it always
- * returns the day within the current Mon–Sun span even if already past.
- */
 export function thisWeekDate(dayIndex: number): Date {
   const d = new Date();
-  const today = d.getDay(); // 0=Sun…6=Sat
-  // Difference in days: positive = ahead, negative = behind in this week
-  let diff = dayIndex - today;
-  // Clamp to current week: diff is always in [-6, 6]
-  // We do NOT wrap to next week, so days that already passed this week
-  // still resolve to their date (e.g. Monday when today is Wednesday).
+  const todayDay = d.getDay();
+  const diff = dayIndex - todayDay;
   d.setDate(d.getDate() + diff);
   return d;
 }
 
-/** Resolve a month name + day number to a local Date (pushes to next year if already past) */
-function resolveMonthDay(monthStr: string, dayNum: number): Date | null {
+export function resolveMonthDay(monthStr: string, dayNum: number): Date | null {
   const mLow = monthStr.toLowerCase().trim();
-  // Try alias map first (handles 'sept', 'august', 'octu', etc.)
   const monthNum = MONTH_ALIASES[mLow] ?? MONTH_ALIASES[mLow.slice(0, 3)];
   if (!monthNum || dayNum < 1 || dayNum > 31) return null;
-  const monthIdx = monthNum - 1; // 0-indexed for Date constructor
+  const monthIdx = monthNum - 1;
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   let candidate = new Date(now.getFullYear(), monthIdx, dayNum);
-  if (candidate < today) candidate = new Date(now.getFullYear() + 1, monthIdx, dayNum);
+  if (candidate < todayDate) candidate = new Date(now.getFullYear() + 1, monthIdx, dayNum);
   return candidate;
 }
 
 /**
  * Strips conversational command prefixes, carrier words, filler phrases,
- * trailing prepositions, normalizes inverted voice grammar (e.g. "DSA study" -> "Study DSA"),
+ * trailing prepositions, normalizes inverted voice grammar,
  * capitalizes sentences, and preserves standard tech/academic acronyms.
  */
 export function cleanTaskTitle(rawTitle: string): string {
   if (!rawTitle) return '';
   let t = rawTitle.trim();
 
-  // 1. Strip assistant / conversational wrappers
+  // 1. Assistant / Conversational wrappers
   t = t.replace(/^(?:hey\s+)?sara[,:\s]+/i, '');
   t = t.replace(/^(?:can|could|would)\s+you\s+(?:please\s+)?/i, '');
   t = t.replace(/^please\s+(?:kindly\s+)?/i, '');
   t = t.replace(/^kindly\s+/i, '');
 
-  // 2. Strip task creation command prefixes & conversational preambles
+  // 2. Command Prefixes & spoken preambles
   const commandPrefixes = [
-    // Create variations
     /^create\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
     /^create\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
     /^create\s+(?:a\s+|an\s+)?/i,
-    // Add variations
     /^add\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
     /^add\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
     /^add\s+(?:a\s+|an\s+)?/i,
-    // Make variations
     /^make\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
     /^make\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
     /^make\s+(?:a\s+|an\s+)?/i,
-    // Schedule variations
     /^schedule\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
     /^schedule\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
     /^schedule\s+(?:a\s+|an\s+)?/i,
-    // Set / Set up variations
     /^set\s+(?:up\s+)?(?:a\s+|an\s+)?(?:new\s+)?(?:reminder|alarm|task|event)\s+(?:to|for|at|about)\s+/i,
     /^set\s+(?:up\s+)?(?:a\s+|an\s+)?(?:new\s+)?(?:reminder|alarm|task|event)\s*[:\-]?\s+/i,
     /^set\s+alarm\s+(?:for|at|to)\s+/i,
-    // Remind variations (with conversational clauses like "remind me that I have to")
     /^remind\s+me\s+(?:that\s+(?:i|we)\s+(?:have|need|got|gotta)\s+to|that|to|for|about)?\s*/i,
     /^remind\s+(?:that\s+(?:i|we)\s+(?:have|need|got|gotta)\s+to|that|to|for|about)?\s*/i,
     /^reminder\s*[:\-]\s*/i,
     /^reminder\s+(?:to|for|about)\s+/i,
-    // Remember / Don't forget / Ensure
     /^(?:don'?t\s+forget|dont\s+forget)\s+(?:that\s+(?:i|we)\s+(?:have|need|got|gotta)\s+to|to\s+)?/i,
     /^remember\s+(?:to\s+)?/i,
     /^(?:make|be)\s+sure\s+to\s+/i,
-    // Conversational preambles & intentions
     /^(?:that\s+)?(?:(?:i|we)\s+)?(?:was\s+thinking\s+(?:of|about)|was\s+planning\s+(?:to|on)|am\s+planning\s+(?:to|on)|plan\s+to|planning\s+(?:to|on))\s+/i,
     /^(?:that\s+)?(?:(?:i|we)\s+)?(?:am\s+supposed\s+to|are\s+supposed\s+to|supposed\s+to)\s+/i,
     /^(?:that\s+)?(?:(?:i|we)\s+)?(?:have\s+got\s+to|'ve\s+gotta|have\s+to|need\s+to|want\s+to|wanna|wish\s+to|just\s+need\s+to|got\s+to|gotta)\s+/i,
@@ -245,22 +246,20 @@ export function cleanTaskTitle(rawTitle: string): string {
     /^(?:gotta|wanna|need\s+to)\s+/i,
     /^(?:hit|do)\s+(?:the\s+)?(?=(?:chest|back|legs|biceps|triceps|shoulders|push|pull|gym|workout)\b)/i,
     /^(?:bhai|yaar|bro|dude)[,\s]+/i,
-    // Logging / writing
     /^(?:put|write|note|take)\s+down\s+(?:a\s+|the\s+)?(?:task\s+)?(?:to|for)?\s*/i,
     /^(?:log|record|enter|track)\s+(?:a\s+|the\s+)?(?:task\s+)?(?:to|for)?\s*/i,
-    // Prefixes like "todo:", "task:", "new task:"
     /^(?:to-?do|task|action\s+item|new\s+task|note)\s*[:\-]\s*/i,
-    // Conversational spoken fillers & hesitation markers
     /^(?:um+|uh+|er+|ah+|like|you\s+know|basically|actually|literally|honestly|i\s+mean|to\s+be\s+honest|just\s+wanted\s+to|i\s+think\s+i\s+should|just|so|well)[,\s]+/i,
     /^(?:i\s+want\s+you\s+to|can\s+you\s+help\s+me\s+to|help\s+me\s+to|i\s+need\s+you\s+to|can\s+you\s+make\s+sure\s+to)\s+/i,
     /^(?:make\s+sure\s+(?:that\s+)?(?:i|we)\s+(?:have\s+to|need\s+to|don'?t\s+forget\s+to)?|ensure\s+(?:that\s+)?|ensure\s+to)\s*/i,
     /^(?:note\s+to\s+self|memo|quick\s+note)[,\s:]+/i,
-    // Hinglish command prefixes & conversational speech starters
     /^(?:bhai\s+sun|ek\s+kaam\s+kar|dekh\s+bhai|dekh\s+yaar|yaar\s+ek|mujhe\s+lagta\s+hai|suno)[,\s:]+/i,
     /^(?:please\s+yaar|pls\s+yaar|bhai\s+please|yaar\s+please)[,\s]+/i,
     /^(?:mujhe\s+)?(?:aaj|kal|parso)?\s*(?:subah|shaam|dopahar|raat)?\s*(?:ko)?\s*(?:ek\s+)?task\s+(?:bana\s+(?:do|o)|add\s+(?:karo|kar\s+do)|create\s+(?:karo|kar\s+do))\s*/i,
     /^mujhe\s+/i,
     /^(?:yaad\s+(?:dilana|dila\s+do|rakhna))\s+(?:ki\s+)?/i,
+    /^(?:ek\s+kaam|ek\s+task|mere\s+liye|meri\s+help)[,\s]+/i,
+    /^(?:padhai|padhna|likhna)\s+(?:ka\s+|ki\s+)?(?:task|kaam|reminder)\s*/i,
   ];
 
   let changed = true;
@@ -277,90 +276,28 @@ export function cleanTaskTitle(rawTitle: string): string {
     }
   }
 
-  // 2b. Gerund-to-imperative action verb normalization
-  // Spoken dictation frequently starts with "-ing" verbs (e.g. "submitting lab report", "studying operating systems", "calling mom")
+  // 3. Gerund-to-imperative action verb normalization
   const GERUNDS: Record<string, string> = {
-    submitting: 'submit',
-    studying: 'study',
-    calling: 'call',
-    buying: 'buy',
-    paying: 'pay',
-    sending: 'send',
-    scheduling: 'schedule',
-    revising: 'revise',
-    writing: 'write',
-    reading: 'read',
-    booking: 'book',
-    cleaning: 'clean',
-    practicing: 'practice',
-    checking: 'check',
-    meeting: 'meet',
-    fixing: 'fix',
-    working: 'work',
-    cooking: 'cook',
-    attending: 'attend',
-    completing: 'complete',
-    finishing: 'finish',
-    preparing: 'prepare',
-    ordering: 'order',
-    learning: 'learn',
-    visiting: 'visit',
-    taking: 'take',
-    doing: 'do',
-    going: 'go',
-    watching: 'watch',
-    deploying: 'deploy',
-    reviewing: 'review',
-    organizing: 'organize',
-    printing: 'print',
-    updating: 'update',
-    renewing: 'renew',
-    canceling: 'cancel',
-    cancelling: 'cancel',
-    exercising: 'exercise',
-    washing: 'wash',
-    ironing: 'iron',
-    emailing: 'email',
-    messaging: 'message',
-    texting: 'text',
-    dropping: 'drop',
-    picking: 'pick',
-    collecting: 'collect',
-    downloading: 'download',
-    uploading: 'upload',
-    installing: 'install',
-    uninstalling: 'uninstall',
-    testing: 'test',
-    debugging: 'debug',
-    discussing: 'discuss',
-    presenting: 'present',
-    tracking: 'track',
-    logging: 'log',
-    registering: 'register',
-    applying: 'apply',
-    filing: 'file',
-    signing: 'sign',
-    verifying: 'verify',
-    confirming: 'confirm',
-    informing: 'inform',
-    notifying: 'notify',
-    contacting: 'contact',
-    following: 'follow',
-    researching: 'research',
-    solving: 'solve',
-    building: 'build',
-    designing: 'design',
-    drafting: 'draft',
-    editing: 'edit',
-    sharing: 'share',
-    returning: 'return',
-    reporting: 'report',
-    joining: 'join',
-    packing: 'pack',
-    charging: 'charge',
-    backing: 'back',
-    saving: 'save',
-    archiving: 'archive',
+    submitting: 'submit', studying: 'study', calling: 'call', buying: 'buy',
+    paying: 'pay', sending: 'send', scheduling: 'schedule', revising: 'revise',
+    writing: 'write', reading: 'read', booking: 'book', cleaning: 'clean',
+    practicing: 'practice', checking: 'check', meeting: 'meet', fixing: 'fix',
+    working: 'work', cooking: 'cook', attending: 'attend', completing: 'complete',
+    finishing: 'finish', preparing: 'prepare', ordering: 'order', learning: 'learn',
+    visiting: 'visit', taking: 'take', doing: 'do', going: 'go', watching: 'watch',
+    deploying: 'deploy', reviewing: 'review', organizing: 'organize', printing: 'print',
+    updating: 'update', renewing: 'renew', canceling: 'cancel', cancelling: 'cancel',
+    exercising: 'exercise', washing: 'wash', ironing: 'iron', emailing: 'email',
+    messaging: 'message', texting: 'text', dropping: 'drop', picking: 'pick',
+    collecting: 'collect', downloading: 'download', uploading: 'upload', installing: 'install',
+    uninstalling: 'uninstall', testing: 'test', debugging: 'debug', discussing: 'discuss',
+    presenting: 'present', tracking: 'track', logging: 'log', registering: 'register',
+    applying: 'apply', filing: 'file', signing: 'sign', verifying: 'verify',
+    confirming: 'confirm', informing: 'inform', notifying: 'notify', contacting: 'contact',
+    following: 'follow', researching: 'research', solving: 'solve', building: 'build',
+    designing: 'design', drafting: 'draft', editing: 'edit', sharing: 'share',
+    returning: 'return', reporting: 'report', joining: 'join', packing: 'pack',
+    charging: 'charge', backing: 'back', saving: 'save', archiving: 'archive',
     exporting: 'export',
   };
 
@@ -372,92 +309,15 @@ export function cleanTaskTitle(rawTitle: string): string {
     }
   }
 
-  // 3. Strip leading connector prepositions and articles left over
   t = t.replace(/^(?:to|for|about|of|regarding|that|a|an|the)\s+/i, '').trim();
 
-  // 3b. Generalized Hinglish verb reversal: "[Object] [Action Verb] karna hai" -> "[Action Verb] [Object]"
-  // E.g. "assignment submit karna hai" -> "submit assignment"
-  // E.g. "DSA and DBMS revise karna hai" -> "revise DSA and DBMS"
+  // 4. Hinglish & Inverted action normalization
   const hinglishVerbReversal = t.match(/^(.+?)\s+(submit|complete|finish|pay|clean|check|update|fix|verify|revise|study|read|write|deploy|book|buy|order)\s+(?:karna|krna|karni|krni|kar\s+dena|kar\s+do|karo)(?:\s+(?:hai|h))?$/i);
   if (hinglishVerbReversal) {
     t = `${hinglishVerbReversal[2]} ${hinglishVerbReversal[1]}`.trim();
   }
 
-  // 4. Strip specific conversational / voice filler clauses
-  t = t.replace(/\s+(?:dena|deni|bhejna|bhejni|lena|leni|jana|aana|khatam\s+karna)\s+(?:hai|h)$/i, '').trim();
-  t = t.replace(/\s+(?:karna|krna|karni|krni)\s+(?:hai|h)$/i, '').trim();
-  t = t.replace(/\s+(?:kar\s+dena|kar\s+lena|de\s+dena|kar\s+do|karo)$/i, '').trim();
-  t = t.replace(/\s+(?:task|todo|to-do|item|reminder)(?:\s+(?:for|to|at|on|about))?(?:\s+(?:everyday|daily|each\s+day|today|tomorrow|tommorow|tomorow|tommorrow|tmrw|tmr))?$/i, '').trim();
-  t = t.replace(/\s+(?:for\s+everyday|for\s+daily|everyday|daily)$/i, '').trim();
-  t = t.replace(/\s+(?:shaam\s+ko|sham\s+ko|shaam|sham|subah\s+ko|subah|dopahar\s+ko|dopahar|raat\s+ko|raat)$/i, '').trim();
-  t = t.replace(/\s+with\s+(?:a(?:n)?\s+)?(?:alarm|reminder|alert|notification|buzz|ping|bell|chime|sound|vibration|notify|toast|pop.?up|snooze|push\s+notification)s?$/i, '').trim();
-  t = t.replace(/\s+(?:with\s+)?(?:set(?:\s+an?)?\s+)?(?:alarm|reminder|alert|notification)\s+(?:for|at|on|to)\s*$/i, '').trim();
-  t = t.replace(/\s+and\s+(?:remind\s+(?:me\s+)?(?:to\s+|about\s+)?|set\s+(?:a[n]?\s+)?(?:alarm|reminder)|notify\s+(?:me\s+)?)$/i, '').trim();
-  t = t.replace(/\s+at\s+\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm|a\.?m\.?|p\.?m\.?)?$/i, '').trim();
-  t = t.replace(/\s+(?:today|tomorrow|tommorow|tomorow|tommorrow|tmrw|tmr|tonight|aaj|kal|parso)$/i, '').trim();
-  t = t.replace(/\s+(?:by|around|sharp|at|on|for|due)\s*$/i, '').trim();
-  t = t.replace(/\s+(?:right\s+now|at\s+the\s+earliest|on\s+urgent\s+basis|urgent\s+basis)$/i, '').trim();
-
-  // 5. Multi-pass trailing connector, preposition & punctuation scrubber
-  let trailChanged = true;
-  let trailPasses = 0;
-  while (trailChanged && trailPasses < 6) {
-    trailChanged = false;
-    trailPasses++;
-    const prev = t;
-    // Strip trailing/leading punctuation
-    t = t.replace(/^[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+|[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+$/g, '').trim();
-    // Strip trailing prepositions & connectors
-    t = t.replace(/\s+(?:at|from|to|by|on|in|for|with|until|till|and|or|during|of|about|then|also)$/i, '').trim();
-    // Strip trailing conversational / polite / Hinglish suffixes
-    t = t.replace(/\s+(?:please|pls|as\s+well|too|for\s+me|bhai|yaar|bro|dude|na|karo|do|h|hai)$/i, '').trim();
-    // Strip trailing conversational time / urgency fillers
-    t = t.replace(/\s+(?:if\s+possible|as\s+soon\s+as\s+possible|right\s+now|or\s+something|you\s+know|at\s+the\s+earliest)$/i, '').trim();
-    // Strip trailing orphaned period-of-day or time indicators
-    t = t.replace(/\s+(?:[ap]\.?m\.?|am|pm|o'?clock)$/i, '').trim();
-    t = t.replace(/\s+(?:in\s+the\s+)?(?:early\s+morning|morning|afternoon|evening|night|tonight|today|tomorrow|tommorow|tomorow|tommorrow|tmrw|tmr|yesterday)$/i, '').trim();
-    // Strip trailing orphaned priority expressions
-    t = t.replace(/\s+(?:hi|high|medium|mid|low)\s+(?:priority|prio|importance)$/i, '').trim();
-    t = t.replace(/\s+priority\s*(?:is\s+|:\s*|\s+)?(?:hi|high|medium|mid|low|1|2|3|one|two|three)$/i, '').trim();
-    t = t.replace(/\s+(?:p:hi|p:high|p:med|p:low|!1|!2|!3|p1|p2|p3|hi)$/i, '').trim();
-    t = t.replace(/\s+(?:urgent|asap|important|critical|fire|blocker)$/i, '').trim();
-    // Strip trailing/leading punctuation again after word removal
-    t = t.replace(/^[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+|[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+$/g, '').trim();
-    if (t !== prev) trailChanged = true;
-  }
-
-  // Internal cleanup: remove duplicated punctuation & consecutive spaces
-  t = t.replace(/\s*,\s*,+/g, ', ');
-  t = t.replace(/\s{2,}/g, ' ').trim();
-
-  // 6. Hinglish & Colloquial Action Transformations
-  if (/^gym(?:\s+(?:jana|jaana|chale\s+jana))?(?:\s+(?:hai|h))?$/i.test(t)) {
-    t = 'Hit the gym';
-  } else if (/^doctor(?:\s+ke\s+paas)?\s+(?:jana|appointment|dikhana)(?:\s+(?:hai|h))?$/i.test(t)) {
-    t = 'Visit doctor';
-  } else if (/^(?:dawai|medicine|dawa)\s+(?:lena|khana)(?:\s+(?:hai|h))?$/i.test(t)) {
-    t = 'Take medicine';
-  } else if (/^(?:groceries|grocery|sabzi|sabji)\s+(?:lana|kharidna|laana)(?:\s+(?:hai|h))?$/i.test(t)) {
-    t = 'Buy groceries';
-  } else if (/^(?:dost|friend|friends)\s+(?:se\s+milna|milna)(?:\s+(?:hai|h))?$/i.test(t)) {
-    t = 'Meet friend';
-  } else if (/^(?:room|kamra)\s+(?:clean\s+karna|saaf\s+karna)(?:\s+(?:hai|h))?$/i.test(t)) {
-    t = 'Clean room';
-  } else if (/^(?:electricity\s+bill|bijli\s+ka\s+bill)\s+(?:pay|bharna|bharo)(?:\s+(?:hai|h|karna\s+hai))?$/i.test(t)) {
-    t = 'Pay electricity bill';
-  } else if (/^(?:recharge)\s+(?:karna|kar\s+do)(?:\s+(?:hai|h))?$/i.test(t)) {
-    t = 'Recharge phone';
-  }
-
-  // Pronoun & Determiner Simplification for crisp titles
-  t = t.replace(/\bcall\s+my\s+(mom|dad|mother|father|mummy|papa|parents|brother|sister|bro|sis)\b/i, 'call $1');
-  t = t.replace(/\bclean\s+my\s+room\b/i, 'clean room');
-  t = t.replace(/\bpick\s+up\s+my\s+/i, 'pick up ');
-  t = t.replace(/\bbuy\s+some\s+/i, 'buy ');
-  t = t.replace(/\bdo\s+my\s+laundry\b/i, 'wash laundry');
-
-  // 6b. Expanded Inverted action normalization (SOV -> SVO for task intents)
-  // e.g. "dsa study" -> "study dsa", "groceries buy" -> "buy groceries"
+  // English Inverted SOV-to-SVO normalization
   const sovPatterns: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
     [/^(.+?)\s+study$/i, m => m[1].toLowerCase() !== 'case' ? `study ${m[1]}` : m[0]],
     [/^(.+?)\s+practice$/i, m => `practice ${m[1]}`],
@@ -485,57 +345,93 @@ export function cleanTaskTitle(rawTitle: string): string {
     }
   }
 
-  // 6b. Deduplicate repeated speech phrases, stuttered utterances & trailing duplicate metadata
+  // 5. Deduplicate repeated speech phrases, stuttered utterances & trailing duplicate metadata
   const phraseDedupe = (str: string): string => {
     let s = str.trim();
-
-    // Strip stray leaked metadata words that appear in spoken repetitions
     s = s.replace(/\b(?:high|medium|low)\s+priority\b/gi, '');
     s = s.replace(/\bpriority\s+(?:high|medium|low|urgent|p[123])\b/gi, '');
     s = s.replace(/\b(?:today|tomorrow|tommorow|tomorow|tommorrow|tmrw|tmr|tonight|yesterday)\b/gi, '');
     s = s.replace(/\b\d{1,2}(?::\d{2})?\s*(?:to|-)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b/gi, '');
     s = s.replace(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi, '');
 
-    // Collapse multi-word repeated phrases (from 6 words down to 2 words):
-    // e.g. "TV Bldc Study TV Bldc Study ..." -> "TV Bldc Study"
     for (let len = 6; len >= 2; len--) {
       const pattern = new RegExp(`\\b((?:[\\w'-]+\\s+){${len - 1}}[\\w'-]+)(?:\\s+\\1\\b)+`, 'gi');
       s = s.replace(pattern, '$1');
     }
-
-    // Collapse repeated single words: "study study" -> "study"
     s = s.replace(/\b([a-zA-Z]{3,})\s+\1\b/gi, '$1');
-
     return s.replace(/\s+/g, ' ').trim();
   };
   t = phraseDedupe(t);
 
-  // 7. Acronym & Brand normalization with smart title capitalization
+  // Pronoun & Determiner Simplification
+  t = t.replace(/\bcall\s+my\s+(mom|dad|mother|father|mummy|papa|parents|brother|sister|bro|sis)\b/i, 'call $1');
+  t = t.replace(/\bclean\s+my\s+room\b/i, 'clean room');
+  t = t.replace(/\bpick\s+up\s+my\s+/i, 'pick up ');
+  t = t.replace(/\bbuy\s+some\s+/i, 'buy ');
+  t = t.replace(/\bdo\s+my\s+laundry\b/i, 'wash laundry');
+
+  // Strip conversational / voice filler clauses
+  t = t.replace(/\s+(?:dena|deni|bhejna|bhejni|lena|leni|jana|aana|khatam\s+karna)\s+(?:hai|h)$/i, '').trim();
+  t = t.replace(/\s+(?:karna|krna|karni|krni)\s+(?:hai|h)$/i, '').trim();
+  t = t.replace(/\s+(?:kar\s+dena|kar\s+lena|de\s+dena|kar\s+do|karo)$/i, '').trim();
+  t = t.replace(/\s+(?:task|todo|to-do|item|reminder)(?:\s+(?:for|to|at|on|about))?(?:\s+(?:everyday|daily|each\s+day|today|tomorrow|tmrw|tmr))?$/i, '').trim();
+  t = t.replace(/\s+(?:for\s+everyday|for\s+daily|everyday|daily)$/i, '').trim();
+  t = t.replace(/\s+(?:shaam\s+ko|sham\s+ko|shaam|sham|subah\s+ko|subah|dopahar\s+ko|dopahar|raat\s+ko|raat)$/i, '').trim();
+  t = t.replace(/\s+with\s+(?:a(?:n)?\s+)?(?:alarm|reminder|alert|notification|buzz|ping|bell|chime|sound|vibration|notify|toast|pop.?up|snooze|push\s+notification)s?$/i, '').trim();
+  t = t.replace(/\s+(?:with\s+)?(?:set(?:\s+an?)?\s+)?(?:alarm|reminder|alert|notification)\s+(?:for|at|on|to)\s*$/i, '').trim();
+  t = t.replace(/\s+and\s+(?:remind\s+(?:me\s+)?(?:to\s+|about\s+)?|set\s+(?:a[n]?\s+)?(?:alarm|reminder)|notify\s+(?:me\s+)?)$/i, '').trim();
+  t = t.replace(/\s+at\s+\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm|a\.?m\.?|p\.?m\.?)+$/i, '').trim();
+  t = t.replace(/\s+(?:today|tomorrow|tonight|aaj|kal|parso|tmrw|tmr)$/i, '').trim();
+  t = t.replace(/\s+(?:by|around|sharp|at|on|for|due)\s*$/i, '').trim();
+  t = t.replace(/\s+(?:right\s+now|at\s+the\s+earliest|on\s+urgent\s+basis|urgent\s+basis)$/i, '').trim();
+
+  // Multi-pass trailing connector, preposition & punctuation scrubber
+  let trailChanged = true;
+  let trailPasses = 0;
+  while (trailChanged && trailPasses < 6) {
+    trailChanged = false;
+    trailPasses++;
+    const prev = t;
+    t = t.replace(/^[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+|[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+$/g, '').trim();
+    t = t.replace(/\s+(?:at|from|to|by|on|in|for|with|until|till|and|or|during|of|about|then|also)$/i, '').trim();
+    t = t.replace(/\s+(?:please|pls|as\s+well|too|for\s+me|bhai|yaar|bro|dude|na|karo|do|h|hai)$/i, '').trim();
+    t = t.replace(/\s+(?:if\s+possible|as\s+soon\s+as\s+possible|right\s+now|or\s+something|you\s+know|at\s+the\s+earliest)$/i, '').trim();
+    t = t.replace(/\s+(?:[ap]\.?m\.?|am|pm|o'?clock)$/i, '').trim();
+    t = t.replace(/\s+(?:in\s+the\s+)?(?:early\s+morning|morning|afternoon|evening|night|tonight|today|tomorrow|yesterday)$/i, '').trim();
+    t = t.replace(/\s+(?:hi|high|medium|mid|low)\s+(?:priority|prio|importance)$/i, '').trim();
+    t = t.replace(/\s+priority\s*(?:is\s+|:\s*|\s+)?(?:hi|high|medium|mid|low|1|2|3|one|two|three)$/i, '').trim();
+    t = t.replace(/\s+(?:p:hi|p:high|p:med|p:low|!1|!2|!3|p1|p2|p3|hi)$/i, '').trim();
+    t = t.replace(/\s+(?:urgent|asap|important|critical|fire|blocker)$/i, '').trim();
+    t = t.replace(/^[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+|[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+$/g, '').trim();
+    if (t !== prev) trailChanged = true;
+  }
+
+  t = t.replace(/\s*,\s*,+/g, ', ');
+  t = t.replace(/\s{2,}/g, ' ').trim();
+
+  // Acronym & Brand dictionary
   const ACRONYMS: Record<string, string> = {
-    // Tech acronyms
-    'dsa': 'DSA', 'dbms': 'DBMS', 'os': 'OS', 'ai': 'AI', 'ml': 'ML', 'dl': 'DL',
-    'nlp': 'NLP', 'cn': 'CN', 'oop': 'OOP', 'oops': 'OOPs', 'sql': 'SQL', 'nosql': 'NoSQL',
-    'api': 'API', 'apis': 'APIs', 'html': 'HTML', 'css': 'CSS', 'js': 'JS', 'ts': 'TS',
-    'pr': 'PR', 'prs': 'PRs', 'sde': 'SDE', 'hr': 'HR', 'ui': 'UI', 'ux': 'UX',
-    'pdf': 'PDF', 'llm': 'LLM', 'llms': 'LLMs', 'cgpa': 'CGPA', 'sgpa': 'SGPA',
-    'aws': 'AWS', 'gcp': 'GCP', 'toc': 'TOC', 'ppl': 'PPL', 'hiit': 'HIIT',
-    '1rm': '1RM', 'bmi': 'BMI', 'vad': 'VAD', 'rest': 'REST', 'crud': 'CRUD',
-    'sdk': 'SDK', 'sdks': 'SDKs', 'cli': 'CLI', 'ci': 'CI', 'cd': 'CD', 'cicd': 'CI/CD',
-    'iot': 'IoT', 'ip': 'IP', 'vpn': 'VPN', 'url': 'URL', 'urls': 'URLs',
-    'bldc': 'BLDC', 'tv': 'TV', 'ev': 'EV', 'dc': 'DC', 'ac': 'AC',
-    'json': 'JSON', 'jwt': 'JWT', 'ssh': 'SSH', 'ssl': 'SSL', 'tls': 'TLS',
-    'dns': 'DNS', 'http': 'HTTP', 'https': 'HTTPS', 'ftp': 'FTP', 'ide': 'IDE',
-    'gui': 'GUI', 'seo': 'SEO', 'mvp': 'MVP', 'kpi': 'KPI', 'okr': 'OKR', 'okrs': 'OKRs',
-    // Exams & Academic
-    'leetcode': 'LeetCode', 'gfg': 'GFG', 'codeforces': 'Codeforces', 'codechef': 'CodeChef',
-    'nptel': 'NPTEL', 'neet': 'NEET', 'gate': 'GATE', 'cat': 'CAT', 'upsc': 'UPSC',
-    'iit': 'IIT', 'nit': 'NIT', 'bits': 'BITS', 'gre': 'GRE', 'toefl': 'TOEFL',
-    // Brands & Apps
-    'whatsapp': 'WhatsApp', 'youtube': 'YouTube', 'instagram': 'Instagram',
-    'linkedin': 'LinkedIn', 'github': 'GitHub', 'gitlab': 'GitLab', 'figma': 'Figma',
-    'vscode': 'VS Code', 'nextjs': 'Next.js', 'react': 'React', 'nodejs': 'Node.js',
-    'mongodb': 'MongoDB', 'docker': 'Docker', 'postman': 'Postman', 'slack': 'Slack',
-    'notion': 'Notion', 'spotify': 'Spotify', 'gmail': 'Gmail', 'zoom': 'Zoom',
+    dsa: 'DSA', dbms: 'DBMS', os: 'OS', ai: 'AI', ml: 'ML', dl: 'DL',
+    nlp: 'NLP', cn: 'CN', oop: 'OOP', oops: 'OOPs', sql: 'SQL', nosql: 'NoSQL',
+    api: 'API', apis: 'APIs', html: 'HTML', css: 'CSS', js: 'JS', ts: 'TS',
+    pr: 'PR', prs: 'PRs', sde: 'SDE', hr: 'HR', ui: 'UI', ux: 'UX',
+    pdf: 'PDF', llm: 'LLM', llms: 'LLMs', cgpa: 'CGPA', sgpa: 'SGPA',
+    aws: 'AWS', gcp: 'GCP', toc: 'TOC', ppl: 'PPL', hiit: 'HIIT',
+    '1rm': '1RM', bmi: 'BMI', vad: 'VAD', rest: 'REST', crud: 'CRUD',
+    sdk: 'SDK', sdks: 'SDKs', cli: 'CLI', ci: 'CI', cd: 'CD', cicd: 'CI/CD',
+    iot: 'IoT', ip: 'IP', vpn: 'VPN', url: 'URL', urls: 'URLs',
+    bldc: 'BLDC', tv: 'TV', ev: 'EV', dc: 'DC', ac: 'AC',
+    json: 'JSON', jwt: 'JWT', ssh: 'SSH', ssl: 'SSL', tls: 'TLS',
+    dns: 'DNS', http: 'HTTP', https: 'HTTPS', ftp: 'FTP', ide: 'IDE',
+    gui: 'GUI', seo: 'SEO', mvp: 'MVP', kpi: 'KPI', okr: 'OKR', okrs: 'OKRs',
+    leetcode: 'LeetCode', gfg: 'GFG', codeforces: 'Codeforces', codechef: 'CodeChef',
+    nptel: 'NPTEL', neet: 'NEET', gate: 'GATE', cat: 'CAT', upsc: 'UPSC',
+    iit: 'IIT', nit: 'NIT', bits: 'BITS', gre: 'GRE', toefl: 'TOEFL',
+    whatsapp: 'WhatsApp', youtube: 'YouTube', instagram: 'Instagram',
+    linkedin: 'LinkedIn', github: 'GitHub', gitlab: 'GitLab', figma: 'Figma',
+    vscode: 'VS Code', nextjs: 'Next.js', react: 'React', nodejs: 'Node.js',
+    mongodb: 'MongoDB', docker: 'Docker', postman: 'Postman', slack: 'Slack',
+    notion: 'Notion', spotify: 'Spotify', gmail: 'Gmail', zoom: 'Zoom',
   };
 
   const MINOR_WORDS = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'for', 'nor', 'on', 'at', 'to', 'from', 'by', 'of', 'in', 'with']);
@@ -545,6 +441,7 @@ export function cleanTaskTitle(rawTitle: string): string {
     if (ACRONYMS[cleanWord]) {
       return w.replace(new RegExp(cleanWord, 'i'), ACRONYMS[cleanWord]);
     }
+    if (/^\d/.test(w)) return w;
     if (w.length > 0 && (idx === 0 || !MINOR_WORDS.has(w.toLowerCase()))) {
       return w.charAt(0).toUpperCase() + w.slice(1);
     }
@@ -552,21 +449,16 @@ export function cleanTaskTitle(rawTitle: string): string {
   });
 
   t = formattedWords.join(' ').trim();
-
   return t || rawTitle.trim();
 }
 
 /**
  * Normalizes common voice transcription homophones and speech-to-text artifacts
- * in productivity and task dictation contexts.
- * Specifically fixes "hi" -> "high", "hi priority" -> "high priority",
- * "priority hi" -> "priority high", and spoken priorities.
  */
 export function normalizeVoiceTranscript(raw: string): string {
   if (!raw) return '';
   let text = raw.trim();
 
-  // 1. Explicit priority phrases with "hi" homophone
   text = text.replace(/\b(?:with\s+)?hi\s+(?:priority|prio|importance)\b/gi, 'high priority');
   text = text.replace(/\bpriority\s+(?:is\s+|:\s*)?hi\b/gi, 'priority high');
   text = text.replace(/\bp:\s*hi\b/gi, 'p:high');
@@ -578,55 +470,88 @@ export function normalizeVoiceTranscript(raw: string): string {
   text = text.replace(/\bmed\s+prio\b/gi, 'medium priority');
   text = text.replace(/\blow\s+prio\b/gi, 'low priority');
 
-  // 2. Numbered priorities
   text = text.replace(/\bpriority\s+one\b/gi, 'priority 1');
   text = text.replace(/\bpriority\s+two\b/gi, 'priority 2');
   text = text.replace(/\bpriority\s+three\b/gi, 'priority 3');
 
-  // 3. Trailing "hi" after time/date tokens: e.g. "submit report tomorrow 5pm hi" -> "...5pm high"
   text = text.replace(/(\b(?:at\s+\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,2}(?::\d{2})?(?:am|pm)|today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday))\s+hi\b/gi, '$1 high');
-
-  // 4. Trailing "hi" at end of command or sentence: e.g. "finish assignment hi" -> "finish assignment high"
   text = text.replace(/\s+hi$/i, ' high');
 
   return text;
 }
 
+/**
+ * Formats a RecurrenceRule into a concise, human-friendly label.
+ */
+export function formatRecurrenceLabel(rule?: { type?: string; interval?: number; daysOfWeek?: number[] } | null): string {
+  if (!rule) return 'Does not repeat';
+  if (rule.type === 'daily') return 'Daily';
+  if (rule.type === 'weekly') {
+    if (rule.daysOfWeek && rule.daysOfWeek.length > 0) {
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const sorted = [...rule.daysOfWeek].sort((a, b) => a - b);
+      if (sorted.length === 6 && sorted.every((d, i) => d === i + 1)) {
+        return 'Mon – Sat';
+      }
+      if (sorted.length === 5 && sorted.every((d, i) => d === i + 1)) {
+        return 'Weekdays (Mon – Fri)';
+      }
+      if (sorted.length === 2 && sorted[0] === 0 && sorted[1] === 6) {
+        return 'Weekends';
+      }
+      if (sorted.length <= 3) {
+        return sorted.map(d => dayNames[d]).join(', ');
+      }
+      return `${sorted.length} days/wk`;
+    }
+    return 'Weekly';
+  }
+  if (rule.type === 'monthly') return 'Monthly';
+  if (rule.type === 'custom') return `Every ${rule.interval || 1}d`;
+  return rule.type ? rule.type.charAt(0).toUpperCase() + rule.type.slice(1) : 'Does not repeat';
+}
+
+/**
+ * Master Natural Language Task Parser
+ */
 export function parseNLTask(rawInput: string): ParsedTask {
   const now = new Date();
 
-  // Normalize spoken speech artifacts across the entire parser (e.g. "p.m.", "a.m.", "p. m.", "a. m.", "pm.", "am.")
-  // so that raw and text character indices align 1:1 without leaving trailing letters in the title
   const raw = (rawInput || '')
+    // Normalise a.m./p.m. dot forms → am/pm
     .replace(/\b([ap])\s*\.\s*m\s*\.?(?=\s|[.,;:!?]|$)/gi, (m, p1) => p1.toLowerCase() + 'm')
     .replace(/\b([ap])\s*\.\s*m\b/gi, (m, p1) => p1.toLowerCase() + 'm')
-    .replace(/\b([ap])\s*m\s*\./gi, (m, p1) => p1.toLowerCase() + 'm');
+    .replace(/\b([ap])\s*m\s*\./gi, (m, p1) => p1.toLowerCase() + 'm')
+    // Fix spaced colon: "4: 30 am" or "4 : 30am" → "4:30am"
+    .replace(/(\d{1,2})\s*:\s*(\d{2})/g, '$1:$2')
+    // "9.30pm" → "9:30pm" (dot as time separator)
+    .replace(/(\d{1,2})\.(\d{2})\s*(am|pm)\b/gi, '$1:$2$3')
+    // Fix compact time: "1230am" / "1030 pm" → "12:30am" / "10:30pm"
+    .replace(/\b(1[0-2])(\d{2})\s*(am|pm)\b/gi, '$1:$2$3')
+    // 3-digit: "430am" / "900 pm" → "4:30am" / "9:00pm"
+    .replace(/\b([1-9])(\d{2})\s*(am|pm)\b/gi, '$1:$2$3');
 
   let text = raw;
   const tokens: NLPToken[] = [];
 
-
   let dateResult: Date | null = null;
   let timeSlot: string | null = null;
   let endTimeSlot: string | null = null;
-  let priority: 'high' | 'medium' | 'low' = 'low';
+  let priority: 'high' | 'medium' | 'low' = 'medium';
   let isRecurring = false;
   let recurrenceRule: ParsedTask['recurrenceRule'] = null;
   let multiDays: number | undefined;
   let durationMinutes: number | null = null;
   const extractedTags: string[] = [];
 
-  function registerToken(type: NLPToken['type'], matchStr: string, display: string) {
-    const idx = text.toLowerCase().indexOf(matchStr.toLowerCase());
-    if (idx === -1) return;
+  function registerToken(type: NLPToken['type'], matchStr: string, display: string, knownIdx?: number) {
+    const idx = knownIdx !== undefined ? knownIdx : text.toLowerCase().indexOf(matchStr.toLowerCase());
+    if (idx === -1 || idx + matchStr.length > text.length) return;
     tokens.push({ type, start: idx, end: idx + matchStr.length, display });
-    // Blank with spaces (same length) so subsequent searches skip this span
     text = text.slice(0, idx) + ' '.repeat(matchStr.length) + text.slice(idx + matchStr.length);
   }
 
-  // ── 0. TAGS (#hashtag) ─────────────────────────────────────────────────────
-  // Extract all #tag tokens from raw BEFORE modifying `text`, so positions are
-  // correct for the highlighting layer. Process in reverse to preserve indices.
+  // 0. TAGS (#hashtag)
   {
     const tagRe = /#([a-zA-Z][a-zA-Z0-9_-]*)/g;
     let tm: RegExpExecArray | null;
@@ -638,14 +563,13 @@ export function parseNLTask(rawInput: string): ParsedTask {
       extractedTags.push(t.name);
       tokens.push({ type: 'tag', start: t.start, end: t.start + t.full.length, display: `#${t.name}` });
     }
-    // Blank tags in working text in reverse order to preserve earlier indices
     for (let i = tagMatches.length - 1; i >= 0; i--) {
       const t = tagMatches[i];
       text = text.slice(0, t.start) + ' '.repeat(t.full.length) + text.slice(t.start + t.full.length);
     }
   }
 
-  // ── 0a. SPOKEN TAGS / LABELS ("tag work", "label gym", "hashtag study") ────
+  // Spoken Tags ("tag work", "label gym", "hashtag study")
   {
     const spokenTagRe = /\b(?:tags?|labels?|hashtag)\s*[:\-]?\s*([a-zA-Z][a-zA-Z0-9_-]*(?:\s*,\s*[a-zA-Z][a-zA-Z0-9_-]*)*)\b/gi;
     let stm: RegExpExecArray | null;
@@ -658,53 +582,55 @@ export function parseNLTask(rawInput: string): ParsedTask {
     }
   }
 
-  // ── 0b. SUBTASKS & EMBEDDED CHECKLISTS ────────────────────────────────────
+  // Subtasks & embedded checklists
   const extractedSubtasks: string[] = [];
   {
-    // Pattern 1: Explicit subtask keywords: "with subtasks", "subtasks are", "checklist:", "with items", "including items", "steps to take:"
     const subtaskRe = /\b(?:with\s+subtasks?|subtasks?\s*(?:are|include)?|sub-tasks?\s*(?:are|include)?|checklist|with\s+items?|including(?:\s+items?)?|todo\s+list|steps?(?:\s+to\s+take)?)\s*[:\-]?\s*([^.]+?)(?=\s*(?:\b(?:tomorrow|today|tonight|next|every|at\s+\d|am|pm|high|medium|low|p1|p2|p3|urgent|#|\.|$)))/i;
     let sm = text.match(subtaskRe);
-
-    // Pattern 2: Natural colon list after action tasks: e.g. "Buy groceries: milk, eggs, bread and bananas"
     if (!sm) {
-      const colonListRe = /(?::|\s+namely\s+)\s*([a-zA-Z0-9\s,\-_*•]+(?:,\s*(?:and\s+)?[a-zA-Z0-9\s\-_*•]+|\s+and\s+[a-zA-Z0-9\s\-_*•]+))(?=\s*(?:\b(?:tomorrow|today|tonight|next|every|at\s+\d|am|pm|high|medium|low|p1|p2|p3|urgent|#|\.|$)))/i;
+      const bracketListRe = /\[([a-zA-Z0-9\s,\-_*•]+)\]/;
+      sm = text.match(bracketListRe);
+    }
+    if (!sm) {
+      const colonListRe = /(?:(?<!\d):(?!\d)|\s+namely\s+)\s*([a-zA-Z0-9\s,\-_*•]+(?:,\s*(?:and\s+)?[a-zA-Z0-9\s\-_*•]+|\s+and\s+[a-zA-Z0-9\s\-_*•]+))(?=\s*(?:\b(?:tomorrow|today|tonight|next|every|at\s+\d|am|pm|high|medium|low|p1|p2|p3|urgent|#|\.|$)))/i;
       sm = text.match(colonListRe);
     }
-
     if (sm) {
-      const rawSubtasks = sm[1].trim();
-      // Split on comma, "and", semicolon, or numbered bullets "1. ", "2) "
+      const rawSubtasks = (sm[1] || sm[0]).replace(/^[\[\]:\s]+|[\[\]:\s]+$/g, '').trim();
       const items = rawSubtasks
         .split(/(?:,\s*(?:and\s+)?|\s+and\s+|\s*;\s*|(?:^|\s+)\d+[\.\)]\s*)/i)
         .map(s => s.trim().replace(/^[\-•*]\s*/, ''))
         .filter(s => s.length > 0 && !/^(?:tomorrow|today|tonight|next|every|at|high|medium|low|urgent|priority)$/i.test(s));
       if (items.length > 1 || (items.length === 1 && items[0].length >= 2)) {
         extractedSubtasks.push(...items);
-        registerToken('subtask', sm[0], `${items.length} Subtask${items.length > 1 ? 's' : ''}`);
+        registerToken('subtask', sm[0], `${items.length} Subtasks`);
       }
     }
   }
 
-  // ── 0c. LOCATION TRIGGER REMOVED PER USER PREFERENCE ───
-  let locationReminder: any = undefined;
+  // Location Trigger
+  let locationReminder: any = null;
   let locationName: string | undefined = undefined;
+  {
+    const locRe = /\b(?:at|in|near)\s+(?:the\s+)?(gym|fitness\s+center|campus|college|university|library|hostel|lab|office|work|home|market|clinic|hospital)\b/i;
+    const lm = text.match(locRe);
+    if (lm) {
+      const rawLoc = lm[1].trim();
+      const capitalized = rawLoc.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      locationName = capitalized;
+      locationReminder = { placeName: capitalized, triggerType: 'arrive', radius: 150 };
+      registerToken('location', lm[0], `📍 ${capitalized}`);
+    }
+  }
 
-  // ── 0d. REMINDER INTENT ("remind", "remind me to", "with alarm", "with reminder", etc.) ───
+  // Reminder intent
   let isReminder = false;
-  // Order matters: greedier / longer patterns first so "with alarm" is consumed
-  // before the shorter bare "alarm" pattern fires, preventing it from leaking into the title.
   const reminderPatterns = [
-    // "with alarm", "with an alarm", "with a reminder", "with notification"
     /\bwith\s+(?:a(?:n)?\s+)?(?:alarm|reminder|alert|notification|buzz|ping|bell|chime|sound|vibration|push\s+notification)s?\b/i,
-    // "set alarm", "set a reminder"
     /\bset\s+(?:a(?:n)?\s+)?(?:alarm|reminder)(?:\s+(?:for|at|to))?\b/i,
-    // "and set alarm", "and remind me", "and notify me"
     /\band\s+(?:set\s+(?:a[n]?\s+)?(?:alarm|reminder)|remind\s+(?:me\s+)?(?:to\s+|about\s+)?|notify\s+(?:me\s+)?)\b/i,
-    // Core remind patterns
     /\b(?:remind(?:\s+me)?(?:\s+(?:to|about|for|at))?|reminder(?:\s+(?:for|to|about|at))?)\b/i,
-    // Bare alarm (shortest match — must be last to avoid stripping "alarm" in task names)
     /\balarm(?:\s+(?:for|at|on))?\b/i,
-    // Hinglish
     /\b(?:mujhe\s+yaad\s+dilana|yaad\s+dilana|yaad\s+rakhna)\b/i,
   ];
   for (const pat of reminderPatterns) {
@@ -712,74 +638,58 @@ export function parseNLTask(rawInput: string): ParsedTask {
     if (m) {
       isReminder = true;
       registerToken('reminder', m[0], '⏰ Reminder');
-      // Don't break — consume ALL reminder phrases so none leak into title
-      // Re-search on updated `text` (registerToken already blanked the match)
     }
   }
 
-  // ── 1. PRIORITY ────────────────────────────────────────────
-  // Supports: p:high !1 urgent 🔴🟡🟢 emoji flags  "low key"  "not urgent"  etc.
+  // 1. PRIORITY
   const priorityPatterns: Array<[RegExp, 'high' | 'medium' | 'low', string]> = [
-    // Explicit p: prefix
     [/\bp:(?:high|hi|1|urgent|critical)\b/i,                                              'high',   'High'],
     [/\bp:(?:medium|mid|2|normal|med)\b/i,                                               'medium', 'Medium'],
     [/\bp:(?:low|3|someday|whenever)\b/i,                                                'low',    'Low'],
-    // Bang shortcuts
     [/\b!1\b/,                                                                           'high',   'High'],
     [/\b!2\b/,                                                                           'medium', 'Medium'],
     [/\b!3\b/,                                                                           'low',    'Low'],
-    // Emoji priority flags (must come before word patterns to take precedence)
-    [/🔴|❗|🚨/,                                                                            'high',   'High'],   // red circle / exclamation / siren
-    [/🟡|⚠️|⏰/,                                                                            'medium', 'Medium'], // yellow / warning / alarm
-    [/🟢|✅|💤/,                                                                            'low',    'Low'],    // green / check / zzz
-    // Structured priority phrases: "priority is high", "priority: high", "priority 1"
+    [/🔴|❗|🚨/,                                                                            'high',   'High'],
+    [/🟡|⚠️|⏰/,                                                                            'medium', 'Medium'],
+    [/🟢|✅|💤/,                                                                            'low',    'Low'],
     [/\b(?:priority\s*(?:is\s+|:\s*|\s+)?(?:high|hi|1|one|highest|top))\b/i,            'high',   'High'],
     [/\b(?:priority\s*(?:is\s+|:\s*|\s+)?(?:medium|mid|med|2|two|normal))\b/i,          'medium', 'Medium'],
     [/\b(?:priority\s*(?:is\s+|:\s*|\s+)?(?:low|3|three|minimum|lowest))\b/i,           'low',    'Low'],
-    // Phrases with priority keyword (including "hi priority", "hi prio")
     [/\b(?:(?:mark\s+as\s+|set\s+(?:to\s+)?)?(?:high|hi)\s+(?:priority|prio|importance))\b/i, 'high',   'High'],
     [/\b(?:(?:mark\s+as\s+|set\s+(?:to\s+)?)?(?:medium|mid|med)\s+(?:priority|prio|importance))\b/i, 'medium', 'Medium'],
     [/\b(?:(?:mark\s+as\s+|set\s+(?:to\s+)?)?(?:low)\s+(?:priority|prio|importance))\b/i, 'low',    'Low'],
-    // Keyword phrases (order matters: more specific first)
     [/\b(urgent|critical|asap|p1|fire|blocker|top\s+priority|highest\s+priority|max\s+priority|super\s+important|crucial|vital|must\s+do)\b/i, 'high', 'High'],
     [/\b(important|p2|kinda\s+important|semi.?urgent|normal\s+priority)\b/i,             'medium', 'Medium'],
-    [/\b(p3|someday|whenever|not\s+urgent|low\s+key|no\s+rush|chill|whenever\s+you\s+can|when\s+free)\b/i, 'low', 'Low'],
-    // Single-word fallbacks (must be last to avoid false positives)
-    [/\bhigh\b/i,                                                                        'high',   'High'],
-    [/\bmedium\b/i,                                                                      'medium', 'Medium'],
-    // Phonetic STT voice fallback for "hi" after date/time or at end of utterance
-    [/(?:\b(?:at\s+\d{1,2}(?::\d{2})?(?:am|pm)?|\d{1,2}(?::\d{2})?(?:am|pm)|tomorrow|today|tonight)\s+)hi\b/i, 'high', 'High'],
-    [/\bhi\s*$/i,                                                                        'high',   'High'],
+    [/\b(p3|someday|whenever|not\s+urgent|low\s+key|no\s+rush|chill|when\s+free)\b/i,     'low',    'Low'],
   ];
   for (const [pat, pri, label] of priorityPatterns) {
     const m = text.match(pat);
     if (m) { priority = pri; registerToken('priority', m[0], label); break; }
   }
 
-  // ── 2. DURATION ────────────────────────────────────────────
-  // Supports: "for 45m"  "1h30m"  "half an hour"  "an hour"  "a couple hours"  "2.5h" "2 hour block" "120 minutes"
+  // 2. DURATION
   const durationPatterns: Array<[RegExp, (m: RegExpMatchArray) => number]> = [
-    // Natural English — must be before numeric patterns
     [/\bhalf\s+an?\s+hour\b/i,                                             _ => 30],
     [/\ban?\s+hour\s+and\s+a\s+half\b/i,                                  _ => 90],
+    [/\b(\d+)\s+and\s+a\s+half\s+hours?\b/i,                             m => parseInt(m[1], 10) * 60 + 30],
     [/\ba\s+couple\s+(?:of\s+)?hours?\b/i,                                _ => 120],
+    [/\bcouple\s+(?:of\s+)?hours?\b/i,                                    _ => 120],
+    [/\ba\s+few\s+hours?\b/i,                                              _ => 180],
     [/\ban?\s+hour\s*(?:block|session)?\b/i,                              _ => 60],
     [/\ba\s+few\s+minutes?\b/i,                                           _ => 10],
-    // Decimal hours: "2.5h" "1.5 hours"
-    [/\b(\d+\.\d+)\s*h(?:(?:ou)?rs?)?\s*(?:block|time\s*block|time|session)?\b/i, m => Math.round(parseFloat(m[1])*60)],
-    [/\b(\d+)\s*(?:hours?|hrs?|hr)\s*(?:block|time\s*block|time|session)?\b/i,   m => parseInt(m[1], 10)*60],
-    [/\bblock\s*(?:of\s*|time\s*(?:of\s*)?)?(\d+)\s*(?:hours?|hrs?|h)\b/i,        m => parseInt(m[1], 10)*60],
-    // Compound: "for 1h30m"  "for 1h 30m"
-    [/\bfor\s+(\d+)\s*h(?:(?:ou)?rs?)?\s+(\d+)\s*m(?:in(?:utes?)?)?\b/i, m => parseInt(m[1])*60 + parseInt(m[2])],
-    [/\bfor\s+(\d+)\s*h(\d{2})\b/i,                                        m => parseInt(m[1])*60 + parseInt(m[2])],
-    [/\bfor\s+(\d+)\s*h(?:(?:ou)?rs?)?\b/i,                               m => parseInt(m[1])*60],
-    [/\bfor\s+(\d+)\s*m(?:in(?:utes?)?)?\b/i,                             m => parseInt(m[1])],
-    [/\bfor\s+(\d+)\s+hours?\b/i,                                          m => parseInt(m[1])*60],
-    [/\bfor\s+(\d+)\s+minutes?\b/i,                                        m => parseInt(m[1])],
-    [/\b(\d+)\s*(?:minutes?|mins?|min)\s*(?:block|time\s*block|session)?\b/i, m => parseInt(m[1], 10)],
-    [/\b(\d+)h(\d+)m\b/i,                                                  m => parseInt(m[1])*60 + parseInt(m[2])],
-    [/\b(\d+)h\b(?!\d)/i,                                                  m => parseInt(m[1])*60],
-    [/\b(\d+)min\b/i,                                                       m => parseInt(m[1])],
+    [/\b(\d+(?:\.\d+)?)\s*h(?:(?:ou)?rs?)?\s*(?:block|time\s*block|time|session)?\b/i, m => Math.round(parseFloat(m[1]) * 60)],
+    [/\b(\d+)\s*(?:hours?|hrs?|hr)\s*(?:block|time\s*block|time|session)?\b/i,          m => parseInt(m[1], 10) * 60],
+    [/\bblock\s*(?:of\s*|time\s*(?:of\s*)?)?(\d+)\s*(?:hours?|hrs?|h)\b/i,               m => parseInt(m[1], 10) * 60],
+    [/\bfor\s+(\d+)\s*h(?:(?:ou)?rs?)?\s+(\d+)\s*m(?:in(?:utes?)?)?\b/i, m => parseInt(m[1], 10) * 60 + parseInt(m[2], 10)],
+    [/\bfor\s+(\d+)\s*h(\d{2})\b/i,                                        m => parseInt(m[1], 10) * 60 + parseInt(m[2], 10)],
+    [/\bfor\s+(\d+)\s*h(?:(?:ou)?rs?)?\b/i,                               m => parseInt(m[1], 10) * 60],
+    [/\bfor\s+(\d+)\s*m(?:in(?:utes?)?)?\b/i,                             m => parseInt(m[1], 10)],
+    [/\bfor\s+(\d+)\s+hours?\b/i,                                          m => parseInt(m[1], 10) * 60],
+    [/\bfor\s+(\d+)\s+minutes?\b/i,                                        m => parseInt(m[1], 10)],
+    [/\b(\d+)\s*(?:minutes?|mins?|min)\s*(?:block|time\s*block|session)?\b/i,            m => parseInt(m[1], 10)],
+    [/\b(\d+)h(\d+)m\b/i,                                                  m => parseInt(m[1], 10) * 60 + parseInt(m[2], 10)],
+    [/\b(\d+)h\b(?!\d)/i,                                                  m => parseInt(m[1], 10) * 60],
+    [/\b(\d+)min\b/i,                                                       m => parseInt(m[1], 10)],
   ];
   for (const [pat, calc] of durationPatterns) {
     const m = text.match(pat);
@@ -793,7 +703,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
     }
   }
 
-  // ── 3. RECURRENCE ─────────────────────────────────────────────────────────────
+  // 3. RECURRENCE & MULTI-DAY
   const getDayIdx = (s: string) => {
     s = s.toLowerCase();
     let idx = DAY_NAMES.findIndex(d => s.startsWith(d));
@@ -801,56 +711,25 @@ export function parseNLTask(rawInput: string): ParsedTask {
     return DAY_SHORT.findIndex(d => s.startsWith(d));
   };
   const dayRegexStr = '(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)s?';
-  // One day-name token for use in multi-day list regex
-  const dayToken   = '(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)s?';
+  const dayToken = '(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)s?';
 
-  // ── 3-MULTI: Patterns for 3+ day lists — checked BEFORE rangePat / andPat ──
-  //
-  // Pattern A: "every friday, saturday and monday" → recurring on all listed days
-  //   Trigger: starts with "every" + comma/and list of day names (any count ≥ 2)
-  //
-  // Pattern B: "only this monday, tuesday and friday" → one-time this week dates
-  //   Trigger: "only this" OR "this" + list of day names (not preceded by "every")
-  //
-  // Pattern C: bare comma-list of ≥3 days without "every" → one-time this week
-  //   Trigger: day, day[, day]+ and day  (no "every" prefix)
-  //
-  // Multi-day list format accepted:  day[, day]+ [and|&] day
-  // Examples: "friday, saturday and monday", "mon, wed, fri", "tue and thu and sat"
+  const multiDayListPat = new RegExp(`(${dayToken}(?:\\s*(?:,|and|&)\\s*${dayToken})+)`, 'i');
 
-  // Build a regex that matches a comma/and-separated list of ≥2 day names:
-  //   e.g.  "friday, saturday and monday"  OR  "mon, wed, fri"  OR  "tue and thu"
-  // We do this as a raw match then use extractDayListFromText() to parse the days.
-  const multiDayListPat = new RegExp(
-    // At least one leading day, followed by one or more ", day" or " and day" chunks
-    `(${dayToken}(?:\\s*(?:,|and|&)\\s*${dayToken})+)`,
-    'i'
-  );
-
-  // ── Pattern A: every <multi-day-list> ─────────────────────────────────────
   const everyMultiMatch = text.match(
     new RegExp(`\\bevery\\s+(${dayToken}(?:\\s*(?:,|and|&)\\s*${dayToken}){2,})\\b`, 'i')
   );
 
-  // ── Pattern B: only this / this <multi-day-list> ──────────────────────────
-  // Must NOT be preceded by "every" (already caught above)
   const thisMultiMatch = !everyMultiMatch
-    ? text.match(
-        new RegExp(`\\b(?:only\\s+)?this\\s+(${dayToken}(?:\\s*(?:,|and|&)\\s*${dayToken})+)\\b`, 'i')
-      )
+    ? text.match(new RegExp(`\\b(?:only\\s+)?this\\s+(${dayToken}(?:\\s*(?:,|and|&)\\s*${dayToken})+)\\b`, 'i'))
     : null;
 
-  // ── Pattern C: bare comma list of ≥3 days (no every/this prefix) ──────────
-  // Only fires when ≥3 days found AND no "every" prefix in the full match
   const bareMultiMatch = !everyMultiMatch && !thisMultiMatch
     ? (() => {
         const m = text.match(multiDayListPat);
         if (!m) return null;
-        // Reject if immediately preceded by "every" (rangePat/andPat handles those)
         const matchStart = text.indexOf(m[0]);
         const before = text.slice(0, matchStart).trimEnd().toLowerCase();
         if (before.endsWith('every') || before.endsWith('daily') || before.endsWith('from')) return null;
-        // Require ≥3 days for the bare case (2-day case still falls through to andPat)
         const days = extractDayListFromText(m[0]);
         return days.length >= 3 ? m : null;
       })()
@@ -859,7 +738,6 @@ export function parseNLTask(rawInput: string): ParsedTask {
   let oneTimeDates: string[] | undefined;
 
   if (everyMultiMatch) {
-    // Pattern A — recurring on all matched days
     const dayList = extractDayListFromText(everyMultiMatch[1]);
     if (dayList.length >= 2) {
       isRecurring = true;
@@ -868,24 +746,18 @@ export function parseNLTask(rawInput: string): ParsedTask {
       const labels = dayList
         .sort((a, b) => a - b)
         .map(di => DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1, 3));
-      // Token covers the whole "every day1, day2 and day3" span
       const fullSpan = text.slice(
         text.toLowerCase().indexOf('every'),
         text.toLowerCase().indexOf('every') + 'every'.length + 1 + everyMultiMatch[1].length
       ).trim() || `every ${everyMultiMatch[1]}`;
-      registerToken('recurrence', fullSpan, `${labels.join(', ')} (Every Week)`);
+      registerToken('recurrence', fullSpan, `${labels.join(', ')} (Weekly)`);
     }
   } else if (thisMultiMatch) {
-    // Pattern B — one-time this week
     const dayList = extractDayListFromText(thisMultiMatch[1]);
     if (dayList.length >= 2) {
       const sortedDays = [...dayList].sort((a, b) => a - b);
-      const dates = sortedDays.map(di => {
-        const d = thisWeekDate(di);
-        return toYMD(d);
-      });
+      const dates = sortedDays.map(di => toYMD(thisWeekDate(di)));
       oneTimeDates = dates;
-      // date = earliest date in the list
       dateResult = thisWeekDate(sortedDays[0]);
       isRecurring = false;
       const labels = sortedDays.map(di => {
@@ -896,7 +768,6 @@ export function parseNLTask(rawInput: string): ParsedTask {
       registerToken('date', thisMultiMatch[0], `${labels.join(', ')} (This Week)`);
     }
   } else if (bareMultiMatch) {
-    // Pattern C — bare 3+ day list without any prefix → one-time this week
     const dayList = extractDayListFromText(bareMultiMatch[0]);
     if (dayList.length >= 3) {
       const sortedDays = [...dayList].sort((a, b) => a - b);
@@ -912,8 +783,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
     }
   }
 
-  // Check Day Range patterns FIRST so specific day spans take precedence over generic daily/everyday
-  // e.g. "daily from monday to friday", "monday to friday", "mon - fri", "monday through friday", "monday till friday"
+  // Range patterns
   const rangePat = new RegExp(`\\b(?:(?:daily|everyday|every)\\s+)?(?:from\\s+)?${dayRegexStr}\\s+(?:to|-|through|till|until)\\s+${dayRegexStr}\\b`, 'i');
   const andPat   = new RegExp(`\\b(?:(?:daily|everyday|every)\\s+)?(?:from\\s+)?${dayRegexStr}\\s+(?:and|&)\\s+${dayRegexStr}\\b`, 'i');
   const rm = !isRecurring && !oneTimeDates ? text.match(rangePat) : null;
@@ -931,93 +801,119 @@ export function parseNLTask(rawInput: string): ParsedTask {
         curr = (curr + 1) % 7;
         if (days.length > 7) break;
       }
-      isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days.sort() };
+      isRecurring = true;
+      recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days.sort((a, b) => a - b) };
       dateResult = nextWeekday(start);
-      const sLbl = DAY_NAMES[start]?.charAt(0).toUpperCase() + DAY_NAMES[start]?.slice(1);
-      const eLbl = DAY_NAMES[end]?.charAt(0).toUpperCase() + DAY_NAMES[end]?.slice(1);
-      registerToken('recurrence', rm[0], `${sLbl} – ${eLbl}`);
+      const sLbl = DAY_NAMES[start]?.charAt(0).toUpperCase() + DAY_NAMES[start]?.slice(1, 3);
+      const eLbl = DAY_NAMES[end]?.charAt(0).toUpperCase() + DAY_NAMES[end]?.slice(1, 3);
+      registerToken('recurrence', rm[0], `${sLbl} – ${eLbl} (Weekly)`);
     }
   } else if (am) {
     const d1 = getDayIdx(am[1]);
     const d2 = getDayIdx(am[2]);
     if (d1 !== -1 && d2 !== -1) {
-      const days = [d1, d2].sort();
-      isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days };
+      const days = [d1, d2].sort((a, b) => a - b);
+      isRecurring = true;
+      recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days };
       dateResult = nextWeekday(days[0]);
-      const l1 = DAY_NAMES[d1]?.charAt(0).toUpperCase() + DAY_NAMES[d1]?.slice(1);
-      const l2 = DAY_NAMES[d2]?.charAt(0).toUpperCase() + DAY_NAMES[d2]?.slice(1);
+      const l1 = DAY_NAMES[d1]?.charAt(0).toUpperCase() + DAY_NAMES[d1]?.slice(1, 3);
+      const l2 = DAY_NAMES[d2]?.charAt(0).toUpperCase() + DAY_NAMES[d2]?.slice(1, 3);
       registerToken('recurrence', am[0], `${l1} & ${l2}`);
     }
   } else if (/\b(every\s+weekday|every\s+workday|weekdays|workdays)\b/i.test(text)) {
     const m = text.match(/\b(every\s+weekday|every\s+workday|weekdays|workdays)\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [1,2,3,4,5] };
+    isRecurring = true;
+    recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [1, 2, 3, 4, 5] };
     dateResult = nextWeekday(1);
     registerToken('recurrence', m[0], 'Weekdays');
   } else if (/\b(every\s*day|daily|each\s+day)\b/i.test(text)) {
     const m = text.match(/\b(every\s*day|daily|each\s+day)\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'daily', interval: 1 }; dateResult = new Date(now);
+    isRecurring = true;
+    recurrenceRule = { type: 'daily', interval: 1 };
+    dateResult = new Date(now);
     registerToken('recurrence', m[0], 'Daily');
   } else if (/\b(every\s+weekend|weekends)\b/i.test(text)) {
     const m = text.match(/\b(every\s+weekend|weekends)\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [0, 6] };
+    isRecurring = true;
+    recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [0, 6] };
     dateResult = nextWeekday(6);
     registerToken('recurrence', m[0], 'Weekends');
-  } else if (/\b(fortnightly|bi-?weekly|every\s+two\s+weeks|every\s+other\s+week)\b/i.test(text)) {
-    const m = text.match(/\b(fortnightly|bi-?weekly|every\s+two\s+weeks|every\s+other\s+week)\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'weekly', interval: 2 }; dateResult = new Date(now);
+  } else if (/\b(fortnightly|bi-?weekly|every\s+two\s+weeks|every\s+other\s+week|every\s+alternate\s+week|alternate\s+weeks?)\b/i.test(text)) {
+    const m = text.match(/\b(fortnightly|bi-?weekly|every\s+two\s+weeks|every\s+other\s+week|every\s+alternate\s+week|alternate\s+weeks?)\b/i)!;
+    isRecurring = true;
+    recurrenceRule = { type: 'weekly', interval: 2 };
+    dateResult = new Date(now);
     registerToken('recurrence', m[0], 'Fortnightly');
   } else if (/\b(quarterly|every\s+quarter|every\s+3\s+months)\b/i.test(text)) {
     const m = text.match(/\b(quarterly|every\s+quarter|every\s+3\s+months)\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'monthly', interval: 3 }; dateResult = new Date(now);
+    isRecurring = true;
+    recurrenceRule = { type: 'monthly', interval: 3 };
+    dateResult = new Date(now);
     registerToken('recurrence', m[0], 'Quarterly');
   } else if (/\b(annually|yearly|every\s+year)\b/i.test(text)) {
     const m = text.match(/\b(annually|yearly|every\s+year)\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'monthly', interval: 12 }; dateResult = new Date(now);
+    isRecurring = true;
+    recurrenceRule = { type: 'monthly', interval: 12 };
+    dateResult = new Date(now);
     registerToken('recurrence', m[0], 'Yearly');
   } else if (/\btwice\s+a\s+week\b/i.test(text)) {
     const m = text.match(/\btwice\s+a\s+week\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [1, 4] }; // Mon + Thu
+    isRecurring = true;
+    recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [1, 4] };
     dateResult = nextWeekday(1);
     registerToken('recurrence', m[0], 'Twice a Week');
   } else if (/\bthree\s+times\s+a\s+week\b/i.test(text)) {
     const m = text.match(/\bthree\s+times\s+a\s+week\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [1, 3, 5] }; // Mon + Wed + Fri
+    isRecurring = true;
+    recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [1, 3, 5] };
     dateResult = nextWeekday(1);
     registerToken('recurrence', m[0], '3x a Week');
   } else if (/\b(every\s+morning|every\s+day\s+morning|morning\s+routine)\b/i.test(text)) {
     const m = text.match(/\b(every\s+morning|every\s+day\s+morning|morning\s+routine)\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'daily', interval: 1 }; dateResult = new Date(now);
-    if (!timeSlot) timeSlot = '09:00'; // default morning time
+    isRecurring = true;
+    recurrenceRule = { type: 'daily', interval: 1 };
+    dateResult = new Date(now);
+    if (!timeSlot) timeSlot = '09:00';
     registerToken('recurrence', m[0], 'Every Morning');
   } else if (/\b(every\s+evening|every\s+night|nightly)\b/i.test(text)) {
     const m = text.match(/\b(every\s+evening|every\s+night|nightly)\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'daily', interval: 1 }; dateResult = new Date(now);
-    if (!timeSlot) timeSlot = '21:00'; // default night time
+    isRecurring = true;
+    recurrenceRule = { type: 'daily', interval: 1 };
+    dateResult = new Date(now);
+    if (!timeSlot) timeSlot = '21:00';
     registerToken('recurrence', m[0], 'Every Evening');
   } else if (/\b(every\s+week|weekly)\b/i.test(text)) {
     const m = text.match(/\b(every\s+week|weekly)\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1 }; dateResult = new Date(now);
+    isRecurring = true;
+    recurrenceRule = { type: 'weekly', interval: 1 };
+    dateResult = new Date(now);
     registerToken('recurrence', m[0], 'Weekly');
   } else if (/\b(every\s+month|monthly)\b/i.test(text)) {
     const m = text.match(/\b(every\s+month|monthly)\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'monthly', interval: 1 }; dateResult = new Date(now);
+    isRecurring = true;
+    recurrenceRule = { type: 'monthly', interval: 1 };
+    dateResult = new Date(now);
     registerToken('recurrence', m[0], 'Monthly');
   } else if (/\bevery\s+(\d+)\s+days?\b/i.test(text)) {
     const m = text.match(/\bevery\s+(\d+)\s+days?\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'daily', interval: parseInt(m[1], 10) }; dateResult = new Date(now);
+    isRecurring = true;
+    recurrenceRule = { type: 'daily', interval: parseInt(m[1], 10) };
+    dateResult = new Date(now);
     registerToken('recurrence', m[0], `Every ${m[1]} Days`);
   } else if (/\bevery\s+(\d+)\s+weeks?\b/i.test(text)) {
     const m = text.match(/\bevery\s+(\d+)\s+weeks?\b/i)!;
-    isRecurring = true; recurrenceRule = { type: 'weekly', interval: parseInt(m[1], 10) }; dateResult = new Date(now);
+    isRecurring = true;
+    recurrenceRule = { type: 'weekly', interval: parseInt(m[1], 10) };
+    dateResult = new Date(now);
     registerToken('recurrence', m[0], `Every ${m[1]} Weeks`);
-  } else {
-    // "every other tuesday" → biweekly
+  } else if (!isRecurring) {
     const everyOtherPat = new RegExp(`\\bevery\\s+other\\s+${dayRegexStr}\\b`, 'i');
     const eom = text.match(everyOtherPat);
     if (eom) {
       const di = getDayIdx(eom[1]);
       if (di !== -1) {
-        isRecurring = true; recurrenceRule = { type: 'weekly', interval: 2, daysOfWeek: [di] };
+        isRecurring = true;
+        recurrenceRule = { type: 'weekly', interval: 2, daysOfWeek: [di] };
         dateResult = nextWeekday(di);
         const lbl = DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1);
         registerToken('recurrence', eom[0], `Every Other ${lbl}`);
@@ -1030,37 +926,39 @@ export function parseNLTask(rawInput: string): ParsedTask {
         const pat = new RegExp(`\\bevery\\s+(${dn}s?|${ds}s?)\\b`, 'i');
         const m = text.match(pat);
         if (m) {
-          isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [di] };
+          isRecurring = true;
+          recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [di] };
           dateResult = nextWeekday(di);
           const label = DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1);
-          registerToken('recurrence', m[0], `Every ${label}`); break;
+          registerToken('recurrence', m[0], `Every ${label}`);
+          break;
         }
       }
     }
   }
 
-
-  // ── 3. TIME (NUMERIC RANGES + SINGLE NUMERIC + HINGLISH BAJE + NAMED ALIASES) ──
-
-  // 3a. Numeric time ranges: "at 6:30 am to 8:30 am", "from 10 am to 12 30 am", "between 2pm and 4pm", "from 10:00 to 12:30"
+  // 4. TIME (RANGES + SINGLE + HINGLISH BAJE + NAMED)
   if (!timeSlot) {
-    const rangePattern = /\b(?:at\s+|from\s+|between\s+)?(\d{1,2})(?:[:\s](\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)?\s*(?:to|-|until|till|and|through)\s*(\d{1,2})(?:[:\s](\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)?\b/i;
+    const rangePattern = /\b(?:at\s+|from\s+|between\s+)?(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)?\s*(?:to|-|until|till|through)\s*(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)?\b/i;
     const rangeMatch = text.match(rangePattern);
 
     if (rangeMatch) {
       const h1Num = parseInt(rangeMatch[1], 10);
       const h2Num = parseInt(rangeMatch[4], 10);
-      const isHourRange = h1Num >= 1 && h1Num <= 24 && h2Num >= 1 && h2Num <= 24;
+      const isValidHour = (n: number) => n >= 0 && n <= 23;
       const hasAmPm = rangeMatch[3] || rangeMatch[6];
       const hasColon = rangeMatch[2] || rangeMatch[5];
-      const hasKeyword = /\b(?:at|from|between)\b/i.test(rangeMatch[0]);
-      if (hasAmPm || hasColon || hasKeyword || isHourRange) {
+      const hasKeyword = /^(?:at|from|between)\s/i.test(rangeMatch[0]);
+      const isUnambiguousHourRange = h1Num >= 1 && h1Num <= 12 && h2Num >= 1 && h2Num <= 12;
+      const _matchIdx = text.indexOf(rangeMatch[0]);
+      const _precedingText = _matchIdx > 0 ? text.slice(0, _matchIdx).trimEnd().toLowerCase() : '';
+      const isCountContext = /\b(?:pages?|chapters?|problems?|questions?|exercises?|slides?|sections?|items?|no\.?|q\.?|ex\.?|\d+)\s*$/.test(_precedingText);
+      if (!isCountContext && (hasAmPm || hasColon || hasKeyword || (isValidHour(h1Num) && isValidHour(h2Num) && isUnambiguousHourRange))) {
         const rawP2 = (rangeMatch[6] || '').toLowerCase().replace(/[^a-z]/g, '');
         const rawP1 = (rangeMatch[3] || '').toLowerCase().replace(/[^a-z]/g, '');
         let p2 = rawP2 || rawP1 || '';
         let p1 = rawP1 || (p2 && h1Num < 12 ? p2 : '');
 
-        // If no AM/PM specified, check hints or default intelligently
         if (!p1 && !p2) {
           const hasEve = /\b(?:evening|shaam|sham|night|raat|afternoon|dopahar)\b/i.test(text);
           const hasMorn = /\b(?:morning|subah)\b/i.test(text);
@@ -1073,7 +971,6 @@ export function parseNLTask(rawInput: string): ParsedTask {
         const t1 = parseSingleTime(rangeMatch[1], rangeMatch[2], p1);
         let t2 = parseSingleTime(rangeMatch[4], rangeMatch[5], p2);
 
-        // Colloquial midnight check: "11 pm to 12 pm" / "11 pm to 12" -> 12 at night is midnight (00:00 / 12:00 AM)
         if ((t1.hh === '23' || parseInt(t1.hh, 10) >= 18) && h2Num === 12 && (!rawP2 || rawP2 === 'pm')) {
           t2 = { hh: '00', mm: t2.mm, display: `12:${t2.mm}am` };
         }
@@ -1082,7 +979,6 @@ export function parseNLTask(rawInput: string): ParsedTask {
         endTimeSlot = `${t2.hh}:${t2.mm}`;
         registerToken('time', rangeMatch[0], `${t1.display} – ${t2.display}`);
 
-        // Automatically compute duration in minutes from the time range
         const startTotalMin = parseInt(t1.hh, 10) * 60 + parseInt(t1.mm, 10);
         let endTotalMin = parseInt(t2.hh, 10) * 60 + parseInt(t2.mm, 10);
         let rangeDiff = endTotalMin - startTotalMin;
@@ -1098,13 +994,10 @@ export function parseNLTask(rawInput: string): ParsedTask {
     }
   }
 
-  // 3b. Specific single numeric times: "at 5 p.m.", "5:00pm", "at 5:30", "at 5am"
   if (!timeSlot) {
-    // Detect context period hint across whole text to disambiguate bare hours
     const hasEveningHint = /\b(?:evening|shaam|sham|night|raat|afternoon|dopahar)\b/i.test(text);
     const hasMorningHint = /\b(?:morning|subah)\b/i.test(text);
 
-    // Check Hinglish "N baje" or "shaam N baje" first
     const bajeMatch = text.match(/\b(?:(?:shaam|sham|dopahar|raat|subah)\s+(?:ko\s+)?)?(\d{1,2})(?:[:\s](\d{2}))?\s*baje\b/i);
     if (bajeMatch) {
       let h = parseInt(bajeMatch[1], 10);
@@ -1154,7 +1047,6 @@ export function parseNLTask(rawInput: string): ParsedTask {
       }
     }
 
-    // 3c. Compound named times: "half past 3", "quarter to 4", "quarter past 6", "3 o'clock", "before lunch", "after lunch"
     if (!timeSlot) {
       const halfPastM = text.match(/\bhalf\s+past\s+(\d{1,2})\b/i);
       if (halfPastM) {
@@ -1163,6 +1055,28 @@ export function parseNLTask(rawInput: string): ParsedTask {
         timeSlot = `${h.toString().padStart(2, '0')}:30`;
         const hr12 = h % 12 || 12;
         registerToken('time', halfPastM[0], `${hr12}:30${h >= 12 ? 'pm' : 'am'}`);
+      }
+    }
+
+    if (!timeSlot) {
+      const aQuarterTo = text.match(/\ba\s+quarter\s+to\s+(\d{1,2})\b/i);
+      if (aQuarterTo) {
+        let h = parseInt(aQuarterTo[1], 10);
+        if (h < 8 && !hasMorningHint) h += 12;
+        const baseH = h - 1;
+        timeSlot = `${baseH.toString().padStart(2, '0')}:45`;
+        const hr12 = baseH % 12 || 12;
+        registerToken('time', aQuarterTo[0], `${hr12}:45${baseH >= 12 ? 'pm' : 'am'}`);
+      }
+    }
+    if (!timeSlot) {
+      const aQuarterPast = text.match(/\ba\s+quarter\s+past\s+(\d{1,2})\b/i);
+      if (aQuarterPast) {
+        let h = parseInt(aQuarterPast[1], 10);
+        if (h < 8 && !hasMorningHint) h += 12;
+        timeSlot = `${h.toString().padStart(2, '0')}:15`;
+        const hr12 = h % 12 || 12;
+        registerToken('time', aQuarterPast[0], `${hr12}:15${h >= 12 ? 'pm' : 'am'}`);
       }
     }
 
@@ -1201,6 +1115,26 @@ export function parseNLTask(rawInput: string): ParsedTask {
     }
 
     if (!timeSlot) {
+      const bareAtM = text.match(/\bat\s+(\d{1,2})\b(?!\s*(?:am|pm|:\d|\s+\d{2}))/i);
+      if (bareAtM) {
+        let h = parseInt(bareAtM[1], 10);
+        if (h >= 1 && h <= 11 && !hasMorningHint) h += 12;
+        timeSlot = `${h.toString().padStart(2, '0')}:00`;
+        const hr12 = h % 12 || 12;
+        registerToken('time', bareAtM[0], `${hr12}:00pm`);
+      }
+    }
+
+    if (!timeSlot) {
+      const spaceSepM = text.match(/\b([1-9]|1[0-2])\s+(\d{2})\s+(am|pm)\b/i);
+      if (spaceSepM) {
+        const s = parseSingleTime(spaceSepM[1], spaceSepM[2], spaceSepM[3]);
+        timeSlot = `${s.hh}:${s.mm}`;
+        registerToken('time', spaceSepM[0], s.display);
+      }
+    }
+
+    if (!timeSlot) {
       if (/\bbefore\s+lunch\b/i.test(text)) {
         const m = text.match(/\bbefore\s+lunch\b/i)!;
         timeSlot = '11:30';
@@ -1212,19 +1146,6 @@ export function parseNLTask(rawInput: string): ParsedTask {
       }
     }
 
-    // 3d. Smart AM/PM: bare "at 3" or "@ 3"
-    if (!timeSlot) {
-      const bareAtM = text.match(/\bat\s+(\d{1,2})\b(?!\s*(?:am|pm|:\d|\s+\d{2}))/i);
-      if (bareAtM) {
-        let h = parseInt(bareAtM[1], 10);
-        if (h >= 1 && h <= 11 && !hasMorningHint) h += 12;
-        timeSlot = `${h.toString().padStart(2, '0')}:00`;
-        const hr12 = h % 12 || 12;
-        registerToken('time', bareAtM[0], `${hr12}:00pm`);
-      }
-    }
-
-    // 3e. Standalone named time aliases (Fallback ONLY when no numeric time exists)
     if (!timeSlot) {
       const namedTimes: Array<[RegExp, string, string]> = [
         [/\bnoon\b/i,                        '12:00', 'Noon'],
@@ -1237,17 +1158,19 @@ export function parseNLTask(rawInput: string): ParsedTask {
         [/\b(evening|sundown)\b/i,           '18:00', 'Evening (6pm)'],
         [/\blate\s+night\b/i,                '23:00', 'Late Night (11pm)'],
         [/\b(night|tonight)\b/i,             '21:00', 'Night (9pm)'],
+        [/\bdawn\b/i,                         '05:00', 'Dawn (5am)'],
+        [/\bdusk\b/i,                         '18:30', 'Dusk (6:30pm)'],
+        [/\blunch\s+time\b/i,                '13:00', 'Lunch Time (1pm)'],
+        [/\bdinnertime\b/i,                   '20:00', 'Dinner Time (8pm)'],
+        [/\bbreakfast\s*time\b/i,            '08:00', 'Breakfast Time (8am)'],
       ];
       for (const [pat, slot, label] of namedTimes) {
         const m = text.match(pat);
         if (m) { timeSlot = slot; registerToken('time', m[0], label); break; }
       }
     }
-  } // end !timeSlot block
+  }
 
-  // 3f. Period-of-Day Qualifier Absorption
-  // If a specific timeSlot is already set, absorb redundant period-of-day phrases
-  // so words like "evening", "morning", "in the evening" don't linger in the task title!
   if (timeSlot) {
     const periodQualifiers = [
       /\b(?:in\s+the\s+)?(?:early\s+morning|morning|afternoon|evening|night)\b/i,
@@ -1261,120 +1184,78 @@ export function parseNLTask(rawInput: string): ParsedTask {
     }
   }
 
-  // 4. DATE
-  //
-  // MONTH PATTERN — accepts ALL short, long, and alternate spellings:
-  // jan/january/janu, feb/february, mar/march, apr/april, may, jun/june,
-  // jul/july, aug/august, sep/sept/september, oct/octo/october, nov/november,
-  // dec/dece/december
+  // 5. DATE
   const mPat = `(${ALL_MONTH_FORMS.join('|')})`;
 
   if (!dateResult) {
-    // ── 4a. DATE RANGE — "16 aug to 19 aug", "aug 16 to sep 3", etc. ──────────
-    // Must be detected BEFORE single-date patterns so the range token takes
-    // priority and the title is cleaned correctly.
-    //
-    // Supported formats (any mix of short/long month names):
-    //   DD Month to DD Month       → "16 aug to 19 aug"
-    //   DD Month to DD Month YYYY  → "16 september to 25 october 2027"
-    //   Month DD to Month DD       → "aug 16 to aug 19"
-    //   Month DD to DD             → "aug 16 to 19"  (same month implied)
-    //   DD to DD Month             → "16 to 19 aug"  (same month implied)
-    {
-      // Form 1: DD Month [YYYY] to DD Month [YYYY]
-      const form1 = new RegExp(
-        `\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}(?:\\s+(\\d{4}))?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}(?:\\s+(\\d{4}))?\\b`,
-        'i'
-      );
-      // Form 2: Month DD [YYYY] to Month DD [YYYY]
-      const form2 = new RegExp(
-        `\\b${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(\\d{4}))?\\s+(?:to|-)\\s+${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(\\d{4}))?\\b`,
-        'i'
-      );
-      // Form 3: Month DD to DD (same month, implicit)
-      const form3 = new RegExp(
-        `\\b${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`,
-        'i'
-      );
-      // Form 4: DD to DD Month (same month, implicit)
-      const form4 = new RegExp(
-        `\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}\\b`,
-        'i'
-      );
+    const form1 = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}(?:\\s+(\\d{4}))?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}(?:\\s+(\\d{4}))?\\b`, 'i');
+    const form2 = new RegExp(`\\b${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(\\d{4}))?\\s+(?:to|-)\\s+${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(\\d{4}))?\\b`, 'i');
+    const form3 = new RegExp(`\\b${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'i');
+    const form4 = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}\\b`, 'i');
 
-      const rm1 = text.match(form1);
-      const rm2 = text.match(form2);
-      const rm3 = text.match(form3);
-      const rm4 = text.match(form4);
+    const rm1 = text.match(form1);
+    const rm2 = text.match(form2);
+    const rm3 = text.match(form3);
+    const rm4 = text.match(form4);
 
-      if (rm1) {
-        // rm1[1]=startDay rm1[2]=startMonth rm1[3]=startYear? rm1[4]=endDay rm1[5]=endMonth rm1[6]=endYear?
-        const startD = resolveMonthDay(rm1[2], parseInt(rm1[1], 10));
-        const endD   = resolveMonthDay(rm1[5], parseInt(rm1[4], 10));
-        if (startD && endD) {
-          if (endD < startD) endD.setFullYear(endD.getFullYear() + 1);
-          const span = Math.round((endD.getTime() - startD.getTime()) / 86400000) + 1;
-          dateResult = startD; multiDays = span;
-          const sM = rm1[2].slice(0,1).toUpperCase() + rm1[2].slice(1,3).toLowerCase();
-          const eM = rm1[5].slice(0,1).toUpperCase() + rm1[5].slice(1,3).toLowerCase();
-          registerToken('date', rm1[0], `${rm1[1]} ${sM} – ${rm1[4]} ${eM}`);
-        }
-      } else if (rm2) {
-        // rm2[1]=startMonth rm2[2]=startDay rm2[3]=startYear? rm2[4]=endMonth rm2[5]=endDay rm2[6]=endYear?
-        const startD = resolveMonthDay(rm2[1], parseInt(rm2[2], 10));
-        const endD   = resolveMonthDay(rm2[4], parseInt(rm2[5], 10));
-        if (startD && endD) {
-          if (endD < startD) endD.setFullYear(endD.getFullYear() + 1);
-          const span = Math.round((endD.getTime() - startD.getTime()) / 86400000) + 1;
-          dateResult = startD; multiDays = span;
-          const sM = rm2[1].slice(0,1).toUpperCase() + rm2[1].slice(1,3).toLowerCase();
-          const eM = rm2[4].slice(0,1).toUpperCase() + rm2[4].slice(1,3).toLowerCase();
-          registerToken('date', rm2[0], `${sM} ${rm2[2]} – ${eM} ${rm2[5]}`);
-        }
-      } else if (rm3) {
-        // rm3[1]=month rm3[2]=startDay rm3[3]=endDay (same month)
-        const startD = resolveMonthDay(rm3[1], parseInt(rm3[2], 10));
-        const endD   = resolveMonthDay(rm3[1], parseInt(rm3[3], 10));
-        if (startD && endD) {
-          if (endD < startD) endD.setFullYear(endD.getFullYear() + 1);
-          const span = Math.round((endD.getTime() - startD.getTime()) / 86400000) + 1;
-          dateResult = startD; multiDays = span;
-          const mL = rm3[1].slice(0,1).toUpperCase() + rm3[1].slice(1,3).toLowerCase();
-          registerToken('date', rm3[0], `${mL} ${rm3[2]} – ${rm3[3]}`);
-        }
-      } else if (rm4) {
-        // rm4[1]=startDay rm4[2]=endDay rm4[3]=month (same month)
-        const startD = resolveMonthDay(rm4[3], parseInt(rm4[1], 10));
-        const endD   = resolveMonthDay(rm4[3], parseInt(rm4[2], 10));
-        if (startD && endD) {
-          if (endD < startD) endD.setFullYear(endD.getFullYear() + 1);
-          const span = Math.round((endD.getTime() - startD.getTime()) / 86400000) + 1;
-          dateResult = startD; multiDays = span;
-          const mL = rm4[3].slice(0,1).toUpperCase() + rm4[3].slice(1,3).toLowerCase();
-          registerToken('date', rm4[0], `${rm4[1]} – ${rm4[2]} ${mL}`);
-        }
+    if (rm1) {
+      const startD = resolveMonthDay(rm1[2], parseInt(rm1[1], 10));
+      const endD   = resolveMonthDay(rm1[5], parseInt(rm1[4], 10));
+      if (startD && endD) {
+        if (endD < startD) endD.setFullYear(endD.getFullYear() + 1);
+        const span = Math.round((endD.getTime() - startD.getTime()) / 86400000) + 1;
+        dateResult = startD; multiDays = span;
+        const sM = rm1[2].slice(0, 1).toUpperCase() + rm1[2].slice(1, 3).toLowerCase();
+        const eM = rm1[5].slice(0, 1).toUpperCase() + rm1[5].slice(1, 3).toLowerCase();
+        registerToken('date', rm1[0], `${rm1[1]} ${sM} – ${rm1[4]} ${eM}`);
+      }
+    } else if (rm2) {
+      const startD = resolveMonthDay(rm2[1], parseInt(rm2[2], 10));
+      const endD   = resolveMonthDay(rm2[4], parseInt(rm2[5], 10));
+      if (startD && endD) {
+        if (endD < startD) endD.setFullYear(endD.getFullYear() + 1);
+        const span = Math.round((endD.getTime() - startD.getTime()) / 86400000) + 1;
+        dateResult = startD; multiDays = span;
+        const sM = rm2[1].slice(0, 1).toUpperCase() + rm2[1].slice(1, 3).toLowerCase();
+        const eM = rm2[4].slice(0, 1).toUpperCase() + rm2[4].slice(1, 3).toLowerCase();
+        registerToken('date', rm2[0], `${sM} ${rm2[2]} – ${eM} ${rm2[5]}`);
+      }
+    } else if (rm3) {
+      const startD = resolveMonthDay(rm3[1], parseInt(rm3[2], 10));
+      const endD   = resolveMonthDay(rm3[1], parseInt(rm3[3], 10));
+      if (startD && endD) {
+        if (endD < startD) endD.setFullYear(endD.getFullYear() + 1);
+        const span = Math.round((endD.getTime() - startD.getTime()) / 86400000) + 1;
+        dateResult = startD; multiDays = span;
+        const mL = rm3[1].slice(0, 1).toUpperCase() + rm3[1].slice(1, 3).toLowerCase();
+        registerToken('date', rm3[0], `${mL} ${rm3[2]} – ${rm3[3]}`);
+      }
+    } else if (rm4) {
+      const startD = resolveMonthDay(rm4[3], parseInt(rm4[1], 10));
+      const endD   = resolveMonthDay(rm4[3], parseInt(rm4[2], 10));
+      if (startD && endD) {
+        if (endD < startD) endD.setFullYear(endD.getFullYear() + 1);
+        const span = Math.round((endD.getTime() - startD.getTime()) / 86400000) + 1;
+        dateResult = startD; multiDays = span;
+        const mL = rm4[3].slice(0, 1).toUpperCase() + rm4[3].slice(1, 3).toLowerCase();
+        registerToken('date', rm4[0], `${rm4[1]} – ${rm4[2]} ${mL}`);
       }
     }
 
-    // ── 4b. Relative / named / shorthand date expressions ───────────────────
-    if (!dateResult) {
-
-    // ── Sub-day relative: "in 30 minutes", "in 2 hours", "in an hour" ─────────
-    // Sets date=today + calculates absolute time from now
     if (!dateResult && /\bin\s+(\d+)\s*(?:mins?|minutes?)\b/i.test(text)) {
       const m = text.match(/\bin\s+(\d+)\s*(?:mins?|minutes?)\b/i)!;
       const n = parseInt(m[1], 10);
       const then = new Date(now.getTime() + n * 60 * 1000);
       dateResult = then;
       isReminder = true;
-      if (!timeSlot) timeSlot = `${then.getHours().toString().padStart(2,'0')}:${then.getMinutes().toString().padStart(2,'0')}`;
+      if (!timeSlot) timeSlot = `${then.getHours().toString().padStart(2, '0')}:${then.getMinutes().toString().padStart(2, '0')}`;
       registerToken('date', m[0], `In ${n}m`);
     } else if (!dateResult && /\bin\s+an?\s+hour\b/i.test(text)) {
       const m = text.match(/\bin\s+an?\s+hour\b/i)!;
       const then = new Date(now.getTime() + 60 * 60 * 1000);
       dateResult = then;
       isReminder = true;
-      if (!timeSlot) timeSlot = `${then.getHours().toString().padStart(2,'0')}:${then.getMinutes().toString().padStart(2,'0')}`;
+      if (!timeSlot) timeSlot = `${then.getHours().toString().padStart(2, '0')}:${then.getMinutes().toString().padStart(2, '0')}`;
       registerToken('date', m[0], 'In 1h');
     } else if (!dateResult && /\bin\s+(\d+)\s*(?:hours?|hrs?)\b/i.test(text)) {
       const m = text.match(/\bin\s+(\d+)\s*(?:hours?|hrs?)\b/i)!;
@@ -1382,11 +1263,11 @@ export function parseNLTask(rawInput: string): ParsedTask {
       const then = new Date(now.getTime() + n * 60 * 60 * 1000);
       dateResult = then;
       isReminder = true;
-      if (!timeSlot) timeSlot = `${then.getHours().toString().padStart(2,'0')}:${then.getMinutes().toString().padStart(2,'0')}`;
+      if (!timeSlot) timeSlot = `${then.getHours().toString().padStart(2, '0')}:${then.getMinutes().toString().padStart(2, '0')}`;
       registerToken('date', m[0], `In ${n}h`);
     }
 
-    // ── Hinglish date words ─────────────────────────────────────────────
+    // Hinglish relative dates
     if (!dateResult && /\b(aaj|aaj\s+hi)\b/i.test(text)) {
       const m = text.match(/\b(aaj|aaj\s+hi)\b/i)!;
       dateResult = new Date(now);
@@ -1401,7 +1282,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
       registerToken('date', m[0], 'Kal (Tomorrow)');
     }
 
-    // ── Business / shorthand shortcuts ──────────────────────────────────
+    // Business shortcuts
     if (!dateResult && /\bEOW\b/.test(text)) {
       const m = text.match(/\bEOW\b/)!;
       dateResult = nextWeekday(5); registerToken('date', m[0], 'EOW (Fri)');
@@ -1419,7 +1300,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
       registerToken('date', m[0], 'EOQ (Quarter End)');
     }
 
-    // ── Context time-of-day date words ───────────────────────────────
+    // Contextual time-of-day dates
     if (!dateResult && /\btonight\b/i.test(text)) {
       const m = text.match(/\btonight\b/i)!;
       dateResult = new Date(now);
@@ -1492,131 +1373,65 @@ export function parseNLTask(rawInput: string): ParsedTask {
       registerToken('date', m[0], 'Aaj Raat');
     }
 
-    // ── Standard relative date keywords ────────────────────────────────
-    if (!dateResult) {
-    if (/\btoday\b/i.test(text)) {
-      const m = text.match(/\btoday\b/i)!; dateResult = new Date(now);
-      registerToken('date', m[0], 'Today');
-    } else if (/\b(tomorrow|tommorow|tomorow|tommorrow|tmr|tmrw|tomo|2moro|2morrow)\b/i.test(text)) {
-      const m = text.match(/\b(tomorrow|tommorow|tomorow|tommorrow|tmr|tmrw|tomo|2moro|2morrow)\b/i)!;
-      dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
-      registerToken('date', m[0], 'Tomorrow');
-    } else if (/\bday after tomorrow\b/i.test(text)) {
-      const m = text.match(/\bday after tomorrow\b/i)!;
-      dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 2);
-      registerToken('date', m[0], 'Day After Tomorrow');
-    } else if (/\b(next\s+weekend|this\s+weekend)\b/i.test(text)) {
-      const m = text.match(/\b(next\s+weekend|this\s+weekend)\b/i)!;
-      dateResult = nextWeekday(6); registerToken('date', m[0], 'This Weekend');
-    } else if (/\b(EOW|end\s+of\s+(?:the\s+)?week)\b/i.test(text)) {
-      const m = text.match(/\b(EOW|end\s+of\s+(?:the\s+)?week)\b/i)!;
-      dateResult = nextWeekday(5); registerToken('date', m[0], 'End of Week');
-    } else if (/\b(EOM|end\s+of\s+(?:the\s+)?month)\b/i.test(text)) {
-      const m = text.match(/\b(EOM|end\s+of\s+(?:the\s+)?month)\b/i)!;
+    // Extended relative date keywords
+    if (!dateResult && /\bend\s+of\s+(?:the\s+)?week\b/i.test(text)) {
+      const m = text.match(/\bend\s+of\s+(?:the\s+)?week\b/i)!;
+      dateResult = nextWeekday(5);
+      registerToken('date', m[0], 'End of Week (Fri)');
+    }
+    if (!dateResult && /\bend\s+of\s+(?:the\s+)?month\b/i.test(text)) {
+      const m = text.match(/\bend\s+of\s+(?:the\s+)?month\b/i)!;
       dateResult = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       registerToken('date', m[0], 'End of Month');
-    } else if (/\bnext\s+month\b/i.test(text)) {
-      const m = text.match(/\bnext\s+month\b/i)!;
-      dateResult = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      registerToken('date', m[0], 'Next Month');
-    } else if (/\b(?:for\s+(?:the\s+)?)?next\s+(\d+)\s+days?\b/i.test(text)) {
-      const m = text.match(/\b(?:for\s+(?:the\s+)?)?next\s+(\d+)\s+days?\b/i)!;
-      multiDays = parseInt(m[1], 10); dateResult = new Date(now);
-      registerToken('date', m[0], `Next ${m[1]} Days`);
-    } else if (/\bin\s+(\d+)\s+days?\b/i.test(text)) {
-      const m = text.match(/\bin\s+(\d+)\s+days?\b/i)!;
-      const n = parseInt(m[1], 10); dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + n);
-      registerToken('date', m[0], `In ${n} Day${n === 1 ? '' : 's'}`);
-    } else if (/\bin\s+(\d+)\s+weeks?\b/i.test(text)) {
-      const m = text.match(/\bin\s+(\d+)\s+weeks?\b/i)!;
-      const n = parseInt(m[1], 10); dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + n * 7);
-      registerToken('date', m[0], `In ${n} Week${n === 1 ? '' : 's'}`);
-    } else if (/\bin\s+(\d+)\s+months?\b/i.test(text)) {
-      const m = text.match(/\bin\s+(\d+)\s+months?\b/i)!;
-      const n = parseInt(m[1], 10); dateResult = new Date(now); dateResult.setMonth(dateResult.getMonth() + n);
-      registerToken('date', m[0], `In ${n} Month${n === 1 ? '' : 's'}`);
-    } else {
-      // ── 4c. Specific single dates — with optional year + all month forms ────
+    }
+    if (!dateResult && /\bstart\s+of\s+(?:the\s+)?week\b/i.test(text)) {
+      const m = text.match(/\bstart\s+of\s+(?:the\s+)?week\b/i)!;
+      dateResult = nextWeekday(1, true);
+      registerToken('date', m[0], 'Start of Week (Mon)');
+    }
+    if (!dateResult && /\bnext\s+week\b/i.test(text) && !isRecurring) {
+      const m = text.match(/\bnext\s+week\b/i)!;
+      dateResult = nextWeekday(1, true);
+      registerToken('date', m[0], 'Next Week (Mon)');
+    }
+    if (!dateResult && /\bthis\s+week\b/i.test(text) && !isRecurring) {
+      const m = text.match(/\bthis\s+week\b/i)!;
+      dateResult = nextWeekday(1, false);
+      registerToken('date', m[0], 'This Week (Mon)');
+    }
 
-      // With year: "Aug 15 2026", "15 Aug 2026", "15th August 2026"
-      const mdYPat = new RegExp(`\\b${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(20\\d{2})\\b`, 'i');
-      const dmYPat = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}\\s+(20\\d{2})\\b`, 'i');
-      const mdYM = text.match(mdYPat);
-      const dmYM = text.match(dmYPat);
-
-      if (mdYM) {
-        const monthNum = MONTH_ALIASES[mdYM[1].toLowerCase().trim()] ?? MONTH_ALIASES[mdYM[1].toLowerCase().trim().slice(0,3)];
-        if (monthNum) {
-          const d = new Date(parseInt(mdYM[3], 10), monthNum - 1, parseInt(mdYM[2], 10));
+    // "1st of March" / "3rd of june"
+    if (!dateResult) {
+      const ordinalOfMonthRe = new RegExp(
+        `\\b(\\d{1,2})(?:st|nd|rd|th)\\s+of\\s+${mPat}\\b`, 'i'
+      );
+      const ordinalOfMonth = text.match(ordinalOfMonthRe);
+      if (ordinalOfMonth) {
+        const d = resolveMonthDay(ordinalOfMonth[2], parseInt(ordinalOfMonth[1], 10));
+        if (d) {
           dateResult = d;
-          const mLabel = mdYM[1].charAt(0).toUpperCase() + mdYM[1].slice(1, 3).toLowerCase();
-          registerToken('date', mdYM[0], `${mLabel} ${mdYM[2]}, ${mdYM[3]}`);
-        }
-      } else if (dmYM) {
-        const monthNum = MONTH_ALIASES[dmYM[2].toLowerCase().trim()] ?? MONTH_ALIASES[dmYM[2].toLowerCase().trim().slice(0,3)];
-        if (monthNum) {
-          const d = new Date(parseInt(dmYM[3], 10), monthNum - 1, parseInt(dmYM[1], 10));
-          dateResult = d;
-          const mLabel = dmYM[2].charAt(0).toUpperCase() + dmYM[2].slice(1, 3).toLowerCase();
-          registerToken('date', dmYM[0], `${dmYM[1]} ${mLabel}, ${dmYM[3]}`);
-        }
-      }
-
-      // Without year: "Aug 15", "15 Aug", "sept 3", "3 octo"
-      if (!dateResult) {
-        const mdPat = new RegExp(`\\b${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'i');
-        const dmPat = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}\\b`, 'i');
-        const mdM = text.match(mdPat);
-        const dmM = text.match(dmPat);
-        if (mdM) {
-          const d = resolveMonthDay(mdM[1], parseInt(mdM[2], 10));
-          if (d) {
-            dateResult = d;
-            const mLabel = mdM[1].charAt(0).toUpperCase() + mdM[1].slice(1).toLowerCase();
-            registerToken('date', mdM[0], `${mLabel} ${mdM[2]}`);
-          }
-        } else if (dmM) {
-          const d = resolveMonthDay(dmM[2], parseInt(dmM[1], 10));
-          if (d) {
-            dateResult = d;
-            const mLabel = dmM[2].charAt(0).toUpperCase() + dmM[2].slice(1).toLowerCase();
-            registerToken('date', dmM[0], `${dmM[1]} ${mLabel}`);
-          }
-        }
-      }
-
-      // ── Numeric date formats: DD/MM, DD/MM/YYYY, DD-MM-YYYY, DD.MM ─────────
-      if (!dateResult) {
-        // "16/8/2026" or "16-08-2026"
-        const numericLong = text.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](20\d{2})\b/);
-        // "16/8" or "16.08"
-        const numericShort = text.match(/\b(\d{1,2})[\/.](\d{1,2})\b/);
-
-        if (numericLong) {
-          const day = parseInt(numericLong[1], 10);
-          const month = parseInt(numericLong[2], 10);
-          const year = parseInt(numericLong[3], 10);
-          if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-            dateResult = new Date(year, month - 1, day);
-            registerToken('date', numericLong[0], `${day}/${month}/${year}`);
-          }
-        } else if (numericShort) {
-          const day = parseInt(numericShort[1], 10);
-          const month = parseInt(numericShort[2], 10);
-          if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            let candidate = new Date(now.getFullYear(), month - 1, day);
-            if (candidate < today) candidate = new Date(now.getFullYear() + 1, month - 1, day);
-            dateResult = candidate;
-            registerToken('date', numericShort[0], `${day}/${month}`);
-          }
+          const mL = ordinalOfMonth[2].charAt(0).toUpperCase() + ordinalOfMonth[2].slice(1).toLowerCase();
+          registerToken('date', ordinalOfMonth[0], `${ordinalOfMonth[1]} ${mL}`);
         }
       }
     }
-    } // end standard relative block
 
-    // ── First/last weekday of a specific month ────────────────────────────
-    // "first monday of september", "last friday of this month", "last day of august"
+    // "on the 5th" / "by the 12th" — ordinal-only (current or next month)
+    if (!dateResult) {
+      const ordinalOnly = text.match(/\b(?:on\s+|by\s+)?(?:the\s+)?(\d{1,2})(st|nd|rd|th)\b(?!\s+of)/i);
+      if (ordinalOnly) {
+        const dayNum = parseInt(ordinalOnly[1], 10);
+        if (dayNum >= 1 && dayNum <= 31) {
+          const todayDate2 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          let candidate = new Date(now.getFullYear(), now.getMonth(), dayNum);
+          if (candidate < todayDate2) candidate = new Date(now.getFullYear(), now.getMonth() + 1, dayNum);
+          dateResult = candidate;
+          registerToken('date', ordinalOnly[0], `${ordinalOnly[1]}${ordinalOnly[2]}`);
+        }
+      }
+    }
+
+    // First/last weekday of month: "first monday of september", "last friday of this month", "last day of august"
     if (!dateResult) {
       const ordinalPat = new RegExp(
         `\\b(first|1st|second|2nd|third|3rd|fourth|4th|last)\\s+(${DAY_NAMES.join('|')}|${DAY_SHORT.join('|')}|day)\\s+of\\s+(?:(this|next)\\s+month|${mPat})\\b`,
@@ -1626,49 +1441,160 @@ export function parseNLTask(rawInput: string): ParsedTask {
       if (ordM) {
         const ordStr = ordM[1].toLowerCase();
         const dayStr = ordM[2].toLowerCase();
-        const monthRef = ordM[3] ? ordM[3].toLowerCase() : null; // "this" or "next"
-        const monthName = ordM[4] ?? null; // e.g. "september"
+        const monthRef = ordM[3] ? ordM[3].toLowerCase() : null;
+        const monthName = ordM[4] ?? null;
 
-        // Resolve the month
         let targetMonth = now.getMonth();
         let targetYear = now.getFullYear();
-        if (monthRef === 'next') { targetMonth += 1; if (targetMonth > 11) { targetMonth = 0; targetYear++; } }
-        else if (monthName) {
-          const mn = MONTH_ALIASES[monthName.toLowerCase()] ?? MONTH_ALIASES[monthName.toLowerCase().slice(0,3)];
-          if (mn) { targetMonth = mn - 1; if (targetMonth < now.getMonth()) targetYear++; }
+        if (monthRef === 'next') {
+          targetMonth += 1;
+          if (targetMonth > 11) { targetMonth = 0; targetYear++; }
+        } else if (monthName) {
+          const mn = MONTH_ALIASES[monthName.toLowerCase()] ?? MONTH_ALIASES[monthName.toLowerCase().slice(0, 3)];
+          if (mn) {
+            targetMonth = mn - 1;
+            if (targetMonth < now.getMonth()) targetYear++;
+          }
         }
 
-        // "last day of" = end of month
         if (dayStr === 'day' && (ordStr === 'last' || ordStr === '4th')) {
           dateResult = new Date(targetYear, targetMonth + 1, 0);
           registerToken('date', ordM[0], `Last Day of Month`);
         } else {
-          // Resolve target weekday
           const di = DAY_NAMES.findIndex(d => dayStr.startsWith(d)) !== -1
             ? DAY_NAMES.findIndex(d => dayStr.startsWith(d))
             : DAY_SHORT.findIndex(d => dayStr.startsWith(d));
           if (di !== -1) {
-            const ordinal = { first:1,'1st':1, second:2,'2nd':2, third:3,'3rd':3, fourth:4,'4th':4, last:-1 }[ordStr] || 1;
+            const ordinal = { first: 1, '1st': 1, second: 2, '2nd': 2, third: 3, '3rd': 3, fourth: 4, '4th': 4, last: -1 }[ordStr] || 1;
             const firstOfMonth = new Date(targetYear, targetMonth, 1);
             const firstDow = firstOfMonth.getDay();
-            let offset = (di - firstDow + 7) % 7;
+            const offset = (di - firstDow + 7) % 7;
             if (ordinal === -1) {
-              // last weekday: start from end of month
               const lastOfMonth = new Date(targetYear, targetMonth + 1, 0);
               const lastDow = lastOfMonth.getDay();
-              offset = (di - lastDow + 7) % 7;
-              dateResult = new Date(targetYear, targetMonth + 1, -offset);
+              const endOffset = (di - lastDow + 7) % 7;
+              dateResult = new Date(targetYear, targetMonth + 1, -endOffset);
             } else {
               dateResult = new Date(targetYear, targetMonth, 1 + offset + (ordinal - 1) * 7);
             }
-            const ordLabel = { 1:'1st',2:'2nd',3:'3rd',4:'4th','-1':'Last' }[ordinal] || ordStr;
+            const ordLabel = { 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', '-1': 'Last' }[ordinal] || ordStr;
             const dayLabel = DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1);
             registerToken('date', ordM[0], `${ordLabel} ${dayLabel}`);
           }
         }
       }
     }
-    } // end if (!dateResult) for relative block
+
+    // Standard relative date keywords
+    if (!dateResult) {
+      if (/\btoday\b/i.test(text)) {
+        const m = text.match(/\btoday\b/i)!; dateResult = new Date(now);
+        registerToken('date', m[0], 'Today');
+      } else if (/\b(tomorrow|tmr|tmrw|tomo|2moro|2morrow)\b/i.test(text)) {
+        const m = text.match(/\b(tomorrow|tmr|tmrw|tomo|2moro|2morrow)\b/i)!;
+        dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 1);
+        registerToken('date', m[0], 'Tomorrow');
+      } else if (/\bday after tomorrow\b/i.test(text)) {
+        const m = text.match(/\bday after tomorrow\b/i)!;
+        dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + 2);
+        registerToken('date', m[0], 'Day After Tomorrow');
+      } else if (/\b(next\s+weekend|this\s+weekend)\b/i.test(text)) {
+        const m = text.match(/\b(next\s+weekend|this\s+weekend)\b/i)!;
+        dateResult = nextWeekday(6); registerToken('date', m[0], 'This Weekend');
+      } else if (/\bnext\s+month\b/i.test(text)) {
+        const m = text.match(/\bnext\s+month\b/i)!;
+        dateResult = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        registerToken('date', m[0], 'Next Month');
+      } else if (/\b(?:for\s+(?:the\s+)?)?next\s+(\d+)\s+days?\b/i.test(text)) {
+        const m = text.match(/\b(?:for\s+(?:the\s+)?)?next\s+(\d+)\s+days?\b/i)!;
+        multiDays = parseInt(m[1], 10); dateResult = new Date(now);
+        registerToken('date', m[0], `Next ${m[1]} Days`);
+      } else if (/\bin\s+(\d+)\s+days?\b/i.test(text)) {
+        const m = text.match(/\bin\s+(\d+)\s+days?\b/i)!;
+        const n = parseInt(m[1], 10); dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + n);
+        registerToken('date', m[0], `In ${n} Day${n === 1 ? '' : 's'}`);
+      } else if (/\bin\s+(\d+)\s+weeks?\b/i.test(text)) {
+        const m = text.match(/\bin\s+(\d+)\s+weeks?\b/i)!;
+        const n = parseInt(m[1], 10); dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + n * 7);
+        registerToken('date', m[0], `In ${n} Week${n === 1 ? '' : 's'}`);
+      } else if (/\bin\s+(\d+)\s+months?\b/i.test(text)) {
+        const m = text.match(/\bin\s+(\d+)\s+months?\b/i)!;
+        const n = parseInt(m[1], 10); dateResult = new Date(now); dateResult.setMonth(dateResult.getMonth() + n);
+        registerToken('date', m[0], `In ${n} Month${n === 1 ? '' : 's'}`);
+      } else {
+        // Specific Month/Day with optional Year
+        const mdYPat = new RegExp(`\\b${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(20\\d{2})\\b`, 'i');
+        const dmYPat = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}\\s+(20\\d{2})\\b`, 'i');
+        const mdYM = text.match(mdYPat);
+        const dmYM = text.match(dmYPat);
+
+        if (mdYM) {
+          const monthNum = MONTH_ALIASES[mdYM[1].toLowerCase().trim()] ?? MONTH_ALIASES[mdYM[1].toLowerCase().trim().slice(0, 3)];
+          if (monthNum) {
+            const d = new Date(parseInt(mdYM[3], 10), monthNum - 1, parseInt(mdYM[2], 10));
+            dateResult = d;
+            const mLabel = mdYM[1].charAt(0).toUpperCase() + mdYM[1].slice(1, 3).toLowerCase();
+            registerToken('date', mdYM[0], `${mLabel} ${mdYM[2]}, ${mdYM[3]}`);
+          }
+        } else if (dmYM) {
+          const monthNum = MONTH_ALIASES[dmYM[2].toLowerCase().trim()] ?? MONTH_ALIASES[dmYM[2].toLowerCase().trim().slice(0, 3)];
+          if (monthNum) {
+            const d = new Date(parseInt(dmYM[3], 10), monthNum - 1, parseInt(dmYM[1], 10));
+            dateResult = d;
+            const mLabel = dmYM[2].charAt(0).toUpperCase() + dmYM[2].slice(1, 3).toLowerCase();
+            registerToken('date', dmYM[0], `${dmYM[1]} ${mLabel}, ${dmYM[3]}`);
+          }
+        }
+
+        if (!dateResult) {
+          const mdPat = new RegExp(`\\b${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'i');
+          const dmPat = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}\\b`, 'i');
+          const mdM = text.match(mdPat);
+          const dmM = text.match(dmPat);
+          if (mdM) {
+            const d = resolveMonthDay(mdM[1], parseInt(mdM[2], 10));
+            if (d) {
+              dateResult = d;
+              const mLabel = mdM[1].charAt(0).toUpperCase() + mdM[1].slice(1).toLowerCase();
+              registerToken('date', mdM[0], `${mLabel} ${mdM[2]}`);
+            }
+          } else if (dmM) {
+            const d = resolveMonthDay(dmM[2], parseInt(dmM[1], 10));
+            if (d) {
+              dateResult = d;
+              const mLabel = dmM[2].charAt(0).toUpperCase() + dmM[2].slice(1).toLowerCase();
+              registerToken('date', dmM[0], `${dmM[1]} ${mLabel}`);
+            }
+          }
+        }
+
+        // Numeric date formats
+        if (!dateResult) {
+          const numericLong = text.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](20\d{2})\b/);
+          const numericShort = text.match(/\b(\d{1,2})[\/.](\d{1,2})\b/);
+
+          if (numericLong) {
+            const day = parseInt(numericLong[1], 10);
+            const month = parseInt(numericLong[2], 10);
+            const year = parseInt(numericLong[3], 10);
+            if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+              dateResult = new Date(year, month - 1, day);
+              registerToken('date', numericLong[0], `${day}/${month}/${year}`);
+            }
+          } else if (numericShort) {
+            const day = parseInt(numericShort[1], 10);
+            const month = parseInt(numericShort[2], 10);
+            if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+              const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+              let candidate = new Date(now.getFullYear(), month - 1, day);
+              if (candidate < todayDate) candidate = new Date(now.getFullYear() + 1, month - 1, day);
+              dateResult = candidate;
+              registerToken('date', numericShort[0], `${day}/${month}`);
+            }
+          }
+        }
+      }
+    }
 
     if (!dateResult) {
       const byMatch = text.match(/\b(?:by|due)\s+(next\s+)?([a-z]+)\b/i);
@@ -1698,73 +1624,62 @@ export function parseNLTask(rawInput: string): ParsedTask {
         if (m) {
           dateResult = nextWeekday(di, forceNext);
           const label = DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1);
-          registerToken('date', m[0], `${forceNext ? 'Next ' : ''}${label}`); break;
+          registerToken('date', m[0], `${forceNext ? 'Next ' : ''}${label}`);
+          break;
         }
       }
     }
   }
 
-  // 5. BUILD CLEAN TITLE
+  // 6. BUILD CLEAN TITLE (Space-preserving token subtraction)
   let title = raw;
   const sortedTokens = [...tokens].sort((a, b) => b.start - a.start);
   for (const tok of sortedTokens) {
-    title = title.slice(0, tok.start) + title.slice(tok.end);
+    if (tok.start < 0 || tok.end > title.length || tok.start >= tok.end) continue;
+    title = title.slice(0, tok.start) + ' ' + title.slice(tok.end);
   }
+  title = title.replace(/\s{2,}/g, ' ').trim();
   title = cleanTaskTitle(title);
   if (!title) title = cleanTaskTitle(raw) || raw.trim();
 
-  // 6. SMART SEMANTIC DOMAIN TAG INFERENCE
-  // If the user didn't explicitly type or say a tag (#tag or tag: ...),
-  // automatically categorize the task using high-precision domain vocabulary.
+  // 7. SMART SEMANTIC DOMAIN TAG INFERENCE
   if (extractedTags.length === 0) {
     const combinedContext = `${title} ${raw}`.toLowerCase();
-
-    // Academic / College
-    if (/\b(lab|report|assignment|exam|exams|lecture|lectures|professor|prof|quiz|viva|midsem|endsem|semester|syllabus|attendance|bunk|hod|faculty|coursework|homework|thesis|dissertation|classes|class|college|university|campus|operating\s+systems?|os|dbms|computer\s+networks?|cn|theory\s+of\s+computation|toc|physics|chemistry|math|mathematics|calculus|biology)\b/i.test(combinedContext)) {
+    if (/\b(lab|report|assignment|exam|exams|lecture|lectures|professor|prof|quiz|viva|midsem|endsem|semester|syllabus|attendance|bunk|hod|faculty|coursework|homework|thesis|dissertation|classes|class|college|university|campus|operating\s+systems?|os|dbms|computer\s+networks?|cn|theory\s+of\s+computation|toc|physics|chemistry|math|mathematics|calculus|biology|notes|revision|revise|chapter|chapters|pages?|practicals?|internals?|backlogs?|arrears?|tutorial|project\s+report|minor\s+project|major\s+project|practical\s+file)\b/i.test(combinedContext)) {
       extractedTags.push('college');
-    }
-    // Fitness / Gym
-    else if (/\b(workout|gym|chest|back|legs|biceps|triceps|shoulders|push\s+day|pull\s+day|leg\s+day|squat|squats|bench\s+press|bench|deadlift|deadlifts|cardio|treadmill|hiit|protein|creatine|sets|reps|abs|fitness)\b/i.test(combinedContext)) {
+    } else if (/\b(workout|gym|chest|back|legs|biceps|triceps|shoulders|push\s+day|pull\s+day|leg\s+day|squat|squats|bench\s+press|bench|deadlift|deadlifts|cardio|treadmill|hiit|protein|creatine|sets|reps|abs|fitness)\b/i.test(combinedContext)) {
       extractedTags.push('gym');
-    }
-    // Career / Placement / Code
-    else if (/\b(leetcode|dsa|interview|interviews|resume|cv|system\s+design|sql|dbms|coding|mock\s+interview|oops|algorithm|algorithms|codeforces|hackerrank|aptitude|offer\s+letter|hr\s+round|campus\s+placement|github|pr|bug\s+fix)\b/i.test(combinedContext)) {
+    } else if (/\b(leetcode|dsa|interview|interviews|resume|cv|system\s+design|sql|dbms|coding|mock\s+interview|oops|algorithm|algorithms|codeforces|hackerrank|aptitude|offer\s+letter|hr\s+round|campus\s+placement|github|pr|bug\s+fix)\b/i.test(combinedContext)) {
       extractedTags.push('placement');
-    }
-    // Finance / Bills
-    else if (/\b(bill|bills|electricity\s+bill|rent|recharge|fee|fees|emi|credit\s+card|salary|tax|taxes|investment|sip|bank\s+transfer|transfer\s+money|pay\s+tuition)\b/i.test(combinedContext)) {
+    } else if (/\b(bill|bills|electricity\s+bill|rent|recharge|fee|fees|emi|credit\s+card|salary|tax|taxes|investment|sip|bank\s+transfer|transfer\s+money|pay\s+tuition)\b/i.test(combinedContext)) {
       extractedTags.push('finance');
-    }
-    // Health / Medical
-    else if (/\b(doctor|dentist|medicine|medicines|pills|vitamins|appointment|checkup|hospital|clinic|blood\s+test|prescription|physio)\b/i.test(combinedContext)) {
+    } else if (/\b(doctor|dentist|medicine|medicines|pills|vitamins|appointment|checkup|hospital|clinic|blood\s+test|prescription|physio)\b/i.test(combinedContext)) {
       extractedTags.push('health');
-    }
-    // Personal / Errands / Family
-    else if (/\b(groceries|grocery|haircut|laundry|clean\s+room|call\s+(?:mom|dad|mummy|papa|mother|father|parents|bro|brother|sister)|birthday|anniversary|shopping)\b/i.test(combinedContext)) {
+    } else if (/\b(groceries|grocery|haircut|laundry|clean\s+room|call\s+(?:mom|dad|mummy|papa|mother|father|parents|bro|brother|sister)|birthday|anniversary|shopping|family|friends|outing|trip|travel|vacation|picnic|dinner|lunch|breakfast|party|celebration|gift|present)\b/i.test(combinedContext)) {
       extractedTags.push('personal');
     }
   }
 
-  // 7. SMART PRIORITY INFERENCE
-  // If priority was not explicitly dictated (p1, p2, p3, high, etc.), infer urgency from semantic triggers
+  // 8. SMART PRIORITY INFERENCE
   const hasExplicitPriority = tokens.some(t => t.type === 'priority');
   if (!hasExplicitPriority) {
     const urgencyContext = `${title} ${raw}`.toLowerCase();
-    if (/\b(urgent|critical|emergency|asap|deadline|blocker|fire|exam|midsem|endsem|interview|doctor|hospital|immediately)\b/i.test(urgencyContext)) {
+    if (/\b(urgent|critical|emergency|asap|deadline|blocker|fire|exam|midsem|endsem|interview|doctor|hospital|immediately|submission|due\s+today|due\s+tomorrow|overdue|last\s+date|final\s+submission|presentation|viva|placement)\b/i.test(urgencyContext)) {
       priority = 'high';
     }
   }
 
-  // 8. CONTEXTUAL DURATION DEFAULTS
-  // If duration was not explicitly specified (e.g. "for 45m"), assign smart defaults by domain
+  // 9. CONTEXTUAL DURATION DEFAULTS
   if (durationMinutes == null) {
     const durationContext = `${title} ${raw}`.toLowerCase();
     if (/\b(gym|workout|chest|back|legs|biceps|triceps|push\s+day|pull\s+day|leg\s+day|fitness)\b/i.test(durationContext) || extractedTags.includes('gym')) {
       durationMinutes = 60;
     } else if (/\b(exam|exams|midsem|endsem|lab\s+exam|practical|viva)\b/i.test(durationContext)) {
       durationMinutes = 90;
-    } else if (/\b(meeting|sync|standup|interview|call\s+with|discussion|1:1|one\s+on\s+one)\b/i.test(durationContext)) {
+    } else if (/\b(meeting|sync|standup|interview|call\s+with|discussion|1:1|one\s+on\s+one|review\s+meeting|catch\s+up)\b/i.test(durationContext)) {
       durationMinutes = 30;
+    } else if (/\b(study|revision|revise|notes|assignment|homework|reading|chapter|lecture)\b/i.test(durationContext)) {
+      durationMinutes = 60;
     } else if (/\b(bill|recharge|pay|call\s+(?:mom|dad|mummy|papa)|haircut|quick|medicine|pills)\b/i.test(durationContext) || extractedTags.includes('finance')) {
       durationMinutes = 15;
     }
@@ -1793,19 +1708,11 @@ export function parseNLTask(rawInput: string): ParsedTask {
 /**
  * Splits complex or multi-task input (e.g. from speech dictation) into individual tasks,
  * parsing each with full NLP capabilities.
- *
- * Handles:
- * - Numbered lists: "1. Task one 2. Task two" or "(1) Task one (2) Task two"
- * - Bullet points / newlines: "Task one\nTask two" or "• Task one • Task two"
- * - Conjunction transitions: "and also", "also", "and then", "then", "followed by"
- * - Compound "and" where both clauses contain actionable task verbs or time/date tokens
- * - Semicolon separated lists: "Task one; Task two"
  */
 export function parseNLTasks(raw: string): ParsedTask[] {
   if (!raw || !raw.trim()) return [];
   const text = raw.trim();
 
-  // Helper to sanitize and parse a task segment
   const sanitizeAndParse = (segment: string): ParsedTask => {
     const cleanSegment = segment
       .trim()
@@ -1814,7 +1721,7 @@ export function parseNLTasks(raw: string): ParsedTask[] {
     return parseNLTask(cleanSegment);
   };
 
-  // 1. Check for numbered lists: "1. ... 2. ..." or "1) ... 2) ..."
+  // 1. Numbered lists: "1. ... 2. ..."
   if (/(?:^|\s+)(?:[1-9]\.|\([1-9]\)|[1-9]\))\s+/.test(text)) {
     const parts = text.split(/(?:^|\s+)(?:[1-9]\.|\([1-9]\)|[1-9]\))\s+/).filter(p => p.trim().length > 1);
     if (parts.length > 1) {
@@ -1822,7 +1729,7 @@ export function parseNLTasks(raw: string): ParsedTask[] {
     }
   }
 
-  // 2. Check for newlines or bullet points
+  // 2. Newlines or bullet points
   if (/[\n•*]\s*/.test(text)) {
     const parts = text.split(/[\n•*]\s*/).filter(p => p.trim().length > 1);
     if (parts.length > 1) {
@@ -1830,7 +1737,7 @@ export function parseNLTasks(raw: string): ParsedTask[] {
     }
   }
 
-  // 3. Check for semicolons
+  // 3. Semicolons
   if (/;\s*/.test(text)) {
     const parts = text.split(/;\s*/).filter(p => p.trim().length > 1);
     if (parts.length > 1) {
@@ -1838,7 +1745,7 @@ export function parseNLTasks(raw: string): ParsedTask[] {
     }
   }
 
-  // 4. Check for compound transitional connectors: "and also", "and then", "after that", "followed by", "additionally", "plus also", "and next", "aur phir"
+  // 4. Compound transitional connectors
   const transitionRegex = /\b(?:and\s+also|and\s+then|after\s+that|followed\s+by|additionally|plus\s+also|and\s+next|aur\s+phir|uske\s+baad)\b/i;
   if (transitionRegex.test(text)) {
     const parts = text.split(transitionRegex).filter(p => p.trim().length > 1);
@@ -1847,15 +1754,13 @@ export function parseNLTasks(raw: string): ParsedTask[] {
     }
   }
 
-  // 5. Check for "and" / ", and " / "then" when both left and right contain task action verbs or time/date tokens
-  // E.g.: "Gym workout at 6am and study physics tomorrow 10am" or "Submit lab report 2pm then call mom 7pm"
+  // 5. Actionable "and" / "then" splits
   const taskVerbPattern = /\b(?:create|add|make|remind|buy|call|meet|submit|finish|complete|do|start|go|workout|study|prepare|clean|read|write|email|send|schedule|review|pay|attend|check|update|fix|code|order|take|cook|wash|learn|practice|visit|revise|pack)\b/i;
   const tokenHintPattern = /\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun|every|at\s+\d|am|pm|p1|p2|p3|urgent|high\s+priority|reminder|alarm|#)\b/i;
 
   const compoundSplitRegex = /,\s*(?:and|then)\s+|\s+(?:and\s+then|then)\s+|\s+and\s+/i;
   const compoundParts = text.split(compoundSplitRegex);
   if (compoundParts.length > 1) {
-    // Verify that every segment looks like an independent actionable task
     const allLookLikeTasks = compoundParts.every(part => {
       const p = part.trim();
       return p.length >= 3 && (taskVerbPattern.test(p) || tokenHintPattern.test(p));
@@ -1866,57 +1771,18 @@ export function parseNLTasks(raw: string): ParsedTask[] {
     }
   }
 
-  // Default: single task parse
   return [parseNLTask(text)];
 }
 
-/**
- * Formats a RecurrenceRule into a concise, human-friendly label.
- * E.g.: "Mon – Fri", "Every Day", "Weekends", "Mon, Wed, Fri", "Weekly", "Monthly", "Every 3d".
- */
-export function formatRecurrenceLabel(rule?: { type?: string; interval?: number; daysOfWeek?: number[] } | null): string {
-  if (!rule) return 'Repeat';
-  if (rule.type === 'daily') return 'Every Day';
-  if (rule.type === 'weekly') {
-    if (rule.daysOfWeek && rule.daysOfWeek.length > 0) {
-      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const sorted = [...rule.daysOfWeek].sort((a, b) => a - b);
-      if (sorted.length === 5 && sorted.every((d, i) => d === i + 1)) {
-        return 'Mon – Fri';
-      }
-      if (sorted.length === 2 && sorted[0] === 0 && sorted[1] === 6) {
-        return 'Weekends';
-      }
-      if (sorted.length <= 3) {
-        return sorted.map(d => dayNames[d]).join(', ');
-      }
-      return `${sorted.length} days/wk`;
-    }
-    return 'Weekly';
-  }
-  if (rule.type === 'monthly') return 'Monthly';
-  if (rule.type === 'custom') return `Every ${rule.interval || 1}d`;
-  return rule.type ? rule.type.charAt(0).toUpperCase() + rule.type.slice(1) : 'Repeat';
-}
-
-// Legacy compat for QuickCaptureSheet
+// Legacy compat for quick capture sheets
 export function parseNLDate(text: string): { date: string | null; timeSlot: string | null; cleanTitle: string; multiDays?: number } {
   const r = parseNLTask(text);
   return { date: r.date, timeSlot: r.timeSlot, cleanTitle: r.title, multiDays: r.multiDays };
 }
 
-export interface ParsedEvent {
-  title: string;
-  date: string | null;
-  startTime: string | null;
-  endTime: string | null;
-  type: 'exam' | 'assignment_due' | 'holiday' | 'todo' | 'job';
-  typeLabel: string;
-  typeIcon: string;
-  typeColor: string;
-  tokens: NLPToken[];
-}
-
+/**
+ * Parses smart natural language event description
+ */
 export function parseNLEvent(raw: string): ParsedEvent {
   const task = parseNLTask(raw);
   let type: ParsedEvent['type'] = 'todo';
@@ -1978,6 +1844,187 @@ export function parseNLEvent(raw: string): ParsedEvent {
   };
 }
 
+// ─── Centralised Date Display Helpers ────────────────────────────────────────
+
+export function formatDisplayDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const [y, m, d] = parts;
+    const monthName = MONTHS_LONG_CAP[parseInt(m, 10) - 1];
+    return `${d} ${monthName} ${y}`;
+  }
+  return dateStr;
+}
+
+export function formatDateLong(dateStr: string): string {
+  const d = parseLocalDate(dateStr);
+  return `${d.getDate().toString().padStart(2, '0')} ${MONTHS_LONG_CAP[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+export function formatDateShort(dateStr: string): string {
+  const d = parseLocalDate(dateStr);
+  return `${d.getDate().toString().padStart(2, '0')} ${MONTHS_SHORT_CAP[d.getMonth()]}`;
+}
+
+export function formatDateWithDay(dateStr: string): string {
+  const d = parseLocalDate(dateStr);
+  return `${DAYS_SHORT_CAP[d.getDay()]}, ${d.getDate().toString().padStart(2, '0')} ${MONTHS_SHORT_CAP[d.getMonth()]}`;
+}
+
+export function formatDateFull(dateStr: string): string {
+  const d = parseLocalDate(dateStr);
+  return `${DAYS_LONG_CAP[d.getDay()]}, ${d.getDate().toString().padStart(2, '0')} ${MONTHS_LONG_CAP[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+export function formatDateNumeric(dateStr: string): string {
+  const d = parseLocalDate(dateStr);
+  return `${d.getDate().toString().padStart(2, '0')}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getFullYear()}`;
+}
+
+export function formatDateObjShort(date: Date): string {
+  return `${date.getDate().toString().padStart(2, '0')} ${MONTHS_SHORT_CAP[date.getMonth()]}`;
+}
+
+export function formatHoursDisplay(val: string | number | undefined): string {
+  if (val === undefined || val === null || val === '') return '';
+  const numVal = typeof val === 'string' ? parseFloat(val) : val;
+  if (isNaN(numVal)) return String(val);
+  const totalMinutes = Math.round(numVal * 60);
+  if (totalMinutes === 0) return '0 min';
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0 && minutes > 0) {
+    return `${hours}h ${minutes}m`;
+  } else if (hours > 0) {
+    return `${hours}h`;
+  } else {
+    return `${minutes}m`;
+  }
+}
+
+export function isSilenceOrNoise(text: string | null | undefined): boolean {
+  if (!text) return true;
+  const clean = text.trim().toLowerCase();
+  if (clean.length === 0) return true;
+  if (/^[\s.?!,\-–—_"'`~*#@$%^&()\[\]{}|\\/<>:;+=]*$/.test(clean)) return true;
+  const silenceTokens = [
+    'silence', '[silence]', '(silence)', 'blank audio', '[blank_audio]',
+    'background noise', '[background noise]', 'thank you', 'thanks',
+    'am', 'task', 'task.', 'add task', 'listening', 'you', 'the'
+  ];
+  return silenceTokens.includes(clean);
+}
+
+export function formatTimeRangeDisplay(timeStr?: string | null): string {
+  if (!timeStr) return '';
+  const clean = timeStr.trim();
+  if (!clean) return '';
+
+  const parts = clean.split(/[-–—]|(?:\s+to\s+)/i).map(s => s.trim()).filter(Boolean);
+  if (parts.length === 0) return clean;
+
+  const formatSingle = (str: string) => {
+    const lower = str.toLowerCase().trim();
+    if (lower.includes('am') || lower.includes('pm')) {
+      return str.replace(/\s+/g, ' ').toUpperCase();
+    }
+    const timeParts = lower.split(':');
+    let h = parseInt(timeParts[0], 10);
+    const m = timeParts.length > 1 ? parseInt(timeParts[1], 10) : 0;
+    if (isNaN(h)) return str;
+    const ampm = (h >= 12 && h < 24) ? 'PM' : 'AM';
+    const hour12 = h % 12 || 12;
+    if (m === 0) {
+      return `${hour12} ${ampm}`;
+    }
+    return `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
+  };
+
+  if (parts.length === 1) {
+    return formatSingle(parts[0]);
+  }
+  return `${formatSingle(parts[0])} – ${formatSingle(parts[1])}`;
+}
+
+export function extractTaskDurationMinutes(
+  explicitMinutes?: number | null,
+  timeSlot?: string | null,
+  text?: string | null
+): number {
+  if (typeof explicitMinutes === 'number' && explicitMinutes > 0) {
+    return Math.round(explicitMinutes);
+  }
+
+  const parseTimeToMinutes = (t: string): number | null => {
+    const raw = t.trim().toLowerCase();
+    const ampmMatch = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/);
+    if (ampmMatch) {
+      let hours = parseInt(ampmMatch[1], 10);
+      const mins = ampmMatch[2] ? parseInt(ampmMatch[2], 10) : 0;
+      const isPm = ampmMatch[3] === 'pm';
+      if (isPm && hours < 12) hours += 12;
+      if (!isPm && hours === 12) hours = 0;
+      return hours * 60 + mins;
+    }
+
+    const colonMatch = raw.match(/^(\d{1,2}):(\d{2})$/);
+    if (colonMatch) {
+      const hours = parseInt(colonMatch[1], 10);
+      const mins = parseInt(colonMatch[2], 10);
+      return hours * 60 + mins;
+    }
+
+    const numMatch = raw.match(/^(\d{1,2})$/);
+    if (numMatch) {
+      const hours = parseInt(numMatch[1], 10);
+      return hours * 60;
+    }
+
+    return null;
+  };
+
+  if (timeSlot && typeof timeSlot === 'string') {
+    const cleanSlot = timeSlot.trim();
+    const parts = cleanSlot.split(/[-–—]|(?:\s+to\s+)/i).map(p => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      const start = parseTimeToMinutes(parts[0]);
+      let end = parseTimeToMinutes(parts[1]);
+      if (start !== null && end !== null) {
+        if (start >= 18 * 60 && end === 12 * 60) {
+          end = 24 * 60;
+        }
+        let diff = end - start;
+        if (diff < 0) diff += 24 * 60;
+        if (diff > 0 && diff <= 24 * 60) {
+          return diff;
+        }
+      }
+    }
+  }
+
+  if (text && typeof text === 'string') {
+    const raw = text.trim();
+    const textRangeMatch = raw.match(/\b(?:at\s+|from\s+|between\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:to|-|until|till)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b/i);
+    if (textRangeMatch) {
+      const s = parseTimeToMinutes(textRangeMatch[1]);
+      let e = parseTimeToMinutes(textRangeMatch[2]);
+      if (s !== null && e !== null) {
+        if (s >= 18 * 60 && e === 12 * 60) {
+          e = 24 * 60;
+        }
+        let diff = e - s;
+        if (diff < 0) diff += 24 * 60;
+        if (diff > 0 && diff <= 24 * 60) {
+          return diff;
+        }
+      }
+    }
+  }
+
+  return 25;
+}
+
 export function timeAgo(dateInput: any): string {
   if (!dateInput) return '';
   let date: Date;
@@ -2000,112 +2047,4 @@ export function timeAgo(dateInput: any): string {
   if (months < 12) return `${months} months ago`;
   const years = Math.floor(months / 12);
   return years === 1 ? '1 year ago' : `${years} years ago`;
-}
-
-// ─── Centralised Date Display Helpers (DD-MM-YYYY, Indian convention) ─────────
-// Import these everywhere instead of scattering toLocaleDateString('en-US', …).
-
-const MONTHS_SHORT  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const MONTHS_LONG   = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const DAYS_SHORT    = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const DAYS_LONG     = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-
-/**
- * Parse a YYYY-MM-DD string safely as a LOCAL date (avoids UTC midnight shift).
- * Always use this instead of `new Date(dateStr)` for ISO date strings.
- */
-export function parseLocalDate(dateStr: string): Date {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-
-/**
- * "03 Aug 2026" — full date, day-first.
- * Use for task detail views, headers, exports.
- */
-export function formatDateLong(dateStr: string): string {
-  const d = parseLocalDate(dateStr);
-  return `${d.getDate().toString().padStart(2, '0')} ${MONTHS_LONG[d.getMonth()]} ${d.getFullYear()}`;
-}
-
-/**
- * "03 Aug" — short date without year.
- * Use for list items, chips, compact displays.
- */
-export function formatDateShort(dateStr: string): string {
-  const d = parseLocalDate(dateStr);
-  return `${d.getDate().toString().padStart(2, '0')} ${MONTHS_SHORT[d.getMonth()]}`;
-}
-
-/**
- * "Mon, 03 Aug" — weekday + short date (no year).
- * Use for section headers, calendar labels.
- */
-export function formatDateWithDay(dateStr: string): string {
-  const d = parseLocalDate(dateStr);
-  return `${DAYS_SHORT[d.getDay()]}, ${d.getDate().toString().padStart(2, '0')} ${MONTHS_SHORT[d.getMonth()]}`;
-}
-
-/**
- * "Monday, 03 August 2026" — full long form.
- * Use for calendar month headers, SARA context.
- */
-export function formatDateFull(dateStr: string): string {
-  const d = parseLocalDate(dateStr);
-  return `${DAYS_LONG[d.getDay()]}, ${d.getDate().toString().padStart(2, '0')} ${MONTHS_LONG[d.getMonth()]} ${d.getFullYear()}`;
-}
-
-/**
- * "03-08-2026" — pure DD-MM-YYYY numeric format.
- * Use for exports, PDF footers, RecurrencePicker end-date chip.
- */
-export function formatDateNumeric(dateStr: string): string {
-  const d = parseLocalDate(dateStr);
-  return `${d.getDate().toString().padStart(2, '0')}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getFullYear()}`;
-}
-
-/**
- * Format a JS Date object (not an ISO string) to "03 Aug" short form.
- * Use in gym charts or anywhere you have a Date object, not a YYYY-MM-DD string.
- */
-export function formatDateObjShort(date: Date): string {
-  return `${date.getDate().toString().padStart(2, '0')} ${MONTHS_SHORT[date.getMonth()]}`;
-}
-
-/**
- * Format any JS Date object to local "YYYY-MM-DD" string.
- * CRITICAL: Never use date.toISOString().slice(0, 10) because toISOString() shifts to UTC,
- * which shows the previous day before 5:30 AM in IST or other positive timezones!
- */
-export function formatLocalDateStr(date: Date = new Date()): string {
-  const y = date.getFullYear();
-  const m = (date.getMonth() + 1).toString().padStart(2, '0');
-  const d = date.getDate().toString().padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-export function getTodayLocalDateStr(): string {
-  return formatLocalDateStr(new Date());
-}
-
-/**
- * Safely adds/subtracts days to a local "YYYY-MM-DD" string without UTC shifts.
- */
-export function offsetDateStr(dateStr: string, offsetDays: number): string {
-  try {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() + offsetDays);
-    const year = dt.getFullYear();
-    const month = String(dt.getMonth() + 1).padStart(2, '0');
-    const day = String(dt.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  } catch {
-    const dt = new Date();
-    dt.setDate(dt.getDate() + offsetDays);
-    const year = dt.getFullYear();
-    const month = String(dt.getMonth() + 1).padStart(2, '0');
-    const day = String(dt.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
 }
