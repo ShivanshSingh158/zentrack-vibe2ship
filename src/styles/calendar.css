@@ -148,23 +148,27 @@
 .calendar-primary-add-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  background: #a599ff;
+  gap: 0.4rem;
+  background: #ffffff;
   color: #000000;
   border: none;
-  padding: 0.44rem 1rem;
-  border-radius: 12px;
-  font-family: var(--font-sans, 'Inter', sans-serif);
+  height: 34px;
+  box-sizing: border-box;
+  padding: 0 0.95rem;
+  border-radius: 8px;
+  font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif);
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: all 150ms ease;
   white-space: nowrap;
 }
 
 .calendar-primary-add-btn:hover {
-  background: #b8afff;
+  background: #f4f4f5;
   transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
 }
 
 .calendar-viewport-container {
@@ -2818,13 +2822,16 @@ body.theme-light .calendar-action-pill-btn {
 body.theme-light .segmented-view-btn.active {
   background: #ffffff;
   border-color: #e2e8f0;
-  color: #7c3aed;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  color: #0f172a;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 body.theme-light .calendar-primary-add-btn {
-  background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 55%, #6d28d9 100%);
+  background: #0f172a;
   color: #ffffff;
+  border: none;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15);
 }
 
 body.theme-light .mini-day-cell .mini-day-number {
