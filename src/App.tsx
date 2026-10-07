@@ -37,7 +37,7 @@ import { ReportArchive } from './features/dashboard/ReportArchive';
 import { CommandPalette } from './components/CommandPalette';
 import { Bot, ShieldAlert, Ghost, Code2, MessageSquare, Mail, Calendar, Target, Sun, Zap, CheckCircle2, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { useDeadlineWatcher } from './hooks/useDeadlineWatcher';
-import { AppSkeletonScreen } from './components/AppSkeletonScreen';
+import { AppSkeletonScreen, ModuleSkeleton } from './components/AppSkeletonScreen';
 import { SaraInterface } from './components/SaraInterface';
 import { BottomHeader } from './components/BottomHeader';
 import { LeftSidebar } from './components/LeftSidebar';
@@ -331,19 +331,7 @@ if (typeof window !== 'undefined') {
 }
 
 // ——— Seamless page loading skeleton (feels like instant content layout) —
-const PageLoader = () => (
-  <div className="module-page-loader" aria-busy="true" aria-label="Loading module">
-    <div className="module-loader-bar" />
-    <div className="module-skeleton-grid">
-      <div className="module-skeleton-header" />
-      <div className="module-skeleton-content">
-        <div className="module-skeleton-card" style={{ height: 160 }} />
-        <div className="module-skeleton-card" style={{ height: 240 }} />
-        <div className="module-skeleton-card" style={{ height: 200 }} />
-      </div>
-    </div>
-  </div>
-);
+const PageLoader = ({ route }: { route?: string }) => <ModuleSkeleton route={route} />;
 
 // Ultra-fast hardware-accelerated instant page transition (0ms GPU composite, zero reflow lag)
 const PageTransition = ({ children }: { children: React.ReactNode }) => (
@@ -382,21 +370,21 @@ const AnimatedRoutes = () => {
         <Route path="/" element={<Navigate to="/home" replace />} />
         <Route path="/home"        element={<PageTransition><ErrorBoundary name="LifeHome"><LifeHomeDashboard /></ErrorBoundary></PageTransition>} />
         <Route path="/sara"        element={<Navigate to="/home" replace />} />
-        <Route path="/tasks"       element={<PageTransition><ErrorBoundary name="Tasks"><Suspense fallback={<PageLoader />}><TodoListModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/tasks"       element={<PageTransition><ErrorBoundary name="Tasks"><Suspense fallback={<ModuleSkeleton route="/tasks" />}><TodoListModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/todo"        element={<Navigate to="/tasks" replace />} />
-        <Route path="/calendar"    element={<PageTransition><ErrorBoundary name="Calendar"><Suspense fallback={<PageLoader />}><CalendarModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/notes"       element={<PageTransition><ErrorBoundary name="Notes"><Suspense fallback={<PageLoader />}><NotesModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/goals"       element={<PageTransition><ErrorBoundary name="Goals"><Suspense fallback={<PageLoader />}><GoalsModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/analytics"   element={<PageTransition><ErrorBoundary name="Analytics"><Suspense fallback={<PageLoader />}><AnalyticsModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/jobs"        element={<PageTransition><ErrorBoundary name="Jobs"><Suspense fallback={<PageLoader />}><JobTracker /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/habits"      element={<PageTransition><ErrorBoundary name="Habits"><Suspense fallback={<PageLoader />}><HabitsModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/learning"    element={<PageTransition><ErrorBoundary name="Learning"><Suspense fallback={<PageLoader />}><LearningChecklistModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/calendar"    element={<PageTransition><ErrorBoundary name="Calendar"><Suspense fallback={<ModuleSkeleton route="/calendar" />}><CalendarModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/notes"       element={<PageTransition><ErrorBoundary name="Notes"><Suspense fallback={<ModuleSkeleton route="/notes" />}><NotesModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/goals"       element={<PageTransition><ErrorBoundary name="Goals"><Suspense fallback={<ModuleSkeleton route="/goals" />}><GoalsModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/analytics"   element={<PageTransition><ErrorBoundary name="Analytics"><Suspense fallback={<ModuleSkeleton route="/analytics" />}><AnalyticsModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/jobs"        element={<PageTransition><ErrorBoundary name="Jobs"><Suspense fallback={<ModuleSkeleton route="/jobs" />}><JobTracker /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/habits"      element={<PageTransition><ErrorBoundary name="Habits"><Suspense fallback={<ModuleSkeleton route="/habits" />}><HabitsModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/learning"    element={<PageTransition><ErrorBoundary name="Learning"><Suspense fallback={<ModuleSkeleton route="/learning" />}><LearningChecklistModule /></Suspense></ErrorBoundary></PageTransition>} />
 
-        <Route path="/integrations" element={<PageTransition><ErrorBoundary name="Integrations"><Suspense fallback={<PageLoader />}><IntegrationsModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/review"      element={<PageTransition><ErrorBoundary name="Review"><Suspense fallback={<PageLoader />}><WeeklyReviewModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/attendance"  element={<PageTransition><ErrorBoundary name="Attendance"><Suspense fallback={<PageLoader />}><AttendanceModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/grades"      element={<PageTransition><ErrorBoundary name="Grades"><Suspense fallback={<PageLoader />}><GradeCalculatorModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/gym"         element={<PageTransition><ErrorBoundary name="Gym"><Suspense fallback={<PageLoader />}><GymModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/integrations" element={<PageTransition><ErrorBoundary name="Integrations"><Suspense fallback={<ModuleSkeleton route="/integrations" />}><IntegrationsModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/review"      element={<PageTransition><ErrorBoundary name="Review"><Suspense fallback={<ModuleSkeleton route="/review" />}><WeeklyReviewModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/attendance"  element={<PageTransition><ErrorBoundary name="Attendance"><Suspense fallback={<ModuleSkeleton route="/attendance" />}><AttendanceModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/grades"      element={<PageTransition><ErrorBoundary name="Grades"><Suspense fallback={<ModuleSkeleton route="/grades" />}><GradeCalculatorModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/gym"         element={<PageTransition><ErrorBoundary name="Gym"><Suspense fallback={<ModuleSkeleton route="/gym" />}><GymModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/landing"     element={<PageTransition><Landing onTryNow={() => {}} /></PageTransition>} />
         <Route path="*"            element={<Navigate to="/home" replace />} />
       </Routes>
@@ -411,6 +399,7 @@ const AnimatedRoutes = () => {
 // This gate renders ONCE at the top level, so all routes get clean data on first paint.
 const DataReadyGate: React.FC<{ children: React.ReactNode; isPlainTheme?: boolean }> = ({ children, isPlainTheme }) => {
   const { isLoading } = useGlobalData();
+  const location = useLocation();
   
   return (
     <AnimatePresence mode="wait">
@@ -422,7 +411,7 @@ const DataReadyGate: React.FC<{ children: React.ReactNode; isPlainTheme?: boolea
           exit={{ opacity: 0, transition: { duration: 0.2, ease: 'easeInOut' } }}
           style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: isPlainTheme ? '#fcfcfc' : '#09080c' }}
         >
-          <AppSkeletonScreen isPlainTheme={isPlainTheme} />
+          <AppSkeletonScreen isPlainTheme={isPlainTheme} pathname={location.pathname} />
         </motion.div>
       ) : (
         <motion.div
@@ -939,7 +928,7 @@ function App() {
           exit={{ opacity: 0, transition: { duration: 0 } }}
           style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: isPlainTheme ? '#fcfcfc' : '#09080c' }}
         >
-          <AppSkeletonScreen isPlainTheme={isPlainTheme} />
+          <AppSkeletonScreen isPlainTheme={isPlainTheme} pathname={window.location.pathname} />
         </motion.div>
       ) : authPhase === 'authenticated' && user ? (
         <motion.div 
