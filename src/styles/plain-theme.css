@@ -2741,35 +2741,47 @@ body.theme-light .calendar-segmented-view-picker,
 body.theme-plain .calendar-segmented-view-picker {
   background: #f1f5f9 !important;
   border: 1px solid #e2e8f0 !important;
-  border-radius: 10px !important;
-  padding: 3px !important;
+  border-radius: 8px !important;
+  height: 34px !important;
+  box-sizing: border-box !important;
+  padding: 2.5px !important;
   gap: 2px !important;
 }
 
+body.theme-light .calendar-segmented-view-picker .segmented-view-btn,
+body.theme-plain .calendar-segmented-view-picker .segmented-view-btn,
 body.theme-light .segmented-view-btn,
 body.theme-plain .segmented-view-btn {
-  color: #64748b !important;
+  height: 27px !important;
+  box-sizing: border-box !important;
+  color: #475569 !important;
   background: transparent !important;
   border: 1px solid transparent !important;
-  font-weight: 600 !important;
-  font-size: 0.78rem !important;
-  border-radius: 7px !important;
+  font-family: var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, sans-serif) !important;
+  font-size: 0.76rem !important;
+  font-weight: 500 !important;
+  border-radius: 6px !important;
+  padding: 0 0.75rem !important;
+  gap: 0.35rem !important;
+  cursor: pointer !important;
   transition: all 0.15s ease !important;
 }
 
 body.theme-light .segmented-view-btn:hover,
 body.theme-plain .segmented-view-btn:hover {
   color: #0f172a !important;
-  background: rgba(255, 255, 255, 0.7) !important;
+  background: #ffffff !important;
+  border-color: #edeae6 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
 }
 
 body.theme-light .segmented-view-btn.active,
 body.theme-plain .segmented-view-btn.active {
   background: #ffffff !important;
-  border-color: #e2e8f0 !important;
-  color: #7c3aed !important;
-  font-weight: 700 !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
 }
 
 /* Action Buttons (AI Free Slot, Connect GCal, Add Event) */
