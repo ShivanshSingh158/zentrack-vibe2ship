@@ -1,4 +1,5 @@
 import React, { useState, useMemo, lazy, Suspense } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import {
   BarChart3, TrendingUp, TrendingDown, Dumbbell, Flame,
@@ -584,23 +585,31 @@ const AnalyticsModuleInner = () => {
   }, [tasks, gymLogs, habitLogs, learningTopics]);
 
   // SVG Concentric Ring Math
-  const RING_SIZE = 180;
-  const RING_R = 72;
+  const RING_SIZE = 186;
+  const RING_R = 74;
   const CIRC = 2 * Math.PI * RING_R;
   const strokeOffset = CIRC - (stats.zenScore / 100) * CIRC;
   const totalHeatmapActions = heatmapCells.reduce((acc, c) => acc + c.total, 0);
+
+  const tierClass = stats.zenScore >= 80 ? 'tier-optimal' : stats.zenScore >= 60 ? 'tier-strong' : stats.zenScore >= 40 ? 'tier-moderate' : 'tier-building';
+  const tierLabel = stats.zenScore >= 80 ? 'Optimal' : stats.zenScore >= 60 ? 'Strong' : stats.zenScore >= 40 ? 'Moderate' : 'Building';
 
   return (
     <div className="analytics-module-root">
       {/* ── TOP HERO HEADER BAR ── */}
       <div className="analytics-header-bar">
         <div className="analytics-header-left">
+          <div className="analytics-hero-title-icon-box">
+            <Activity size={20} />
+          </div>
           <h1 className="analytics-hero-title">
-            <Activity size={22} color="#a599ff" />
             Analytics & Telemetry
           </h1>
           <div className="analytics-live-badge">
-            <span className="analytics-live-dot" />
+            <div className="analytics-live-dot-wrap">
+              <span className="analytics-live-pulse" />
+              <span className="analytics-live-dot" />
+            </div>
             <span>Live Sync</span>
           </div>
         </div>
@@ -664,7 +673,12 @@ const AnalyticsModuleInner = () => {
       {activeTab === 'overview' ? (
         <>
           {/* ── ZONE 1: HERO ZEN SCORE & 6 VITALITY KPI TILES (PERFECT 3X2 GRID) ── */}
-          <div className="analytics-hero-card">
+          <motion.div
+            className="analytics-hero-card"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+          >
             {/* ZenScore Concentric Progress Ring & Domain Score Composition */}
             <div className="analytics-ring-box">
               <div className="analytics-ring-svg-container">
@@ -673,18 +687,33 @@ const AnalyticsModuleInner = () => {
                   <defs>
                     <linearGradient id="zenRingGrad" x1="0" y1="0" x2="1" y2="1">
                       <stop offset="0%" stopColor="#a599ff" />
-                      <stop offset="60%" stopColor="#818cf8" />
+                      <stop offset="50%" stopColor="#818cf8" />
                       <stop offset="100%" stopColor="#38bdf8" />
                     </linearGradient>
+                    <filter id="zenGlow" x="-20%" y="-20%" width="140%" height="140%">
+                      <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#818cf8" floodOpacity="0.4" />
+                    </filter>
                   </defs>
+                  {/* Decorative background track */}
+                  <circle
+                    cx={RING_SIZE / 2}
+                    cy={RING_SIZE / 2}
+                    r={RING_R + 10}
+                    stroke="var(--att-ring-track, rgba(255, 255, 255, 0.04))"
+                    strokeWidth="1"
+                    strokeDasharray="3 4"
+                    fill="none"
+                  />
+                  {/* Main background track */}
                   <circle
                     cx={RING_SIZE / 2}
                     cy={RING_SIZE / 2}
                     r={RING_R}
-                    stroke="var(--att-ring-track, rgba(255, 255, 255, 0.07))"
+                    stroke="var(--att-ring-track, rgba(255, 255, 255, 0.08))"
                     strokeWidth="12"
                     fill="none"
                   />
+                  {/* Glowing progress arc */}
                   <circle
                     cx={RING_SIZE / 2}
                     cy={RING_SIZE / 2}
@@ -695,18 +724,28 @@ const AnalyticsModuleInner = () => {
                     strokeDasharray={CIRC}
                     strokeDashoffset={strokeOffset}
                     strokeLinecap="round"
-                    style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.16, 1, 0.3, 1)' }}
+                    filter="url(#zenGlow)"
+                    style={{ transition: 'stroke-dashoffset 1s cubic-bezier(0.16, 1, 0.3, 1)' }}
+                  />
+                  {/* Inner secondary aesthetic track */}
+                  <circle
+                    cx={RING_SIZE / 2}
+                    cy={RING_SIZE / 2}
+                    r={RING_R - 10}
+                    stroke="var(--att-ring-track, rgba(255, 255, 255, 0.04))"
+                    strokeWidth="1"
+                    fill="none"
                   />
                 </svg>
 
                 <div className="analytics-ring-inner">
                   <div className="analytics-ring-score">{stats.zenScore}</div>
                   <div className="analytics-ring-label">ZENSCORE</div>
-                  <div className="analytics-ring-tier-badge">
-                    {stats.zenScore >= 80 ? 'Optimal' : stats.zenScore >= 60 ? 'Strong' : stats.zenScore >= 40 ? 'Moderate' : 'Building'}
+                  <div className={`analytics-ring-tier-badge ${tierClass}`}>
+                    {tierLabel}
                   </div>
                   <div className={`analytics-ring-delta-pill ${stats.zenScore >= stats.prevZen ? 'positive' : 'negative'}`}>
-                    {stats.zenScore >= stats.prevZen ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                    {stats.zenScore >= stats.prevZen ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
                     <span>{stats.zenScore >= stats.prevZen ? `+${stats.zenScore - stats.prevZen}` : `${stats.zenScore - stats.prevZen}`} vs prev</span>
                   </div>
                 </div>
@@ -723,22 +762,22 @@ const AnalyticsModuleInner = () => {
                 <div className="analytics-domain-bars">
                   <div
                     className="analytics-domain-bar-segment"
-                    style={{ width: `${stats.breakdown.taskScore}%`, background: '#5eda9e' }}
+                    style={{ width: `${stats.breakdown.taskScore}%`, background: 'linear-gradient(90deg, #5eda9e, #38bdf8)' }}
                     title={`Tasks: ${stats.breakdown.taskScore}/25 pts`}
                   />
                   <div
                     className="analytics-domain-bar-segment"
-                    style={{ width: `${stats.breakdown.gymScore}%`, background: '#fbbf24' }}
+                    style={{ width: `${stats.breakdown.gymScore}%`, background: 'linear-gradient(90deg, #fbbf24, #f59e0b)' }}
                     title={`Gym: ${stats.breakdown.gymScore}/30 pts`}
                   />
                   <div
                     className="analytics-domain-bar-segment"
-                    style={{ width: `${stats.breakdown.focusScore}%`, background: '#38bdf8' }}
+                    style={{ width: `${stats.breakdown.focusScore}%`, background: 'linear-gradient(90deg, #38bdf8, #818cf8)' }}
                     title={`Focus: ${stats.breakdown.focusScore}/25 pts`}
                   />
                   <div
                     className="analytics-domain-bar-segment"
-                    style={{ width: `${stats.breakdown.habitScore}%`, background: '#a599ff' }}
+                    style={{ width: `${stats.breakdown.habitScore}%`, background: 'linear-gradient(90deg, #a599ff, #c084fc)' }}
                     title={`Habits: ${stats.breakdown.habitScore}/20 pts`}
                   />
                 </div>
@@ -748,52 +787,52 @@ const AnalyticsModuleInner = () => {
                   <div className="analytics-domain-item">
                     <div className="analytics-domain-item-top">
                       <span className="analytics-domain-item-name">
-                        <span className="analytics-domain-dot" style={{ background: '#5eda9e' }} />
+                        <span className="analytics-domain-dot" style={{ background: '#5eda9e', color: '#5eda9e' }} />
                         Tasks
                       </span>
                       <span className="analytics-domain-item-pts">{stats.breakdown.taskScore}<span>/25</span></span>
                     </div>
                     <div className="analytics-domain-item-bar">
-                      <div style={{ width: `${Math.min(100, (stats.breakdown.taskScore / 25) * 100)}%`, background: '#5eda9e' }} />
+                      <div style={{ width: `${Math.min(100, (stats.breakdown.taskScore / 25) * 100)}%`, background: 'linear-gradient(90deg, #5eda9e, #38bdf8)' }} />
                     </div>
                   </div>
 
                   <div className="analytics-domain-item">
                     <div className="analytics-domain-item-top">
                       <span className="analytics-domain-item-name">
-                        <span className="analytics-domain-dot" style={{ background: '#fbbf24' }} />
+                        <span className="analytics-domain-dot" style={{ background: '#fbbf24', color: '#fbbf24' }} />
                         Fitness
                       </span>
                       <span className="analytics-domain-item-pts">{stats.breakdown.gymScore}<span>/30</span></span>
                     </div>
                     <div className="analytics-domain-item-bar">
-                      <div style={{ width: `${Math.min(100, (stats.breakdown.gymScore / 30) * 100)}%`, background: '#fbbf24' }} />
+                      <div style={{ width: `${Math.min(100, (stats.breakdown.gymScore / 30) * 100)}%`, background: 'linear-gradient(90deg, #fbbf24, #f59e0b)' }} />
                     </div>
                   </div>
 
                   <div className="analytics-domain-item">
                     <div className="analytics-domain-item-top">
                       <span className="analytics-domain-item-name">
-                        <span className="analytics-domain-dot" style={{ background: '#38bdf8' }} />
+                        <span className="analytics-domain-dot" style={{ background: '#38bdf8', color: '#38bdf8' }} />
                         Focus
                       </span>
                       <span className="analytics-domain-item-pts">{stats.breakdown.focusScore}<span>/25</span></span>
                     </div>
                     <div className="analytics-domain-item-bar">
-                      <div style={{ width: `${Math.min(100, (stats.breakdown.focusScore / 25) * 100)}%`, background: '#38bdf8' }} />
+                      <div style={{ width: `${Math.min(100, (stats.breakdown.focusScore / 25) * 100)}%`, background: 'linear-gradient(90deg, #38bdf8, #818cf8)' }} />
                     </div>
                   </div>
 
                   <div className="analytics-domain-item">
                     <div className="analytics-domain-item-top">
                       <span className="analytics-domain-item-name">
-                        <span className="analytics-domain-dot" style={{ background: '#a599ff' }} />
+                        <span className="analytics-domain-dot" style={{ background: '#a599ff', color: '#a599ff' }} />
                         Habits
                       </span>
                       <span className="analytics-domain-item-pts">{stats.breakdown.habitScore}<span>/20</span></span>
                     </div>
                     <div className="analytics-domain-item-bar">
-                      <div style={{ width: `${Math.min(100, (stats.breakdown.habitScore / 20) * 100)}%`, background: '#a599ff' }} />
+                      <div style={{ width: `${Math.min(100, (stats.breakdown.habitScore / 20) * 100)}%`, background: 'linear-gradient(90deg, #a599ff, #c084fc)' }} />
                     </div>
                   </div>
                 </div>
@@ -803,11 +842,14 @@ const AnalyticsModuleInner = () => {
             {/* 6 Precision Vitality Tiles (Structured 3x2 Grid) */}
             <div className="analytics-summary-grid">
               {/* Tile 1: Tasks Completed */}
-              <div className="analytics-stat-card card-tasks">
+              <motion.div
+                className="analytics-stat-card card-tasks"
+                whileHover={{ y: -3, transition: { duration: 0.18 } }}
+              >
                 <div className="analytics-tile-header">
                   <div className="analytics-tile-title-group">
                     <div className="analytics-stat-icon-box icon-tasks">
-                      <CheckCircle2 size={16} />
+                      <CheckCircle2 size={17} />
                     </div>
                     <div className="analytics-tile-label-box">
                       <span className="analytics-tile-category">Execution</span>
@@ -832,14 +874,17 @@ const AnalyticsModuleInner = () => {
                   <span className="submeta-label">Pace</span>
                   <span className="submeta-val">{stats.curTasks} completed this {period}</span>
                 </div>
-              </div>
+              </motion.div>
 
               {/* Tile 2: Gym Sessions */}
-              <div className="analytics-stat-card card-gym">
+              <motion.div
+                className="analytics-stat-card card-gym"
+                whileHover={{ y: -3, transition: { duration: 0.18 } }}
+              >
                 <div className="analytics-tile-header">
                   <div className="analytics-tile-title-group">
                     <div className="analytics-stat-icon-box icon-gym">
-                      <Dumbbell size={16} />
+                      <Dumbbell size={17} />
                     </div>
                     <div className="analytics-tile-label-box">
                       <span className="analytics-tile-category">Fitness</span>
@@ -864,14 +909,17 @@ const AnalyticsModuleInner = () => {
                   <span className="submeta-label">Cadence</span>
                   <span className="submeta-val">{stats.curGym} logged workouts</span>
                 </div>
-              </div>
+              </motion.div>
 
               {/* Tile 3: Deep Focus Time */}
-              <div className="analytics-stat-card card-focus">
+              <motion.div
+                className="analytics-stat-card card-focus"
+                whileHover={{ y: -3, transition: { duration: 0.18 } }}
+              >
                 <div className="analytics-tile-header">
                   <div className="analytics-tile-title-group">
                     <div className="analytics-stat-icon-box icon-focus">
-                      <Clock size={16} />
+                      <Clock size={17} />
                     </div>
                     <div className="analytics-tile-label-box">
                       <span className="analytics-tile-category">Cognitive</span>
@@ -898,14 +946,17 @@ const AnalyticsModuleInner = () => {
                   <span className="submeta-label">Avg Flow</span>
                   <span className="submeta-val">{(stats.curFocus / (days || 1)).toFixed(0)}m daily average</span>
                 </div>
-              </div>
+              </motion.div>
 
               {/* Tile 4: Active Streak */}
-              <div className="analytics-stat-card card-streak">
+              <motion.div
+                className="analytics-stat-card card-streak"
+                whileHover={{ y: -3, transition: { duration: 0.18 } }}
+              >
                 <div className="analytics-tile-header">
                   <div className="analytics-tile-title-group">
                     <div className="analytics-stat-icon-box icon-streak">
-                      <Flame size={16} />
+                      <Flame size={17} />
                     </div>
                     <div className="analytics-tile-label-box">
                       <span className="analytics-tile-category">Momentum</span>
@@ -932,14 +983,17 @@ const AnalyticsModuleInner = () => {
                   <span className="submeta-label">Protection</span>
                   <span className="submeta-val">Sunday Rest Immunity</span>
                 </div>
-              </div>
+              </motion.div>
 
               {/* Tile 5: Habits Checked */}
-              <div className="analytics-stat-card card-habits">
+              <motion.div
+                className="analytics-stat-card card-habits"
+                whileHover={{ y: -3, transition: { duration: 0.18 } }}
+              >
                 <div className="analytics-tile-header">
                   <div className="analytics-tile-title-group">
                     <div className="analytics-stat-icon-box icon-habits">
-                      <Zap size={16} />
+                      <Zap size={17} />
                     </div>
                     <div className="analytics-tile-label-box">
                       <span className="analytics-tile-category">Ritual</span>
@@ -964,14 +1018,17 @@ const AnalyticsModuleInner = () => {
                   <span className="submeta-label">Consistency</span>
                   <span className="submeta-val">{stats.curHabits} active check-ins</span>
                 </div>
-              </div>
+              </motion.div>
 
               {/* Tile 6: Semester Attendance */}
-              <div className={`analytics-stat-card card-attendance ${stats.attendancePct < 75 ? 'risk' : ''}`}>
+              <motion.div
+                className={`analytics-stat-card card-attendance ${stats.attendancePct < 75 ? 'risk' : ''}`}
+                whileHover={{ y: -3, transition: { duration: 0.18 } }}
+              >
                 <div className="analytics-tile-header">
                   <div className="analytics-tile-title-group">
                     <div className={`analytics-stat-icon-box ${stats.attendancePct >= 75 ? 'icon-attendance-safe' : 'icon-attendance-risk'}`}>
-                      <GraduationCap size={16} />
+                      <GraduationCap size={17} />
                     </div>
                     <div className="analytics-tile-label-box">
                       <span className="analytics-tile-category">Academic</span>
@@ -1003,165 +1060,223 @@ const AnalyticsModuleInner = () => {
                   <span className="submeta-label">Threshold</span>
                   <span className="submeta-val">75% Minimum Required</span>
                 </div>
-              </div>
+              </motion.div>
             </div>
-          </div>
+          </motion.div>
 
           {/* ── ZONE 2: 2X3 TELEMETRY GRID (ALL CARDS SAME SIZE & ALIGNED) ── */}
           <div className="analytics-charts-grid">
             {/* Row 1, Card 1: Task Completion Velocity */}
-            <div className="analytics-chart-card">
+            <motion.div
+              className="analytics-chart-card"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.05 }}
+              whileHover={{ y: -2, transition: { duration: 0.18 } }}
+            >
               <div className="analytics-chart-header">
                 <div>
                   <h3 className="analytics-chart-title">
-                    <CheckCircle size={16} color="#a599ff" />
+                    <CheckCircle size={17} color="#a599ff" />
                     Task Completion Velocity
                   </h3>
                   <div className="analytics-chart-subtitle">Comparing current vs previous {period}</div>
                 </div>
                 <div className="analytics-chart-legend">
                   <div className="analytics-legend-item">
-                    <span className="analytics-legend-dot" style={{ background: '#a599ff' }} />
+                    <span className="analytics-legend-dot" style={{ background: '#818cf8', color: '#818cf8' }} />
                     <span>Current</span>
                   </div>
                   <div className="analytics-legend-item">
-                    <span className="analytics-legend-dot" style={{ background: 'rgba(165, 153, 255, 0.35)' }} />
+                    <span className="analytics-legend-dot" style={{ background: 'rgba(165, 153, 255, 0.4)', color: 'rgba(165, 153, 255, 0.4)' }} />
                     <span>Previous</span>
                   </div>
                 </div>
               </div>
 
-              <div style={{ width: '100%', height: 230 }}>
+              <div style={{ width: '100%', height: 235 }}>
                 <ResponsiveContainer>
-                  <BarChart data={taskChartData} margin={{ top: 10, right: 10, left: -20, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.05))" vertical={false} />
+                  <BarChart data={taskChartData} margin={{ top: 12, right: 10, left: -20, bottom: 8 }}>
+                    <defs>
+                      <linearGradient id="taskCurrentGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#818cf8" />
+                        <stop offset="100%" stopColor="#6366f1" />
+                      </linearGradient>
+                      <linearGradient id="taskPrevGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="rgba(165, 153, 255, 0.45)" />
+                        <stop offset="100%" stopColor="rgba(129, 140, 248, 0.12)" />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.06))" vertical={false} />
                     <XAxis dataKey="label" stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} dy={4} />
                     <YAxis stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} allowDecimals={false} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="current" name="Current" fill="#a599ff" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="previous" name="Previous" fill="rgba(165, 153, 255, 0.35)" radius={[4, 4, 0, 0]} />
+                    <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 255, 255, 0.04)', radius: 6 }} />
+                    <Bar dataKey="current" name="Current" fill="url(#taskCurrentGrad)" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="previous" name="Previous" fill="url(#taskPrevGrad)" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div>
+            </motion.div>
 
             {/* Row 1, Card 2: Habit Consistency Flow */}
-            <div className="analytics-chart-card">
+            <motion.div
+              className="analytics-chart-card"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.1 }}
+              whileHover={{ y: -2, transition: { duration: 0.18 } }}
+            >
               <div className="analytics-chart-header">
                 <div>
                   <h3 className="analytics-chart-title">
-                    <Zap size={16} color="#38bdf8" />
+                    <Zap size={17} color="#38bdf8" />
                     Habit Consistency Flow
                   </h3>
                   <div className="analytics-chart-subtitle">% of active habits completed per day</div>
                 </div>
                 <div className="analytics-chart-legend">
                   <div className="analytics-legend-item">
-                    <span className="analytics-legend-dot" style={{ background: '#38bdf8' }} />
+                    <span className="analytics-legend-dot" style={{ background: '#38bdf8', color: '#38bdf8' }} />
                     <span>Completion Rate (%)</span>
                   </div>
                 </div>
               </div>
 
-              <div style={{ width: '100%', height: 230 }}>
+              <div style={{ width: '100%', height: 235 }}>
                 <ResponsiveContainer>
-                  <AreaChart data={habitChartData} margin={{ top: 10, right: 10, left: -20, bottom: 8 }}>
+                  <AreaChart data={habitChartData} margin={{ top: 12, right: 10, left: -20, bottom: 8 }}>
                     <defs>
                       <linearGradient id="habitAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.4} />
-                        <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
+                        <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.45} />
+                        <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.01} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.05))" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.06))" vertical={false} />
                     <XAxis dataKey="label" stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} dy={4} />
                     <YAxis stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} domain={[0, 100]} />
-                    <Tooltip content={<CustomTooltip />} />
+                    <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(56, 189, 248, 0.4)', strokeWidth: 1.5, strokeDasharray: '3 3' }} />
                     <Area
                       type="monotone"
                       dataKey="rate"
                       name="Consistency Rate (%)"
                       stroke="#38bdf8"
-                      strokeWidth={2.5}
+                      strokeWidth={3}
                       fill="url(#habitAreaGrad)"
+                      dot={{ r: 3, fill: '#38bdf8', strokeWidth: 2, stroke: '#0b0b0f' }}
+                      activeDot={{ r: 6, fill: '#38bdf8', stroke: '#ffffff', strokeWidth: 2 }}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
-            </div>
+            </motion.div>
 
             {/* Row 2, Card 3: Class Attendance Ratio */}
-            <div className="analytics-chart-card">
+            <motion.div
+              className="analytics-chart-card"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.15 }}
+              whileHover={{ y: -2, transition: { duration: 0.18 } }}
+            >
               <div className="analytics-chart-header">
                 <div>
                   <h3 className="analytics-chart-title">
-                    <School size={16} color="#5eda9e" />
+                    <School size={17} color="#5eda9e" />
                     Academic Attendance Ratio
                   </h3>
                   <div className="analytics-chart-subtitle">Attended vs missed sessions across interval</div>
                 </div>
                 <div className="analytics-chart-legend">
                   <div className="analytics-legend-item">
-                    <span className="analytics-legend-dot" style={{ background: '#5eda9e' }} />
+                    <span className="analytics-legend-dot" style={{ background: '#10b981', color: '#10b981' }} />
                     <span>Attended</span>
                   </div>
                   <div className="analytics-legend-item">
-                    <span className="analytics-legend-dot" style={{ background: '#ff6961' }} />
+                    <span className="analytics-legend-dot" style={{ background: '#f43f5e', color: '#f43f5e' }} />
                     <span>Missed</span>
                   </div>
                 </div>
               </div>
 
-              <div style={{ width: '100%', height: 230 }}>
+              <div style={{ width: '100%', height: 235 }}>
                 <ResponsiveContainer>
-                  <BarChart data={attendanceChartData} margin={{ top: 10, right: 10, left: -20, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.05))" vertical={false} />
+                  <BarChart data={attendanceChartData} margin={{ top: 12, right: 10, left: -20, bottom: 8 }}>
+                    <defs>
+                      <linearGradient id="attAttendedGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#10b981" />
+                        <stop offset="100%" stopColor="#059669" />
+                      </linearGradient>
+                      <linearGradient id="attMissedGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#f43f5e" />
+                        <stop offset="100%" stopColor="#e11d48" />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.06))" vertical={false} />
                     <XAxis dataKey="label" stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} dy={4} />
                     <YAxis stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} allowDecimals={false} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="attended" name="Attended" stackId="a" fill="#5eda9e" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="missed" name="Missed" stackId="a" fill="#ff6961" radius={[4, 4, 0, 0]} />
+                    <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 255, 255, 0.04)', radius: 6 }} />
+                    <Bar dataKey="attended" name="Attended" stackId="a" fill="url(#attAttendedGrad)" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="missed" name="Missed" stackId="a" fill="url(#attMissedGrad)" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div>
+            </motion.div>
 
             {/* Row 2, Card 4: Gym Strength & Volume Progression */}
-            <div className="analytics-chart-card">
+            <motion.div
+              className="analytics-chart-card"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.2 }}
+              whileHover={{ y: -2, transition: { duration: 0.18 } }}
+            >
               <div className="analytics-chart-header">
                 <div>
                   <h3 className="analytics-chart-title">
-                    <Dumbbell size={16} color="#fbbf24" />
+                    <Dumbbell size={17} color="#fbbf24" />
                     Gym Total Volume Progression
                   </h3>
                   <div className="analytics-chart-subtitle">Daily training volume (weight × reps in kg/lbs)</div>
                 </div>
                 <div className="analytics-chart-legend">
                   <div className="analytics-legend-item">
-                    <span className="analytics-legend-dot" style={{ background: '#fbbf24' }} />
+                    <span className="analytics-legend-dot" style={{ background: '#fbbf24', color: '#fbbf24' }} />
                     <span>Workout Volume</span>
                   </div>
                 </div>
               </div>
 
-              <div style={{ width: '100%', height: 230 }}>
+              <div style={{ width: '100%', height: 235 }}>
                 <ResponsiveContainer>
-                  <BarChart data={gymChartData} margin={{ top: 10, right: 10, left: -10, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.05))" vertical={false} />
+                  <BarChart data={gymChartData} margin={{ top: 12, right: 10, left: -10, bottom: 8 }}>
+                    <defs>
+                      <linearGradient id="gymVolGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#fbbf24" />
+                        <stop offset="100%" stopColor="#d97706" />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.06))" vertical={false} />
                     <XAxis dataKey="label" stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} dy={4} />
                     <YAxis stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="volume" name="Volume" fill="#fbbf24" radius={[4, 4, 0, 0]} />
+                    <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 255, 255, 0.04)', radius: 6 }} />
+                    <Bar dataKey="volume" name="Volume" fill="url(#gymVolGrad)" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div>
+            </motion.div>
 
             {/* Row 3, Card 5: 35-Day Multi-Domain Contribution Heatmap (Synced with Mobile Data) */}
-            <div className="analytics-chart-card">
+            <motion.div
+              className="analytics-chart-card"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.25 }}
+              whileHover={{ y: -2, transition: { duration: 0.18 } }}
+            >
               <div className="analytics-chart-header">
                 <div>
                   <h3 className="analytics-chart-title">
-                    <Activity size={16} color="#a599ff" />
+                    <Activity size={17} color="#a599ff" />
                     35-Day Contribution Heatmap
                   </h3>
                   <div className="analytics-chart-subtitle">Density of tasks, gym, habits & learning logged</div>
@@ -1197,56 +1312,73 @@ const AnalyticsModuleInner = () => {
                 <div className="analytics-heatmap-legend">
                   <span>Less</span>
                   <span className="analytics-heatmap-key-sq" style={{ background: 'rgba(255,255,255,0.04)' }} />
-                  <span className="analytics-heatmap-key-sq" style={{ background: 'rgba(165,153,255,0.22)' }} />
-                  <span className="analytics-heatmap-key-sq" style={{ background: 'rgba(165,153,255,0.50)' }} />
+                  <span className="analytics-heatmap-key-sq" style={{ background: 'rgba(165,153,255,0.25)' }} />
+                  <span className="analytics-heatmap-key-sq" style={{ background: 'rgba(165,153,255,0.55)' }} />
                   <span className="analytics-heatmap-key-sq" style={{ background: '#a599ff' }} />
                   <span>More</span>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
             {/* Row 3, Card 6: Deep Focus Work Trend */}
-            <div className="analytics-chart-card">
+            <motion.div
+              className="analytics-chart-card"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.3 }}
+              whileHover={{ y: -2, transition: { duration: 0.18 } }}
+            >
               <div className="analytics-chart-header">
                 <div>
                   <h3 className="analytics-chart-title">
-                    <Clock size={16} color="#38bdf8" />
+                    <Clock size={17} color="#38bdf8" />
                     Deep Focus Work Flow
                   </h3>
                   <div className="analytics-chart-subtitle">Daily focused execution hours vs 30m target</div>
                 </div>
                 <div className="analytics-chart-legend">
                   <div className="analytics-legend-item">
-                    <span className="analytics-legend-dot" style={{ background: '#38bdf8' }} />
+                    <span className="analytics-legend-dot" style={{ background: '#38bdf8', color: '#38bdf8' }} />
                     <span>Focus (Hours)</span>
                   </div>
                 </div>
               </div>
 
-              <div style={{ width: '100%', height: 230 }}>
+              <div style={{ width: '100%', height: 235 }}>
                 <ResponsiveContainer>
-                  <BarChart data={focusChartData} margin={{ top: 10, right: 10, left: -20, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.05))" vertical={false} />
+                  <BarChart data={focusChartData} margin={{ top: 12, right: 10, left: -20, bottom: 8 }}>
+                    <defs>
+                      <linearGradient id="focusBarGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#38bdf8" />
+                        <stop offset="100%" stopColor="#0284c7" />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--att-chart-grid, rgba(255,255,255,0.06))" vertical={false} />
                     <XAxis dataKey="label" stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} dy={4} />
                     <YAxis stroke="var(--text-muted, #8e8e93)" fontSize={11} tickLine={false} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="focusHours" name="Focus Time (Hours)" fill="#38bdf8" radius={[4, 4, 0, 0]} />
+                    <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255, 255, 255, 0.04)', radius: 6 }} />
+                    <Bar dataKey="focusHours" name="Focus Time (Hours)" fill="url(#focusBarGrad)" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div>
+            </motion.div>
           </div>
         </>
       ) : activeTab === 'insights' ? (
         /* ── ZONE 4: S.A.R.A PREDICTIVE INTELLIGENCE & AI DIAGNOSTICS (TAB 2) ── */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <motion.div
+          style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
           {/* Predictive Intelligence Telemetry Cards */}
           <div className="analytics-sara-grid">
             {/* Diagnostic 1: Productivity Momentum */}
             <div className="analytics-diagnostics-card highlight">
               <div className="analytics-diagnostics-header">
                 <span className="analytics-diagnostics-title">
-                  <BrainCircuit size={17} color="#a599ff" />
+                  <BrainCircuit size={18} color="#a599ff" />
                   Productivity Momentum
                 </span>
                 <span className="analytics-delta-pill positive">
@@ -1259,7 +1391,7 @@ const AnalyticsModuleInner = () => {
                   : `Focus momentum is pacing at ${(stats.curFocus / (days || 1)).toFixed(0)}m daily. Schedule 1 uninterrupted deep-work block to elevate your score.`}
               </div>
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
                   <span>Burnout Risk Meter</span>
                   <span>{stats.curFocus > 360 ? 'Moderate Load' : 'Safe Velocity'}</span>
                 </div>
@@ -1279,7 +1411,7 @@ const AnalyticsModuleInner = () => {
             <div className="analytics-diagnostics-card">
               <div className="analytics-diagnostics-header">
                 <span className="analytics-diagnostics-title">
-                  <School size={17} color="#38bdf8" />
+                  <School size={18} color="#38bdf8" />
                   SGPA & Attendance Buffer
                 </span>
                 <span className={`analytics-delta-pill ${stats.attendancePct >= 75 ? 'positive' : 'negative'}`}>
@@ -1292,7 +1424,7 @@ const AnalyticsModuleInner = () => {
                   : `Attendance has dipped below the 75% critical threshold (${stats.attendancePct}%). Attend the next 3 consecutive lectures to restore safe standing.`}
               </div>
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
                   <span>Bunk Safety Buffer</span>
                   <span>{stats.attendancePct >= 85 ? 'High Buffer (+4 classes)' : stats.attendancePct >= 75 ? 'Moderate (+1 class)' : 'Zero Buffer (At Risk)'}</span>
                 </div>
@@ -1312,7 +1444,7 @@ const AnalyticsModuleInner = () => {
             <div className="analytics-diagnostics-card">
               <div className="analytics-diagnostics-header">
                 <span className="analytics-diagnostics-title">
-                  <Dumbbell size={17} color="#fbbf24" />
+                  <Dumbbell size={18} color="#fbbf24" />
                   Workout Recovery Advisor
                 </span>
                 <span className="analytics-delta-pill amber">
@@ -1327,7 +1459,7 @@ const AnalyticsModuleInner = () => {
                   : `No gym sessions logged yet this ${period}. A 30-minute training session today will boost both physical recovery and ZenScore by +15 pts.`}
               </div>
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
                   <span>Weekly Volume Load</span>
                   <span>{stats.curGym >= 4 ? 'Optimal Target Reached' : 'Building Load'}</span>
                 </div>
@@ -1346,14 +1478,19 @@ const AnalyticsModuleInner = () => {
 
           {/* Deep Gemini AI Pattern Recognition Panel */}
           <AIInsightsPanel userData={{ tasks, habitLogs, gymLogs, attendanceLogs, stats }} />
-        </div>
+        </motion.div>
       ) : (
         /* ── ZONE 5: RETROSPECTIVE WEEKLY REVIEW JOURNAL (TAB 3) ── */
-        <div style={{ marginTop: '0.5rem' }}>
+        <motion.div
+          style={{ marginTop: '0.5rem' }}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
           <Suspense fallback={<div className="notes-empty-state">Loading Retrospective Journal...</div>}>
             <WeeklyReviewModule />
           </Suspense>
-        </div>
+        </motion.div>
       )}
     </div>
   );
