@@ -86,6 +86,7 @@ zentrack-vibe2ship/
 │   │   ├── CommandPalette.tsx      Keyboard command palette (Cmd+K)
 │   │   ├── Landing.tsx             Public landing page (unauthenticated)
 │   │   ├── Login.tsx               Auth page: Google Sign In + Firebase Auth
+│   │   ├── AppSkeletonScreen.tsx   Tailored exact-geometry skeletons for all 14 routes & Suspense fallbacks
 │   │   ├── AnimatedPressable.tsx   Reusable pressable with micro-animation
 │   │   ├── sara/
 │   │   │   ├── AgentCluster.tsx    Visual cluster of agent avatars around Sara orb
