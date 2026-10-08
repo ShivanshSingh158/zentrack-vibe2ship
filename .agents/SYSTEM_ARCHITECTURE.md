@@ -180,6 +180,7 @@ zentrack-vibe2ship/
 │   │   └── useClassNotifications.ts Class schedule notification hook
 │   ├── services/
 │   │   ├── firebase.ts             Firebase client: Auth + Firestore (offline persistence + multi-tab)
+│   │   ├── cloudinary.ts           Cloudinary upload service (SEO & human-readable public_id preservation)
 │   │   ├── googleCalendar.ts       Google Calendar API: OAuth, event CRUD, token refresh, polling
 │   │   ├── googleWorkspace.ts      Gmail, Drive, Docs, Meet, Sheets API wrappers
 │   │   ├── MissionCache.ts         LRU cache (10 entries, 30s TTL) for agent mission results

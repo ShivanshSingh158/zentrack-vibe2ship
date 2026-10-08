@@ -280,6 +280,79 @@ export const NotesModule = () => {
     activeNoteRef.current = activeNote;
   }, [activeNote]);
 
+  // Open Document in a new browser tab with proper document name / title
+  const handleOpenDocument = useCallback(() => {
+    if (!activeViewingFileUrl || !viewingFile) return;
+
+    const fileName = viewingFile.name || 'document.pdf';
+    const cleanUrl = activeViewingFileUrl.split('?')[0];
+    const urlFileName = decodeURIComponent(cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1));
+
+    // If the Cloudinary URL already contains the exact file name
+    if (urlFileName.toLowerCase() === fileName.toLowerCase()) {
+      window.open(activeViewingFileUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // For files where the URL has a hash ID, open full-page viewer window with document.title set
+    const newWin = window.open('', '_blank');
+    if (newWin) {
+      const safeTitle = fileName.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      newWin.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${safeTitle}</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.ico">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background-color: #202124; }
+    iframe { width: 100%; height: 100%; border: none; display: block; }
+  </style>
+</head>
+<body>
+  <iframe src="${activeViewingFileUrl}" allow="fullscreen"></iframe>
+</body>
+</html>`);
+      newWin.document.close();
+    } else {
+      window.open(activeViewingFileUrl, '_blank', 'noopener,noreferrer');
+    }
+  }, [activeViewingFileUrl, viewingFile]);
+
+  // Download document ensuring the saved filename matches viewingFile.name
+  const handleDownloadDocument = useCallback(async () => {
+    if (!activeViewingFileUrl || !viewingFile) return;
+    const fileName = viewingFile.name || 'document.pdf';
+    const toastId = toast.loading(`Downloading ${fileName}...`);
+    try {
+      const res = await fetch(activeViewingFileUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      toast.dismiss(toastId);
+      toast.success('Download complete');
+    } catch (err) {
+      console.error('Download error:', err);
+      toast.dismiss(toastId);
+      const link = document.createElement('a');
+      link.href = activeViewingFileUrl;
+      link.download = fileName;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  }, [activeViewingFileUrl, viewingFile]);
+
   // Load Storage Nodes from Firestore
   useEffect(() => {
     const user = auth.currentUser;
@@ -1267,26 +1340,24 @@ export const NotesModule = () => {
 
                   {activeViewingFileUrl && (
                     <>
-
-                      <a
-                        href={activeViewingFileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        type="button"
+                        onClick={handleOpenDocument}
                         className="notes-file-action-btn"
                         title="Open in new tab"
                       >
                         <ExternalLink size={13} />
                         <span>Open</span>
-                      </a>
-                      <a
-                        href={activeViewingFileUrl}
-                        download={viewingFile.name}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadDocument}
                         className="notes-file-action-btn primary"
                         title="Download File"
                       >
                         <Download size={13} />
                         <span>Download</span>
-                      </a>
+                      </button>
                     </>
                   )}
                   <button
@@ -1385,15 +1456,14 @@ export const NotesModule = () => {
                         <h4>Image preview unavailable</h4>
                         <p>Unable to display "{viewingFile.name}". The image URL could not be rendered directly in the canvas.</p>
                         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                          <a
-                            href={activeViewingFileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={handleOpenDocument}
                             className="notes-file-action-btn primary"
                           >
                             <ExternalLink size={13} />
                             <span>Open Image in New Tab</span>
-                          </a>
+                          </button>
                           <button
                             type="button"
                             className="notes-file-action-btn"
@@ -1429,16 +1499,15 @@ export const NotesModule = () => {
                     <h4>{viewingFile.name}</h4>
                     <p>Document preview is not available in browser. Use the download or open link button above.</p>
                     {activeViewingFileUrl && (
-                      <a
-                        href={activeViewingFileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        type="button"
+                        onClick={handleOpenDocument}
                         className="notes-file-action-btn primary"
                         style={{ marginTop: '0.5rem' }}
                       >
                         <ExternalLink size={13} />
                         <span>Open Document</span>
-                      </a>
+                      </button>
                     )}
                   </div>
                 )}
