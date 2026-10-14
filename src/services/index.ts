@@ -8,4 +8,4 @@
  */
 export { isSignedInToGoogle, forceSilentRefresh } from './googleCalendar';
 export { synthesizeSpeechSarvam } from './voice/sarvam';
-export { SarvamAudioStreamer } from './voice/sarvamStream';
+

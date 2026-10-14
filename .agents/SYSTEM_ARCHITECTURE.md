@@ -80,20 +80,20 @@ zentrack-vibe2ship/
 │   │       ├── web.executor.ts     Web search (DuckDuckGo), YouTube transcript
 │   │       ├── system.executor.ts  Google OAuth connect, delete data, approvals
 │   │       └── shared.ts           Tool helpers: requestApproval, requireGoogleAuth, ToolResult
-│   ├── components/
-│   │   ├── SaraInterface.tsx       Main voice orb UI: pulsing orb, terminal feed, controls (~39KB)
-│   │   ├── LeftSidebar.tsx         Todoist-style left navigation sidebar (Dashboard, Inbox, Calendar, Habits, Analytics, Workspace, Settings, Theme toggle, Help)
-│   │   ├── CommandPalette.tsx      Keyboard command palette (Cmd+K)
-│   │   ├── Landing.tsx             Public landing page (unauthenticated)
-│   │   ├── Login.tsx               Auth page: Google Sign In + Firebase Auth
-│   │   ├── AppSkeletonScreen.tsx   Tailored exact-geometry skeletons for all 14 routes & Suspense fallbacks
+│   │   └── ui/                     SARA AI Voice & Agent Interface Subsystem
+│   │       ├── SaraInterface.tsx   Main voice orb UI: pulsing orb, terminal feed, controls (~39KB)
+│   │       ├── AgentCluster.tsx    Visual cluster of agent avatars around Sara orb
+│   │       ├── TerminalFeed.tsx    Terminal-style feed inside Sara interface
+│   │       └── hooks/              useSaraOrchestration.ts (intent cache, supervisor runner)
+│   ├── app/                        Application shell & layout
+│   │   └── layout/
+│   │       ├── LeftSidebar.tsx     Todoist-style left navigation sidebar
+│   │       ├── CommandPalette.tsx  Keyboard command palette (Cmd+K)
+│   │       ├── AppSkeletonScreen.tsx Tailored skeletons for all routes
+│   │       └── BottomHeader.tsx    Dock header & quick trigger bar
+│   ├── components/                 Shared primitives & overlays (legacy re-export stubs maintained)
 │   │   ├── AnimatedPressable.tsx   Reusable pressable with micro-animation
-│   │   ├── sara/
-│   │   │   ├── AgentCluster.tsx    Visual cluster of agent avatars around Sara orb
-│   │   │   └── TerminalFeed.tsx    Terminal-style feed inside Sara interface
 │   │   ├── overlays/
-│   │   │   ├── FocusModeOverlay.tsx Full-screen focus mode + Pomodoro timer
-│   │   │   ├── SecuritySettingsModal.tsx Comprehensive ZenTrack Settings Hub (Account & Log Out, Appearance, AI Autonomy, Integrations, Notifications, Data & JSON Export, dual-theme, security-modal.css)
 │   │   │   ├── OnboardingCarousel.tsx First-time user onboarding flow
 │   │   │   ├── DailyBriefingOverlay.tsx Morning AI briefing panel
 │   │   │   └── DeveloperMatrix.tsx Dev-only debug panel (network logs, agent state)
@@ -108,10 +108,16 @@ zentrack-vibe2ship/
 │   │   ├── VoiceContext.tsx        CRITICAL: Chrome STT + Sarvam TTS + GaplessPlayer + barge-in
 │   │   └── PomodoroContext.tsx     Pomodoro timer state machine
 │   ├── features/                   Domain modules (lazy-loaded via React.lazy)
+│   │   ├── auth/
+│   │   │   ├── Login.tsx           Google Sign In + Firebase Auth
+│   │   │   ├── Landing.tsx         Public landing page (unauthenticated)
+│   │   │   └── LandingAnimations.tsx Lazy-loaded landing page feature animations
 │   │   ├── _shared/
 │   │   │   └── FloatingExtraWorks.tsx Cross-feature floating widget
 │   │   ├── dashboard/
 │   │   │   ├── LifeHomeDashboard.tsx Unified life dashboard (Balanced 3-column Bento Grid: Col 1 Life Matrix & Daily Vitality, Col 2 Master Flow, Scheduled Tasks & Today's Workout, Col 3 Attendance, Habits & Active Recall, Studio Vault)
+│   │   │   ├── FocusModeOverlay.tsx Full-screen focus mode + Pomodoro timer
+│   │   │   ├── XPConstellationModal.tsx Constellation XP level progression modal
 │   │   │   └── MissionReport.tsx   Structured mission report display
 │   │   ├── tasks/
 │   │   │   ├── TodoListModule.tsx  Full task management UI (~46KB)
@@ -156,7 +162,6 @@ zentrack-vibe2ship/
 │   │   │   ├── ZenGptTutorPane.tsx         Interactive ChatGPT-style tutor with C++ translation toggle & quiz
 │   │   │   ├── LectureNotesPane.tsx        Rich lecture notes editor with VS Code code cards & LaTeX math
 │   │   │   ├── learningHelpers.ts          Transcript artifact stripper & markdown-to-rich-notes parser
-│   │   │   ├── LectureChatPanel.tsx        Per-lecture AI chat
 │   │   │   └── TopicCard.tsx               Learning topic card
 │   │   ├── jobs/
 │   │   │   ├── JobTracker.tsx      Kanban job application tracker

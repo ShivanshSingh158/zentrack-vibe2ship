@@ -909,7 +909,7 @@ export default function VoiceDictationOverlay({
               timeSlot: finalTime || undefined,
               estimatedMinutes: estMinutes,
               isRecurring: true,
-              recurrenceRule: recurRule,
+              recurrenceRule: recurRule ? { ...recurRule, interval: recurRule.interval ?? 1 } : undefined,
               recurringSourceId: sourceId,
               order: 0,
               subtasks: subtaskObjects,

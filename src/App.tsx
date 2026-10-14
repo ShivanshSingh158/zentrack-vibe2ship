@@ -13,17 +13,17 @@ import { playPopSound } from './utils/sound';
 import Lenis from 'lenis';
 
 // ————————————————————————————————————————————————————————
-import { Login } from './components/Login';
-import { Landing } from './components/Landing';
+import { Login } from './features/auth/Login';
+import { Landing } from './features/auth/Landing';
 import { BackgroundEffects } from './components/BackgroundEffects';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { DeveloperMatrix } from './components/overlays/DeveloperMatrix';
-import { SecuritySettingsModal } from './components/overlays/SecuritySettingsModal';
+import { SecuritySettingsModal } from './features/integrations/SecuritySettingsModal';
 import { OnboardingCarousel } from './components/overlays/OnboardingCarousel';
 import { DailyBriefingOverlay } from './components/overlays/DailyBriefingOverlay';
 import { PomodoroProvider } from './contexts/PomodoroContext';
 import { GlobalDataProvider } from './contexts/GlobalDataContext';
-import { FocusModeOverlay } from './components/overlays/FocusModeOverlay';
+import { FocusModeOverlay } from './features/dashboard/FocusModeOverlay';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SkeletonCard } from './components/ui/SkeletonCard';
 import { OfflineIndicator } from './components/ui/OfflineIndicator';
@@ -34,13 +34,13 @@ import { LifeHomeDashboard } from './features/dashboard/LifeHomeDashboard';
 import { MissionReport } from './features/dashboard/MissionReport';
 import { ReportArchive } from './features/dashboard/ReportArchive';
 
-import { CommandPalette } from './components/CommandPalette';
+import { CommandPalette } from './app/layout/CommandPalette';
 import { Bot, ShieldAlert, Ghost, Code2, MessageSquare, Mail, Calendar, Target, Sun, Zap, CheckCircle2, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { useDeadlineWatcher } from './hooks/useDeadlineWatcher';
-import { AppSkeletonScreen, ModuleSkeleton } from './components/AppSkeletonScreen';
-import { SaraInterface } from './components/SaraInterface';
-import { BottomHeader } from './components/BottomHeader';
-import { LeftSidebar } from './components/LeftSidebar';
+import { AppSkeletonScreen, ModuleSkeleton } from './app/layout/AppSkeletonScreen';
+import { SaraInterface } from './agent/ui/SaraInterface';
+import { BottomHeader } from './app/layout/BottomHeader';
+import { LeftSidebar } from './app/layout/LeftSidebar';
 import { DocumentTitleWatcher, ROUTE_TITLES } from './hooks/useDocumentTitle';
 import { useContextReminders } from './hooks/useContextReminders';
 

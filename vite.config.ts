@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
 
@@ -64,7 +65,6 @@ export default defineConfig({
             ['recharts', /node_modules\/(recharts|d3|victory)/],
             ['firebase', /node_modules\/(@firebase|firebase)/],
             ['lottie', /node_modules\/lottie-(react|web)/],
-            ['doc-parsers', /node_modules\/(pdfjs-dist|mammoth)/],
             ['markdown', /node_modules\/(react-markdown|remark|rehype|katex|unified|micromark|mdast|hast)/],
             ['dnd', /node_modules\/@hello-pangea\/dnd/],
             ['gemini-sdk', /node_modules\/@google\/generative-ai/],
@@ -75,6 +75,16 @@ export default defineConfig({
         }
       }
     }
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+      '@core': path.resolve(__dirname, './src/core'),
+      '@features': path.resolve(__dirname, './src/features'),
+      '@agent': path.resolve(__dirname, './src/agent'),
+      '@services': path.resolve(__dirname, './src/services'),
+      '@styles': path.resolve(__dirname, './src/styles'),
+    },
   },
   // Bake the build timestamp into the bundle — used by UpdatePrompt to detect staleness
   define: {
