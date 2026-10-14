@@ -21,8 +21,8 @@ export function collectActiveDates(
   const activeDates = new Set<string>();
 
   tasks?.forEach(t => {
-    if (t.status === 'completed' && t.date) {
-      const d = normalizeDateStr(t.date);
+    if (t.status === 'completed') {
+      const d = normalizeDateStr(t.completedAt) || normalizeDateStr(t.date);
       if (d) activeDates.add(d);
     }
   });

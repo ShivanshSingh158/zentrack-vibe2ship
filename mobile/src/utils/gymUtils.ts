@@ -213,45 +213,59 @@ import { WEEKDAY_TO_PLAN, GYM_PLAN, EXERCISE_ALTERNATIVES } from '../data/gymPla
 
 export const calculateGymStreak = (logs: any[] | null | undefined, userGymPlan?: any | null): number => {
   if (!logs || logs.length === 0) return 0;
-  
-  const d = new Date();
-  const todayStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+
+  const toDateStr = (date: Date): string =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+  const todayStr = toDateStr(new Date());
   const cacheKey = `gym_streak_${todayStr}_${generateDatasetFingerprint(logs)}_${userGymPlan ? 'custom' : 'def'}`;
 
   return computeOrGetHotCache(cacheKey, () => {
-    const loggedDates = new Set(
-      logs.filter(isValidWorkoutSession).map(l => l.date)
-    );
+    const validDates = logs
+      .filter(isValidWorkoutSession)
+      .map(l => String(l?.date || '').slice(0, 10))
+      .filter(Boolean);
 
-    let streak = 0;
-    const curDate = new Date();
-    
-    const toDateStr = (date: Date) => {
-      return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
-    };
+    if (validDates.length === 0) return 0;
+
+    const loggedDates = new Set<string>(validDates);
 
     const isRestDayForDate = (date: Date): boolean => {
-      const dayOfWeek = date.getDay(); // 0=Sun, 1=Mon...
+      const dayOfWeek = date.getDay();
       const planIdx = WEEKDAY_TO_PLAN[dayOfWeek] ?? 7;
       const plan = userGymPlan?.customDays?.[planIdx] || GYM_PLAN.find(p => p.dayIndex === planIdx);
       return plan?.isRest === true;
     };
 
+    // Guard against all-rest-day plans causing unbounded backward traversal
+    const hasAtLeastOneWorkoutDay = [0, 1, 2, 3, 4, 5, 6].some(dow => {
+      const planIdx = WEEKDAY_TO_PLAN[dow] ?? 7;
+      const plan = userGymPlan?.customDays?.[planIdx] || GYM_PLAN.find(p => p.dayIndex === planIdx);
+      return plan?.isRest !== true;
+    });
+
+    let streak = 0;
+    const curDate = new Date();
+
     if (loggedDates.has(todayStr)) {
       streak++;
     }
 
-    curDate.setDate(curDate.getDate() - 1);
-    while (true) {
+    if (!hasAtLeastOneWorkoutDay) {
+      return streak;
+    }
+
+    const MAX_LOOKBACK_DAYS = 1095; // 3-year hard safety ceiling
+    for (let i = 0; i < MAX_LOOKBACK_DAYS; i++) {
+      curDate.setDate(curDate.getDate() - 1);
       const dStr = toDateStr(curDate);
       if (loggedDates.has(dStr)) {
         streak++;
-      } else if (!isRestDayForDate(curDate)) { // If it's a workout day and not logged, streak breaks
+      } else if (!isRestDayForDate(curDate)) {
         break;
       }
-      curDate.setDate(curDate.getDate() - 1);
     }
-    
+
     return streak;
   });
 };

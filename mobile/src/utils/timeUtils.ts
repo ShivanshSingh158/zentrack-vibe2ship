@@ -121,16 +121,26 @@ export function formatTimeStr(tStr: string): string {
 }
 
 function formatSingleTimeStr(tStr: string): string {
-  const lower = tStr.toLowerCase();
-  if (lower.includes('am') || lower.includes('pm')) {
-    return lower.replace(/\s+/g, '');
+  const lower = tStr.trim().toLowerCase();
+  const hasPM = lower.includes('pm');
+  const hasAM = lower.includes('am');
+  const clean = lower.replace(/[a-z\s.]/g, '');
+  const parts = clean.split(':');
+  const rawH = parseInt(parts[0], 10);
+  if (isNaN(rawH)) return lower.replace(/\s+/g, '');
+
+  const rawM = parts.length >= 2 ? parseInt(parts[1], 10) : 0;
+  const m = isNaN(rawM) ? 0 : rawM;
+
+  let h24 = rawH;
+  if (hasPM && h24 < 12) h24 += 12;
+  if (hasAM && h24 === 12) h24 = 0;
+
+  const ampm = h24 >= 12 && h24 < 24 ? 'pm' : 'am';
+  const hr12 = h24 % 12 || 12;
+
+  if (parts.length === 1 && (hasAM || hasPM)) {
+    return `${hr12}${ampm}`;
   }
-  const parts = tStr.split(':');
-  if (parts.length < 2) return tStr;
-  const h = parseInt(parts[0], 10);
-  const m = parseInt(parts[1], 10);
-  if (isNaN(h) || isNaN(m)) return tStr;
-  const ampm = h >= 12 ? 'pm' : 'am';
-  const hr = h % 12 || 12;
-  return `${hr}:${m.toString().padStart(2, '0')}${ampm}`;
+  return `${hr12}:${m.toString().padStart(2, '0')}${ampm}`;
 }
