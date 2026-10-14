@@ -1,44 +1,50 @@
-/**
- * sarvamProxy.ts — ZenTrack Mobile TTS
- *
- * Routes TTS requests through the Vercel proxy (api/voice-proxy.js)
- * which has the 3 Sarvam keys with round-robin rotation server-side.
- *
- * Falls back to expo-speech (device TTS) if the proxy fails.
- */
-
 import * as Speech from 'expo-speech';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Audio } from 'expo-av';
 import { auth } from './firebase';
 
 const VOICE_PROXY_URL = 'https://myzentrack.vercel.app/api/gemini-proxy?action=tts';
+const TTS_FETCH_TIMEOUT_MS = 10000;
 
-// Current playback sound ref (so we can stop it)
 let _currentSound: Audio.Sound | null = null;
+let _currentPlaybackResolver: (() => void) | null = null;
+let _currentAbortController: AbortController | null = null;
+let _speechSessionId = 0;
 let _isSpeaking = false;
 
-export async function stopSpeech() {
-  if (_currentSound) {
-    try {
-      await _currentSound.stopAsync();
-      await _currentSound.unloadAsync();
-    } catch (e) {
-      // swallow
-    }
-    _currentSound = null;
-  }
+export async function stopSpeech(): Promise<void> {
+  _speechSessionId++;
   _isSpeaking = false;
+
+  if (_currentAbortController) {
+    try {
+      _currentAbortController.abort();
+    } catch {}
+    _currentAbortController = null;
+  }
+
+  if (_currentSound) {
+    const soundToStop = _currentSound;
+    _currentSound = null;
+    try {
+      await soundToStop.stopAsync().catch(() => {});
+      await soundToStop.unloadAsync().catch(() => {});
+    } catch {}
+  }
+
+  if (_currentPlaybackResolver) {
+    const resolve = _currentPlaybackResolver;
+    _currentPlaybackResolver = null;
+    resolve();
+  }
+
   Speech.stop();
 }
 
-export function isSpeaking() {
+export function isSpeaking(): boolean {
   return _isSpeaking;
 }
 
-/**
- * Detect if text is mostly Hindi/Devanagari (mirrors web app's detectLanguageCode)
- */
 function detectLanguageCode(text: string): 'en-IN' | 'hi-IN' {
   const devanagariChars = (text.match(/[\u0900-\u097F]/g) || []).length;
   const totalChars = text.replace(/\s/g, '').length;
@@ -47,9 +53,6 @@ function detectLanguageCode(text: string): 'en-IN' | 'hi-IN' {
   return ratio > 0.15 ? 'hi-IN' : 'en-IN';
 }
 
-/**
- * Strip markdown formatting before speaking
- */
 function stripMarkdown(text: string): string {
   return text
     .replace(/#{1,6}\s/g, '')
@@ -64,21 +67,10 @@ function stripMarkdown(text: string): string {
     .trim();
 }
 
-/**
- * FIX #1 (P0): Chunk text into <=500 char segments at sentence boundaries.
- * Sarvam AI has a hard 500-char limit per call. The web app already does this;
- * the mobile app was sending the full response, causing silent TTS failures.
- * 
- * Strategy:
- *   1. Split on sentence boundaries (. ! ? \n)
- *   2. Greedily accumulate sentences until the chunk would exceed 500 chars
- *   3. If a single sentence > 500 chars, split at the last space before limit
- */
 function chunkText(text: string, maxLen = 490): string[] {
   if (!text || text.length <= maxLen) return [text];
 
   const chunks: string[] = [];
-  // Split on sentence-ending punctuation followed by space or end-of-string
   const sentences = text.split(/(?<=[.!?\n])\s+/);
   let current = '';
 
@@ -89,7 +81,6 @@ function chunkText(text: string, maxLen = 490): string[] {
       current = (current + ' ' + sentence).trim();
     } else {
       if (current) chunks.push(current);
-      // If a single sentence itself exceeds maxLen, hard-split at last space
       if (sentence.length > maxLen) {
         let remaining = sentence;
         while (remaining.length > maxLen) {
@@ -108,11 +99,6 @@ function chunkText(text: string, maxLen = 490): string[] {
   return chunks.filter(c => c.length > 0);
 }
 
-/**
- * Speak text using Sarvam TTS via Vercel proxy.
- * FIX #1 (P0): Now chunks text at <=490 chars before calling Sarvam.
- * Falls back to expo-speech if the proxy fails on any chunk.
- */
 export async function speakWithSarvam(
   rawText: string,
   onStart?: () => void,
@@ -120,6 +106,7 @@ export async function speakWithSarvam(
   onError?: (msg: string) => void
 ): Promise<void> {
   await stopSpeech();
+  const sessionId = _speechSessionId;
 
   const text = stripMarkdown(rawText);
   if (!text) {
@@ -128,22 +115,22 @@ export async function speakWithSarvam(
   }
 
   const languageCode = detectLanguageCode(text);
-  // FIX #1: Split into <=490-char chunks at sentence boundaries
   const chunks = chunkText(text, 490);
 
   let idToken: string | null = null;
   try {
     idToken = (await auth.currentUser?.getIdToken()) ?? null;
-  } catch (e) {
+  } catch {
     console.warn('[Sarvam] Could not get ID token');
   }
 
-  /**
-   * Play a single TTS chunk — fetches audio from Sarvam and plays via expo-av.
-   * Returns true on success, false on failure (caller switches to device TTS).
-   */
   async function playChunk(chunk: string): Promise<boolean> {
+    if (sessionId !== _speechSessionId) return true;
     let tmpUri: string | null = null;
+    const controller = new AbortController();
+    _currentAbortController = controller;
+    const timeoutId = setTimeout(() => controller.abort(), TTS_FETCH_TIMEOUT_MS);
+
     try {
       const resp = await fetch(VOICE_PROXY_URL, {
         method: 'POST',
@@ -152,7 +139,11 @@ export async function speakWithSarvam(
           ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
         },
         body: JSON.stringify({ text: chunk, target_language_code: languageCode, pace: 1.0 }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
+      if (sessionId !== _speechSessionId) return true;
 
       if (!resp.ok) throw new Error(`Voice proxy error: ${resp.status}`);
 
@@ -160,10 +151,16 @@ export async function speakWithSarvam(
       const base64Audio = data?.audios?.[0];
       if (!base64Audio) throw new Error('No audio data in proxy response');
 
-      tmpUri = `${FileSystem.documentDirectory}sara_tts_${Date.now()}.wav`;
+      const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory || '';
+      tmpUri = `${baseDir}sara_tts_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.wav`;
       await FileSystem.writeAsStringAsync(tmpUri, base64Audio, {
         encoding: FileSystem.EncodingType.Base64,
       });
+
+      if (sessionId !== _speechSessionId) {
+        FileSystem.deleteAsync(tmpUri, { idempotent: true }).catch(() => {});
+        return true;
+      }
 
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
@@ -171,65 +168,109 @@ export async function speakWithSarvam(
       });
 
       const { sound } = await Audio.Sound.createAsync({ uri: tmpUri });
+      if (sessionId !== _speechSessionId) {
+        await sound.unloadAsync().catch(() => {});
+        FileSystem.deleteAsync(tmpUri, { idempotent: true }).catch(() => {});
+        return true;
+      }
+
       _currentSound = sound;
 
-      await sound.playAsync();
-
-      // Wait for playback to finish before moving to next chunk
       await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          if (_currentPlaybackResolver === finish) {
+            _currentPlaybackResolver = null;
+          }
+          resolve();
+        };
+        _currentPlaybackResolver = finish;
+
         sound.setOnPlaybackStatusUpdate(async (status: any) => {
-          if (status.didJustFinish || status.error) {
+          if (!status.isLoaded || status.didJustFinish || status.error) {
             try {
               await sound.stopAsync().catch(() => {});
               await sound.unloadAsync().catch(() => {});
-            } catch (e) {}
+            } catch {}
             if (_currentSound === sound) _currentSound = null;
-            if (tmpUri) FileSystem.deleteAsync(tmpUri, { idempotent: true }).catch(() => {});
-            resolve();
+            if (tmpUri) {
+              FileSystem.deleteAsync(tmpUri, { idempotent: true }).catch(() => {});
+              tmpUri = null;
+            }
+            finish();
           }
         });
+
+        sound.playAsync().catch(() => finish());
       });
+
       return true;
     } catch (err: any) {
+      clearTimeout(timeoutId);
       if (_currentSound) {
-        try {
-          await _currentSound.stopAsync().catch(() => {});
-          await _currentSound.unloadAsync().catch(() => {});
-        } catch (e) {}
+        const s = _currentSound;
         _currentSound = null;
+        try {
+          await s.stopAsync().catch(() => {});
+          await s.unloadAsync().catch(() => {});
+        } catch {}
       }
-      if (tmpUri) FileSystem.deleteAsync(tmpUri, { idempotent: true }).catch(() => {});
-      console.warn('[Sarvam] Chunk TTS failed:', err.message);
+      if (tmpUri) {
+        FileSystem.deleteAsync(tmpUri, { idempotent: true }).catch(() => {});
+      }
+      if (sessionId === _speechSessionId) {
+        console.warn('[Sarvam] Chunk TTS failed:', err?.message);
+      }
       return false;
+    } finally {
+      if (_currentAbortController === controller) {
+        _currentAbortController = null;
+      }
     }
   }
 
   _isSpeaking = true;
   onStart?.();
 
-  // Play all chunks sequentially; fall back to expo-speech on any failure
   let useDeviceTTS = false;
   for (let i = 0; i < chunks.length; i++) {
-    // If stopSpeech() was called externally, abort the remaining chunks
-    if (!_isSpeaking) break;
+    if (sessionId !== _speechSessionId || !_isSpeaking) break;
 
     if (!useDeviceTTS) {
       const ok = await playChunk(chunks[i]);
-      if (!ok) useDeviceTTS = true; // fall back for remaining chunks
+      if (!ok && sessionId === _speechSessionId) {
+        useDeviceTTS = true;
+      }
     }
 
-    if (useDeviceTTS) {
-      // Play remaining chunks sequentially using device TTS
+    if (useDeviceTTS && sessionId === _speechSessionId && _isSpeaking) {
       await new Promise<void>((resolve) => {
+        _currentPlaybackResolver = resolve;
         Speech.speak(chunks.slice(i).join(' '), {
-          onDone: resolve,
-          onError: () => resolve(),
+          language: languageCode,
+          onDone: () => {
+            if (_currentPlaybackResolver === resolve) _currentPlaybackResolver = null;
+            resolve();
+          },
+          onStopped: () => {
+            if (_currentPlaybackResolver === resolve) _currentPlaybackResolver = null;
+            resolve();
+          },
+          onError: (e: any) => {
+            if (_currentPlaybackResolver === resolve) _currentPlaybackResolver = null;
+            onError?.(e?.message || 'Device TTS failed');
+            resolve();
+          },
         });
       });
-      break; // device TTS handles the rest in one call
+      break;
     }
   }
 
-  _isSpeaking = false;
-  onDone?.();
+  if (sessionId === _speechSessionId) {
+    _isSpeaking = false;
+    onDone?.();
+  }
 }

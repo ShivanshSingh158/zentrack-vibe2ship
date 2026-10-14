@@ -34,20 +34,29 @@ if (GEMINI_KEYS.length > 0) {
  * Gets a valid Firebase ID token for authenticating with the Vercel backend proxy.
  * If user is guest/unauthenticated, automatically signs in anonymously to obtain a valid token.
  */
+let _anonSignInPromise: Promise<string | null> | null = null;
+
 async function getValidAuthToken(): Promise<string | null> {
   try {
-    let user = auth.currentUser;
-    if (!user) {
-      const cred = await signInAnonymously(auth);
-      user = cred.user;
+    if (auth.currentUser) {
+      return await auth.currentUser.getIdToken();
     }
-    if (user) {
-      return await user.getIdToken();
+    if (!_anonSignInPromise) {
+      _anonSignInPromise = signInAnonymously(auth)
+        .then(cred => cred.user.getIdToken())
+        .catch(err => {
+          console.warn('[GeminiProxy] Failed to obtain Firebase ID token for proxy:', err);
+          return null;
+        })
+        .finally(() => {
+          _anonSignInPromise = null;
+        });
     }
+    return await _anonSignInPromise;
   } catch (err) {
     console.warn('[GeminiProxy] Failed to obtain Firebase ID token for proxy:', err);
+    return null;
   }
-  return null;
 }
 
 // Round-robin index ── cycles through keys to spread load
@@ -149,21 +158,28 @@ export async function callProxy(options: ProxyCallOptions): Promise<any> {
         return resp.json();
       }
 
-      // 429 = rate limited, 5xx = server error, 401/403 = bad/revoked key — try next key
-      if (resp.status === 429 || resp.status >= 500 || resp.status === 401 || resp.status === 403 || resp.status === 400) {
+      let errData: any = {};
+      try {
+        errData = await resp.json();
+      } catch {}
+      const errMsg = errData?.error?.message || `Gemini API error: HTTP ${resp.status}`;
+      const isInvalidKey400 =
+        resp.status === 400 &&
+        (errMsg.toLowerCase().includes('api key') ||
+         (errData?.error?.status === 'INVALID_ARGUMENT' && errMsg.toLowerCase().includes('key')));
+
+      // Rotate key ONLY on 429 (rate limit), 5xx (server error), 401/403 (auth), or 400 specifically caused by an invalid API key
+      if (resp.status === 429 || resp.status >= 500 || resp.status === 401 || resp.status === 403 || isInvalidKey400) {
         if (attempt === 0) {
           console.warn(`[GeminiProxy] Rate-limit/Auth error (${resp.status}), rotating through keys...`);
         }
-        lastError = new Error(`API Error ${resp.status}`);
+        lastError = new Error(`API Error ${resp.status}: ${errMsg}`);
         continue;
       }
 
-      // 400/404 = bad request or invalid model — don't retry
-      let errData: any = {};
-      try { errData = await resp.json(); } catch (_) {}
-      const msg = errData?.error?.message || `Gemini API error: HTTP ${resp.status}`;
-      console.warn('[GeminiProxy] Gemini error:', resp.status, msg);
-      throw new Error(msg);
+      // Non-retryable 400 / 404 (malformed payload or retired model) — fail fast
+      console.warn('[GeminiProxy] Non-retryable Gemini error:', resp.status, errMsg);
+      throw new Error(errMsg);
 
     } catch (fetchErr: any) {
       clearTimeout(timeoutId);

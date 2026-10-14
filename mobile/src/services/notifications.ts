@@ -220,7 +220,7 @@ async function _pushFingerprintToFirestore(userId: string, fingerprint: string):
 
 function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | null>): string {
   const attendanceFingerprint = (params.attendance || [])
-    .map(s => `${s.id}_${s.classesTotal}_${s.classesAttended}_${s.lastUpdated || 0}`)
+    .map(s => `${s.id}_${s.classesTotal}_${s.classesAttended}_${s.labsTotal || 0}_${s.labsAttended || 0}_${s.lastUpdated || 0}`)
     .join(';');
   const taskFingerprint = (params.tasks || [])
     .filter(t => t.status !== 'completed')
@@ -242,9 +242,16 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     : '';
 
   // Hash gym log content (not just count) so post-workout schedule correctly refreshes
-  // after exercises are logged. Hashes: date + exercise count + set count per log.
+  // after exercises are logged. Hashes: date + exercise count + completed sets count per log.
   const gymLogContentHash = (params.gymLogs || [])
-    .map(g => `${g.date}_${(g.exercises || []).length}_${(g.exercises || []).reduce((sum, e) => sum + ((e as any).sets?.length || 0), 0)}_${g.completed ? '1' : '0'}`)
+    .map(g => {
+      const exercises = g.exercises || [];
+      const completedSets = exercises.reduce(
+        (sum: number, e: any) => sum + ((e.setsLog || []).filter((s: any) => s.completed).length),
+        0
+      );
+      return `${g.date}_${exercises.length}_${completedSets}_${g.completed ? '1' : '0'}`;
+    })
     .join(';');
 
   // Track today's total water logged to invalidate fingerprint immediately when goal is hit
@@ -462,25 +469,13 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         if (cached) _lastScheduleFingerprint = cached;
       }
 
-      // Cross-device sync: pull the cloud fingerprint
-      // If another device (e.g. tablet) already ran a full reschedule with the
-      // current data, it will have written its fingerprint to Firestore. We pull
-      // it here so THIS device can also update its local cache and reschedule
-      // against the same absolute timestamps -- eliminating the 4-5 min gap.
-      const userId = auth.currentUser?.uid;
-      if (userId) {
-        const cloudFp = await _pullFingerprintFromFirestore(userId);
-        if (cloudFp && cloudFp !== _lastScheduleFingerprint) {
-          console.log("[Notifications] Cloud fingerprint differs from local -- syncing for cross-device alignment.");
-          _lastScheduleFingerprint = cloudFp;
-          AsyncStorage.setItem(NOTIF_FINGERPRINT_KEY, cloudFp).catch(() => {});
-          updateL1Cache("notifFingerprint", cloudFp);
-        }
-      }
-
       const fingerprint = _buildFingerprint(currentParams, kv);
-      if (fingerprint === _lastScheduleFingerprint) {
-        console.log('[Notifications] Data & preferences unchanged â€” skipping reschedule.');
+
+      // Verify OS actually has alarms queued; if OS queue was wiped (e.g. app reinstall/reboot)
+      // force a reschedule even if the local fingerprint string matches.
+      const existingOsAlarms = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+      if (fingerprint === _lastScheduleFingerprint && existingOsAlarms.length > 0) {
+        console.log('[Notifications] Data & preferences unchanged — skipping reschedule.');
         return;
       }
       // NOTE: Do NOT save fingerprint yet â€” only save after successful scheduling.

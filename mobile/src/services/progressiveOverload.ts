@@ -25,6 +25,7 @@ function isLegacySecondaryCompound(name: string): boolean {
 }
 
 import { calculateExerciseMaxWeight, calculateExerciseAvgReps, normalizeExerciseKey } from '../utils/gymUtils';
+import { formatLocalDateStr } from '../utils/dateUtils';
 
 /** REST time in seconds based on exercise type */
 export function getRestDuration(exercise: { name: string, isCompound?: boolean }): number {
@@ -137,12 +138,14 @@ export async function detectPR(
   weight: number,
   reps: number,
 ): Promise<{ isNewPR: boolean; previous1RM: number; new1RM: number }> {
-  if (weight <= 0 || reps <= 0) return { isNewPR: false, previous1RM: 0, new1RM: 0 };
+  if (!exerciseName || weight <= 0 || reps <= 0) {
+    return { isNewPR: false, previous1RM: 0, new1RM: 0 };
+  }
 
-  const key = exerciseName.toLowerCase().trim();
+  const key = normalizeExerciseKey(exerciseName) || exerciseName.toLowerCase().trim();
   const new1RM = calculate1RM(weight, reps);
   const prs = await readPRs();
-  const existing = prs[key];
+  const existing = prs[key] || prs[exerciseName.toLowerCase().trim()];
 
   const previous1RM = existing?.best1RM ?? 0;
 
@@ -151,7 +154,7 @@ export async function detectPR(
       best1RM: new1RM,
       heaviestWeight: weight,
       bestReps: reps,
-      achievedAt: new Date().toISOString().slice(0, 10),
+      achievedAt: formatLocalDateStr(new Date()),
     };
     await writePRs(prs);
     return { isNewPR: true, previous1RM, new1RM };

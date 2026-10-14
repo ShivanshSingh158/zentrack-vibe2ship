@@ -1,9 +1,10 @@
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
-import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db } from './firebase';
 import { COLLECTION } from '../config/constants';
 import { callProxy, parseProxyResponse } from './geminiProxy';
+import { formatLocalDateStr } from '../utils/dateUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const WEEKLY_REVIEW_TASK = 'BACKGROUND_WEEKLY_REVIEW';
@@ -16,33 +17,42 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
 
-    const userId = (await AsyncStorage.getItem('@zentrack_uid')) || (await AsyncStorage.getItem('user_id'));
+    let userId = auth.currentUser?.uid;
+    if (!userId) {
+      try {
+        const rawUser = await AsyncStorage.getItem('@zentrack_optimistic_user');
+        if (rawUser) {
+          const parsed = JSON.parse(rawUser);
+          userId = parsed.uid || parsed.id;
+        }
+      } catch {}
+    }
+    if (!userId) {
+      userId = (await AsyncStorage.getItem('@zentrack_uid')) || (await AsyncStorage.getItem('user_id')) || undefined;
+    }
     if (!userId) return BackgroundFetch.BackgroundFetchResult.Failed;
 
     // Check if we already generated a review for this week
     const weekStart = new Date();
     weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // Sunday
     weekStart.setHours(0, 0, 0, 0);
-    const weekStartStr = weekStart.toISOString().split('T')[0];
+    const weekStartStr = formatLocalDateStr(weekStart);
 
-    const existingQuery = query(
-      collection(db, COLLECTION.WEEKLY_REVIEWS),
-      where('userId', '==', userId),
-      where('weekStart', '==', weekStartStr)
-    );
-    const existingSnap = await getDocs(existingQuery);
-    if (!existingSnap.empty) {
+    const reviewDocId = `${userId}_${weekStartStr}`;
+    const reviewDocRef = doc(db, COLLECTION.WEEKLY_REVIEWS, reviewDocId);
+    const existingSnap = await getDoc(reviewDocRef);
+    if (existingSnap.exists()) {
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
 
     // Gather past 7 days data
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 6);
-    const weekEndStr = weekEnd.toISOString().split('T')[0];
+    const weekEndStr = formatLocalDateStr(weekEnd);
 
     // Query stats for the week
     const weekStartTs = weekStart.getTime();
-    
+
     // 1. Tasks completed & total within week
     const [tasksSnap, habitsSnap, gymSnap, assignSnap] = await Promise.all([
       getDocs(query(
@@ -74,7 +84,7 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
 
     const habitsLogged = habitsSnap.docs.length;
     const gymSessions = gymSnap.docs.length;
-    
+
     let assignmentsSubmitted = 0;
     assignSnap.forEach(d => {
       const ts = d.data().submittedAt || 0;
@@ -88,7 +98,7 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
       Habits logged: ${habitsLogged} sessions
       Gym sessions: ${gymSessions}
       Assignments submitted: ${assignmentsSubmitted}
-      
+
       Review their activity and generate a JSON weekly review.
       Format:
       {
@@ -104,20 +114,20 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: { responseMimeType: 'application/json' }
     });
-    
+
     // Parse JSON safely using our helper
     let cleanJson = '';
     try {
       const parsed = parseProxyResponse(response);
       cleanJson = parsed.text || '';
-    } catch(e) {
+    } catch (e) {
       cleanJson = (response.text || '').replace(/```json/g, '').replace(/```/g, '').trim();
     }
-    
+
     let data;
     try {
       data = JSON.parse(cleanJson);
-    } catch(e) {
+    } catch (e) {
       // simple fallback regex extraction if json fails
       data = {
         wentWell: cleanJson.substring(0, 100),
@@ -127,7 +137,7 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
       };
     }
 
-    await addDoc(collection(db, COLLECTION.WEEKLY_REVIEWS), {
+    await setDoc(reviewDocRef, {
       userId,
       weekStart: weekStartStr,
       weekEnd: weekEndStr,
@@ -137,7 +147,7 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
       gratitude: data.gratitude || 'You got this!',
       createdAt: Date.now(),
       updatedAt: Date.now()
-    });
+    }, { merge: true });
 
     return BackgroundFetch.BackgroundFetchResult.NewData;
   } catch (error) {

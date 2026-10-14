@@ -97,14 +97,14 @@ export function evaluateProgression(
     };
   }
 
-  // Parse rep range (e.g. "8-12" -> low: 8, high: 12)
+  // Parse rep range supporting ASCII hyphen (-), en-dash (–), em-dash (—), or "to"
   const repStr = String(exercise.targetReps || '10').trim();
   let targetLowReps = 10;
   let targetHighReps = 10;
-  if (repStr.includes('-')) {
-    const parts = repStr.split('-').map(p => parseInt(p.trim(), 10));
-    targetLowReps = parts[0] || 8;
-    targetHighReps = parts[1] || 12;
+  if (/[-–—]|to/i.test(repStr)) {
+    const parts = repStr.split(/[-–—]|to/i).map(p => parseInt(p.trim(), 10));
+    targetLowReps = !isNaN(parts[0]) && parts[0] > 0 ? parts[0] : 8;
+    targetHighReps = !isNaN(parts[1]) && parts[1] > 0 ? parts[1] : Math.max(targetLowReps, 12);
   } else {
     targetLowReps = parseInt(repStr, 10) || 10;
     targetHighReps = targetLowReps;

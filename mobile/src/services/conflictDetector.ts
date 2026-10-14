@@ -5,13 +5,16 @@
  *
  * Detects:
  *  1. Task vs Task time-slot overlap (two tasks at the same time)
- *  2. Task vs class time overlap on today's schedule
+ *  2. Task vs class time overlap on today's schedule (including 2h lab blocks)
  *  3. Gym session + assignment due on same day (double cognitive load)
  *  4. Attendance risk per subject (<72% critical, <78% warning)
  *  5. Assignment overload (3+ due within 7 days)
  *  6. P1 task with no time slot blocked today
  *  7. Exam/viva today + heavy task list
  */
+
+import { formatLocalDateStr } from '../utils/dateUtils';
+import { isValidWorkoutSession } from '../utils/gymUtils';
 
 export type ConflictSeverity = 'warning' | 'critical' | 'info';
 
@@ -34,27 +37,61 @@ export interface DetectedConflict {
 
 // ── Time Helpers ──────────────────────────────────────────────────────────────
 
-/** Parses "HH:MM" or "10:30 AM" style strings into minutes since midnight. */
-function parseTimeToMinutes(timeStr?: string): number | null {
-  if (!timeStr) return null;
-  const m = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?/);
-  if (!m) return null;
+function parseMatchedTime(m: RegExpMatchArray, defaultAmPm?: string): number | null {
   let h = parseInt(m[1], 10);
-  const min = parseInt(m[2], 10);
-  const ampm = m[3]?.toUpperCase();
+  const min = m[2] ? parseInt(m[2], 10) : 0;
+  let ampm = (m[3] || defaultAmPm || '')?.toUpperCase();
   if (ampm === 'PM' && h < 12) h += 12;
   if (ampm === 'AM' && h === 12) h = 0;
   return h * 60 + min;
 }
 
+/** Parses "HH:MM", "9am", or "10:30 AM" style strings into minutes since midnight. */
+export function parseTimeToMinutes(timeStr?: string, defaultAmPm?: string): number | null {
+  if (!timeStr) return null;
+  const cleaned = timeStr.trim();
+  const m = cleaned.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM|am|pm)?$/i);
+  if (m) {
+    return parseMatchedTime(m, defaultAmPm);
+  }
+  const fallbackMatch = cleaned.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM|am|pm)?/i);
+  if (fallbackMatch) {
+    return parseMatchedTime(fallbackMatch, defaultAmPm);
+  }
+  return null;
+}
+
 /**
- * Parses a timeSlot string like "2:00 PM–3:00 PM" or "14:00-15:00"
+ * Parses a timeSlot string like "2:00 PM–3:00 PM", "1:00 - 3:00 PM", or "14:00-15:00"
  * and returns { startMin, endMin }.
  */
-function parseTimeSlotToRange(timeSlot: string): { startMin: number; endMin: number } | null {
-  const parts = timeSlot.split(/[-–]/);
-  const startMin = parseTimeToMinutes(parts[0]?.trim());
-  let endMin = parts[1] ? parseTimeToMinutes(parts[1]?.trim()) : null;
+export function parseTimeSlotToRange(timeSlot: string): { startMin: number; endMin: number } | null {
+  if (!timeSlot) return null;
+  const parts = timeSlot.split(/[-–—]|to/i);
+  const endPart = parts[1]?.trim();
+  const endAmPmMatch = endPart ? endPart.match(/(AM|PM|am|pm)/i) : null;
+  const inferredAmPm = endAmPmMatch ? endAmPmMatch[1].toUpperCase() : undefined;
+
+  const startPart = parts[0]?.trim();
+  const startAmPmMatch = startPart ? startPart.match(/(AM|PM|am|pm)/i) : null;
+
+  let defaultStartAmPm: string | undefined = undefined;
+  if (!startAmPmMatch && inferredAmPm) {
+    const rawStartH = parseInt(startPart?.match(/\d{1,2}/)?.[0] || '0', 10);
+    const rawEndH = parseInt(endPart?.match(/\d{1,2}/)?.[0] || '0', 10);
+    if (inferredAmPm === 'PM') {
+      if (rawStartH < rawEndH || rawStartH === 12) {
+        defaultStartAmPm = 'PM';
+      } else {
+        defaultStartAmPm = 'AM';
+      }
+    } else {
+      defaultStartAmPm = inferredAmPm;
+    }
+  }
+
+  const startMin = parseTimeToMinutes(startPart, defaultStartAmPm);
+  let endMin = endPart ? parseTimeToMinutes(endPart) : null;
   if (startMin === null) return null;
   // Default duration: 30 min if no end time parsed
   if (endMin === null || endMin <= startMin) endMin = startMin + 30;
@@ -73,11 +110,9 @@ function rangesOverlap(a: { startMin: number; endMin: number }, b: { startMin: n
 
 // ── Main Export ───────────────────────────────────────────────────────────────
 
-import { formatLocalDateStr } from '../utils/dateUtils';
-
 export const detectConflicts = (appContext: any): DetectedConflict[] => {
   const conflicts: DetectedConflict[] = [];
-  const { tasks = [], gymLogs = [], attendance = [], assignments = [], customEvents = [] } = appContext;
+  const { tasks = [], gymLogs = [], attendance = [], assignments = [], customEvents = [] } = appContext || {};
 
   const now            = new Date();
   const today          = formatLocalDateStr(now);
@@ -116,26 +151,27 @@ export const detectConflicts = (appContext: any): DetectedConflict[] => {
 
   // ── 2. Task vs class time overlap ──────────────────────────────────────────
   const todayTasksWithTime = todayTasks.filter((t: any) => t.timeSlot);
-  const todayClasses: { name: string; startMin: number }[] = [];
+  const todayClasses: { name: string; startMin: number; duration: number }[] = [];
   attendance.forEach((subj: any) => {
     const sch = subj.schedule?.[todayDayOfWeek];
     if (!sch) return;
     (sch.classes || []).forEach((cls: any) => {
       const startMin = parseTimeToMinutes(cls.time);
-      if (startMin !== null) todayClasses.push({ name: subj.name, startMin });
+      if (startMin !== null) todayClasses.push({ name: subj.name, startMin, duration: 60 });
     });
     (sch.labs || []).forEach((lab: any) => {
       const startMin = parseTimeToMinutes(lab.time);
-      if (startMin !== null) todayClasses.push({ name: `${subj.name} Lab`, startMin });
+      if (startMin !== null) todayClasses.push({ name: `${subj.name} Lab`, startMin, duration: 120 });
     });
   });
 
   todayTasksWithTime.forEach((task: any) => {
-    const taskStart = parseTimeToMinutes(task.timeSlot);
-    if (taskStart === null) return;
-    const taskDuration = task.estimatedMinutes || 30;
+    const range = parseTimeSlotToRange(task.timeSlot);
+    if (!range) return;
+    const taskStart = range.startMin;
+    const taskDuration = task.estimatedMinutes || (range.endMin - range.startMin) || 30;
     todayClasses.forEach((cls) => {
-      if (timesOverlap(taskStart, taskDuration, cls.startMin, 60)) {
+      if (timesOverlap(taskStart, taskDuration, cls.startMin, cls.duration)) {
         conflicts.push({
           id: `task_class_overlap_${task.id}_${cls.name}`,
           type: 'task_class_overlap',
@@ -149,7 +185,7 @@ export const detectConflicts = (appContext: any): DetectedConflict[] => {
   });
 
   // ── 3. Gym + assignment due same day (double cognitive load) ───────────────
-  const gymToday            = gymLogs.some((g: any) => g.date === today);
+  const gymToday = gymLogs.some((g: any) => g.date === today && isValidWorkoutSession(g));
   const dueTodayAssignments = assignments.filter((a: any) => a.dueDate === today && a.status !== 'submitted' && a.status !== 'graded');
   if (gymToday && dueTodayAssignments.length > 0) {
     conflicts.push({

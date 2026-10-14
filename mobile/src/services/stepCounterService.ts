@@ -1,4 +1,4 @@
-﻿/**
+/**
  * stepCounterService.ts — ZenTrack Mobile
  *
  * Android background step counter with Firestore sync.
@@ -14,6 +14,8 @@ import { Pedometer } from 'expo-sensors';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { awardXP } from './xpSystem';
+import { formatLocalDateStr } from '../utils/dateUtils';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const STEP_SYNC_TASK = 'ZENTRACK_STEP_SYNC';
 export const STEP_DAILY_GOAL = 8000;
@@ -22,11 +24,7 @@ export const STEP_DAILY_GOAL = 8000;
 
 /** Returns "YYYY-MM-DD" in local timezone */
 export function getTodayDateKey(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return formatLocalDateStr(new Date());
 }
 
 /** Midnight of today in local time */
@@ -42,10 +40,14 @@ function getMidnight(): Date {
  * Reads today's step count from the hardware sensor (steps since midnight)
  * and writes it to Firestore. Safe to call from both foreground and background.
  */
-export async function syncStepsNow(userId: string): Promise<number> {
+export async function syncStepsNow(userId: string, isBackground = false): Promise<number> {
   try {
     const { granted } = await Pedometer.getPermissionsAsync();
     if (!granted) {
+      if (isBackground) {
+        // Headless background tasks cannot show UI permission dialogs
+        return 0;
+      }
       const result = await Pedometer.requestPermissionsAsync();
       if (!result.granted) return 0;
     }
@@ -71,7 +73,7 @@ export async function syncStepsNow(userId: string): Promise<number> {
       goalHit,
       xpAwarded: xpAlreadyAwarded || (goalHit && !xpAlreadyAwarded),
       updatedAt: Date.now(),
-      source: 'background',
+      source: isBackground ? 'background' : 'foreground',
     }, { merge: true });
 
     if (goalHit && !xpAlreadyAwarded) {
@@ -86,7 +88,7 @@ export async function syncStepsNow(userId: string): Promise<number> {
 }
 
 /**
- * Reads today''s step count from Firestore (no sensor read).
+ * Reads today's step count from Firestore (no sensor read).
  * Used by UI to get the last synced value when opening the app.
  */
 export async function getTodayStepsFromFirestore(userId: string): Promise<{ steps: number; goalHit: boolean; updatedAt: number } | null> {
@@ -110,9 +112,22 @@ export async function getTodayStepsFromFirestore(userId: string): Promise<{ step
 
 TaskManager.defineTask(STEP_SYNC_TASK, async () => {
   try {
-    const user = auth.currentUser;
-    if (!user) return BackgroundFetch.BackgroundFetchResult.NoData;
-    await syncStepsNow(user.uid);
+    let userId = auth.currentUser?.uid;
+    if (!userId) {
+      try {
+        const rawUser = await AsyncStorage.getItem('@zentrack_optimistic_user');
+        if (rawUser) {
+          const parsed = JSON.parse(rawUser);
+          userId = parsed.uid || parsed.id;
+        }
+      } catch {}
+    }
+    if (!userId) {
+      userId = (await AsyncStorage.getItem('@zentrack_uid')) || (await AsyncStorage.getItem('user_id')) || undefined;
+    }
+    if (!userId) return BackgroundFetch.BackgroundFetchResult.NoData;
+
+    await syncStepsNow(userId, true);
     return BackgroundFetch.BackgroundFetchResult.NewData;
   } catch (e) {
     console.warn('[StepCounter] Background task failed:', e);

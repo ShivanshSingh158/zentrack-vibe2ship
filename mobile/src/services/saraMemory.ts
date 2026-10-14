@@ -24,6 +24,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { callProxy } from './geminiProxy';
 import { STORAGE_KEYS } from '../config/constants';
+import { formatLocalDateStr, offsetDateStr } from '../utils/dateUtils';
+import { isValidWorkoutSession } from '../utils/gymUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -276,7 +278,7 @@ Reply ONLY with valid JSON or the word "none":
 Examples of "none": greetings, chitchat, questions about general facts, anything not about the user's personal life or schedule.`;
 
       const data = await callProxy({
-        model: 'gemini-2.0-flash-lite',
+        model: 'gemini-2.5-flash',
         contents: [{ role: 'user', parts: [{ text: extractPrompt }] }],
         generationConfig: { temperature: 0.1, maxOutputTokens: 100 },
       });
@@ -485,65 +487,67 @@ export function updateFingerprint(userId: string, event: BFEEvent): void {
 }
 
 function _refreshFingerprintFromData(fp: BehavioralFingerprint, data: FingerPrintAppData): void {
-  const now = new Date();
-  const todayISO = now.toISOString().slice(0, 10);
+  const todayLocal = formatLocalDateStr(new Date());
+  const thirtyDaysAgoStr = offsetDateStr(todayLocal, -30);
+  const thirtyDaysAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const sevenDaysLaterStr = offsetDateStr(todayLocal, 7);
 
-  // Task completion rate (last 30 days)
   if (data.tasks && data.tasks.length > 0) {
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const recent = data.tasks.filter(t => t.createdAt >= thirtyDaysAgo || t.date >= thirtyDaysAgo.slice(0,10));
+    const recent = data.tasks.filter(t => {
+      const dateStr = String(t.completedAt || t.date || '').slice(0, 10);
+      if (dateStr && dateStr >= thirtyDaysAgoStr) return true;
+      if (typeof t.createdAt === 'number' && t.createdAt >= thirtyDaysAgoMs) return true;
+      if (typeof t.createdAt === 'string' && t.createdAt.slice(0, 10) >= thirtyDaysAgoStr) return true;
+      return false;
+    });
     const completed = recent.filter(t => t.status === 'completed').length;
     if (recent.length > 0) {
       fp.avgTaskCompletionRate = completed / recent.length;
     }
 
-    // Goal ambition: are they setting aggressive deadlines?
     const highPriTasks = data.tasks.filter(t => t.priority === 'P1' || t.priority === 'high').length;
     fp.goalAmbitionLevel = highPriTasks > data.tasks.length * 0.3 ? 'aggressive' : 'conservative';
 
-    // BUG-M6 FIX: Removed title-length heuristic for preferredTaskLength.
-    // Previously: avg title length > 40 chars → 'macro'. This is completely backwards.
-    // A user who writes "Complete Chapter 5 exercises before Thursday" is NOT a macro planner.
-    // Now uses subtask count as the proxy: tasks with subtasks = macro planner.
     const tasksWithSubtasks = data.tasks.filter(t => (t.subtasks?.length || t.subTasks?.length || 0) > 0).length;
     fp.preferredTaskLength = tasksWithSubtasks > data.tasks.length * 0.2 ? 'macro' : 'micro';
   }
 
-  // Subjects at risk
   if (data.attendance) {
     fp.subjectsAtRisk = data.attendance
-      .filter(s => s.classesTotal > 0 && (s.classesAttended / s.classesTotal) < 0.75)
+      .filter(s => {
+        const total = (s.classesTotal || 0) + (s.labsTotal || 0);
+        const attended = (s.classesAttended || 0) + (s.labsAttended || 0);
+        const target = (s.targetPercentage || 75) / 100;
+        return total > 0 && (attended / total) < target;
+      })
       .map(s => s.name);
   }
 
-  // Upcoming deadline stress
   if (data.assignments || data.customEvents) {
-    const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const urgentAssignments = (data.assignments || []).filter(
-      a => a.dueDate >= todayISO && a.dueDate <= sevenDaysLater && a.status === 'pending'
+      a =>
+        a.dueDate >= todayLocal &&
+        a.dueDate <= sevenDaysLaterStr &&
+        a.status !== 'submitted' &&
+        a.status !== 'graded'
     );
     const urgentExams = (data.customEvents || []).filter(
-      e => e.date >= todayISO && e.date <= sevenDaysLater && e.type === 'exam'
+      e => e.date >= todayLocal && e.date <= sevenDaysLaterStr && (e.type === 'exam' || e.type === 'viva')
     );
     fp.upcomingDeadlineStress = urgentAssignments.length > 0 || urgentExams.length > 0;
     fp.dominantStressPattern = fp.upcomingDeadlineStress ? 'deadline-driven' : 'structured';
   }
 
-  // Gym consistency
   if (data.gymLogs) {
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const recentGym = data.gymLogs.filter(g => g.date >= thirtyDaysAgo);
-    fp.gymConsistencyScore = Math.min(1.0, recentGym.length / 20); // 20 sessions in 30d = perfect
+    const recentGym = data.gymLogs.filter(g => g.date >= thirtyDaysAgoStr && isValidWorkoutSession(g));
+    fp.gymConsistencyScore = Math.min(1.0, recentGym.length / 20);
   }
 
-  // Habit consistency
   if (data.habitLogs) {
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const recentLogs = (data.habitLogs as any[]).filter((l: any) => l.date >= thirtyDaysAgo);
-    fp.habitConsistencyScore = Math.min(1.0, recentLogs.length / 30); // 30 logs = perfect
+    const recentLogs = (data.habitLogs as any[]).filter((l: any) => String(l.date || '').slice(0, 10) >= thirtyDaysAgoStr);
+    fp.habitConsistencyScore = Math.min(1.0, recentLogs.length / 30);
   }
 
-  // Populate Persona Card derived fields
   if (!fp.persona) {
     fp.persona = {
       name: '',
@@ -552,16 +556,26 @@ function _refreshFingerprintFromData(fp: BehavioralFingerprint, data: FingerPrin
       peakProductivityHour: fp.peakProductivityHour,
       currentStressLevel: 'low',
       primaryGoal: '',
-      motivationStyle: 'progress'
+      motivationStyle: 'progress',
     };
   }
   fp.persona.peakProductivityHour = fp.peakProductivityHour;
-  fp.persona.currentStressLevel = fp.upcomingDeadlineStress ? 'high' : (fp.subjectsAtRisk.length > 0 ? 'moderate' : 'low');
-  fp.persona.motivationStyle = fp.streakPersonality === 'momentum-builder' ? 'progress' : (fp.streakPersonality === 'binge-worker' ? 'competition' : 'habit');
-  
+  fp.persona.currentStressLevel = fp.upcomingDeadlineStress
+    ? 'high'
+    : fp.subjectsAtRisk.length > 0
+    ? 'moderate'
+    : 'low';
+  fp.persona.motivationStyle =
+    fp.streakPersonality === 'momentum-builder'
+      ? 'progress'
+      : fp.streakPersonality === 'binge-worker'
+      ? 'competition'
+      : 'habit';
+
   if (data.customEvents) {
-    const nextExam = data.customEvents.filter(e => e.type === 'exam' && e.date >= todayISO)
-      .sort((a,b) => a.date.localeCompare(b.date))[0];
+    const nextExam = data.customEvents
+      .filter(e => e.type === 'exam' && e.date >= todayLocal)
+      .sort((a, b) => a.date.localeCompare(b.date))[0];
     if (nextExam) fp.persona.examPeriodStart = nextExam.date;
   }
 }

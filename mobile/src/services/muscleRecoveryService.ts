@@ -17,6 +17,7 @@
 import { GymDayLog } from '../types/gym.types';
 import { inferAutomaticRIR } from './effortEngine';
 import { computeOrGetHotCache, generateDatasetFingerprint } from '../utils/hotCacheStore';
+import { formatLocalDateStr, parseLocalDate } from '../utils/dateUtils';
 
 export const MUSCLES = [
   'trapezius',
@@ -234,6 +235,25 @@ export function getExerciseMuscleWeights(exercise: { name?: string; muscle?: str
   return out;
 }
 
+function resolveAnchorTimestamp(anchorDateStr?: string): number {
+  if (!anchorDateStr) return Date.now();
+  const d = parseLocalDate(anchorDateStr.slice(0, 10));
+  d.setHours(23, 59, 59, 999);
+  return d.getTime();
+}
+
+function resolveLogTimestamp(log: GymDayLog): number {
+  if (typeof log.workoutStartTime === 'number' && log.workoutStartTime > 1000000000000) {
+    return log.workoutStartTime;
+  }
+  if (typeof log.updatedAt === 'number' && log.updatedAt > 1000000000000 && log.date === formatLocalDateStr(new Date(log.updatedAt))) {
+    return log.updatedAt;
+  }
+  const d = parseLocalDate(String(log.date || '').slice(0, 10));
+  d.setHours(18, 0, 0, 0); // Default historical session anchor at 6:00 PM local time
+  return d.getTime();
+}
+
 /**
  * Calculates effective volume load per muscle from an array of workout logs
  */
@@ -243,20 +263,18 @@ export function calculateMuscleLoad(
   anchorDateStr?: string,
   onlyHardSets: boolean = false
 ): Record<MuscleSlug, number> {
-  // FIX (Bug A): Append today's date when no anchorDateStr — fatigue uses Date.now() internally
-  // and decays over hours. Without a date tag the cache serves stale data all day.
-  const todayTag = anchorDateStr || new Date().toISOString().slice(0, 10);
+  const todayTag = anchorDateStr || formatLocalDateStr(new Date());
   const cacheKey = `muscle_load_${generateDatasetFingerprint(logs, `${windowDays}_${todayTag}_${onlyHardSets}`)}`;
   return computeOrGetHotCache(cacheKey, () => {
     const load: Record<MuscleSlug, number> = {} as any;
     MUSCLES.forEach(m => (load[m] = 0));
 
-    const now = anchorDateStr ? new Date(anchorDateStr).getTime() : Date.now();
+    const now = resolveAnchorTimestamp(anchorDateStr);
     const windowMs = windowDays === 0 ? Infinity : windowDays * 86400000;
 
     for (const log of logs || []) {
       if (!log.date) continue;
-      const logTime = new Date(log.date).getTime();
+      const logTime = resolveLogTimestamp(log);
       if (windowMs !== Infinity && (now - logTime > windowMs || logTime > now + 86400000)) {
         continue;
       }
@@ -322,13 +340,11 @@ export function calculateMuscleFatigue(
   logs: GymDayLog[],
   anchorDateStr?: string
 ): Record<MuscleSlug, MuscleRecoveryData> {
-  // FIX (Bug A): Fatigue decays exponentially with a ~36h half-life. Without a date tag
-  // the cache returns 9am scores at 6pm — showing muscles as fully recovered when they aren't.
-  const todayTag = anchorDateStr || new Date().toISOString().slice(0, 10);
+  const todayTag = anchorDateStr || formatLocalDateStr(new Date());
   const cacheKey = `muscle_fatigue_${generateDatasetFingerprint(logs, todayTag)}`;
   return computeOrGetHotCache(cacheKey, () => {
     const out: Record<MuscleSlug, MuscleRecoveryData> = {} as any;
-    const now = anchorDateStr ? new Date(anchorDateStr).getTime() : Date.now();
+    const now = resolveAnchorTimestamp(anchorDateStr);
 
     const muscleHistory: Record<MuscleSlug, { sets: number; time: number }[]> = {} as any;
     MUSCLES.forEach(m => (muscleHistory[m] = []));
@@ -336,12 +352,12 @@ export function calculateMuscleFatigue(
     // Collect all set timestamps per muscle
     for (const log of logs || []) {
       if (!log.date) continue;
-      const logTime = new Date(log.date).getTime();
+      const logTime = resolveLogTimestamp(log);
       if (logTime > now + 86400000) continue;
 
       for (const ex of log.exercises || []) {
         if (ex.skipped) continue;
-        const completedSets = (ex.setsLog || []).filter((s: any) => s.completed).length;
+        const completedSets = (ex.setsLog || []).filter((s: any) => s.completed && !s.isWarmup).length;
         if (!completedSets) continue;
 
         const weights = getExerciseMuscleWeights(ex);
@@ -433,22 +449,20 @@ export function calculateMacroVolumeLoad(
   windowDays: number = 30,
   anchorDateStr?: string
 ): Record<MuscleSlug, MacroMuscleVolume> {
-  // FIX (Bug A): Volume windows use Date.now() as their cutoff. The cache key must include
-  // today's date so the trailing-edge of the window advances correctly day-to-day.
-  const todayTag = anchorDateStr || new Date().toISOString().slice(0, 10);
+  const todayTag = anchorDateStr || formatLocalDateStr(new Date());
   const cacheKey = `macro_vol_${generateDatasetFingerprint(logs, `${windowDays}_${todayTag}`)}`;
   return computeOrGetHotCache(cacheKey, () => {
     const out: Record<MuscleSlug, MacroMuscleVolume> = {} as any;
     MUSCLES.forEach(m => (out[m] = { sets: 0, volumeKg: 0, level: 0, percentage: 0 }));
 
-    const now = anchorDateStr ? new Date(anchorDateStr).getTime() : Date.now();
+    const now = resolveAnchorTimestamp(anchorDateStr);
     const windowMs = windowDays === 0 ? Infinity : windowDays * 86400000;
 
     let totalKgAll = 0;
 
     for (const log of logs || []) {
       if (!log.date) continue;
-      const logTime = new Date(log.date).getTime();
+      const logTime = resolveLogTimestamp(log);
       if (windowMs !== Infinity && (now - logTime > windowMs || logTime > now + 86400000)) {
         continue;
       }
@@ -458,7 +472,7 @@ export function calculateMacroVolumeLoad(
         const weights = getExerciseMuscleWeights(ex);
 
         for (const s of ex.setsLog || []) {
-          if (!s.completed) continue;
+          if (!s.completed || s.isWarmup) continue;
           const w = Number(s.weight) || 0;
           const r = Number(s.reps) || 0;
           const setVol = w * r;
@@ -497,8 +511,7 @@ export function calculateMuscleGrowthProgression(
   windowDays: number = 30,
   anchorDateStr?: string
 ): Record<MuscleSlug, MacroMuscleGrowth> {
-  // FIX (Bug A): Growth progression uses Date.now() for the window cutoff — needs daily cache key.
-  const todayTag = anchorDateStr || new Date().toISOString().slice(0, 10);
+  const todayTag = anchorDateStr || formatLocalDateStr(new Date());
   const cacheKey = `macro_growth_${generateDatasetFingerprint(logs, `${windowDays}_${todayTag}`)}`;
   return computeOrGetHotCache(cacheKey, () => {
     const out: Record<MuscleSlug, MacroMuscleGrowth> = {} as any;
@@ -510,14 +523,14 @@ export function calculateMuscleGrowthProgression(
       loadDeltaKg: 0,
     }));
 
-    const now = anchorDateStr ? new Date(anchorDateStr).getTime() : Date.now();
+    const now = resolveAnchorTimestamp(anchorDateStr);
     const windowMs = windowDays === 0 ? Infinity : windowDays * 86400000;
 
     // Filter logs in window & sort chronologically
     const filtered = (logs || [])
       .filter(l => {
         if (!l.date) return false;
-        const t = new Date(l.date).getTime();
+        const t = resolveLogTimestamp(l);
         return windowMs === Infinity || (now - t <= windowMs && t <= now + 86400000);
       })
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -531,7 +544,7 @@ export function calculateMuscleGrowthProgression(
     for (const log of filtered) {
       for (const ex of log.exercises || []) {
         if (ex.skipped || !ex.name) continue;
-        const completed = (ex.setsLog || []).filter((s: any) => s.completed);
+        const completed = (ex.setsLog || []).filter((s: any) => s.completed && !s.isWarmup);
         if (!completed.length) continue;
 
         const topW = Math.max(0, ...completed.map((s: any) => Number(s.weight) || 0));
@@ -616,7 +629,7 @@ export function calculateSymmetryAndBalance(
   // to avoid a double cold-miss on first render. On first call both symmetry AND volume are
   // cache misses — without this hoist, the full log traversal ran twice in one JS frame.
   // Now volumeMap is computed once (and itself cached), then reused by symmetry calculation.
-  const todayTag = anchorDateStr || new Date().toISOString().slice(0, 10);
+  const todayTag = anchorDateStr || formatLocalDateStr(new Date());
   const cacheKey = `macro_symmetry_${generateDatasetFingerprint(logs, `${windowDays}_${todayTag}`)}`;
   const volumeMap = calculateMacroVolumeLoad(logs, windowDays, anchorDateStr);
   return computeOrGetHotCache(cacheKey, () => {

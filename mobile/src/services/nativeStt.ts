@@ -97,6 +97,8 @@ export async function requestSttPermissions(): Promise<boolean> {
  * @param callbacks - Event callbacks for state changes, results, and errors
  * @param options - Optional configuration overrides
  */
+let _isStarting = false;
+
 export async function startNativeStt(
   callbacks: NativeSttCallbacks,
   options?: {
@@ -110,41 +112,32 @@ export async function startNativeStt(
     return;
   }
 
-  // Prevent double-start
-  if (_isListening) {
-    console.log('[NativeSTT] Already listening, stopping first...');
+  if (_isListening || _isStarting) {
     stopNativeStt();
   }
 
+  _isStarting = true;
   _callbacks = callbacks;
   _latestTranscript = '';
   _hasDeliveredFinal = false;
 
-  // Request permissions
   const hasPermission = await requestSttPermissions();
   if (!hasPermission) {
+    _isStarting = false;
     callbacks.onError('Speech recognition permission denied');
     callbacks.onStateChange('error');
     return;
   }
 
   try {
-    // Clean up any previous listeners
     _removeListeners();
 
-    // Register event listeners BEFORE starting
     _removeResultListener = ExpoSpeechRecognitionModule.addListener(
       'result',
       (event: ExpoSpeechRecognitionNativeEventMap['result']) => {
         if (!_callbacks) return;
 
-        // CRITICAL BUG FIX: event.results is an array of candidate hypothesis alternatives
-        // (N-best hypothesis candidates) sorted by highest confidence first!
-        // event.results[0] is the top, most accurate transcription.
-        // Previously: .map(r => r.transcript).join(' ') concatenated ALL 5 alternative guesses
-        // into a single repeating sentence!
         const topTranscript = (event.results?.[0]?.transcript || '').trim();
-
         const isFinal = event.isFinal ?? false;
 
         if (topTranscript) {
@@ -155,15 +148,14 @@ export async function startNativeStt(
           _callbacks.onResult(topTranscript, isFinal);
         }
 
-        // On final result, auto-stop only if continuous mode is explicitly false
         if (isFinal && options?.continuous === false) {
           _isListening = false;
+          _removeListeners();
           _callbacks.onStateChange('idle');
         }
       }
     );
 
-    // Audio level meter listener
     try {
       _removeVolumeListener = ExpoSpeechRecognitionModule.addListener(
         'volumechange',
@@ -173,65 +165,60 @@ export async function startNativeStt(
           }
         }
       );
-    } catch {
-      // Non-critical if volume listener is unsupported on older OS
-    }
+    } catch {}
 
     _removeErrorListener = ExpoSpeechRecognitionModule.addListener(
       'error',
       (event: ExpoSpeechRecognitionNativeEventMap['error']) => {
-        if (!_callbacks) return;
+        const activeCallbacks = _callbacks;
+        _isListening = false;
+        _isStarting = false;
+        _removeListeners();
+        if (!activeCallbacks) return;
 
         const errorCode = event.error;
         const errorMsg = event.message || `Speech recognition error: ${errorCode}`;
 
-        _isListening = false;
-
-        // If we already have captured spoken text, do NOT drop it on trailing timeout!
         if (!_hasDeliveredFinal && _latestTranscript.trim().length > 0) {
-          console.log('[NativeSTT] Preserving captured speech on error:', _latestTranscript);
           _hasDeliveredFinal = true;
-          _callbacks.onResult(_latestTranscript.trim(), true);
-          _callbacks.onStateChange('idle');
+          activeCallbacks.onResult(_latestTranscript.trim(), true);
+          activeCallbacks.onStateChange('idle');
           return;
         }
 
-        // "no-speech" / "speech-timeout" when nothing was spoken
         if (errorCode === 'no-speech' || errorCode === 'speech-timeout') {
-          _callbacks.onError('No speech detected. Tap mic to speak.');
-        } else if (errorCode === 'aborted') {
-          console.log('[NativeSTT] Recognition aborted.');
-        } else {
-          console.warn('[NativeSTT] Error:', errorCode, errorMsg);
-          _callbacks.onError(errorMsg);
+          activeCallbacks.onError('No speech detected. Tap mic to speak.');
+        } else if (errorCode !== 'aborted') {
+          activeCallbacks.onError(errorMsg);
         }
 
-        _callbacks.onStateChange('idle');
+        activeCallbacks.onStateChange('idle');
       }
     );
 
     _removeEndListener = ExpoSpeechRecognitionModule.addListener(
       'end',
       () => {
+        const activeCallbacks = _callbacks;
         _isListening = false;
-        if (_callbacks) {
-          // If speech was spoken before engine ended and final result hasn't been emitted yet, commit it now!
+        _isStarting = false;
+        _removeListeners();
+        if (activeCallbacks) {
           if (!_hasDeliveredFinal && _latestTranscript.trim().length > 0) {
             _hasDeliveredFinal = true;
-            _callbacks.onResult(_latestTranscript.trim(), true);
+            activeCallbacks.onResult(_latestTranscript.trim(), true);
           }
-          _callbacks.onStateChange('idle');
+          activeCallbacks.onStateChange('idle');
         }
       }
     );
 
-    // Start the native recognizer in continuous ramble mode with maxAlternatives: 1
     ExpoSpeechRecognitionModule.start({
-      lang: options?.lang || 'en-IN',     // Indian English by default
-      interimResults: true,                // Stream words live as user speaks
-      maxAlternatives: 1,                  // Return only the top-confidence hypothesis
-      continuous: options?.continuous ?? true, // Continuous ramble by default!
-      requiresOnDeviceRecognition: false,  // Allow network for best recognition
+      lang: options?.lang || 'en-IN',
+      interimResults: true,
+      maxAlternatives: 1,
+      continuous: options?.continuous ?? true,
+      requiresOnDeviceRecognition: false,
       androidIntentOptions: {
         EXTRA_LANGUAGE_MODEL: 'free_form',
         EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: 3000,
@@ -243,45 +230,41 @@ export async function startNativeStt(
       },
     });
 
+    _isStarting = false;
     _isListening = true;
     callbacks.onStateChange('listening');
-    console.log('[NativeSTT] Started native continuous speech recognition (maxAlternatives: 1)');
-
   } catch (err: any) {
-    console.error('[NativeSTT] Failed to start:', err);
+    _isStarting = false;
+    _isListening = false;
+    _removeListeners();
     callbacks.onError(`Failed to start speech recognition: ${err.message}`);
     callbacks.onStateChange('error');
-    _isListening = false;
   }
 }
 
-/**
- * Stop the native speech recognizer.
- * Commits any pending speech before exiting.
- */
 export function stopNativeStt(): void {
   try {
+    _isStarting = false;
     if (_isListening && ExpoSpeechRecognitionModule) {
       ExpoSpeechRecognitionModule.stop();
       _isListening = false;
-      console.log('[NativeSTT] Stopped.');
     }
-    // Deliver captured speech as final immediately if not already finalized
     if (!_hasDeliveredFinal && _callbacks && _latestTranscript.trim().length > 0) {
       _hasDeliveredFinal = true;
       _callbacks.onResult(_latestTranscript.trim(), true);
+    }
+    _removeListeners();
+    if (_callbacks) {
+      _callbacks.onStateChange('idle');
     }
   } catch (err) {
     console.warn('[NativeSTT] Stop error:', err);
   }
 }
 
-/**
- * Abort the native speech recognizer immediately.
- * Unlike stop(), this discards any pending results.
- */
 export function abortNativeStt(): void {
   try {
+    _isStarting = false;
     if (ExpoSpeechRecognitionModule) {
       ExpoSpeechRecognitionModule.abort();
     }
@@ -292,7 +275,6 @@ export function abortNativeStt(): void {
     if (_callbacks) {
       _callbacks.onStateChange('idle');
     }
-    console.log('[NativeSTT] Aborted.');
   } catch (err) {
     console.warn('[NativeSTT] Abort error:', err);
   }
