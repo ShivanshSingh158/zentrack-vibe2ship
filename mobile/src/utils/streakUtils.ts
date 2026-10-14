@@ -1,5 +1,57 @@
 import { Task, LearningTopic } from '../contexts/MobileDataContext';
 import { formatLocalDateStr } from './dateUtils';
+import { isValidWorkoutSession } from './gymUtils';
+
+function normalizeDateStr(raw?: string | null): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  const datePart = trimmed.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+    return datePart;
+  }
+  return null;
+}
+
+export function collectActiveDates(
+  tasks?: Task[],
+  gymLogs?: any[],
+  habitLogs?: any[],
+  learningTopics?: LearningTopic[]
+): Set<string> {
+  const activeDates = new Set<string>();
+
+  tasks?.forEach(t => {
+    if (t.status === 'completed' && t.date) {
+      const d = normalizeDateStr(t.date);
+      if (d) activeDates.add(d);
+    }
+  });
+
+  gymLogs?.forEach(g => {
+    if (g && isValidWorkoutSession(g) && g.date) {
+      const d = normalizeDateStr(g.date);
+      if (d) activeDates.add(d);
+    }
+  });
+
+  habitLogs?.forEach(h => {
+    if (h && h.date) {
+      const d = normalizeDateStr(h.date);
+      if (d) activeDates.add(d);
+    }
+  });
+
+  learningTopics?.forEach(t => {
+    t.subTasks?.forEach(s => {
+      if (s.isCompleted && s.completedDate) {
+        const d = normalizeDateStr(s.completedDate);
+        if (d) activeDates.add(d);
+      }
+    });
+  });
+
+  return activeDates;
+}
 
 export function calculateAppStreak(
   tasks?: Task[],
@@ -7,22 +59,7 @@ export function calculateAppStreak(
   habitLogs?: any[],
   learningTopics?: LearningTopic[]
 ): number {
-  // Pre-index all active dates in O(N) single pass for O(1) day-by-day evaluation
-  const activeDates = new Set<string>();
-  tasks?.forEach(t => {
-    if (t.status === 'completed' && t.date) activeDates.add(t.date);
-  });
-  gymLogs?.forEach(g => {
-    if (g.date) activeDates.add(g.date);
-  });
-  habitLogs?.forEach(h => {
-    if (h.date) activeDates.add(h.date);
-  });
-  learningTopics?.forEach(t => {
-    t.subTasks?.forEach(s => {
-      if (s.isCompleted && s.completedDate) activeDates.add(s.completedDate);
-    });
-  });
+  const activeDates = collectActiveDates(tasks, gymLogs, habitLogs, learningTopics);
 
   let current = 0;
   for (let i = 0; i < 365; i++) {
@@ -55,22 +92,7 @@ export function calculateLongestAppStreak(
   habitLogs?: any[],
   learningTopics?: LearningTopic[]
 ): number {
-  const activeDatesSet = new Set<string>();
-
-  tasks?.forEach(t => {
-    if (t.status === 'completed' && t.date) activeDatesSet.add(t.date);
-  });
-  gymLogs?.forEach(g => {
-    if (g.date) activeDatesSet.add(g.date);
-  });
-  habitLogs?.forEach(h => {
-    if (h.date) activeDatesSet.add(h.date);
-  });
-  learningTopics?.forEach(t => {
-    t.subTasks?.forEach(s => {
-      if (s.isCompleted && s.completedDate) activeDatesSet.add(s.completedDate);
-    });
-  });
+  const activeDatesSet = collectActiveDates(tasks, gymLogs, habitLogs, learningTopics);
 
   const sortedDates = Array.from(activeDatesSet).sort();
   if (sortedDates.length === 0) return 0;
@@ -104,22 +126,7 @@ export function calculateTotalActiveDays(
   habitLogs?: any[],
   learningTopics?: LearningTopic[]
 ): number {
-  const activeDatesSet = new Set<string>();
-  tasks?.forEach(t => {
-    if (t.status === 'completed' && t.date) activeDatesSet.add(t.date);
-  });
-  gymLogs?.forEach(g => {
-    if (g.date) activeDatesSet.add(g.date);
-  });
-  habitLogs?.forEach(h => {
-    if (h.date) activeDatesSet.add(h.date);
-  });
-  learningTopics?.forEach(t => {
-    t.subTasks?.forEach(s => {
-      if (s.isCompleted && s.completedDate) activeDatesSet.add(s.completedDate);
-    });
-  });
-  return activeDatesSet.size;
+  return collectActiveDates(tasks, gymLogs, habitLogs, learningTopics).size;
 }
 
 export function calculateConsistencyRate(
@@ -129,21 +136,7 @@ export function calculateConsistencyRate(
   windowDays = 30,
   learningTopics?: LearningTopic[]
 ): number {
-  const activeDates = new Set<string>();
-  tasks?.forEach(t => {
-    if (t.status === 'completed' && t.date) activeDates.add(t.date);
-  });
-  gymLogs?.forEach(g => {
-    if (g.date) activeDates.add(g.date);
-  });
-  habitLogs?.forEach(h => {
-    if (h.date) activeDates.add(h.date);
-  });
-  learningTopics?.forEach(t => {
-    t.subTasks?.forEach(s => {
-      if (s.isCompleted && s.completedDate) activeDates.add(s.completedDate);
-    });
-  });
+  const activeDates = collectActiveDates(tasks, gymLogs, habitLogs, learningTopics);
 
   let activeDays = 0;
   for (let i = 0; i < windowDays; i++) {
@@ -157,6 +150,7 @@ export function calculateConsistencyRate(
   }
   return Math.round((activeDays / windowDays) * 100);
 }
+
 
 export interface StreakMilestone {
   days: number;

@@ -19,6 +19,7 @@ import type { Task, Habit, HabitLog } from "../MobileDataContext";
 import { writeCoreCacheMulti, readCoreCacheMulti, clearCoreCache } from "../../utils/coreCache";
 import { loadBootManifest, getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
 import { clearAllDomainCaches } from "../../utils/domainCache";
+import { clearSyncMeta } from "../../utils/syncMeta";
 import { registerForPushNotificationsAsync, clearScheduleCache } from "../../services/notifications";
 import { handleSyncError } from '../../utils/errorUtils';
 import { parseTask, parseHabit, parseHabitLog, areItemsEqual } from "../../utils/schemaGuards";
@@ -583,6 +584,7 @@ export async function performSignOut() {
     await auth.signOut();
     await clearCoreCache();
     await clearAllDomainCaches();
+    clearSyncMeta(currentUid);
     clearScheduleCache();
     await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
     if (currentUid) {

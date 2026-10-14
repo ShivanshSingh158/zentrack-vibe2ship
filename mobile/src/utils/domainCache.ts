@@ -211,8 +211,14 @@ export const readCreativeCache  = () => readDomainCache<CreativeCache>(CREATIVE_
 export const writeCreativeCache = (data: Partial<CreativeCache>, immediate = false) => writeDomainCache(data, CREATIVE_KEY_MAP, immediate);
 
 export async function clearAllDomainCaches(): Promise<void> {
+  for (const timer of _writeTimers.values()) {
+    clearTimeout(timer);
+  }
+  _writeTimers.clear();
+  _pendingWrites.clear();
   try {
     clearDomainHotCache();
     await AsyncStorage.multiRemove(Object.values(DOMAIN_CACHE_KEYS));
   } catch { /* silent */ }
 }
+

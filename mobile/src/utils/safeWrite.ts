@@ -22,8 +22,9 @@
 import NetInfo from '@react-native-community/netinfo';
 import { queueWrite } from '../services/offlineSync';
 import { touchServerSyncMeta } from './syncMeta';
+import { deepSanitize } from './firebaseUtils';
 
-type FirestoreOperation = 'add' | 'update' | 'delete' | 'set';
+export type FirestoreOperation = 'add' | 'update' | 'delete' | 'set';
 
 /**
  * Executes a Firestore write safely:
@@ -33,40 +34,47 @@ type FirestoreOperation = 'add' | 'update' | 'delete' | 'set';
  * @returns true if online write succeeded, false if queued offline
  */
 export async function safeWrite(
-  firestoreFn: () => Promise<any>,
+  firestoreFn: (sanitizedPayload?: any) => Promise<any>,
   collectionName: string,
   operation: FirestoreOperation,
   data: any,
   docId?: string,
 ): Promise<boolean> {
-  try {
-    const now = Date.now();
-    const payload = data && typeof data === 'object' ? { ...data } : data;
-    if (payload && typeof payload === 'object' && operation !== 'delete') {
-      if (!payload.updatedAt) payload.updatedAt = now;
-      payload.clientUpdatedAt = now;
-    }
+  const now = Date.now();
+  const rawPayload = data && typeof data === 'object' ? { ...data } : data;
+  if (rawPayload && typeof rawPayload === 'object' && operation !== 'delete') {
+    if (!rawPayload.updatedAt) rawPayload.updatedAt = now;
+    rawPayload.clientUpdatedAt = now;
+  }
+  const payload = rawPayload && typeof rawPayload === 'object' ? deepSanitize(rawPayload) : rawPayload;
 
+  try {
     const state = await NetInfo.fetch();
     const isOnline = state.isConnected === true && state.isInternetReachable !== false;
 
     if (isOnline) {
       try {
-        await firestoreFn();
+        await firestoreFn(payload);
         touchServerSyncMeta();
         return true;
       } catch (onlineErr: any) {
         // Transient network blip even though NetInfo said online — queue as safety net
-        console.warn(`[safeWrite] Online write failed for ${collectionName}/${docId}, queueing fallback:`, onlineErr?.message);
+        console.warn(
+          `[safeWrite] Online write failed for ${collectionName}/${docId ?? 'new'}, queueing fallback:`,
+          onlineErr?.message,
+        );
       }
     }
 
     // Offline path (or online write failed): enqueue to AsyncStorage
     await queueWrite(collectionName, operation, payload, docId);
-    touchServerSyncMeta();
     return false;
-  } catch (err) {
-    try { await queueWrite(collectionName, operation, data, docId); touchServerSyncMeta(); } catch { /* silent */ }
+  } catch {
+    try {
+      await queueWrite(collectionName, operation, payload, docId);
+    } catch {
+      /* silent */
+    }
     return false;
   }
 }
@@ -76,18 +84,19 @@ export async function safeUpdate(
   docId: string,
   collectionName: string,
   data: Record<string, any>,
-  firestoreFn: () => Promise<any>,
+  firestoreFn: (sanitizedPayload?: any) => Promise<any>,
 ): Promise<boolean> {
   return safeWrite(firestoreFn, collectionName, 'update', data, docId);
 }
 
-/** Convenience: ADD (offline-queued adds get Firestore ID on drain, replacing optimistic entry) */
+/** Convenience: ADD (supports optional deterministic docId to prevent duplicate creation on drain) */
 export async function safeAdd(
   collectionName: string,
   data: Record<string, any>,
-  firestoreFn: () => Promise<any>,
+  firestoreFn: (sanitizedPayload?: any) => Promise<any>,
+  docId?: string,
 ): Promise<boolean> {
-  return safeWrite(firestoreFn, collectionName, 'add', data, undefined);
+  return safeWrite(firestoreFn, collectionName, 'add', data, docId);
 }
 
 /** Convenience: DELETE */
@@ -98,3 +107,4 @@ export async function safeDelete(
 ): Promise<boolean> {
   return safeWrite(firestoreFn, collectionName, 'delete', null, docId);
 }
+

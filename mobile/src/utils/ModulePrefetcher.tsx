@@ -29,11 +29,13 @@ const wrapperCache = new Map<string, ComponentType<any>>();
 type Importer = () => Promise<{ default: ComponentType<any> }>;
 
 // ─── Background Prefetch Queue ────────────────────────────────────────────────
+const registeredImporters = new Map<string, Importer>();
 const prefetchQueue: { id: string; importer: Importer }[] = [];
 let isPrefetching = false;
 let pinnedOnlyMode = false;
 let pinnedModulesList: string[] = [];
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
+let stepTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Registers a module in the background prefetch queue.
@@ -41,66 +43,73 @@ let idleTimer: ReturnType<typeof setTimeout> | null = null;
  * Does NOT start loading — only enqueues.
  */
 const registerForPrefetch = (id: string, importer: Importer): void => {
+  registeredImporters.set(id, importer);
   if (!moduleCache.has(id) && !prefetchQueue.some(item => item.id === id)) {
     prefetchQueue.push({ id, importer });
   }
 };
 
+const scheduleNextStep = (delayMs: number): void => {
+  if (stepTimer) clearTimeout(stepTimer);
+  stepTimer = setTimeout(() => {
+    stepTimer = null;
+    InteractionManager.runAfterInteractions(processNext);
+  }, delayMs);
+};
+
+
 const processNext = (): void => {
+  while (prefetchQueue.length > 0 && moduleCache.has(prefetchQueue[0].id)) {
+    prefetchQueue.shift();
+  }
+
   if (prefetchQueue.length === 0) {
     isPrefetching = false;
     return;
   }
 
-  // If in pinned-only boot mode, stop once all pinned modules have finished
-  if (pinnedOnlyMode && prefetchQueue.length > 0) {
+  if (pinnedOnlyMode) {
     const nextId = prefetchQueue[0].id;
     if (!pinnedModulesList.includes(nextId)) {
-      // Finished all pinned modules! Stop prefetching now so JS thread stays 100% idle.
       isPrefetching = false;
       return;
     }
   }
 
   const next = prefetchQueue.shift();
-  if (!next) return;
-
-  if (moduleCache.has(next.id)) {
-    // Already loaded by user navigation — skip to next after brief idle delay
-    setTimeout(() => {
-      InteractionManager.runAfterInteractions(processNext);
-    }, 100);
+  if (!next) {
+    isPrefetching = false;
     return;
   }
 
   next.importer()
     .then(mod => {
       moduleCache.set(next.id, mod);
-      // Wait 250ms between modules so UI thread stays 100% responsive without lagging user interactions
-      setTimeout(() => {
-        InteractionManager.runAfterInteractions(processNext);
-      }, 250);
+      scheduleNextStep(250);
     })
     .catch(err => {
       console.warn(`[ModulePrefetcher] Failed to prefetch ${next.id}:`, err);
-      setTimeout(() => {
-        InteractionManager.runAfterInteractions(processNext);
-      }, 300);
+      // Re-enqueue at the tail so prefetchRemainingModules / preloadNow can still resolve it
+      if (!moduleCache.has(next.id) && !prefetchQueue.some(item => item.id === next.id)) {
+        prefetchQueue.push(next);
+      }
+      scheduleNextStep(300);
     });
 };
 
-/**
- * Starts background prefetching of modules.
- * When pinnedOnly is true (default on cold boot), ONLY the 4 pinned tabs are warmed,
- * dropping background warming time from 7.5s to 1.8s and leaving the JS thread free.
- */
 export const startPrefetching = (pinnedModules: string[] = [], pinnedOnly = true): void => {
-  if (isPrefetching || prefetchQueue.length === 0) return;
-  isPrefetching = true;
-  pinnedOnlyMode = pinnedOnly;
   pinnedModulesList = pinnedModules;
+  pinnedOnlyMode = pinnedOnly;
 
-  // Pinned modules go to the front of the queue
+  // Ensure any registered but unloaded modules are in the queue
+  for (const [id, importer] of registeredImporters.entries()) {
+    if (!moduleCache.has(id) && !prefetchQueue.some(item => item.id === id)) {
+      prefetchQueue.push({ id, importer });
+    }
+  }
+
+  if (prefetchQueue.length === 0) return;
+
   prefetchQueue.sort((a, b) => {
     const aPinned = pinnedModules.includes(a.id);
     const bPinned = pinnedModules.includes(b.id);
@@ -109,13 +118,11 @@ export const startPrefetching = (pinnedModules: string[] = [], pinnedOnly = true
     return 0;
   });
 
-  // Wait for initial Home frame & gestures to settle, then begin background module warming immediately
-  InteractionManager.runAfterInteractions(() => {
-    setTimeout(processNext, 120);
-  });
+  if (!isPrefetching) {
+    isPrefetching = true;
+    scheduleNextStep(120);
+  }
 
-  // If pinnedOnly is active, schedule a gentle 10s idle timer fallback so the rest
-  // warm quietly when the user is simply reading the dashboard
   if (pinnedOnly) {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
@@ -124,10 +131,6 @@ export const startPrefetching = (pinnedModules: string[] = [], pinnedOnly = true
   }
 };
 
-/**
- * prefetchRemainingModules — warms the remaining unpinned modules (Notes, Grades, Settings, etc.)
- * Triggered when the user focuses the "More" tab or opens MoreScreen.
- */
 export const prefetchRemainingModules = (): void => {
   if (idleTimer) {
     clearTimeout(idleTimer);
@@ -136,27 +139,20 @@ export const prefetchRemainingModules = (): void => {
   pinnedOnlyMode = false;
   if (isPrefetching || prefetchQueue.length === 0) return;
   isPrefetching = true;
-  InteractionManager.runAfterInteractions(() => {
-    setTimeout(processNext, 100);
-  });
+  scheduleNextStep(100);
 };
 
-/**
- * preloadNow — immediately loads a single module into the cache.
- * Use this for high-priority screens (e.g. Sara) that should be warm
- * a few seconds after login without waiting for the full queue.
- * Safe to call multiple times — no-ops if already cached.
- */
 export const preloadNow = (id: string): void => {
-  if (moduleCache.has(id)) return; // already loaded — nothing to do
-  const entry = prefetchQueue.find(item => item.id === id);
-  if (!entry) return;
-  entry.importer().then(mod => {
+  if (moduleCache.has(id)) return;
+  const importer = registeredImporters.get(id);
+  if (!importer) return;
+  importer().then(mod => {
     moduleCache.set(id, mod);
   }).catch(err => {
     console.warn(`[ModulePrefetcher] preloadNow failed for ${id}:`, err);
   });
 };
+
 
 /**
  * cacheAwareLazy — The core primitive.

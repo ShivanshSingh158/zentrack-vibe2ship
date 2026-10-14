@@ -1,4 +1,4 @@
-﻿/**
+/**
  * attendanceRepair.ts — ZenTrack Mobile
  *
  * One-time Firestore repair that de-duplicates attendance_logs and
@@ -28,7 +28,7 @@ import {
 import { db } from '../services/firebase';
 import { COLLECTION } from '../config/constants';
 
-const REPAIR_FLAG_KEY = 'zentrack_attendance_dedup_repair_v2_done';
+const REPAIR_FLAG_PREFIX = 'zentrack_attendance_dedup_repair_v3_done_';
 const BATCH_SIZE = 400; // Well under Firestore 500-op limit
 
 /**
@@ -56,10 +56,13 @@ export async function repairDuplicateAttendanceLogs(
   uid: string
 ): Promise<RepairResult> {
   const result: RepairResult = { fixed: 0, deleted: 0, errors: [] };
+  if (!uid) return result;
+
+  const flagKey = `${REPAIR_FLAG_PREFIX}${uid}`;
 
   try {
-    // Idempotency: skip if already done this session
-    const flag = await AsyncStorage.getItem(REPAIR_FLAG_KEY).catch(() => null);
+    // Idempotency: skip if already done for this user
+    const flag = await AsyncStorage.getItem(flagKey).catch(() => null);
     if (flag === 'done') return result;
 
     // ── 1. Load all non-extra scheduled logs for this user ─────────────────
@@ -70,7 +73,7 @@ export async function repairDuplicateAttendanceLogs(
     ));
 
     if (logsSnap.empty) {
-      await AsyncStorage.setItem(REPAIR_FLAG_KEY, 'done').catch(() => {});
+      await AsyncStorage.setItem(flagKey, 'done').catch(() => {});
       return result;
     }
 
@@ -96,24 +99,41 @@ export async function repairDuplicateAttendanceLogs(
       attendedKey: string;   totalKey: string;
     }>();
     const docsToDelete: string[] = [];
+    const docsToMigrate: { id: string; data: Record<string, any> }[] = [];
 
     for (const [, docs] of groups) {
       if (docs.length <= 1) continue;
 
       const sample = docs[0].data;
       const logType: 'class' | 'lab' = sample.type === 'lab' ? 'lab' : 'class';
+      const safeIdx = typeof sample.idx === 'number' ? sample.idx : 0;
       const expectedId = buildDeterministicId(
         uid,
         String(sample.subjectId || ''),
         String(sample.date || ''),
         logType,
-        typeof sample.idx === 'number' ? sample.idx : 0
+        safeIdx
       );
 
       // Keep the deterministic-ID doc if it exists, otherwise keep newest
       const keepDoc =
         docs.find(d => d.id === expectedId) ??
-        docs.sort((a, b) => (b.data.timestamp ?? 0) - (a.data.timestamp ?? 0))[0];
+        [...docs].sort((a, b) => (b.data.timestamp ?? 0) - (a.data.timestamp ?? 0))[0];
+
+      // If the surviving doc does not have the deterministic ID, migrate it to expectedId
+      if (keepDoc.id !== expectedId) {
+        docsToMigrate.push({
+          id: expectedId,
+          data: {
+            ...keepDoc.data,
+            userId: uid,
+            date: String(sample.date || '').slice(0, 10),
+            type: logType,
+            idx: safeIdx,
+          },
+        });
+        docsToDelete.push(keepDoc.id);
+      }
 
       const extras = docs.filter(d => d.id !== keepDoc.id);
       result.fixed++;
@@ -140,17 +160,27 @@ export async function repairDuplicateAttendanceLogs(
       });
     }
 
-    if (docsToDelete.length === 0) {
-      await AsyncStorage.setItem(REPAIR_FLAG_KEY, 'done').catch(() => {});
+    if (docsToDelete.length === 0 && docsToMigrate.length === 0) {
+      await AsyncStorage.setItem(flagKey, 'done').catch(() => {});
       return result;
     }
 
-    // ── 4a. Delete extra log docs in batches ────────────────────────────────
-    for (let i = 0; i < docsToDelete.length; i += BATCH_SIZE) {
+    // ── 4a. Batch migrate and delete log docs ──────────────────────────────
+    const allOps: Array<{ type: 'set' | 'delete'; id: string; data?: Record<string, any> }> = [
+      ...docsToMigrate.map(m => ({ type: 'set' as const, id: m.id, data: m.data })),
+      ...docsToDelete.map(id => ({ type: 'delete' as const, id })),
+    ];
+
+    for (let i = 0; i < allOps.length; i += BATCH_SIZE) {
       const batch = writeBatch(db);
-      docsToDelete.slice(i, i + BATCH_SIZE).forEach(id =>
-        batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, id))
-      );
+      allOps.slice(i, i + BATCH_SIZE).forEach(op => {
+        const ref = doc(db, COLLECTION.ATTENDANCE_LOGS, op.id);
+        if (op.type === 'set' && op.data) {
+          batch.set(ref, op.data, { merge: true });
+        } else {
+          batch.delete(ref);
+        }
+      });
       await batch.commit();
     }
 
@@ -175,7 +205,7 @@ export async function repairDuplicateAttendanceLogs(
     }
 
     // ── 5. Mark done ────────────────────────────────────────────────────────
-    await AsyncStorage.setItem(REPAIR_FLAG_KEY, 'done').catch(() => {});
+    await AsyncStorage.setItem(flagKey, 'done').catch(() => {});
     console.log(
       `[AttendanceRepair] Done. Fixed ${result.fixed} groups, deleted ${result.deleted} extra logs.`
     );
@@ -187,3 +217,4 @@ export async function repairDuplicateAttendanceLogs(
 
   return result;
 }
+

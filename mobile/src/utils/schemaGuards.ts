@@ -15,8 +15,58 @@ import {
   LearningTopic, LearningSubTask, JobApplication, WeeklyReview, ContentLog
 } from '../contexts/MobileDataContext';
 import { resolveExerciseTargetMuscle } from './gymUtils';
+import { formatLocalDateStr } from './dateUtils';
 
 // ─── Helper Primitives ────────────────────────────────────────────────────────
+
+/**
+ * Safely normalizes any Firestore date representation (YYYY-MM-DD string, ISO string,
+ * Firestore Timestamp, serialized {seconds, nanoseconds}, Date instance, or epoch ms)
+ * into a local YYYY-MM-DD string without UTC midnight shift.
+ */
+export function sanitizeDateString(val: any, fallback?: string): string {
+  const safeFallback = fallback !== undefined ? fallback : formatLocalDateStr();
+  if (!val) return safeFallback;
+
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+      return trimmed.slice(0, 10);
+    }
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      return formatLocalDateStr(parsed);
+    }
+    return safeFallback;
+  }
+
+  if (typeof val === 'number' && isFinite(val)) {
+    const d = new Date(val);
+    return !isNaN(d.getTime()) ? formatLocalDateStr(d) : safeFallback;
+  }
+
+  if (val instanceof Date) {
+    return !isNaN(val.getTime()) ? formatLocalDateStr(val) : safeFallback;
+  }
+
+  if (typeof val === 'object') {
+    if (typeof val.toDate === 'function') {
+      try {
+        const d = val.toDate();
+        if (d instanceof Date && !isNaN(d.getTime())) return formatLocalDateStr(d);
+      } catch {
+        return safeFallback;
+      }
+    }
+    if (typeof val.seconds === 'number') {
+      const d = new Date(val.seconds * 1000);
+      if (!isNaN(d.getTime())) return formatLocalDateStr(d);
+    }
+  }
+
+  return safeFallback;
+}
+
 
 /**
  * Truncates and sanitizes strings to prevent memory or layout crashes from giant strings.
@@ -92,8 +142,9 @@ export function parseTask(docData: any, docId: string): Task {
     title,
     status,
     priority,
-    date: sanitizeString(d.date, '', 10) || undefined,
+    date: d.date ? sanitizeDateString(d.date, '') || undefined : undefined,
     tags,
+
     isRecurring: Boolean(d.isRecurring),
     recurrenceRule: d.recurrenceRule && typeof d.recurrenceRule === 'object' ? d.recurrenceRule : undefined,
     recurringSourceId: d.recurringSourceId ? String(d.recurringSourceId) : undefined,
@@ -142,8 +193,9 @@ export function parseHabitLog(docData: any, docId: string): HabitLog {
     id: sanitizeString(docId || d.id, 'hlog_' + Date.now()),
     habitId: sanitizeString(d.habitId, ''),
     userId: sanitizeString(d.userId, ''),
-    date: sanitizeString(d.date, new Date().toISOString().split('T')[0], 10),
+    date: sanitizeDateString(d.date),
     count: sanitizeNumber(d.count, 1, 0, 10000),
+
     isFreeze: Boolean(d.isFreeze),
   };
 }
@@ -210,8 +262,9 @@ export function parseGymLog(docData: any, docId: string): GymLog {
   return {
     id,
     userId: sanitizeString(d.userId, ''),
-    date: sanitizeString(d.date, new Date().toISOString().split('T')[0], 10),
+    date: sanitizeDateString(d.date),
     exercises,
+
     cardio,
     workoutStartTime: d.workoutStartTime != null ? sanitizeNumber(d.workoutStartTime, 0, 0) : undefined,
     workoutDurationMinutes: d.workoutDurationMinutes != null ? sanitizeNumber(d.workoutDurationMinutes, 0, 0, 600) : undefined,
@@ -266,7 +319,7 @@ export function parseAttendanceLog(docData: any, docId: string): AttendanceLog {
     subjectName: sanitizeString(d.subjectName || d.name || 'Subject', 'Subject', 200),
     type: sanitizeEnum<'class' | 'lab'>(d.type, ['class', 'lab'], 'class'),
     action: sanitizeEnum<'attended' | 'missed' | 'cancelled'>(normalizedAction, ['attended', 'missed', 'cancelled'], 'attended'),
-    date: sanitizeString(String(d.date || '').slice(0, 10), new Date().toISOString().split('T')[0], 10),
+    date: sanitizeDateString(d.date),
     isExtra: Boolean(d.isExtra),
     timestamp: sanitizeNumber(d.timestamp || d.createdAt, Date.now(), 0),
     idx: typeof d.idx === 'number' ? d.idx : undefined,
@@ -281,7 +334,7 @@ export function parseAssignment(docData: any, docId: string): Assignment {
     title: sanitizeString(d.title, 'Untitled Assignment', 200),
     subjectName: sanitizeString(d.subjectName, 'General', 150),
     description: d.description ? sanitizeString(d.description, '', 1000) : undefined,
-    dueDate: sanitizeString(d.dueDate, new Date().toISOString().split('T')[0], 10),
+    dueDate: sanitizeDateString(d.dueDate),
     weightage: sanitizeNumber(d.weightage, 0, 0, 100),
     status: sanitizeEnum<'not_started' | 'in_progress' | 'submitted' | 'graded'>(
       d.status,
@@ -303,7 +356,8 @@ export function parseCustomEvent(docData: any, docId: string): CustomEvent {
     id: sanitizeString(docId || d.id, 'evt_' + Date.now()),
     userId: sanitizeString(d.userId, ''),
     title: sanitizeString(d.title, 'Untitled Event', 300),
-    date: sanitizeString(d.date, new Date().toISOString().split('T')[0], 10),
+    date: sanitizeDateString(d.date),
+
     type: sanitizeEnum<any>(
       d.type,
       ['todo', 'job', 'goal', 'exam', 'assignment_due', 'holiday', 'viva', 'submission', 'gcal', 'gym'],

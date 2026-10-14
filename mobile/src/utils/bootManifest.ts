@@ -19,7 +19,9 @@ import { LayoutItem } from '../components/Dashboard/DashboardLayoutSheet';
 export const BOOT_KEYS = {
   NAV_ROUTE:          '@zentrack_last_route',
   ONBOARDING:         '@zentrack_onboarding_completed',
+  ONBOARDING_V2:      'zentrack_onboarded_v2',
   OPTIMISTIC_USER:    '@zentrack_optimistic_user',
+
   PINNED_MODULES:     '@zentrack_pinned_modules',
   TASKS:              '@zentrack_cache_tasks',
   HABITS:             '@zentrack_cache_habits',
@@ -123,8 +125,9 @@ export async function loadBootManifest(): Promise<BootManifest> {
       }
 
       // Onboarded: explicit 'true' string in storage.
-      const onboardedVal = map.get(BOOT_KEYS.ONBOARDING) || map.get('zentrack_onboarded_v2');
-      const onboarded = onboardedVal === 'true';
+      const onboardedVal = map.get(BOOT_KEYS.ONBOARDING) || map.get(BOOT_KEYS.ONBOARDING_V2);
+      const onboarded = onboardedVal === 'true' || onboardedVal === '1';
+
 
       // 2. Pinned Modules
       let pinnedModules = DEFAULT_PINNED;

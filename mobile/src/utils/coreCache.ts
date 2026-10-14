@@ -82,9 +82,14 @@ export async function writeCoreCacheMulti(data: Partial<CoreCache>, immediate = 
   }, 1000);
 }
 
-// ── Invalidate — call on logout to clear stale data ──────────────────────────
 export async function clearCoreCache(): Promise<void> {
+  if (_coreWriteTimer) {
+    clearTimeout(_coreWriteTimer);
+    _coreWriteTimer = null;
+  }
+  _pendingCoreData = {};
   try {
     await AsyncStorage.multiRemove([KEYS.TASKS, KEYS.HABITS, KEYS.HABIT_LOGS]);
   } catch { /* silent */ }
 }
+

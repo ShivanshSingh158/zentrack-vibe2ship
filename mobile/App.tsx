@@ -41,6 +41,9 @@ import { formatLocalDateStr } from './src/utils/dateUtils';
 import { COLLECTION } from './src/config/constants';
 import { awardXP } from './src/services/xpSystem';
 import { repairDuplicateAttendanceLogs } from './src/utils/attendanceRepair';
+import { safeWrite } from './src/utils/safeWrite';
+
+
 
 /** Builds the same deterministic log ID as useAttendanceFirestore / attendanceConstants. */
 const buildAttLogId = (uid: string, subjectId: string, date: string, type: 'class' | 'lab', idx = 0) =>
@@ -133,8 +136,9 @@ export default function App() {
     // Initialize notification channels & check permissions immediately on boot
     requestNotificationPermissions().catch(console.warn);
 
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const handle = InteractionManager.runAfterInteractions(() => {
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         registerBackgroundNotificationFetch();
         unregisterBackgroundProactiveAgent().catch(() => {});
         registerWeeklyReviewTask();
@@ -145,10 +149,13 @@ export default function App() {
           repairDuplicateAttendanceLogs(uid).catch(() => {});
         }
       }, 3000);
-      return () => clearTimeout(timer);
     });
-    return () => handle.cancel();
+    return () => {
+      handle.cancel();
+      if (timer) clearTimeout(timer);
+    };
   }, []);
+
 
 
 
@@ -210,11 +217,6 @@ export default function App() {
       };
 
 
-      // ── ACTION: "Start Workout" button on gym_reminder ─────────────────────
-      if (actionIdentifier === 'start_workout') {
-        nav('Gym');
-        return;
-      }
 
       // ── ACTION: "Snooze 15m" button on gym_reminder ────────────────────────
       if (actionIdentifier === 'snooze_15m') {
@@ -254,20 +256,24 @@ export default function App() {
         let success = false;
         if (taskId) {
           try {
-            // BUG-06 FIX: Guard against re-completing an already-completed task
-            // (preserves original completedAt timestamp and prevents stale notification double-fire)
-            const taskSnap = await getDoc(doc(db, COLLECTION.TASKS, taskId));
-            if (taskSnap.exists() && taskSnap.data()?.status === 'completed') {
+            const taskRef = doc(db, COLLECTION.TASKS, taskId);
+            const taskSnap = await getDoc(taskRef).catch(() => null);
+            if (taskSnap && taskSnap.exists() && taskSnap.data()?.status === 'completed') {
               // Already done — silent no-op, don't re-fire confirmation
               return;
             }
-            await updateDoc(doc(db, COLLECTION.TASKS, taskId), {
-              status: 'completed',
-              completedAt: new Date().toISOString().slice(0, 10),
-            });
+            const todayLocal = formatLocalDateStr();
+            await safeWrite(
+              (payload) => updateDoc(taskRef, payload),
+              COLLECTION.TASKS,
+              'update',
+              { status: 'completed', completedAt: todayLocal },
+              taskId,
+            );
             // BUG-04 FIX: Award XP same as in-app task completion
             await awardXP('TASK_COMPLETE').catch(() => {});
             success = true;
+
           } catch (e) {
             console.warn('[Notification] mark_task_done write failed:', e);
           }
@@ -365,13 +371,17 @@ export default function App() {
           try {
             const todayDate = formatLocalDateStr();
 
-            // Duplicate guard: prevent writing two logs if tapped twice or already logged in-app
+            const uid = auth.currentUser?.uid;
+            const deterministicLogId = `${uid ?? 'anon'}_${habitId}_${todayDate}`;
+            const habitLogRef = doc(db, COLLECTION.HABIT_LOGS, deterministicLogId);
+
             const existingSnap = await getDocs(query(
               collection(db, COLLECTION.HABIT_LOGS),
               where('habitId', '==', habitId),
               where('date', '==', todayDate)
-            ));
-            if (!existingSnap.empty) {
+            )).catch(() => null);
+
+            if (existingSnap && !existingSnap.empty) {
               await Notifications.scheduleNotificationAsync({
                 content: {
                   title: 'Already Logged',
@@ -384,33 +394,41 @@ export default function App() {
               return;
             }
 
-            const uid = auth.currentUser?.uid;
-            // BUG-01 FIX: Must include userId so CoreDataContext listener (which filters
-            // by userId) picks up this document — without it the app still shows unlogged
-            await addDoc(collection(db, COLLECTION.HABIT_LOGS), {
+            const logPayload = {
               habitId,
               userId: uid ?? null,
               date: todayDate,
+              count: 1,
               completedAt: new Date().toISOString(),
-              timestamp: serverTimestamp(),
-            });
-            // Award base XP
+              timestamp: Date.now(),
+            };
+            await safeWrite(
+              (payload) => setDoc(habitLogRef, payload, { merge: true }),
+              COLLECTION.HABIT_LOGS,
+              'set',
+              logPayload,
+              deterministicLogId,
+            );
             await awardXP('HABIT_LOG').catch(() => {});
-            // Update streak + build confirmation message
-            const habitSnap = await getDoc(doc(db, COLLECTION.HABITS, habitId));
-            if (habitSnap.exists()) {
+
+            const habitRef = doc(db, COLLECTION.HABITS, habitId);
+            const habitSnap = await getDoc(habitRef).catch(() => null);
+            if (habitSnap && habitSnap.exists()) {
               const habitData     = habitSnap.data();
-              const habitName     = (habitData?.name    ?? 'Habit')  as string;
-              const currentStreak = (habitData?.streak  ?? 0)        as number;
-              const longestStreak = (habitData?.longestStreak ?? 0)  as number;
+              const habitName     = (habitData?.name ?? 'Habit') as string;
+              const currentStreak = (habitData?.streak ?? 0) as number;
+              const longestStreak = (habitData?.longestStreak ?? 0) as number;
               const newStreak     = currentStreak + 1;
-              // BUG-05/14 FIX: Use atomic increment(1) instead of read-modify-write
-              // to prevent race condition when in-app and notification both write simultaneously
-              await updateDoc(doc(db, COLLECTION.HABITS, habitId), {
-                streak: increment(1),
-                longestStreak: Math.max(newStreak, longestStreak),
-              });
-              // BUG-08 FIX: Award streak milestone XP same as HabitsScreen in-app path
+              await safeWrite(
+                () => updateDoc(habitRef, {
+                  streak: increment(1),
+                  longestStreak: Math.max(newStreak, longestStreak),
+                }),
+                COLLECTION.HABITS,
+                'update',
+                { streak: newStreak, longestStreak: Math.max(newStreak, longestStreak) },
+                habitId,
+              );
               if (newStreak === 7 || newStreak % 7 === 0) {
                 await awardXP('HABIT_STREAK_7').catch(() => {});
               }
@@ -427,6 +445,7 @@ export default function App() {
                 : 'Day 1 recorded. Consistency builds momentum.';
             }
             success = true;
+
           } catch (e) {
             console.warn('[Notification] log_habit write failed:', e);
           }
@@ -473,18 +492,18 @@ export default function App() {
         let success = false;
         if (subjectId && uid) {
           try {
-            const logType     = isLab ? 'lab' : 'class' as 'class' | 'lab';
+            const logType     = (isLab ? 'lab' : 'class') as 'class' | 'lab';
             const attendedKey = isLab ? 'labsAttended' : 'classesAttended';
             const totalKey    = isLab ? 'labsTotal'    : 'classesTotal';
             const logDocId    = buildAttLogId(uid, subjectId, logDate, logType, safeSessionIdx);
             const logRef      = doc(db, COLLECTION.ATTENDANCE_LOGS, logDocId);
+            const subjRef     = doc(db, COLLECTION.ATTENDANCE, subjectId);
 
-            const existing = await getDoc(logRef);
+            const existing = await getDoc(logRef).catch(() => null);
 
-            if (existing.exists()) {
+            if (existing && existing.exists()) {
               const oldAction = existing.data().action as string;
               if (oldAction === 'attended') {
-                // Already logged as present — fire soft confirmation and bail
                 cancelClassNotificationsImmediately(subjectId, subjectName, logDate, safeSessionIdx).catch(() => {});
                 clearScheduleCache();
                 await Notifications.scheduleNotificationAsync({
@@ -496,18 +515,17 @@ export default function App() {
                 }).catch(() => {});
                 return;
               }
-              // Was logged as something else (missed/cancelled) → swap action + fix counters
-              const attDelta = 1 - (oldAction === 'attended' ? 1 : 0); // always +1 here
-              const totDelta = 0 - (oldAction === 'cancelled' ? 0 : 1) + 1; // net tot delta
-              const updates: Record<string, any> = { lastUpdated: Date.now() };
-              if (attDelta !== 0) updates[attendedKey] = increment(attDelta);
-              if (totDelta !== 0) updates[totalKey]    = increment(totDelta);
+              const totDelta = oldAction === 'cancelled' ? 1 : 0;
+              const updates: Record<string, any> = {
+                [attendedKey]: increment(1),
+                lastUpdated: Date.now(),
+              };
+              if (totDelta !== 0) updates[totalKey] = increment(totDelta);
               await Promise.all([
-                updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), updates),
-                setDoc(logRef, { action: 'attended', timestamp: Date.now() }, { merge: true }),
+                safeWrite(() => updateDoc(subjRef, updates), COLLECTION.ATTENDANCE, 'update', { lastUpdated: Date.now() }, subjectId),
+                safeWrite((p) => setDoc(logRef, p, { merge: true }), COLLECTION.ATTENDANCE_LOGS, 'set', { action: 'attended', timestamp: Date.now() }, logDocId),
               ]);
             } else {
-              // New log → create + increment counters
               const logPayload = {
                 userId: uid, subjectId, subjectName,
                 type: logType, action: 'attended',
@@ -515,12 +533,14 @@ export default function App() {
                 isExtra: false, timestamp: Date.now(), idx: safeSessionIdx,
               };
               await Promise.all([
-                updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), {
-                  [attendedKey]: increment(1),
-                  [totalKey]:    increment(1),
-                  lastUpdated:   Date.now(),
-                }),
-                setDoc(logRef, logPayload),
+                safeWrite(
+                  () => updateDoc(subjRef, { [attendedKey]: increment(1), [totalKey]: increment(1), lastUpdated: Date.now() }),
+                  COLLECTION.ATTENDANCE,
+                  'update',
+                  { lastUpdated: Date.now() },
+                  subjectId,
+                ),
+                safeWrite((p) => setDoc(logRef, p), COLLECTION.ATTENDANCE_LOGS, 'set', logPayload, logDocId),
               ]);
               await awardXP('ATTENDANCE_LOG').catch(() => {});
             }
@@ -545,8 +565,6 @@ export default function App() {
         return;
       }
 
-      // ── ACTION: "Absent" button on class_reminder ───────────────────────────
-      // IDEMPOTENCY: Same deterministic-ID + getDoc + delta pattern as mark_present.
       if (actionIdentifier === 'mark_absent' || actionIdentifier === 'mark_bunking') {
         const subjectId   = parsedSubjectId;
         const subjectName = (data?.subject || 'Class') as string;
@@ -560,18 +578,18 @@ export default function App() {
         let success = false;
         if (subjectId && uid) {
           try {
-            const logType     = isLab ? 'lab' : 'class' as 'class' | 'lab';
+            const logType     = (isLab ? 'lab' : 'class') as 'class' | 'lab';
             const attendedKey = isLab ? 'labsAttended' : 'classesAttended';
             const totalKey    = isLab ? 'labsTotal'    : 'classesTotal';
             const logDocId    = buildAttLogId(uid, subjectId, logDate, logType, safeSessionIdx);
             const logRef      = doc(db, COLLECTION.ATTENDANCE_LOGS, logDocId);
+            const subjRef     = doc(db, COLLECTION.ATTENDANCE, subjectId);
 
-            const existing = await getDoc(logRef);
+            const existing = await getDoc(logRef).catch(() => null);
 
-            if (existing.exists()) {
+            if (existing && existing.exists()) {
               const oldAction = existing.data().action as string;
               if (oldAction === 'missed') {
-                // Already logged as absent — soft confirmation and bail
                 cancelClassNotificationsImmediately(subjectId, subjectName, logDate, safeSessionIdx).catch(() => {});
                 clearScheduleCache();
                 await Notifications.scheduleNotificationAsync({
@@ -583,18 +601,16 @@ export default function App() {
                 }).catch(() => {});
                 return;
               }
-              // Was logged as something else (attended/cancelled) → swap
-              const attDelta = (oldAction === 'attended' ? -1 : 0); // removing attended contrib
-              const totDelta = (oldAction === 'cancelled' ? 1 : 0); // cancelled had tot=0, missed has tot=1
+              const attDelta = oldAction === 'attended' ? -1 : 0;
+              const totDelta = oldAction === 'cancelled' ? 1 : 0;
               const updates: Record<string, any> = { lastUpdated: Date.now() };
               if (attDelta !== 0) updates[attendedKey] = increment(attDelta);
               if (totDelta !== 0) updates[totalKey]    = increment(totDelta);
               await Promise.all([
-                updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), updates),
-                setDoc(logRef, { action: 'missed', timestamp: Date.now() }, { merge: true }),
+                safeWrite(() => updateDoc(subjRef, updates), COLLECTION.ATTENDANCE, 'update', { lastUpdated: Date.now() }, subjectId),
+                safeWrite((p) => setDoc(logRef, p, { merge: true }), COLLECTION.ATTENDANCE_LOGS, 'set', { action: 'missed', timestamp: Date.now() }, logDocId),
               ]);
             } else {
-              // New log → create + increment total only (missed = not attended)
               const logPayload = {
                 userId: uid, subjectId, subjectName,
                 type: logType, action: 'missed',
@@ -602,11 +618,14 @@ export default function App() {
                 isExtra: false, timestamp: Date.now(), idx: safeSessionIdx,
               };
               await Promise.all([
-                updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), {
-                  [totalKey]:  increment(1),
-                  lastUpdated: Date.now(),
-                }),
-                setDoc(logRef, logPayload),
+                safeWrite(
+                  () => updateDoc(subjRef, { [totalKey]: increment(1), lastUpdated: Date.now() }),
+                  COLLECTION.ATTENDANCE,
+                  'update',
+                  { lastUpdated: Date.now() },
+                  subjectId,
+                ),
+                safeWrite((p) => setDoc(logRef, p), COLLECTION.ATTENDANCE_LOGS, 'set', logPayload, logDocId),
               ]);
               await awardXP('ATTENDANCE_LOG').catch(() => {});
             }
@@ -631,8 +650,7 @@ export default function App() {
         return;
       }
 
-      // ── ACTION: "Cancelled" button on class_reminder ───────────────────────
-      // IDEMPOTENCY: Deterministic ID + setDoc (cancelled logs don't affect counters).
+      // ── ACTION: "Cancelled" button on class_reminder (With Counter Rollback) ─
       if (actionIdentifier === 'mark_cancelled') {
         const subjectId   = parsedSubjectId;
         const subjectName = (data?.subject || 'Class') as string;
@@ -646,18 +664,39 @@ export default function App() {
         let success = false;
         if (subjectId && uid) {
           try {
-            const logType  = isLab ? 'lab' : 'class' as 'class' | 'lab';
-            const logDocId = buildAttLogId(uid, subjectId, logDate, logType, safeSessionIdx);
-            const logRef   = doc(db, COLLECTION.ATTENDANCE_LOGS, logDocId);
-            // setDoc with merge means: if doc already exists, only update action field.
-            // If it existed as 'attended', counters don't change here (user should undo first).
-            // For a truly new cancel, no counters change — class was cancelled.
-            await setDoc(logRef, {
-              userId: uid, subjectId, subjectName,
-              type: logType, action: 'cancelled',
-              date: logDate.slice(0, 10),
-              isExtra: false, timestamp: Date.now(), idx: safeSessionIdx,
-            }, { merge: true });
+            const logType     = (isLab ? 'lab' : 'class') as 'class' | 'lab';
+            const attendedKey = isLab ? 'labsAttended' : 'classesAttended';
+            const totalKey    = isLab ? 'labsTotal'    : 'classesTotal';
+            const logDocId    = buildAttLogId(uid, subjectId, logDate, logType, safeSessionIdx);
+            const logRef      = doc(db, COLLECTION.ATTENDANCE_LOGS, logDocId);
+            const subjRef     = doc(db, COLLECTION.ATTENDANCE, subjectId);
+
+            const existing = await getDoc(logRef).catch(() => null);
+            if (existing && existing.exists()) {
+              const oldAction = existing.data().action as string;
+              if (oldAction === 'cancelled') {
+                cancelClassNotificationsImmediately(subjectId, subjectName, logDate, safeSessionIdx).catch(() => {});
+                clearScheduleCache();
+                return;
+              }
+              const attDelta = oldAction === 'attended' ? -1 : 0;
+              const totDelta = (oldAction === 'attended' || oldAction === 'missed') ? -1 : 0;
+              const updates: Record<string, any> = { lastUpdated: Date.now() };
+              if (attDelta !== 0) updates[attendedKey] = increment(attDelta);
+              if (totDelta !== 0) updates[totalKey]    = increment(totDelta);
+              await Promise.all([
+                safeWrite(() => updateDoc(subjRef, updates), COLLECTION.ATTENDANCE, 'update', { lastUpdated: Date.now() }, subjectId),
+                safeWrite((p) => setDoc(logRef, p, { merge: true }), COLLECTION.ATTENDANCE_LOGS, 'set', { action: 'cancelled', timestamp: Date.now() }, logDocId),
+              ]);
+            } else {
+              const logPayload = {
+                userId: uid, subjectId, subjectName,
+                type: logType, action: 'cancelled',
+                date: logDate.slice(0, 10),
+                isExtra: false, timestamp: Date.now(), idx: safeSessionIdx,
+              };
+              await safeWrite((p) => setDoc(logRef, p, { merge: true }), COLLECTION.ATTENDANCE_LOGS, 'set', logPayload, logDocId);
+            }
             success = true;
           } catch (e) {
             console.warn('[Notification] mark_cancelled write failed:', e);
@@ -669,7 +708,7 @@ export default function App() {
           await Notifications.scheduleNotificationAsync({
             content: {
               title: 'Class Cancelled',
-              body: `${subjectName} — recorded as cancelled. Totals unchanged.`,
+              body: `${subjectName} — recorded as cancelled. Totals adjusted.`,
               data: { subjectId }, channelId: 'default',
             } as any, trigger: null,
           }).catch(() => {});
@@ -678,6 +717,7 @@ export default function App() {
         }
         return;
       }
+
 
       // ── BODY TAP: Gym Arrival / Departure Geofence ─────────────────────────
       if (

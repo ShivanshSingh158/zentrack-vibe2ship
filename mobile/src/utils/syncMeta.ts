@@ -9,25 +9,49 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
 
-const SYNC_META_KEY = '@zentrack_last_sync_meta_v1';
-let _memorySyncTimestamp: number | null = null;
+const getSyncMetaKey = (uid?: string | null) =>
+  uid ? `@zentrack_last_sync_meta_v1_${uid}` : '@zentrack_last_sync_meta_v1';
+
+let _memorySyncTimestamps: Record<string, number> = {};
 let _touchTimer: ReturnType<typeof setTimeout> | null = null;
 
-export async function getLocalSyncTimestamp(): Promise<number> {
-  if (_memorySyncTimestamp !== null) return _memorySyncTimestamp;
-  try {
-    const raw = await AsyncStorage.getItem(SYNC_META_KEY);
-    _memorySyncTimestamp = raw ? parseInt(raw, 10) || 0 : 0;
-  } catch {
-    _memorySyncTimestamp = 0;
+export function clearSyncMeta(uid?: string): void {
+  if (_touchTimer) {
+    clearTimeout(_touchTimer);
+    _touchTimer = null;
   }
-  return _memorySyncTimestamp;
+  if (uid) {
+    delete _memorySyncTimestamps[uid];
+    AsyncStorage.removeItem(getSyncMetaKey(uid)).catch(() => {});
+  } else {
+    _memorySyncTimestamps = {};
+  }
 }
 
-export async function setLocalSyncTimestamp(ts: number): Promise<void> {
-  _memorySyncTimestamp = ts;
+export async function getLocalSyncTimestamp(uid?: string): Promise<number> {
+  const targetUid = uid || auth.currentUser?.uid;
+  if (targetUid && _memorySyncTimestamps[targetUid] !== undefined) {
+    return _memorySyncTimestamps[targetUid];
+  }
   try {
-    await AsyncStorage.setItem(SYNC_META_KEY, String(ts));
+    const raw = await AsyncStorage.getItem(getSyncMetaKey(targetUid));
+    const val = raw ? parseInt(raw, 10) || 0 : 0;
+    if (targetUid) {
+      _memorySyncTimestamps[targetUid] = val;
+    }
+    return val;
+  } catch {
+    return 0;
+  }
+}
+
+export async function setLocalSyncTimestamp(ts: number, uid?: string): Promise<void> {
+  const targetUid = uid || auth.currentUser?.uid;
+  if (targetUid) {
+    _memorySyncTimestamps[targetUid] = ts;
+  }
+  try {
+    await AsyncStorage.setItem(getSyncMetaKey(targetUid), String(ts));
   } catch {
     // ignore
   }
@@ -63,12 +87,18 @@ export function touchServerSyncMeta(uid?: string): void {
   if (_touchTimer) clearTimeout(_touchTimer);
   _touchTimer = setTimeout(async () => {
     try {
+      // Guard against race condition: if user logged out or changed while timer was ticking
+      const currentUid = auth.currentUser?.uid;
+      if (!currentUid || currentUid !== targetUid) return;
+
       const now = Date.now();
       const docRef = doc(db, 'user_sync_meta', targetUid);
       await setDoc(docRef, { lastModifiedAt: now }, { merge: true });
-      await setLocalSyncTimestamp(now);
+      await setLocalSyncTimestamp(now, targetUid);
     } catch (err) {
       console.warn('[syncMeta] Error touching server sync meta:', err);
+    } finally {
+      _touchTimer = null;
     }
   }, 1000);
 }
