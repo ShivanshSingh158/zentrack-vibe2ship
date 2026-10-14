@@ -245,63 +245,49 @@ export function AcademicProvider({
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.ATTENDANCE), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => parseAttendanceSubject(d.data(), d.id));
           setAttendance(prev => {
             if (areItemsEqual(prev, fresh)) return prev;
-            // Merge: for subjects with in-flight optimistic writes (classesTotal differs),
-            // prefer the higher count to prevent the percentage from flickering back
             const freshMap = new Map(fresh.map(s => [s.id!, s]));
-            const merged = prev.map(ps => {
-              const fs = freshMap.get(ps.id!);
-              if (!fs) return ps; // Subject only in prev: keep it (deleted elsewhere, stale)
-              // Fix #3: Use lastUpdated timestamp for freshness instead of sum comparison.
-              // The old localSum > freshSum guard permanently locked the UI to stale higher
-              // counts, preventing overrides (which lower counts), schedule changes, and
-              // subject renames from ever syncing. Timestamp-based: if Firestore's
-              // lastUpdated is >= our local lastUpdated, the server copy is authoritative.
-              const localTs = ps.lastUpdated || 0;
-              const freshTs = fs.lastUpdated || 0;
-              if (freshTs >= localTs) return fs;
-              // Local has a newer timestamp (in-flight optimistic write) — keep local
-              // but merge non-counter fields (name, schedule, color, targetPercentage)
-              // so those changes are never dropped.
-              return {
-                ...ps,
-                name: fs.name,
-                schedule: fs.schedule,
-                color: fs.color,
-                targetPercentage: fs.targetPercentage,
-                order: fs.order,
-                schemaVersion: fs.schemaVersion,
-              };
-            });
-            // Add any fresh subjects not yet in prev (new subjects added elsewhere)
-            fresh.forEach(fs => { if (!prev.find(ps => ps.id === fs.id)) merged.push(fs); });
+            const merged = prev
+              .filter(ps => freshMap.has(ps.id!) || (Date.now() - (ps.lastUpdated || 0) < 5000))
+              .map(ps => {
+                const fs = freshMap.get(ps.id!);
+                if (!fs) return ps;
+                const localTs = ps.lastUpdated || 0;
+                const freshTs = fs.lastUpdated || 0;
+                if (freshTs >= localTs) return fs;
+                return {
+                  ...ps,
+                  name: fs.name,
+                  schedule: fs.schedule,
+                  color: fs.color,
+                  targetPercentage: fs.targetPercentage,
+                  order: fs.order,
+                  schemaVersion: fs.schemaVersion,
+                };
+              });
+            fresh.forEach(fs => { if (!merged.find(ps => ps.id === fs.id)) merged.push(fs); });
             return areItemsEqual(prev, merged) ? prev : merged;
           });
-          // FIX (Bug D): Mark attendance as ready after first snapshot fires.
           setAttendanceSnapshotFired(true);
           InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendance: fresh }));
         });
       },
       scheduleListenerRestart("attendance")
     ));
+
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.ATTENDANCE_LOGS), where("userId", "==", uid), limit(300)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const rawFresh = snap.docs.map(d => parseAttendanceLog(d.data(), d.id));
-
-          // ── Snapshot dedup: remove duplicate docs for the same natural key ──────────
-          // If old random-ID docs coexist with new deterministic-ID docs (before repair
-          // runs), both arrive in the snapshot. Keep only one per slot — prefer the
-          // deterministic-format ID (uid_subjectId_date_type_idx) if it exists.
           const seen = new Map<string, typeof rawFresh[0]>();
           rawFresh.forEach(l => {
-            if (l.isExtra) { return; } // extra classes are never deduplicated
+            if (l.isExtra) return;
             const subjectId = (l.subjectId || l.subjectName || '').toString().trim();
             const date      = (l.date || '').toString().trim().slice(0, 10);
             const type      = l.type === 'lab' ? 'lab' : 'class';
@@ -311,49 +297,37 @@ export function AcademicProvider({
             if (!existing) {
               seen.set(key, l);
             } else {
-              // Prefer the deterministic-format ID; otherwise keep newer timestamp
-              const isDet  = (id: string) => /^[^_]+_[^_]+_\d{4}-\d{2}-\d{2}_(class|lab)_\d+$/.test(id ?? '');
+              const isDet = (id: string) => /^[^_]+_[^_]+_\d{4}-\d{2}-\d{2}_(class|lab)_\d+$/.test(id ?? '');
               if (isDet(l.id ?? '') && !isDet(existing.id ?? '')) {
                 seen.set(key, l);
               } else if (!isDet(l.id ?? '') && !isDet(existing.id ?? '')) {
-                // Both random — keep newer
                 if (((l as any).timestamp ?? 0) > ((existing as any).timestamp ?? 0)) {
                   seen.set(key, l);
                 }
               }
-              // Otherwise keep existing (already deterministic)
             }
           });
-          // Extra logs always pass through unchanged
           const extraLogs = rawFresh.filter(l => l.isExtra);
           const fresh = [...Array.from(seen.values()), ...extraLogs];
 
           setAttendanceLogs(prev => {
             if (areItemsEqual(prev, fresh)) return prev;
-            // ── Merge strategy: NEVER wipe in-flight optimistic logs ────────────────────
-            // Root cause of the "log disappears when tapping next subject" bug:
-            //   batch_A.commit() resolves first → onSnapshot fires with [aLog]
-            //   but React state already has [aLog, bLog_optimistic]
-            //   areItemsEqual returns false → setAttendanceLogs([aLog]) → bLog wiped!
-            //
-            // Fix: keep any log that is in prev but NOT in fresh — these are in-flight
-            // writes not yet confirmed by Firestore. They will be removed naturally on
-            // the next snapshot once the server confirms (or on undo via optimisticRemove).
+            const now = Date.now();
             const freshIds = new Set(fresh.map(l => l.id).filter(Boolean));
-            const inFlight = prev.filter(l => l.id && !freshIds.has(l.id));
-            if (inFlight.length === 0) return fresh; // No in-flight, safe to replace
-            return [...fresh, ...inFlight]; // Keep in-flight logs until Firestore confirms them
+            const inFlight = prev.filter(l => l.id && !freshIds.has(l.id) && (now - (l.timestamp || 0) < 5000));
+            if (inFlight.length === 0) return fresh;
+            return [...fresh, ...inFlight];
           });
-          // Note: cache always written with server-confirmed data (no optimistic inflation)
           InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendanceLogs: fresh }));
         });
       },
       scheduleListenerRestart("attendanceLogs")
     ));
+
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.ASSIGNMENTS), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => parseAssignment(d.data(), d.id));
           setAssignments(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -362,10 +336,11 @@ export function AcademicProvider({
       },
       scheduleListenerRestart("assignments")
     ));
+
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.SEMESTERS), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Semester));
           setSemesters(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -374,10 +349,11 @@ export function AcademicProvider({
       },
       scheduleListenerRestart("semesters")
     ));
+
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.SEMESTER_SUBJECTS), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as SemesterSubject));
           setSemesterSubjects(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -386,9 +362,11 @@ export function AcademicProvider({
       },
       scheduleListenerRestart("semesterSubjects")
     ));
+
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.ATTENDANCE_HOLIDAYS), where("userId", "==", uid)),
       snap => {
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         const fresh = snap.docs.map(d => {
           const raw = (d.data() as any).date;
           if (!raw) return '';
@@ -404,16 +382,9 @@ export function AcademicProvider({
 
   const wasSubscribedRef = useRef(false);
 
-  // FIX (Bug C): Open subscriptions whenever the user is present, not only on re-subscription.
-  // The original condition `if (user && (subscribedRef.current || wasSubscribedRef.current))`
-  // had a dead zone: on first cold boot both refs are false, so subscriptions never opened.
-  // Dashboard's attendance widget, nextClass logic, and assignment counts all relied on
-  // AcademicContext data — they got empty arrays until the user visited AttendanceScreen.
-  // Fix: always call openSubscriptions when user exists — the function is idempotent
-  // (guarded by `if (subscribedRef.current) return`), so repeated calls are always safe.
   useEffect(() => {
     if (user) {
-      subscribedRef.current = false; // reset to allow re-open on user/version change
+      subscribedRef.current = false;
       openSubscriptions(user.uid);
       wasSubscribedRef.current = true;
     } else {
@@ -421,6 +392,16 @@ export function AcademicProvider({
       unsubsRef.current = [];
       subscribedRef.current = false;
       wasSubscribedRef.current = false;
+      hasCachedDataRef.current = false;
+      unstable_batchedUpdates(() => {
+        setAttendance([]);
+        setAttendanceLogs([]);
+        setAssignments([]);
+        setSemesters([]);
+        setSemesterSubjects([]);
+        setHolidays([]);
+        setAttendanceSnapshotFired(false);
+      });
       if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     }
     return () => {

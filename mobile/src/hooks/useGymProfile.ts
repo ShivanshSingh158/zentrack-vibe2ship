@@ -8,7 +8,7 @@
  * warm-up, cool-down, load advice, exercise swaps, fatigue calculation.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const PROFILE_KEY = 'gym_profile_v1';
@@ -58,30 +58,36 @@ export const DEFAULT_PROFILE: GymProfile = {
 export function useGymProfile() {
   const [gymProfile, setGymProfile] = useState<GymProfile>(DEFAULT_PROFILE);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const profileRef = useRef<GymProfile>(DEFAULT_PROFILE);
 
   useEffect(() => {
+    let cancelled = false;
     AsyncStorage.getItem(PROFILE_KEY)
       .then(raw => {
-        if (raw) {
-          try {
-            setGymProfile({ ...DEFAULT_PROFILE, ...JSON.parse(raw) });
-          } catch (_) {}
-        }
+        if (cancelled || !raw) return;
+        try {
+          const merged = { ...DEFAULT_PROFILE, ...JSON.parse(raw) };
+          profileRef.current = merged;
+          setGymProfile(merged);
+        } catch (_) {}
       })
-      .finally(() => setProfileLoaded(true));
+      .finally(() => {
+        if (!cancelled) setProfileLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const saveGymProfile = useCallback(async (profile: Partial<GymProfile>) => {
-    setGymProfile(prev => ({ ...prev, ...profile }));
-    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({ ...gymProfile, ...profile }));
-  }, [gymProfile]);
+    const next = { ...profileRef.current, ...profile };
+    profileRef.current = next;
+    setGymProfile(next);
+    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(next));
+  }, []);
 
-  /**
-   * Returns a compact string description of the profile for injection into
-   * the GYM-GPT system prompt.
-   */
   const profileSummary = useCallback((profile?: GymProfile): string => {
-    const p = profile || gymProfile;
+    const p = profile || profileRef.current;
     if (!p.goal && !p.weightKg && !p.experience) return '';
 
     const goalMap: Record<string, string> = {
@@ -116,7 +122,7 @@ export function useGymProfile() {
     if (p.notes) lines.push(`Other Preferences: ${p.notes}`);
     lines.push('======================');
     return lines.join('\n');
-  }, [gymProfile]);
+  }, []);
 
   return { gymProfile, profileLoaded, saveGymProfile, profileSummary };
 }

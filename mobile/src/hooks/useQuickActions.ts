@@ -39,31 +39,31 @@ export const QUICK_ACTIONS_CONFIG: QuickActions.Action[] = [
   },
 ];
 
-export function handleQuickActionNavigation(action: QuickActions.Action) {
+export function handleQuickActionNavigation(action: QuickActions.Action, attempt = 0) {
   if (!action || !action.params) return;
-
   const screen = action.params.screen as string;
   if (!screen) return;
 
   if (!navigationRef.isReady()) {
-    // Retry shortly after navigator mounts
-    setTimeout(() => handleQuickActionNavigation(action), 150);
+    if (attempt < 25) {
+      setTimeout(() => handleQuickActionNavigation(action, attempt + 1), 150);
+    }
     return;
   }
 
   if (screen === 'Tasks') {
-    navigationRef.navigate('MainTabs', {
+    (navigationRef as any).navigate('MainTabs', {
       screen: 'Tasks',
       params: { openAddTask: true, timestamp: Date.now() },
     });
   } else if (screen === 'Attendance') {
-    navigationRef.navigate('Attendance');
+    (navigationRef as any).navigate('MainTabs', { screen: 'Attendance' });
   } else if (screen === 'Gym') {
-    navigationRef.navigate('Gym');
+    (navigationRef as any).navigate('MainTabs', { screen: 'Gym' });
   } else if (screen === 'Notes') {
-    navigationRef.navigate('Notes', {
-      openUpload: true,
-      timestamp: Date.now(),
+    (navigationRef as any).navigate('MainTabs', {
+      screen: 'Notes',
+      params: { openUpload: true, timestamp: Date.now() },
     });
   }
 }

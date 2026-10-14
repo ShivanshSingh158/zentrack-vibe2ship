@@ -1,28 +1,17 @@
-/**
- * CreativeContext — ZenTrack Mobile
- *
- * Owns: storageNodes, notes (derived), learningTopics, jobs.
- *
- * Subscription strategy: DEMAND-BASED + OFFLINE-FIRST.
- * On mount: reads all creative data from AsyncStorage instantly (~5ms).
- * Notes, Learning, and Jobs screens show real data immediately, even when offline.
- * Firestore snapshots silently update the cache when online.
- */
 import React, { createContext, useContext, useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates } from 'react-native';
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { StorageNode, Note, LearningTopic, JobApplication, ContentLog } from "../MobileDataContext";
-import { readCreativeCache, writeCreativeCache } from "../../utils/domainCache";
+import { writeCreativeCache } from "../../utils/domainCache";
 import { loadBootManifest, getBootManifestSync } from "../../utils/bootManifest";
 import { parseStorageNode, parseLearningTopic, areItemsEqual } from "../../utils/schemaGuards";
+import { formatLocalDateStr } from "../../utils/dateUtils";
 
-
-// ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface CreativeContextType {
   storageNodes: StorageNode[];
-  notes: Note[];   // derived from storageNodes where type === 'note'
+  notes: Note[];
   learningTopics: LearningTopic[];
   jobs: JobApplication[];
   contentLogs: ContentLog[];
@@ -54,13 +43,10 @@ const CreativeContext = createContext<CreativeContextType | null>(null);
 
 export function useCreativeData(): CreativeContextType {
   const ctx = useContext(CreativeContext);
-  if (!ctx) {
-    return DEFAULT_CREATIVE_DATA;
-  }
+  if (!ctx) return DEFAULT_CREATIVE_DATA;
   return ctx;
 }
 
-// ─── Provider ──────────────────────────────────────────────────────────────────
 export function CreativeProvider({
   children,
   user,
@@ -73,16 +59,15 @@ export function CreativeProvider({
   const [learningTopics, setLearningTopics] = useState<LearningTopic[]>(initialManifest?.learningTopics ?? []);
   const [jobs, setJobs]                     = useState<JobApplication[]>(initialManifest?.jobs ?? []);
   const [contentLogs, setContentLogs]       = useState<ContentLog[]>(initialManifest?.contentLogs ?? []);
+
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
-  // OFFLINE-FIRST GUARD: ignore empty memoryLocalCache snapshots when cache is seeded.
   const hasCachedDataRef = useRef(
     (initialManifest?.storageNodes?.length ?? 0) > 0 ||
     (initialManifest?.learningTopics?.length ?? 0) > 0 ||
     (initialManifest?.jobs?.length ?? 0) > 0
   );
 
-  // Fallback hydration: handles cold-start race conditions seamlessly
   useEffect(() => {
     let isCancelled = false;
     loadBootManifest().then(manifest => {
@@ -92,15 +77,18 @@ export function CreativeProvider({
         setLearningTopics(prev => prev.length === 0 && (manifest.learningTopics?.length ?? 0) > 0 ? manifest.learningTopics : prev);
         setJobs(prev => prev.length === 0 && (manifest.jobs?.length ?? 0) > 0 ? manifest.jobs : prev);
         setContentLogs(prev => prev.length === 0 && (manifest.contentLogs?.length ?? 0) > 0 ? manifest.contentLogs : prev);
-        if ((manifest.storageNodes?.length ?? 0) > 0 || (manifest.learningTopics?.length ?? 0) > 0) {
+        if (
+          (manifest.storageNodes?.length ?? 0) > 0 ||
+          (manifest.learningTopics?.length ?? 0) > 0 ||
+          (manifest.jobs?.length ?? 0) > 0
+        ) {
           hasCachedDataRef.current = true;
         }
       });
     }).catch(() => {});
     return () => { isCancelled = true; };
-  }, []);
+  }, [user?.uid]);
 
-  // ── Listener auto-restart on error ───────────────────────────────────────
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -116,11 +104,9 @@ export function CreativeProvider({
     }, 5000);
   }, []);
 
-  // ── Foreground reconnect: restart listeners after long background ─────────
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('firestore_force_reconnect', () => {
       if (user) {
-        console.log('[Creative] foreground reconnect — restarting Firestore listeners');
         unsubsRef.current.forEach(u => u());
         unsubsRef.current = [];
         subscribedRef.current = false;
@@ -130,24 +116,6 @@ export function CreativeProvider({
     return () => sub.remove();
   }, [user?.uid]);
 
-  // ── Offline-first boot: seed ALL creative collections from boot manifest ──
-  // If getBootManifestSync() already populated state on Frame 0, this does 0 re-renders.
-  useEffect(() => {
-    let cancelled = false;
-    loadBootManifest().then(cached => {
-      if (cancelled) return;
-      unstable_batchedUpdates(() => {
-        let seeded = false;
-        if (storageNodes.length === 0 && Array.isArray(cached.storageNodes) && cached.storageNodes.length > 0)     { setStorageNodes(cached.storageNodes); seeded = true; }
-        if (learningTopics.length === 0 && Array.isArray(cached.learningTopics) && cached.learningTopics.length > 0) { setLearningTopics(cached.learningTopics); seeded = true; }
-        if (jobs.length === 0 && Array.isArray(cached.jobs) && cached.jobs.length > 0)                     { setJobs(cached.jobs); seeded = true; }
-        if (contentLogs.length === 0 && Array.isArray(cached.contentLogs) && cached.contentLogs.length > 0)       { setContentLogs(cached.contentLogs); seeded = true; }
-        if (seeded) hasCachedDataRef.current = true;
-      });
-    });
-    return () => { cancelled = true; };
-  }, [user?.uid]);
-
   const openSubscriptions = useCallback((uid: string) => {
     if (subscribedRef.current) return;
     subscribedRef.current = true;
@@ -155,7 +123,7 @@ export function CreativeProvider({
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.STORAGE_NODES), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => parseStorageNode(d.data(), d.id));
           setStorageNodes(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -164,10 +132,11 @@ export function CreativeProvider({
       },
       scheduleListenerRestart("storageNodes")
     ));
+
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.LEARNING_TOPICS), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => parseLearningTopic(d.data(), d.id));
           setLearningTopics(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -176,10 +145,11 @@ export function CreativeProvider({
       },
       scheduleListenerRestart("learningTopics")
     ));
+
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.JOBS), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication));
           setJobs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -188,10 +158,11 @@ export function CreativeProvider({
       },
       scheduleListenerRestart("jobs")
     ));
+
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.CONTENT_LOGS), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentLog));
           setContentLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -202,18 +173,21 @@ export function CreativeProvider({
     ));
   }, [scheduleListenerRestart]);
 
-  const wasSubscribedRef = useRef(false);
-
   useEffect(() => {
-    if (user && (subscribedRef.current || wasSubscribedRef.current)) {
+    if (user) {
       subscribedRef.current = false;
       openSubscriptions(user.uid);
-      wasSubscribedRef.current = true;
-    } else if (!user) {
+    } else {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
-      wasSubscribedRef.current = false;
+      hasCachedDataRef.current = false;
+      unstable_batchedUpdates(() => {
+        setStorageNodes([]);
+        setLearningTopics([]);
+        setJobs([]);
+        setContentLogs([]);
+      });
       if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     }
     return () => {
@@ -230,12 +204,10 @@ export function CreativeProvider({
 
   const ensureSubscribed = useCallback(() => {
     if (user && !subscribedRef.current) {
-      wasSubscribedRef.current = true;
       openSubscriptions(user.uid);
     }
   }, [user?.uid, openSubscriptions]);
 
-  // Notes are derived from storageNodes — no extra subscription needed
   const notes = useMemo(() =>
     storageNodes
       .filter(n => n.type === "note")
@@ -253,13 +225,13 @@ export function CreativeProvider({
   const optimisticUpdateLearningTopic = useCallback((id: string, updates: Partial<LearningTopic>) => {
     setLearningTopics(prev => {
       const fresh = prev.map(t => t.id === id ? { ...t, ...updates } : t);
-      writeCreativeCache({ learningTopics: fresh }, true); // immediate: optimistic update
+      writeCreativeCache({ learningTopics: fresh }, true);
       return fresh;
     });
   }, []);
 
   const optimisticToggleSubtask = useCallback((topicId: string, subtaskId: string, isCompleted: boolean) => {
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayLocal = formatLocalDateStr(new Date());
     setLearningTopics(prev => {
       const fresh = prev.map(topic => {
         if (topic.id !== topicId) return topic;
@@ -268,12 +240,12 @@ export function CreativeProvider({
           return {
             ...sub,
             isCompleted,
-            completedDate: isCompleted ? todayIso : undefined,
+            completedDate: isCompleted ? todayLocal : undefined,
           };
         });
         return { ...topic, subTasks: updatedSubs };
       });
-      writeCreativeCache({ learningTopics: fresh }, true); // immediate: optimistic toggle
+      writeCreativeCache({ learningTopics: fresh }, true);
       return fresh;
     });
   }, []);

@@ -260,8 +260,14 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
             : 0;
           AsyncStorage.getItem('@zentrack_optimistic_user').then(raw => {
             if (!cancelled && !raw && msSinceFirstAuth > 5000) {
-              setUser(null);
-              setFirestoreReady(false);
+              hasCachedDataRef.current = false;
+              unstable_batchedUpdates(() => {
+                setUser(null);
+                setTasks([]);
+                setHabits([]);
+                setHabitLogs([]);
+                setFirestoreReady(false);
+              });
             }
           }).catch(() => {});
         }
@@ -437,6 +443,9 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      if (habitWriteLockRef.current) clearTimeout(habitWriteLockRef.current);
+      if (habitLogWriteLockRef.current) clearTimeout(habitLogWriteLockRef.current);
     };
   }, [user?.uid]);
 

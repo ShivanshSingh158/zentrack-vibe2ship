@@ -99,10 +99,17 @@ export function useGymLog(dateStr: string) {
     gymEnsureSubscribed?.();
   }, [gymEnsureSubscribed]);
 
+  const userGymPlanRef = useRef(userGymPlan);
+  const updateMasterPlanRef = useRef(updateMasterPlan);
+  useEffect(() => {
+    userGymPlanRef.current = userGymPlan;
+    updateMasterPlanRef.current = updateMasterPlan;
+  });
+
   const debouncedSyncMasterPlan = useRef(
     debounce((newExercises: GymExerciseLog[], planDayIndex: number) => {
-      const existingPlan = resolvePlanDay(userGymPlan, planDayIndex);
-      updateMasterPlan(planDayIndex, {
+      const existingPlan = resolvePlanDay(userGymPlanRef.current, planDayIndex);
+      updateMasterPlanRef.current(planDayIndex, {
         dayIndex: planDayIndex,
         name: existingPlan?.name || `Day ${planDayIndex}`,
         subtitle: existingPlan?.subtitle || '',
@@ -181,6 +188,7 @@ export function useGymLog(dateStr: string) {
 
   useEffect(() => {
     if (prevDateStrRef.current !== null && prevDateStrRef.current !== dateStr) {
+      flushPendingFirestoreWrite();
       setLog(null);
       logRef.current = null;
       localWriteAtRef.current = 0;
@@ -470,6 +478,17 @@ export function useGymLog(dateStr: string) {
       flushPendingFirestoreWrite();
     };
   }, [flushPendingFirestoreWrite]);
+
+  const mutateLog = useCallback((recipe: (prev: GymDayLog) => GymDayLog | null) => {
+    const current = logRef.current;
+    if (!current) return null;
+    const next = recipe(current);
+    if (!next || next === current) return current;
+    logRef.current = next;
+    setLog(next);
+    saveLog(next);
+    return next;
+  }, [saveLog]);
 
   // ── Cross-instance sync: mark log completed when ANY useGymLog calls endWorkout ────
   // GymHomeScreen and ActiveLoggingScreen each mount their own useGymLog instance.

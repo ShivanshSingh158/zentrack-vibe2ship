@@ -21,6 +21,7 @@ import { safeWrite } from '../utils/safeWrite';
 import { awardXP } from '../services/xpSystem';
 import { feedback } from '../utils/haptics';
 import { COLLECTION } from '../config/constants';
+import { formatLocalDateStr } from '../utils/dateUtils';
 import {
   PomodoroMode,
   PomodoroConfig,
@@ -145,26 +146,61 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const isInitializedRef = useRef<boolean>(false);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Sync state to local AsyncStorage & Firestore
+  // Live state snapshot ref so persistState & handleSessionComplete have stable
+  // references and NEVER tear down setInterval or AppState listeners on every 1s tick.
+  const stateRef = useRef({
+    status,
+    mode,
+    timeLeft,
+    totalDuration,
+    startTime,
+    targetEndTime,
+    pausedAt,
+    sessionCount,
+    completedToday,
+    totalSecondsToday,
+    linkedTaskId,
+    linkedTaskTitle,
+    config,
+  });
+
+  useEffect(() => {
+    stateRef.current = {
+      status,
+      mode,
+      timeLeft,
+      totalDuration,
+      startTime,
+      targetEndTime,
+      pausedAt,
+      sessionCount,
+      completedToday,
+      totalSecondsToday,
+      linkedTaskId,
+      linkedTaskTitle,
+      config,
+    };
+  });
+
   const persistState = useCallback(async (statePayload: Partial<ActivePomodoroState>) => {
     try {
+      const s = stateRef.current;
       const now = Date.now();
       const currentFullState: ActivePomodoroState = {
-        status,
-        mode,
-        timeLeft,
-        totalDuration,
-        startTime,
-        targetEndTime,
-        pausedAt,
-        sessionCount,
-        completedToday,
-        linkedTaskId,
-        linkedTaskTitle,
+        status: s.status,
+        mode: s.mode,
+        timeLeft: s.timeLeft,
+        totalDuration: s.totalDuration,
+        startTime: s.startTime,
+        targetEndTime: s.targetEndTime,
+        pausedAt: s.pausedAt,
+        sessionCount: s.sessionCount,
+        completedToday: s.completedToday,
+        linkedTaskId: s.linkedTaskId,
+        linkedTaskTitle: s.linkedTaskTitle,
         updatedAt: now,
         ...statePayload,
       };
-
       await AsyncStorage.setItem(STORAGE_KEY_POMODORO, JSON.stringify(currentFullState));
 
       const uid = auth.currentUser?.uid;
@@ -182,9 +218,8 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           completedToday: currentFullState.completedToday,
           linkedTaskId: currentFullState.linkedTaskId,
           linkedTaskTitle: currentFullState.linkedTaskTitle,
-          updatedAt: serverTimestamp(),
+          updatedAt: now,
         };
-
         safeWrite(
           () => setDoc(doc(db, 'user_pomodoro_state', uid), firestorePayload, { merge: true }),
           'user_pomodoro_state',
@@ -196,51 +231,47 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (e) {
       console.warn('[PomodoroContext] Error persisting state:', e);
     }
-  }, [status, mode, timeLeft, totalDuration, startTime, targetEndTime, pausedAt, sessionCount, completedToday, linkedTaskId, linkedTaskTitle]);
+  }, []);
 
-  // Session completion handler — Pure iOS Focus Flow
-  const handleSessionComplete = useCallback(async (completedMode: PomodoroMode) => {
+  const handleSessionComplete = useCallback(async (_completedMode?: PomodoroMode) => {
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
-
     if (Platform.OS === 'android') Vibration.vibrate([0, 300, 200, 300]);
     feedback.success();
 
+    const s = stateRef.current;
     const uid = auth.currentUser?.uid;
+    const newSessionCount = s.sessionCount + 1;
+    const newCompletedToday = s.completedToday + 1;
+    const sessionSecs = s.totalDuration > 0 ? s.totalDuration : s.config.focus;
+    const newTotalSecondsToday = s.totalSecondsToday + sessionSecs;
 
-    const newSessionCount = sessionCount + 1;
-    const newCompletedToday = completedToday + 1;
-    const sessionSecs = totalDuration > 0 ? totalDuration : config.focus;
-    const newTotalSecondsToday = totalSecondsToday + sessionSecs;
     setSessionCount(newSessionCount);
     setCompletedToday(newCompletedToday);
     setTotalSecondsToday(newTotalSecondsToday);
 
-    // Persist completed count and exact focus seconds for today
     AsyncStorage.setItem(STORAGE_KEY_POMO_TODAY, JSON.stringify({
-      date: new Date().toISOString().slice(0, 10),
+      date: formatLocalDateStr(new Date()),
       count: newCompletedToday,
       totalSeconds: newTotalSecondsToday,
     })).catch(() => {});
 
-    // Record session in Firestore
     if (uid) {
       try {
         await addDoc(collection(db, COLLECTION.POMODORO_SESSIONS || 'pomodoro_sessions'), {
           userId: uid,
           startTime: serverTimestamp(),
           duration: sessionSecs,
-          taskId: linkedTaskId ?? null,
+          taskId: s.linkedTaskId ?? null,
           mode: 'focus',
         });
         await awardXP('POMODORO_SESSION');
       } catch { /* non-blocking */ }
     }
 
-    // Pure iOS Focus Flow: remain in focus mode ready for next mission (NO Zen Recharge)
-    const nextDuration = config.focus;
+    const nextDuration = s.config.focus;
     setMode('focus');
     setTimeLeft(nextDuration);
     setTotalDuration(nextDuration);
@@ -260,22 +291,19 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       sessionCount: newSessionCount,
       completedToday: newCompletedToday,
     });
-  }, [sessionCount, completedToday, totalSecondsToday, totalDuration, linkedTaskId, config, persistState]);
+  }, [persistState]);
 
-  // High-accuracy timer tick loop
   useEffect(() => {
     if (status === 'running' && targetEndTime) {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-
       timerIntervalRef.current = setInterval(() => {
         const now = Date.now();
         const remaining = Math.max(0, Math.round((targetEndTime - now) / 1000));
         setTimeLeft(remaining);
-
         if (remaining <= 0) {
           if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
           timerIntervalRef.current = null;
-          handleSessionComplete(mode);
+          handleSessionComplete(stateRef.current.mode);
         }
       }, 1000);
     } else {
@@ -284,19 +312,18 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         timerIntervalRef.current = null;
       }
     }
-
     return () => {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
     };
-  }, [status, targetEndTime, mode, handleSessionComplete]);
+  }, [status, targetEndTime, handleSessionComplete]);
 
-  // Reconcile timer on boot & foreground transitions
   const reconcileActiveTimer = useCallback(async () => {
     try {
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const s = stateRef.current;
+      const todayStr = formatLocalDateStr(new Date());
       const savedToday = await AsyncStorage.getItem(STORAGE_KEY_POMO_TODAY);
       if (savedToday) {
         try {
@@ -308,15 +335,17 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (typeof parsedToday.totalSeconds === 'number') {
               setTotalSecondsToday(parsedToday.totalSeconds);
             } else if (typeof parsedToday.count === 'number') {
-              setTotalSecondsToday(parsedToday.count * (config.focus || 1500));
+              setTotalSecondsToday(parsedToday.count * (s.config.focus || 1500));
             }
+          } else {
+            setCompletedToday(0);
+            setTotalSecondsToday(0);
           }
         } catch {}
       }
 
       const raw = await AsyncStorage.getItem(STORAGE_KEY_POMODORO);
       if (!raw) return;
-
       const savedState: ActivePomodoroState = JSON.parse(raw);
       if (!savedState) return;
 
@@ -326,37 +355,31 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (savedState.linkedTaskTitle) setLinkedTaskTitle(savedState.linkedTaskTitle);
 
       const now = Date.now();
-
       if (savedState.status === 'running' && savedState.targetEndTime) {
         if (now >= savedState.targetEndTime) {
-          // Timer completed while app was closed/backgrounded!
           setTimeLeft(0);
-          setTotalDuration(savedState.totalDuration || config[savedState.mode || 'focus']);
+          setTotalDuration(savedState.totalDuration || s.config[savedState.mode || 'focus']);
           handleSessionComplete(savedState.mode || 'focus');
         } else {
-          // Timer is STILL RUNNING! Resume instantly from exact remaining seconds
           const remaining = Math.max(0, Math.round((savedState.targetEndTime - now) / 1000));
           setTimeLeft(remaining);
-          setTotalDuration(savedState.totalDuration || config[savedState.mode || 'focus']);
+          setTotalDuration(savedState.totalDuration || s.config[savedState.mode || 'focus']);
           setStartTime(savedState.startTime);
           setTargetEndTime(savedState.targetEndTime);
           setStatus('running');
-
-          // REQUIREMENT: If timer is running when app opens, pop up immediately to screen!
           setIsSheetOpen(true);
         }
       } else if (savedState.status === 'paused') {
         setStatus('paused');
-        setTimeLeft(savedState.timeLeft || config[savedState.mode || 'focus']);
-        setTotalDuration(savedState.totalDuration || config[savedState.mode || 'focus']);
+        setTimeLeft(savedState.timeLeft || s.config[savedState.mode || 'focus']);
+        setTotalDuration(savedState.totalDuration || s.config[savedState.mode || 'focus']);
         setPausedAt(savedState.pausedAt);
       }
     } catch (e) {
       console.warn('[PomodoroContext] reconcileActiveTimer error:', e);
     }
-  }, [config, handleSessionComplete]);
+  }, [handleSessionComplete]);
 
-  // Initial boot load
   useEffect(() => {
     if (!isInitializedRef.current) {
       isInitializedRef.current = true;
@@ -364,77 +387,70 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [reconcileActiveTimer]);
 
-  // AppState listener for instant catch-up when coming from background
   useEffect(() => {
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === 'active') {
         reconcileActiveTimer();
       }
     };
-
     const sub = AppState.addEventListener('change', handleAppStateChange);
     return () => sub.remove();
   }, [reconcileActiveTimer]);
 
-  // ── Actions ─────────────────────────────────────────────────────────────────
-
   const startTimer = useCallback(() => {
     feedback.commit();
+    const s = stateRef.current;
     const now = Date.now();
-    const duration = timeLeft > 0 ? timeLeft : config[mode];
+    const duration = s.timeLeft > 0 ? s.timeLeft : s.config[s.mode];
     const newTargetEndTime = now + duration * 1000;
-
     setStatus('running');
     setStartTime(now);
     setTargetEndTime(newTargetEndTime);
-    setTotalDuration(config[mode]);
+    setTotalDuration(s.config[s.mode]);
     setPausedAt(null);
-
     persistState({
       status: 'running',
-      mode,
+      mode: s.mode,
       timeLeft: duration,
-      totalDuration: config[mode],
+      totalDuration: s.config[s.mode],
       startTime: now,
       targetEndTime: newTargetEndTime,
       pausedAt: null,
-      sessionCount,
-      completedToday,
-      linkedTaskId,
-      linkedTaskTitle,
+      sessionCount: s.sessionCount,
+      completedToday: s.completedToday,
+      linkedTaskId: s.linkedTaskId,
+      linkedTaskTitle: s.linkedTaskTitle,
     });
-  }, [timeLeft, config, mode, sessionCount, completedToday, linkedTaskId, linkedTaskTitle, persistState]);
+  }, [persistState]);
 
   const pauseTimer = useCallback(() => {
     feedback.tap();
+    const s = stateRef.current;
     const now = Date.now();
-    const remaining = targetEndTime ? Math.max(0, Math.round((targetEndTime - now) / 1000)) : timeLeft;
-
+    const remaining = s.targetEndTime ? Math.max(0, Math.round((s.targetEndTime - now) / 1000)) : s.timeLeft;
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
-
     setStatus('paused');
     setTimeLeft(remaining);
     setPausedAt(now);
     setTargetEndTime(null);
-
     persistState({
       status: 'paused',
       timeLeft: remaining,
       pausedAt: now,
       targetEndTime: null,
     });
-  }, [targetEndTime, timeLeft, persistState]);
+  }, [persistState]);
 
   const toggleTimer = useCallback(() => {
-    if (status === 'running') {
+    if (stateRef.current.status === 'running') {
       pauseTimer();
     } else {
       startTimer();
     }
-  }, [status, startTimer, pauseTimer]);
+  }, [startTimer, pauseTimer]);
 
   const resetTimer = useCallback(() => {
     feedback.tap();
@@ -442,15 +458,14 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
-
-    const defaultDuration = config[mode];
+    const s = stateRef.current;
+    const defaultDuration = s.config[s.mode];
     setStatus('idle');
     setTimeLeft(defaultDuration);
     setTotalDuration(defaultDuration);
     setStartTime(null);
     setTargetEndTime(null);
     setPausedAt(null);
-
     persistState({
       status: 'idle',
       timeLeft: defaultDuration,
@@ -459,27 +474,26 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       targetEndTime: null,
       pausedAt: null,
     });
-  }, [config, mode, persistState]);
+  }, [persistState]);
 
   const skipSession = useCallback(() => {
     feedback.tap();
-    handleSessionComplete(mode);
-  }, [mode, handleSessionComplete]);
+    handleSessionComplete(stateRef.current.mode);
+  }, [handleSessionComplete]);
 
   const extendTime = useCallback((seconds: number = 300) => {
     feedback.tap();
-    setTimeLeft(prev => {
-      const next = prev + seconds;
-      if (status === 'running' && targetEndTime) {
-        const newTarget = targetEndTime + seconds * 1000;
-        setTargetEndTime(newTarget);
-        persistState({ timeLeft: next, targetEndTime: newTarget });
-      } else {
-        persistState({ timeLeft: next });
-      }
-      return next;
-    });
-  }, [status, targetEndTime, persistState]);
+    const s = stateRef.current;
+    const next = s.timeLeft + seconds;
+    setTimeLeft(next);
+    if (s.status === 'running' && s.targetEndTime) {
+      const newTarget = s.targetEndTime + seconds * 1000;
+      setTargetEndTime(newTarget);
+      persistState({ timeLeft: next, targetEndTime: newTarget });
+    } else {
+      persistState({ timeLeft: next });
+    }
+  }, [persistState]);
 
   const switchMode = useCallback((newMode: PomodoroMode, customDuration?: number) => {
     feedback.tap();
@@ -487,12 +501,11 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
-
-    const duration = customDuration && customDuration > 0 ? customDuration : config[newMode];
+    const s = stateRef.current;
+    const duration = customDuration && customDuration > 0 ? customDuration : s.config[newMode];
     if (customDuration && customDuration > 0) {
       setConfig(prev => ({ ...prev, [newMode]: customDuration }));
     }
-
     setStatus('idle');
     setMode(newMode);
     setTimeLeft(duration);
@@ -500,7 +513,6 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setStartTime(null);
     setTargetEndTime(null);
     setPausedAt(null);
-
     persistState({
       status: 'idle',
       mode: newMode,
@@ -510,42 +522,40 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       targetEndTime: null,
       pausedAt: null,
     });
-  }, [config, persistState]);
+  }, [persistState]);
 
   const setLinkedTask = useCallback((taskId: string | null, taskTitle?: string | null, customDurationSecs?: number) => {
+    const s = stateRef.current;
     setLinkedTaskId(taskId);
     setLinkedTaskTitle(taskTitle || null);
-
     if (taskId && customDurationSecs && customDurationSecs > 0) {
       setConfig(prev => ({ ...prev, focus: customDurationSecs }));
-      if (mode === 'focus' && status === 'idle') {
+      if (s.mode === 'focus' && s.status === 'idle') {
         setTimeLeft(customDurationSecs);
         setTotalDuration(customDurationSecs);
       }
     }
-
     persistState({
       linkedTaskId: taskId,
       linkedTaskTitle: taskTitle || null,
     });
-  }, [mode, status, persistState]);
+  }, [persistState]);
 
   const unlinkTask = useCallback(() => {
+    const s = stateRef.current;
     setLinkedTaskId(null);
     setLinkedTaskTitle(null);
     feedback.tap();
     setConfig(prev => ({ ...prev, focus: DEFAULT_CONFIG.focus }));
-
-    if (mode === 'focus' && status === 'idle') {
+    if (s.mode === 'focus' && s.status === 'idle') {
       setTimeLeft(DEFAULT_CONFIG.focus);
       setTotalDuration(DEFAULT_CONFIG.focus);
     }
-
     persistState({
       linkedTaskId: null,
       linkedTaskTitle: null,
     });
-  }, [mode, status, persistState]);
+  }, [persistState]);
 
   const openPomodoro = useCallback((taskId?: string) => {
     if (taskId) {

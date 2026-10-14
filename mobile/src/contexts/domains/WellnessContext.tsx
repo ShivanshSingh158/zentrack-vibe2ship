@@ -162,25 +162,21 @@ export function WellnessProvider({
   }, [user?.uid]);
 
 
+  const deferredInteractionRef = useRef<{ cancel: () => void } | null>(null);
+  const userGymPlanRef = useRef<UserGymPlanDoc | null>(userGymPlan);
+  useEffect(() => {
+    userGymPlanRef.current = userGymPlan;
+  }, [userGymPlan]);
+
   const openSubscriptions = useCallback((uid: string) => {
-    if (subscribedRef.current) return; // idempotent
+    if (subscribedRef.current) return;
     subscribedRef.current = true;
 
-    // ── Critical-path subscriptions: open IMMEDIATELY ────────────────────────
-    // gymLogs and userGymPlan are shown on Dashboard via WellnessContext.
-    // These MUST open immediately so the Gym screen shows real data on first paint.
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.GYM_LOGS), where("userId", "==", uid), limit(150)),
       snap => {
-        // Skip the immediate local-pending echo of our own write.
-        // When we do an optimistic write (logSetAndStartTimer → saveLog → setDoc),
-        // Firestore fires this snapshot twice:
-        //   1. Immediately with hasPendingWrites=true  ← OUR echo, skip it
-        //   2. ~500ms later with hasPendingWrites=false ← server confirmed, process it
-        // Without this guard, echo #1 lands in useGymLog's gymLogs dep, re-runs setLog(),
-        // and overwrites the local optimistic state — causing the visible flicker.
         if (snap.metadata.hasPendingWrites) return;
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => parseGymLog(d.data(), d.id));
           setGymLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -194,9 +190,9 @@ export function WellnessProvider({
     unsubsRef.current.push(onSnapshot(
       doc(db, COLLECTION.USER_GYM_PLANS, uid),
       docSnap => {
+        if (!docSnap.exists() && docSnap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
-          const plan = docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as unknown as UserGymPlanDoc : null;
-          if (!plan && hasCachedDataRef.current) return;
+          const plan = docSnap.exists() ? ({ id: docSnap.id, ...docSnap.data() } as unknown as UserGymPlanDoc) : null;
           setUserGymPlan(prev => JSON.stringify(prev) === JSON.stringify(plan) ? prev : plan);
           InteractionManager.runAfterInteractions(() => writeWellnessCache({ userGymPlan: plan }));
         });
@@ -207,7 +203,7 @@ export function WellnessProvider({
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.WATER_LOGS), where("userId", "==", uid), limit(150)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WaterLog));
           setWaterLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -217,13 +213,13 @@ export function WellnessProvider({
       scheduleListenerRestart("waterLogs")
     ));
 
-    InteractionManager.runAfterInteractions(() => {
+    deferredInteractionRef.current?.cancel();
+    deferredInteractionRef.current = InteractionManager.runAfterInteractions(() => {
       if (!subscribedRef.current) return;
-
       unsubsRef.current.push(onSnapshot(
         query(collection(db, COLLECTION.SLEEP_LOGS), where("userId", "==", uid), limit(150)),
         snap => {
-          if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+          if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
           unstable_batchedUpdates(() => {
             const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as SleepLog));
             setSleepLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -236,7 +232,7 @@ export function WellnessProvider({
       unsubsRef.current.push(onSnapshot(
         query(collection(db, 'weight_logs'), where("userId", "==", uid), limit(150)),
         snap => {
-          if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+          if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
           unstable_batchedUpdates(() => {
             const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeightLog));
             setWeightLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -248,117 +244,114 @@ export function WellnessProvider({
     });
   }, [scheduleListenerRestart]);
 
-
-  const wasSubscribedRef = useRef(false);
-
-  // FIX (Bug #4): Open subscriptions whenever the user is present (not only on re-subscription).
-  // The original condition `if (user && (subscribedRef.current || wasSubscribedRef.current))`
-  // had a dead zone: on first cold boot both refs are false, so subscriptions never opened.
-  // Any screen navigating directly to Gym (without Dashboard) would never receive gym logs.
-  // Fix: always call openSubscriptions when user exists — the function itself is idempotent
-  // (guarded by `if (subscribedRef.current) return`), so calling it multiple times is safe.
   useEffect(() => {
     if (user) {
-      subscribedRef.current = false; // reset to allow re-open on user/version change
+      subscribedRef.current = false;
       openSubscriptions(user.uid);
-      wasSubscribedRef.current = true;
     } else {
+      deferredInteractionRef.current?.cancel();
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
-      wasSubscribedRef.current = false;
+      hasCachedDataRef.current = false;
+      unstable_batchedUpdates(() => {
+        setGymLogs([]);
+        setUserGymPlan(null);
+        setWaterLogs([]);
+        setSleepLogs([]);
+        setWeightLogs([]);
+        setGymLogsSnapshotFired(false);
+      });
       if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     }
     return () => {
+      deferredInteractionRef.current?.cancel();
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
     };
   }, [user?.uid, subscriptionVersion, openSubscriptions]);
 
-  // Cleanup on unmount
   useEffect(() => () => {
+    deferredInteractionRef.current?.cancel();
     unsubsRef.current.forEach(u => u());
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
   }, []);
 
   const ensureSubscribed = useCallback(() => {
     if (user && !subscribedRef.current) {
-      wasSubscribedRef.current = true;
       openSubscriptions(user.uid);
     }
   }, [user?.uid, openSubscriptions]);
 
-  const updateMasterPlan = async (dayIndex: number, planDay: GymPlanDay) => {
+  const updateMasterPlan = useCallback(async (dayIndex: number, planDay: GymPlanDay) => {
     if (!user) return;
+    const currentPlan = userGymPlanRef.current;
     const docRef = doc(db, COLLECTION.USER_GYM_PLANS, user.uid);
-    const newCustomDays = { ...(userGymPlan?.customDays || {}), [dayIndex]: planDay };
+    const newCustomDays = { ...(currentPlan?.customDays || {}), [dayIndex]: planDay };
     const now = Date.now();
     const updatedPlan: UserGymPlanDoc = {
       id: user.uid,
       userId: user.uid,
-      templateId: userGymPlan?.templateId,
-      schedulePattern: userGymPlan?.schedulePattern,
+      templateId: currentPlan?.templateId,
+      schedulePattern: currentPlan?.schedulePattern,
       customDays: newCustomDays,
       updatedAt: now,
     };
+    userGymPlanRef.current = updatedPlan;
     setUserGymPlan(updatedPlan);
-    writeWellnessCache({ userGymPlan: updatedPlan }, true); // immediate: user save action
+    writeWellnessCache({ userGymPlan: updatedPlan }, true);
     await setDoc(docRef, { userId: user.uid, customDays: newCustomDays, updatedAt: now }, { merge: true });
-  };
+  }, [user?.uid]);
 
-  const updateFullMasterPlan = async (newCustomDays: Record<number, GymPlanDay>) => {
+  const updateFullMasterPlan = useCallback(async (newCustomDays: Record<number, GymPlanDay>) => {
     if (!user) return;
+    const currentPlan = userGymPlanRef.current;
     const docRef = doc(db, COLLECTION.USER_GYM_PLANS, user.uid);
     const now = Date.now();
     const updatedPlan: UserGymPlanDoc = {
       id: user.uid,
       userId: user.uid,
-      templateId: userGymPlan?.templateId,
-      schedulePattern: userGymPlan?.schedulePattern,
+      templateId: currentPlan?.templateId,
+      schedulePattern: currentPlan?.schedulePattern,
       customDays: newCustomDays,
       updatedAt: now,
     };
+    userGymPlanRef.current = updatedPlan;
     setUserGymPlan(updatedPlan);
-    writeWellnessCache({ userGymPlan: updatedPlan }, true); // immediate: user save action
+    writeWellnessCache({ userGymPlan: updatedPlan }, true);
     await setDoc(docRef, { userId: user.uid, customDays: newCustomDays, updatedAt: now }, { merge: true });
-  };
+  }, [user?.uid]);
 
-  const applyMasterTemplate = async (
-    templateId: 'arnold' | 'ppl', 
+  const applyMasterTemplate = useCallback(async (
+    templateId: 'arnold' | 'ppl',
     schedulePattern: 'mon_sun' | 'tue_mon' | 'wed_sun' | 'mon_fri' = 'mon_sun'
   ) => {
     if (!user) return;
     const docRef = doc(db, COLLECTION.USER_GYM_PLANS, user.uid);
     const selectedPlan = templateId === 'ppl' ? GYM_PLAN_PPL : GYM_PLAN_ARNOLD;
-    
-    // Base workout days (dayIndex 1 to 6)
+
     const workoutDays = selectedPlan.filter(d => !d.isRest);
-    const restDayTemplate: GymPlanDay = { 
-      dayIndex: 7, 
-      name: 'Rest & Recovery', 
+    const restDayTemplate: GymPlanDay = {
+      dayIndex: 7,
+      name: 'Rest & Recovery',
       subtitle: 'Active recovery, hydration & sleep',
-      focus: 'Active recovery, hydration & sleep', 
-      isRest: true, 
-      exercises: [] 
+      focus: 'Active recovery, hydration & sleep',
+      isRest: true,
+      exercises: [],
     };
-
     const newCustomDays: Record<number, GymPlanDay> = {};
-
     if (schedulePattern === 'mon_sun') {
-      // Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6, Sun=7(Rest)
       workoutDays.forEach((d, idx) => {
         newCustomDays[idx + 1] = { ...d, dayIndex: idx + 1, isRest: false };
       });
       newCustomDays[7] = { ...restDayTemplate, dayIndex: 7, isRest: true, exercises: [] };
     } else if (schedulePattern === 'tue_mon') {
-      // Mon=1(Rest), Tue=2(Day1), Wed=3(Day2), Thu=4(Day3), Fri=5(Day4), Sat=6(Day5), Sun=7(Day6)
       newCustomDays[1] = { ...restDayTemplate, dayIndex: 1, isRest: true, exercises: [] };
       workoutDays.forEach((d, idx) => {
         newCustomDays[idx + 2] = { ...d, dayIndex: idx + 2, isRest: false };
       });
     } else if (schedulePattern === 'wed_sun') {
-      // Mon=Day1, Tue=Day2, Wed=Rest, Thu=Day3, Fri=Day4, Sat=Day5, Sun=Rest
       newCustomDays[1] = { ...workoutDays[0], dayIndex: 1, isRest: false };
       newCustomDays[2] = { ...workoutDays[1], dayIndex: 2, isRest: false };
       newCustomDays[3] = { ...restDayTemplate, dayIndex: 3, isRest: true, exercises: [] };
@@ -367,7 +360,6 @@ export function WellnessProvider({
       newCustomDays[6] = { ...workoutDays[4], dayIndex: 6, isRest: false };
       newCustomDays[7] = { ...restDayTemplate, dayIndex: 7, isRest: true, exercises: [] };
     } else if (schedulePattern === 'mon_fri') {
-      // Mon=Day1, Tue=Day2, Wed=Day3, Thu=Day4, Fri=Day5, Sat=Rest, Sun=Rest
       workoutDays.slice(0, 5).forEach((d, idx) => {
         newCustomDays[idx + 1] = { ...d, dayIndex: idx + 1, isRest: false };
       });
@@ -384,114 +376,97 @@ export function WellnessProvider({
       customDays: newCustomDays,
       updatedAt: now,
     };
-
+    userGymPlanRef.current = updatedPlan;
     setUserGymPlan(updatedPlan);
-    writeWellnessCache({ userGymPlan: updatedPlan }, true); // immediate: user save action
-
+    writeWellnessCache({ userGymPlan: updatedPlan }, true);
     await setDoc(docRef, { userId: user.uid, templateId, schedulePattern, customDays: newCustomDays, updatedAt: now }, { merge: true });
 
-    // Clean up unstarted gym logs for the current week so they immediately adopt the new template
     try {
       const todayObj = new Date();
-      const currentDayOfWeek = todayObj.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+      const currentDayOfWeek = todayObj.getDay();
       const mondayOffset = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
       const monday = new Date(todayObj);
       monday.setDate(todayObj.getDate() + mondayOffset);
-
       const weekDates: string[] = [];
       for (let i = 0; i < 7; i++) {
         const d = new Date(monday);
         d.setDate(monday.getDate() + i);
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        weekDates.push(`${y}-${m}-${day}`);
+        weekDates.push(formatLocalDateStr(d));
       }
-
-      // Purge local cache for unworked days of this week
       for (const dStr of weekDates) {
         AsyncStorage.removeItem(`@gym_log_${dStr}`).catch(() => {});
       }
-
-      // Filter in-memory logs to strip unstarted logs and trigger fresh instantiation
       setGymLogs(prev => {
         const next = prev.filter(l => {
           if (!weekDates.includes(l.date)) return true;
           const hasLoggedSets = (l.exercises || []).some((ex: any) =>
             (ex.setsLog || []).some((s: any) => s.completed || (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0))
           );
-          // Keep completed or active workouts
           return l.completed || l.workoutStartTime || hasLoggedSets;
         });
-        writeWellnessCache({ gymLogs: next }, true); // immediate: template apply
+        writeWellnessCache({ gymLogs: next }, true);
         return next;
       });
     } catch (e) {
       console.warn('[Wellness] Error clearing unstarted week logs on template apply:', e);
     }
-
     return newCustomDays;
-  };
+  }, [user?.uid]);
 
-  const optimisticAddGymLog = (log: GymLog) => {
+  const optimisticAddGymLog = useCallback((log: GymLog) => {
     setGymLogs(prev => {
       const exists = prev.some(l => l.id === log.id || l.date === log.date);
       const next = exists ? prev.map(l => (l.id === log.id || l.date === log.date) ? log : l) : [log, ...prev];
-      writeWellnessCache({ gymLogs: next }, true); // immediate: optimistic add
+      writeWellnessCache({ gymLogs: next }, true);
       return next;
     });
-  };
+  }, []);
 
-  const optimisticUpdateGymLog = (logId: string, partial: Partial<GymLog>) => {
+  const optimisticUpdateGymLog = useCallback((logId: string, partial: Partial<GymLog>) => {
     setGymLogs(prev => {
       const next = prev.map(l => {
         if (l.id === logId || (partial.date && l.date === partial.date)) {
           const merged: GymLog = { ...l, ...partial };
-          if (partial.workoutStartTime === undefined || partial.completed) {
+          if ('workoutStartTime' in partial && partial.workoutStartTime === undefined || partial.completed) {
             delete (merged as any).workoutStartTime;
           }
           return merged;
         }
         return l;
       });
-      writeWellnessCache({ gymLogs: next }, true); // immediate: optimistic update
+      writeWellnessCache({ gymLogs: next }, true);
       return next;
     });
-  };
+  }, []);
 
-  const optimisticAddWaterLog = (log: WaterLog) => {
+  const optimisticAddWaterLog = useCallback((log: WaterLog) => {
     setWaterLogs(prev => {
       const todayStr = formatLocalDateStr(new Date());
       const previousToday = prev
         .filter(w => (w.date || '').slice(0, 10) === todayStr)
         .reduce((sum, w) => sum + (w.amountMl || 0), 0);
       const newToday = previousToday + (log.amountMl || 0);
-
       AsyncStorage.getItem('zentrack_water_goal_ml')
         .then(savedGoal => {
           const goal = savedGoal ? parseInt(savedGoal, 10) : 3800;
           checkAndTriggerWaterMilestones(previousToday, newToday, goal).catch(() => {});
         })
         .catch(() => {});
-
       const next = [log, ...prev];
-      writeWellnessCache({ waterLogs: next }, true); // immediate: optimistic add
+      writeWellnessCache({ waterLogs: next }, true);
       return next;
     });
-  };
+  }, []);
 
-  const optimisticDeleteWaterLog = (logId: string) => {
+  const optimisticDeleteWaterLog = useCallback((logId: string) => {
     setWaterLogs(prev => {
       const next = prev.filter(l => l.id !== logId);
-      writeWellnessCache({ waterLogs: next }, true); // immediate: optimistic delete
+      writeWellnessCache({ waterLogs: next }, true);
       return next;
     });
-  };
+  }, []);
 
-  // gymLogsReady: true once the first Firestore snapshot has fired (even if user has no logs).
-  // Previously derived as `gymLogs.length > 0` which was always false for new users,
-  // causing an infinite loading skeleton. Now a proper boolean sentinel.
-  const gymLogsReady = gymLogsSnapshotFired;
+  const gymLogsReady = gymLogsSnapshotFired || hasCachedDataRef.current;
 
   const value = useMemo(() => ({
     gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate,
@@ -499,7 +474,8 @@ export function WellnessProvider({
     optimisticAddWaterLog, optimisticDeleteWaterLog
   }), [
     gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate,
-    waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddWaterLog, optimisticDeleteWaterLog
+    waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddGymLog, optimisticUpdateGymLog,
+    optimisticAddWaterLog, optimisticDeleteWaterLog
   ]);
 
   return (

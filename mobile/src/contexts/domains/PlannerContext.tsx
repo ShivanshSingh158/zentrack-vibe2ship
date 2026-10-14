@@ -1,30 +1,18 @@
- /**
- * PlannerContext — ZenTrack Mobile
- *
- * Owns: customEvents (calendar), goals, weeklyReviews.
- *
- * Subscription strategy: DEMAND-BASED + OFFLINE-FIRST.
- * On mount: reads all planner data from AsyncStorage instantly (~5ms).
- * Calendar and Goals screens show real data immediately, even when offline.
- * Firestore snapshots silently update the cache when online.
- */
 import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates } from 'react-native';
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { CustomEvent, Goal, WeeklyReview } from "../MobileDataContext";
-import { readPlannerCache, writePlannerCache } from "../../utils/domainCache";
+import { writePlannerCache } from "../../utils/domainCache";
 import { loadBootManifest, getBootManifestSync } from "../../utils/bootManifest";
 import { parseCustomEvent, parseGoal, areItemsEqual } from "../../utils/schemaGuards";
 
-// ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface PlannerContextType {
   customEvents: CustomEvent[];
   goals: Goal[];
   weeklyReviews: WeeklyReview[];
   ensureSubscribed: () => void;
-  // Optimistic write helpers — WhatsApp pattern: show instantly, Firestore syncs in background.
   optimisticAddEvent: (event: CustomEvent) => void;
   optimisticUpdateEvent: (eventId: string, partial: Partial<CustomEvent>) => void;
   optimisticDeleteEvent: (eventId: string) => void;
@@ -48,13 +36,10 @@ const PlannerContext = createContext<PlannerContextType | null>(null);
 
 export function usePlannerData(): PlannerContextType {
   const ctx = useContext(PlannerContext);
-  if (!ctx) {
-    return DEFAULT_PLANNER_DATA;
-  }
+  if (!ctx) return DEFAULT_PLANNER_DATA;
   return ctx;
 }
 
-// ─── Provider ──────────────────────────────────────────────────────────────────
 export function PlannerProvider({
   children,
   user,
@@ -63,19 +48,18 @@ export function PlannerProvider({
   user: { uid: string } | null;
 }) {
   const initialManifest = getBootManifestSync();
-  const [customEvents, setCustomEvents]       = useState<CustomEvent[]>(initialManifest?.customEvents ?? []);
-  const [goals, setGoals]                     = useState<Goal[]>(initialManifest?.goals ?? []);
-  const [weeklyReviews, setWeeklyReviews]     = useState<WeeklyReview[]>(initialManifest?.weeklyReviews ?? []);
+  const [customEvents, setCustomEvents]   = useState<CustomEvent[]>(initialManifest?.customEvents ?? []);
+  const [goals, setGoals]                 = useState<Goal[]>(initialManifest?.goals ?? []);
+  const [weeklyReviews, setWeeklyReviews] = useState<WeeklyReview[]>(initialManifest?.weeklyReviews ?? []);
+
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
-  // OFFLINE-FIRST GUARD: ignore empty memoryLocalCache snapshots when cache is seeded.
   const hasCachedDataRef = useRef(
     (initialManifest?.customEvents?.length ?? 0) > 0 ||
     (initialManifest?.goals?.length ?? 0) > 0 ||
     (initialManifest?.weeklyReviews?.length ?? 0) > 0
   );
 
-  // Fallback hydration: handles cold-start race conditions seamlessly
   useEffect(() => {
     let isCancelled = false;
     loadBootManifest().then(manifest => {
@@ -84,15 +68,18 @@ export function PlannerProvider({
         setCustomEvents(prev => prev.length === 0 && (manifest.customEvents?.length ?? 0) > 0 ? manifest.customEvents : prev);
         setGoals(prev => prev.length === 0 && (manifest.goals?.length ?? 0) > 0 ? manifest.goals : prev);
         setWeeklyReviews(prev => prev.length === 0 && (manifest.weeklyReviews?.length ?? 0) > 0 ? manifest.weeklyReviews : prev);
-        if ((manifest.customEvents?.length ?? 0) > 0 || (manifest.goals?.length ?? 0) > 0) {
+        if (
+          (manifest.customEvents?.length ?? 0) > 0 ||
+          (manifest.goals?.length ?? 0) > 0 ||
+          (manifest.weeklyReviews?.length ?? 0) > 0
+        ) {
           hasCachedDataRef.current = true;
         }
       });
     }).catch(() => {});
     return () => { isCancelled = true; };
-  }, []);
+  }, [user?.uid]);
 
-  // ── Listener auto-restart on error ───────────────────────────────────────
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -108,11 +95,9 @@ export function PlannerProvider({
     }, 5000);
   }, []);
 
-  // ── Foreground reconnect: restart listeners after long background ─────────
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('firestore_force_reconnect', () => {
       if (user) {
-        console.log('[Planner] foreground reconnect — restarting Firestore listeners');
         unsubsRef.current.forEach(u => u());
         unsubsRef.current = [];
         subscribedRef.current = false;
@@ -122,24 +107,6 @@ export function PlannerProvider({
     return () => sub.remove();
   }, [user?.uid]);
 
-  // ── Offline-first boot: seed ALL planner collections from boot manifest ──
-  // If getBootManifestSync() already populated state on Frame 0, this does 0 re-renders.
-  useEffect(() => {
-    let cancelled = false;
-    loadBootManifest().then(manifest => {
-      if (cancelled) return;
-      unstable_batchedUpdates(() => {
-        let seeded = false;
-        if (customEvents.length === 0 && Array.isArray(manifest.customEvents) && manifest.customEvents.length > 0)   { setCustomEvents(manifest.customEvents); seeded = true; }
-        if (goals.length === 0 && Array.isArray(manifest.goals) && manifest.goals.length > 0)                 { setGoals(manifest.goals); seeded = true; }
-        if (weeklyReviews.length === 0 && Array.isArray(manifest.weeklyReviews) && manifest.weeklyReviews.length > 0) { setWeeklyReviews(manifest.weeklyReviews); seeded = true; }
-        if (seeded) hasCachedDataRef.current = true;
-      });
-    }).catch(() => {});
-
-    return () => { cancelled = true; };
-  }, [user?.uid]);
-
   const openSubscriptions = useCallback((uid: string) => {
     if (subscribedRef.current) return;
     subscribedRef.current = true;
@@ -147,7 +114,7 @@ export function PlannerProvider({
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.CALENDAR_EVENTS), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => parseCustomEvent(d.data(), d.id));
           setCustomEvents(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -156,10 +123,11 @@ export function PlannerProvider({
       },
       scheduleListenerRestart("customEvents")
     ));
+
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.GOALS), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => parseGoal(d.data(), d.id));
           setGoals(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -168,10 +136,11 @@ export function PlannerProvider({
       },
       scheduleListenerRestart("goals")
     ));
+
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.WEEKLY_REVIEWS), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview));
           setWeeklyReviews(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -182,18 +151,20 @@ export function PlannerProvider({
     ));
   }, [scheduleListenerRestart]);
 
-  const wasSubscribedRef = useRef(false);
-
   useEffect(() => {
-    if (user && (subscribedRef.current || wasSubscribedRef.current)) {
+    if (user) {
       subscribedRef.current = false;
       openSubscriptions(user.uid);
-      wasSubscribedRef.current = true;
-    } else if (!user) {
+    } else {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
-      wasSubscribedRef.current = false;
+      hasCachedDataRef.current = false;
+      unstable_batchedUpdates(() => {
+        setCustomEvents([]);
+        setGoals([]);
+        setWeeklyReviews([]);
+      });
       if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     }
     return () => {
@@ -210,57 +181,56 @@ export function PlannerProvider({
 
   const ensureSubscribed = useCallback(() => {
     if (user && !subscribedRef.current) {
-      wasSubscribedRef.current = true;
       openSubscriptions(user.uid);
     }
   }, [user?.uid, openSubscriptions]);
 
-  // Optimistic write helpers
-  const optimisticAddEvent = (event: CustomEvent) => {
+  const optimisticAddEvent = useCallback((event: CustomEvent) => {
     setCustomEvents(prev => {
       const next = [event, ...prev];
-      writePlannerCache({ customEvents: next }, true); // immediate: optimistic add
+      writePlannerCache({ customEvents: next }, true);
       return next;
     });
-  };
+  }, []);
 
-  const optimisticUpdateEvent = (eventId: string, partial: Partial<CustomEvent>) => {
+  const optimisticUpdateEvent = useCallback((eventId: string, partial: Partial<CustomEvent>) => {
     setCustomEvents(prev => {
       const next = prev.map(e => e.id === eventId ? { ...e, ...partial } : e);
-      writePlannerCache({ customEvents: next }, true); // immediate: optimistic update
+      writePlannerCache({ customEvents: next }, true);
       return next;
     });
-  };
+  }, []);
 
-  const optimisticDeleteEvent = (eventId: string) => {
+  const optimisticDeleteEvent = useCallback((eventId: string) => {
     setCustomEvents(prev => {
       const next = prev.filter(e => e.id !== eventId);
-      writePlannerCache({ customEvents: next }, true); // immediate: optimistic delete
+      writePlannerCache({ customEvents: next }, true);
       return next;
     });
-  };
+  }, []);
 
-  const optimisticAddGoal = (goal: Goal) => {
+  const optimisticAddGoal = useCallback((goal: Goal) => {
     setGoals(prev => {
       const next = [goal, ...prev];
-      writePlannerCache({ goals: next }, true); // immediate: optimistic add
+      writePlannerCache({ goals: next }, true);
       return next;
     });
-  };
+  }, []);
 
-  const optimisticUpdateGoal = (goalId: string, partial: Partial<Goal>) => {
+  const optimisticUpdateGoal = useCallback((goalId: string, partial: Partial<Goal>) => {
     setGoals(prev => {
       const next = prev.map(g => g.id === goalId ? { ...g, ...partial } : g);
-      writePlannerCache({ goals: next }, true); // immediate: optimistic update
+      writePlannerCache({ goals: next }, true);
       return next;
     });
-  };
+  }, []);
 
   const value = useMemo(() => ({
     customEvents, goals, weeklyReviews, ensureSubscribed,
     optimisticAddEvent, optimisticUpdateEvent, optimisticDeleteEvent, optimisticAddGoal, optimisticUpdateGoal
   }), [
-    customEvents, goals, weeklyReviews, ensureSubscribed
+    customEvents, goals, weeklyReviews, ensureSubscribed,
+    optimisticAddEvent, optimisticUpdateEvent, optimisticDeleteEvent, optimisticAddGoal, optimisticUpdateGoal
   ]);
 
   return (

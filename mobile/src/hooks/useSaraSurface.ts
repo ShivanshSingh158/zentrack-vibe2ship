@@ -83,10 +83,12 @@ function evaluateLocalSurfaceInsight(
 
     case 'Assignments': {
       if (!ctx.assignments?.length) return null;
-      const urgent = ctx.assignments.filter(a => a.status !== 'submitted' && a.dueDate && a.dueDate <= today);
+      const urgent = ctx.assignments.filter(
+        a => a.status !== 'submitted' && a.status !== 'graded' && a.dueDate && a.dueDate <= today
+      );
       if (urgent.length > 0) {
         return {
-          message: `⏳ "${urgent[0].title || 'Assignment'}" is due today!`,
+          message: `⚠️ "${urgent[0].title || 'Assignment'}" is due today!`,
           action: 'View',
         };
       }
@@ -96,7 +98,11 @@ function evaluateLocalSurfaceInsight(
     case 'Goals': {
       if (!ctx.goals?.length) return null;
       const stalled = ctx.goals.filter(
-        g => g.status === 'active' && g.updatedAt && (g.progress || 0) < 100 && (Date.now() - g.updatedAt) > 14 * 86400000
+        g =>
+          (g.status === 'active' || g.status === 'in_progress') &&
+          g.updatedAt &&
+          (g.progress || 0) < 100 &&
+          (Date.now() - g.updatedAt) > 14 * 86400000
       );
       if (stalled.length > 0) {
         return {
