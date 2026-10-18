@@ -19,10 +19,10 @@ import {
   View,
   Text,
   StyleSheet,
-  PanResponder,
   LayoutChangeEvent,
   Dimensions,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -345,6 +345,7 @@ export function CalendarWeekStripPager({
   }, [translateX]);
 
   const commitNextWeek = useCallback(() => {
+    Haptics.selectionAsync();
     const cur = parseDateToMidnight(currentDateRef.current);
     cur.setDate(cur.getDate() + 7);
     const nextDateStr = formatLocalDateStr(cur);
@@ -352,10 +353,10 @@ export function CalendarWeekStripPager({
     setAnchorSundayStr(nextSunStr);
     onSelectDate(nextDateStr);
     translateX.value = -containerWidthRef.current;
-    isAnimatingRef.current = false;
   }, [onSelectDate, translateX]);
 
   const commitPrevWeek = useCallback(() => {
+    Haptics.selectionAsync();
     const cur = parseDateToMidnight(currentDateRef.current);
     cur.setDate(cur.getDate() - 7);
     const prevDateStr = formatLocalDateStr(cur);
@@ -363,63 +364,49 @@ export function CalendarWeekStripPager({
     setAnchorSundayStr(prevSunStr);
     onSelectDate(prevDateStr);
     translateX.value = -containerWidthRef.current;
-    isAnimatingRef.current = false;
   }, [onSelectDate, translateX]);
 
-  // PanResponder with 1:1 real-time finger tracking & zero strobe flicker
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) => {
-          return (
-            Math.abs(gestureState.dx) > 16 &&
-            Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.4 &&
-            !isAnimatingRef.current
-          );
-        },
-        onPanResponderMove: (_, gestureState) => {
-          if (isAnimatingRef.current) return;
-          translateX.value = -containerWidthRef.current + gestureState.dx;
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          if (isAnimatingRef.current) return;
-          const w = containerWidthRef.current;
-          const threshold = Math.min(w * 0.22, 60);
+  // Native UI thread 60/120fps gesture with zero bridge latency
+  const panGesture = useMemo(() => {
+    return Gesture.Pan()
+      .activeOffsetX([-8, 8])
+      .failOffsetY([-14, 14])
+      .onUpdate((event) => {
+        'worklet';
+        const w = containerWidth;
+        translateX.value = -w + event.translationX;
+      })
+      .onEnd((event) => {
+        'worklet';
+        const w = containerWidth;
+        const threshold = Math.min(w * 0.18, 50);
 
-          if (gestureState.dx < -threshold) {
-            // Next week
-            isAnimatingRef.current = true;
-            Haptics.selectionAsync();
-            translateX.value = withSpring(
-              -2 * w,
-              { damping: 28, stiffness: 260, mass: 0.85 },
-              (finished) => {
-                if (finished) runOnJS(commitNextWeek)();
-              }
-            );
-          } else if (gestureState.dx > threshold) {
-            // Prev week
-            isAnimatingRef.current = true;
-            Haptics.selectionAsync();
-            translateX.value = withSpring(
-              0,
-              { damping: 28, stiffness: 260, mass: 0.85 },
-              (finished) => {
-                if (finished) runOnJS(commitPrevWeek)();
-              }
-            );
-          } else {
-            // Cancel and snap back to center
-            translateX.value = withSpring(-w, {
-              damping: 30,
-              stiffness: 280,
-              mass: 0.8,
-            });
-          }
-        },
-      }),
-    [commitNextWeek, commitPrevWeek, translateX]
-  );
+        if (event.translationX < -threshold || event.velocityX < -350) {
+          // Slide to next week
+          translateX.value = withTiming(
+            -2 * w,
+            { duration: 180, easing: REasing.bezier(0.25, 0.1, 0.25, 1) },
+            () => {
+              'worklet';
+              runOnJS(commitNextWeek)();
+            }
+          );
+        } else if (event.translationX > threshold || event.velocityX > 350) {
+          // Slide to prev week
+          translateX.value = withTiming(
+            0,
+            { duration: 180, easing: REasing.bezier(0.25, 0.1, 0.25, 1) },
+            () => {
+              'worklet';
+              runOnJS(commitPrevWeek)();
+            }
+          );
+        } else {
+          // Snap back
+          translateX.value = withTiming(-w, { duration: 160 });
+        }
+      });
+  }, [containerWidth, commitNextWeek, commitPrevWeek, translateX]);
 
   const renderWeekRow = (days: WeekDayItem[], keySuffix: string, hasPill: boolean) => (
     <View key={keySuffix} style={[styles.weekRow, { width: containerWidth }]}>
@@ -452,20 +439,22 @@ export function CalendarWeekStripPager({
   );
 
   return (
-    <View style={styles.container} onLayout={onContainerLayout} {...panResponder.panHandlers}>
-      {/* Month label with cross-fade + vertical slide on month change */}
-      <Reanimated.Text style={[styles.monthLabel, monthAnimStyle]}>
-        {monthLabel}
-      </Reanimated.Text>
+    <GestureDetector gesture={panGesture}>
+      <View style={styles.container} onLayout={onContainerLayout}>
+        {/* Month label with cross-fade + vertical slide on month change */}
+        <Reanimated.Text style={[styles.monthLabel, monthAnimStyle]}>
+          {monthLabel}
+        </Reanimated.Text>
 
-      <View style={styles.trackWrapper}>
-        <Reanimated.View style={[styles.pagerTrack, animatedPagerStyle]}>
-          {renderWeekRow(prevWeekDays, 'prev', false)}
-          {renderWeekRow(currentWeekDays, 'curr', true)}
-          {renderWeekRow(nextWeekDays, 'next', false)}
-        </Reanimated.View>
+        <View style={styles.trackWrapper}>
+          <Reanimated.View style={[styles.pagerTrack, animatedPagerStyle]}>
+            {renderWeekRow(prevWeekDays, 'prev', false)}
+            {renderWeekRow(currentWeekDays, 'curr', true)}
+            {renderWeekRow(nextWeekDays, 'next', false)}
+          </Reanimated.View>
+        </View>
       </View>
-    </View>
+    </GestureDetector>
   );
 }
 

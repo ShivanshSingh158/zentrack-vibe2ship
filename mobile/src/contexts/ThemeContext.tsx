@@ -20,7 +20,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { Appearance, ColorSchemeName, Platform, StatusBar as RNStatusBar } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DARK_COLORS, LIGHT_COLORS } from '../theme/tokens';
-import { getBootManifestSync } from '../utils/bootManifest';
+import { getBootManifestSync, updateL1Cache } from '../utils/bootManifest';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -85,6 +85,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const applyMode = useCallback(async (next: ThemeMode) => {
     setMode(next);
+    updateL1Cache('themeMode', next);
     try {
       await AsyncStorage.setItem(THEME_STORAGE_KEY, next);
     } catch { /* silent — preference lost but app keeps working */ }
@@ -93,6 +94,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const toggleTheme = useCallback(() => {
     setMode(prev => {
       const next: ThemeMode = prev === 'dark' ? 'light' : 'dark';
+      updateL1Cache('themeMode', next);
       AsyncStorage.setItem(THEME_STORAGE_KEY, next).catch(() => {});
       return next;
     });
@@ -142,11 +144,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 export function useTheme(): ThemeContextType {
   const ctx = useContext(ThemeContext);
   if (!ctx) {
-    // Graceful fallback — screens outside ThemeProvider get light colors by default
+    // Graceful fallback — default to dark colors
     return {
-      isDark: false,
-      mode: 'light',
-      colors: LIGHT_COLORS,
+      isDark: true,
+      mode: 'dark',
+      colors: DARK_COLORS,
       toggleTheme: () => {},
       setTheme: () => {},
     };

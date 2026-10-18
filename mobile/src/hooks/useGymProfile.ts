@@ -10,43 +10,25 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { GymProfile } from '../types/gym.types';
+
+export { GymProfile };
 
 const PROFILE_KEY = 'gym_profile_v1';
 
-export interface GymProfile {
-  /** Height in cm */
-  heightCm: number | null;
-  /** Bodyweight in kg */
-  weightKg: number | null;
-  /** Age in years */
-  age: number | null;
-  /** 'male' | 'female' | 'other' */
-  gender: 'male' | 'female' | 'other' | null;
-  /** Primary training goal */
-  goal: 'hypertrophy' | 'strength' | 'fat_loss' | 'athletic' | null;
-  /** Training experience */
-  experience: 'beginner' | 'intermediate' | 'advanced' | null;
-  /** Equipment available */
-  equipment: 'full_gym' | 'home_gym' | 'bodyweight' | null;
-  /** Preferred training days per week */
-  daysPerWeek: number | null;
-  /** Free-text injuries / limitations */
-  limitations: string;
-  /** Comma-separated exercises to avoid */
-  exercisesToAvoid: string;
-  /** Major muscles user wants to focus on */
-  focusMuscles: string;
-  /** Any other preferences or notes */
-  notes: string;
-}
+let memoryProfile: GymProfile | null = null;
 
 export const DEFAULT_PROFILE: GymProfile = {
   heightCm: null,
   weightKg: null,
+  bodyweightKg: null,
   age: null,
+  ageYears: null,
   gender: null,
   goal: null,
+  primaryGoal: null,
   experience: null,
+  trainingExperienceMonths: null,
   equipment: null,
   daysPerWeek: null,
   limitations: '',
@@ -56,17 +38,22 @@ export const DEFAULT_PROFILE: GymProfile = {
 };
 
 export function useGymProfile() {
-  const [gymProfile, setGymProfile] = useState<GymProfile>(DEFAULT_PROFILE);
-  const [profileLoaded, setProfileLoaded] = useState(false);
-  const profileRef = useRef<GymProfile>(DEFAULT_PROFILE);
+  const [gymProfile, setGymProfile] = useState<GymProfile>(memoryProfile || DEFAULT_PROFILE);
+  const [profileLoaded, setProfileLoaded] = useState(!!memoryProfile);
+  const profileRef = useRef<GymProfile>(memoryProfile || DEFAULT_PROFILE);
 
   useEffect(() => {
     let cancelled = false;
+    if (memoryProfile) {
+      setProfileLoaded(true);
+      return;
+    }
     AsyncStorage.getItem(PROFILE_KEY)
       .then(raw => {
         if (cancelled || !raw) return;
         try {
           const merged = { ...DEFAULT_PROFILE, ...JSON.parse(raw) };
+          memoryProfile = merged;
           profileRef.current = merged;
           setGymProfile(merged);
         } catch (_) {}
@@ -81,6 +68,7 @@ export function useGymProfile() {
 
   const saveGymProfile = useCallback(async (profile: Partial<GymProfile>) => {
     const next = { ...profileRef.current, ...profile };
+    memoryProfile = next;
     profileRef.current = next;
     setGymProfile(next);
     await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(next));

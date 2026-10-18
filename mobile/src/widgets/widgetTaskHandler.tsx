@@ -70,6 +70,7 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
               attendanceLogs: academicCache.attendanceLogs || [],
               holidays: academicCache.holidays || [],
               zenScore: data?.zenScore ?? 85,
+              streak: data?.streak ?? 0,
             });
             await saveCachedWidgetData(data);
           } catch {}

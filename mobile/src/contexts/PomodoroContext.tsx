@@ -202,34 +202,8 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         ...statePayload,
       };
       await AsyncStorage.setItem(STORAGE_KEY_POMODORO, JSON.stringify(currentFullState));
-
-      const uid = auth.currentUser?.uid;
-      if (uid) {
-        const firestorePayload = {
-          userId: uid,
-          status: currentFullState.status,
-          mode: currentFullState.mode,
-          timeLeft: currentFullState.timeLeft,
-          totalDuration: currentFullState.totalDuration,
-          startTime: currentFullState.startTime,
-          targetEndTime: currentFullState.targetEndTime,
-          pausedAt: currentFullState.pausedAt,
-          sessionCount: currentFullState.sessionCount,
-          completedToday: currentFullState.completedToday,
-          linkedTaskId: currentFullState.linkedTaskId,
-          linkedTaskTitle: currentFullState.linkedTaskTitle,
-          updatedAt: now,
-        };
-        safeWrite(
-          () => setDoc(doc(db, 'user_pomodoro_state', uid), firestorePayload, { merge: true }),
-          'user_pomodoro_state',
-          'set',
-          firestorePayload,
-          uid,
-        ).catch(() => {});
-      }
     } catch (e) {
-      console.warn('[PomodoroContext] Error persisting state:', e);
+      console.warn('[PomodoroContext] Error persisting state to local cache:', e);
     }
   }, []);
 

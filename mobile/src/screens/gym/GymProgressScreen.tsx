@@ -19,7 +19,7 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
+  useWindowDimensions,
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -42,13 +42,13 @@ import GymProgressSkeleton from '../../components/Gym/GymProgressSkeleton';
 import { estimate1RM, calculateRepMaxTable } from '../../services/oneRepMaxEngine';
 import { calculateEffortSummary } from '../../services/effortEngine';
 import { computeOrGetHotCache, generateDatasetFingerprint } from '../../utils/hotCacheStore';
+import { todayStr, dateStrOffset } from '../../hooks/useGymLog';
+import { resolveExerciseTargetMuscle, normalizeExerciseKey } from '../../utils/gymUtils';
 
-const { width } = Dimensions.get('window');
 type TimeRange = '7d' | '30d' | '90d' | '1y' | 'all';
 type ExCurveMode = '1rm' | 'top' | 'effort';
 
 const CHART_HEIGHT = 160;
-const CHART_WIDTH = width - 48;
 const PADDING = 18;
 
 // ─── Pure Helper: Cubic Bezier Smoothing for SVG Path ─────────────────────────
@@ -66,6 +66,9 @@ export default function GymProgressScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeGymProgressStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
+  const { width } = useWindowDimensions();
+  const CHART_WIDTH = width - 48;
+
   const { gymLogs, gymLogsReady } = useWellnessData();
   const isInitialLoading = !gymLogsReady && (!gymLogs || gymLogs.length === 0);
 
@@ -91,15 +94,12 @@ export default function GymProgressScreen() {
   const { filteredLogs, kpi, volumeTimeline, cardioMetrics, allCompletedSets } = useMemo(() => {
     const cacheKey = `gym_prog_${timeRange}_${generateDatasetFingerprint(gymLogs)}`;
     return computeOrGetHotCache(cacheKey, () => {
-      const today = new Date();
       const daysToSubtract =
         timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : timeRange === '90d' ? 90 : timeRange === '1y' ? 365 : 0;
 
       let fLogs = (gymLogs || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       if (daysToSubtract > 0) {
-        const cutoffDate = new Date(today);
-        cutoffDate.setDate(today.getDate() - daysToSubtract);
-        const cutoffStr = cutoffDate.toISOString().slice(0, 10);
+        const cutoffStr = dateStrOffset(-daysToSubtract, todayStr());
         fLogs = fLogs.filter(l => l.date >= cutoffStr);
       }
 
@@ -182,6 +182,7 @@ export default function GymProgressScreen() {
         Shoulders: { name: 'Shoulders & Delts', sets: 0, volumeKg: 0, color: '#ffd32a' },
         Arms: { name: 'Arms (Biceps / Triceps)', sets: 0, volumeKg: 0, color: '#b8afff' },
         Core: { name: 'Core & Calves', sets: 0, volumeKg: 0, color: '#8e8e93' },
+        Other: { name: 'Other / Mixed', sets: 0, volumeKg: 0, color: '#a0a0a0' },
       };
 
       let totalSetsCount = 0;
@@ -190,15 +191,16 @@ export default function GymProgressScreen() {
       (filteredLogs || []).forEach(log => {
         (log.exercises || []).forEach(ex => {
           if (ex.skipped) return;
-          const m = (ex.muscle || '').toLowerCase();
-          let targetKey = 'Back';
-          if (m.includes('chest') || m.includes('pec')) targetKey = 'Chest';
-          else if (m.includes('quad') || m.includes('vmo')) targetKey = 'Quads';
-          else if (m.includes('ham') || m.includes('glute') || m.includes('rdl') || m.includes('hip')) targetKey = 'GlutesHams';
-          else if (m.includes('shoulder') || m.includes('delt') || m.includes('trap')) targetKey = 'Shoulders';
-          else if (m.includes('bicep') || m.includes('tricep') || m.includes('brach') || m.includes('arm') || m.includes('forearm')) targetKey = 'Arms';
-          else if (m.includes('abs') || m.includes('core') || m.includes('calf') || m.includes('calves') || m.includes('oblique')) targetKey = 'Core';
-          else targetKey = 'Back';
+          const { canonicalGroup } = resolveExerciseTargetMuscle(ex.name, ex.muscle);
+          let targetKey = 'Other';
+          if (canonicalGroup === 'Chest') targetKey = 'Chest';
+          else if (canonicalGroup === 'Back' || canonicalGroup === 'Lats' || canonicalGroup === 'Traps') targetKey = 'Back';
+          else if (canonicalGroup === 'Quads') targetKey = 'Quads';
+          else if (canonicalGroup === 'Hamstrings' || canonicalGroup === 'Glutes' || canonicalGroup === 'Glutes/Abductors') targetKey = 'GlutesHams';
+          else if (canonicalGroup === 'Shoulders') targetKey = 'Shoulders';
+          else if (canonicalGroup === 'Biceps' || canonicalGroup === 'Triceps' || canonicalGroup === 'Forearms') targetKey = 'Arms';
+          else if (canonicalGroup === 'Core' || canonicalGroup === 'Calves') targetKey = 'Core';
+          else targetKey = 'Other';
 
           (ex.setsLog || []).forEach((s: any) => {
             if (s.completed) {
@@ -237,19 +239,37 @@ export default function GymProgressScreen() {
       return { x, y, data: d };
     });
     return { volCoords: coords, maxVol: maxV };
-  }, [volumeTimeline]);
+  }, [volumeTimeline, CHART_WIDTH]);
 
   const volSmoothPath = useMemo(() => generateSmoothSvgPath(volCoords), [volCoords]);
 
-  // ── All Distinct Exercises in History ────────────────────────────────────────
-  const allExerciseNames = useMemo(() => {
-    const set = new Set<string>();
+  // ── All Distinct Exercises in History (Grouped by Canonical Key) ─────────────
+  const { allExerciseNames, displayNameToKey } = useMemo(() => {
+    const keyToDisplay = new Map<string, string>();
+    const displayToKey = new Map<string, string>();
+    const keySet = new Set<string>();
+
     (gymLogs || []).forEach(log => {
       log.exercises?.forEach(ex => {
-        if (ex.name) set.add(ex.name);
+        if (!ex.name) return;
+        const key = normalizeExerciseKey(ex.name);
+        if (!key) return;
+        keySet.add(key);
+        if (!keyToDisplay.has(key) || ex.name.length > (keyToDisplay.get(key)?.length || 0)) {
+          keyToDisplay.set(key, ex.name);
+        }
       });
     });
-    return Array.from(set).sort();
+
+    const displayNames = Array.from(keySet)
+      .map(k => keyToDisplay.get(k) || k)
+      .sort();
+
+    displayNames.forEach(d => {
+      displayToKey.set(d, normalizeExerciseKey(d));
+    });
+
+    return { allExerciseNames: displayNames, displayNameToKey: displayToKey };
   }, [gymLogs]);
 
   useEffect(() => {
@@ -258,57 +278,68 @@ export default function GymProgressScreen() {
     }
   }, [allExerciseNames, selectedExercise]);
 
-  // ── Selected Exercise Deep-Dive Data (Hot-Cached) ───────────────────────────
-  const exerciseSessions = useMemo(() => {
-    if (!selectedExercise) return [];
-    const cacheKey = `ex_sessions_${selectedExercise}_${generateDatasetFingerprint(gymLogs)}`;
+  // ── Pre-Index All Exercise Sessions into Map for O(1) Tap Lookups ───────────
+  const allExerciseSessionsMap = useMemo(() => {
+    const cacheKey = `all_ex_sessions_map_${generateDatasetFingerprint(gymLogs)}`;
     return computeOrGetHotCache(cacheKey, () => {
-      const sessions: any[] = [];
+      const map = new Map<string, any[]>();
       const sorted = (gymLogs || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
       for (const log of sorted) {
         for (const ex of log.exercises || []) {
-          if (ex.skipped) continue;
-          if (ex.name === selectedExercise) {
-            const completedSets = (ex.setsLog || []).filter((s: any) => s.completed && !s.isWarmup);
-            if (completedSets.length > 0) {
-              const topWeight = Math.max(0, ...completedSets.map((s: any) => Number(s.weight) || 0));
-              const topSet = completedSets.find((s: any) => Number(s.weight) === topWeight) || completedSets[0];
-              const maxReps = Number(topSet?.reps) || 0;
-              const oneRM = estimate1RM(topWeight, maxReps, 'epley');
+          if (ex.skipped || !ex.name) continue;
+          const completedSets = (ex.setsLog || []).filter((s: any) => s.completed && !s.isWarmup);
+          if (completedSets.length === 0) continue;
 
-              let rirSum = 0;
-              let rirCount = 0;
-              for (const s of completedSets) {
-                if (s.rir !== undefined && s.rir !== null) {
-                  rirSum += Number(s.rir);
-                  rirCount++;
-                } else if (s.rpe !== undefined && s.rpe !== null) {
-                  rirSum += 10 - Number(s.rpe);
-                  rirCount++;
-                }
-              }
-              const avgRIR = rirCount > 0 ? Math.round((rirSum / rirCount) * 10) / 10 : 2;
+          const topWeight = Math.max(0, ...completedSets.map((s: any) => Number(s.weight) || 0));
+          const maxRepsAtMax = Math.max(...completedSets.filter((s: any) => Number(s.weight) === topWeight).map((s: any) => Number(s.reps) || 0));
+          const allOneRMs = completedSets.map((s: any) => estimate1RM(Number(s.weight) || 0, Number(s.reps) || 0, 'epley'));
+          const oneRM = Math.max(0, ...allOneRMs);
+          const maxReps = maxRepsAtMax > 0 ? maxRepsAtMax : (Number(completedSets[0]?.reps) || 0);
 
-              const parts = (log.date || '').split('-');
-              const shortDate = parts.length === 3 ? `${parts[1]}/${parts[2]}` : log.date;
-
-              sessions.push({
-                date: log.date,
-                shortDate,
-                topWeight,
-                maxReps,
-                oneRM,
-                avgRIR,
-                sets: completedSets,
-              });
+          let rirSum = 0;
+          let rirCount = 0;
+          for (const s of completedSets) {
+            if (s.rir !== undefined && s.rir !== null) {
+              rirSum += Number(s.rir);
+              rirCount++;
+            } else if (s.rpe !== undefined && s.rpe !== null) {
+              rirSum += 10 - Number(s.rpe);
+              rirCount++;
             }
           }
+          const avgRIR = rirCount > 0 ? Math.round((rirSum / rirCount) * 10) / 10 : 2;
+
+          const parts = (log.date || '').split('-');
+          const shortDate = parts.length === 3 ? `${parts[1]}/${parts[2]}` : log.date;
+
+          const sessionObj = {
+            date: log.date,
+            shortDate,
+            topWeight,
+            maxReps,
+            oneRM,
+            avgRIR,
+            sets: completedSets,
+          };
+
+          const exKey = normalizeExerciseKey(ex.name);
+          if (!map.has(exKey)) {
+            map.set(exKey, []);
+          }
+          map.get(exKey)!.push(sessionObj);
         }
       }
-      return sessions;
+      return map;
     });
-  }, [gymLogs, selectedExercise]);
+  }, [gymLogs]);
+
+  // Selected Exercise Deep-Dive Data (Instant O(1) Lookup)
+  const exerciseSessions = useMemo(() => {
+    if (!selectedExercise) return [];
+    const key = displayNameToKey.get(selectedExercise) || normalizeExerciseKey(selectedExercise);
+    return allExerciseSessionsMap.get(key) || [];
+  }, [allExerciseSessionsMap, selectedExercise, displayNameToKey]);
 
   // All-time best 1RM for selected exercise
   const exerciseBest = useMemo(() => {
@@ -374,7 +405,9 @@ export default function GymProgressScreen() {
             style={[styles.tab, timeRange === r && styles.tabActive]}
             onPress={() => {
               hapticLight();
-              setTimeRange(r);
+              React.startTransition(() => {
+                setTimeRange(r);
+              });
             }}
             activeOpacity={0.7}
           >

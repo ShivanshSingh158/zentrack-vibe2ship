@@ -285,8 +285,12 @@ export async function preCacheExercises(exerciseNames: string[]): Promise<number
       const fileInfo = await FileSystem.getInfoAsync(localPath);
       if (!fileInfo.exists || fileInfo.size < 1000) {
         const cdnUrl = getExerciseGifCdnUrl(def);
-        await FileSystem.downloadAsync(cdnUrl, localPath);
-        cachedCount++;
+        const res = await FileSystem.downloadAsync(cdnUrl, localPath);
+        if (!res || res.status < 200 || res.status >= 300) {
+          await FileSystem.deleteAsync(localPath, { idempotent: true });
+        } else {
+          cachedCount++;
+        }
       }
     } catch (e) {
       console.warn(`[ExerciseMediaService] Failed to pre-cache ${def.name}:`, e);

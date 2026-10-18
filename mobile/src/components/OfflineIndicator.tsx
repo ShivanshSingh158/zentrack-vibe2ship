@@ -41,7 +41,52 @@ const SPRING_OUT = { damping: 22, stiffness: 260, mass: 0.8 };
 const SYNC_TOAST_DURATION_MS = 3000;
 
 export function OfflineIndicator() {
-  return null;
+  const insets = useSafeAreaInsets();
+  const [syncedCount, setSyncedCount] = useState(0);
+  const [showToast, setShowToast] = useState(false);
+  const translateY = useSharedValue(-100);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const unsubSync = subscribeToSyncComplete((count) => {
+      if (count <= 0) return;
+      setSyncedCount(count);
+      setShowToast(true);
+      translateY.value = withSpring(0, SPRING_IN);
+
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        translateY.value = withTiming(-100, { duration: 220 }, (finished) => {
+          if (finished) runOnJS(setShowToast)(false);
+        });
+      }, SYNC_TOAST_DURATION_MS);
+    });
+
+    return () => {
+      unsubSync();
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [translateY]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  if (!showToast) return null;
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.wrapper, { top: insets.top + 8 }, animStyle]}
+    >
+      <View style={styles.greenToast}>
+        <Ionicons name="checkmark-circle" size={16} color="#15803D" />
+        <Text style={styles.greenText}>
+          Synced {syncedCount} offline {syncedCount === 1 ? 'change' : 'changes'}
+        </Text>
+      </View>
+    </Animated.View>
+  );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────

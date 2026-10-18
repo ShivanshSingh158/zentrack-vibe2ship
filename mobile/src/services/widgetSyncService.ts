@@ -20,7 +20,7 @@ import type { Task, AttendanceSubject, AttendanceLog } from '../contexts/MobileD
 import { safeUpdate, safeAdd, safeWrite } from '../utils/safeWrite';
 import { db, auth } from './firebase';
 import { COLLECTION } from '../config/constants';
-import { doc, updateDoc, collection, addDoc, writeBatch, setDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, addDoc, writeBatch, setDoc, increment } from 'firebase/firestore';
 import { getScheduledAttendanceLogDocId } from '../screens/attendance/attendanceConstants';
 import { readAcademicCache, writeAcademicCache, readWellnessCache, writeWellnessCache } from '../utils/domainCache';
 import { formatLocalDateStr } from '../utils/dateUtils';
@@ -28,7 +28,7 @@ import { readCoreCacheMulti, writeCoreCacheMulti } from '../utils/coreCache';
 import { updateL1Cache, getBootManifestSync } from '../utils/bootManifest';
 import { awardXP } from './xpSystem';
 import { cancelClassNotificationsImmediately, clearScheduleCache } from './notifications';
-import { planDayIndexForDate, resolvePlanDay } from '../hooks/useGymLog';
+import { planDayIndexForDate, resolvePlanDay } from '../data/gymPlan';
 import { dismissActiveWorkoutNotification } from './activeWorkoutNotificationService';
 
 const WIDGET_STORAGE_KEY = '@zentrack_widget_agenda_data';
@@ -720,19 +720,24 @@ export async function handleWidgetClickAction(
       // ── STEP 2: ASYNC CLOUD & LOCAL CACHE PERSISTENCE (NON-BLOCKING) ──────
       (async () => {
         try {
-          const user = await resolveUser();
-          if (user) {
-            safeUpdate(
-              taskId,
-              COLLECTION.TASKS,
-              { status: 'completed', completedAt: new Date().toISOString() },
-              () => updateDoc(doc(db, COLLECTION.TASKS, taskId), { status: 'completed', completedAt: new Date().toISOString() })
-            ).catch(() => {});
-          }
+          const todayLocal = formatLocalDateStr(new Date());
           const coreCache = await readCoreCacheMulti();
           if (coreCache.tasks) {
-            const updatedTasks = coreCache.tasks.map(t => t.id === taskId ? { ...t, status: 'completed' as const } : t);
-            await writeCoreCacheMulti({ tasks: updatedTasks });
+            const updatedTasks = coreCache.tasks.map(t =>
+              t.id === taskId ? { ...t, status: 'completed' as const, completedAt: todayLocal } : t
+            );
+            await writeCoreCacheMulti({ tasks: updatedTasks }, true);
+            updateL1Cache('tasks', updatedTasks);
+          }
+          const resolvedUsr = await resolveUser();
+          if (resolvedUsr) {
+            await safeUpdate(
+              taskId,
+              COLLECTION.TASKS,
+              { status: 'completed', completedAt: todayLocal },
+              () => updateDoc(doc(db, COLLECTION.TASKS, taskId), { status: 'completed', completedAt: todayLocal })
+            );
+            awardXP('TASK_COMPLETE').catch(() => {});
           }
         } catch (e) {
           console.warn('[WidgetSync] Background task save failed:', e);
@@ -762,19 +767,22 @@ export async function handleWidgetClickAction(
       // ── STEP 2: ASYNC CLOUD & LOCAL CACHE PERSISTENCE (NON-BLOCKING) ──────
       (async () => {
         try {
-          const user = await resolveUser();
-          if (user) {
-            safeUpdate(
+          const coreCache = await readCoreCacheMulti();
+          if (coreCache.tasks) {
+            const updatedTasks = coreCache.tasks.map(t =>
+              t.id === taskId ? { ...t, status: 'pending' as const, completedAt: null } : t
+            );
+            await writeCoreCacheMulti({ tasks: updatedTasks }, true);
+            updateL1Cache('tasks', updatedTasks);
+          }
+          const resolvedUsr = await resolveUser();
+          if (resolvedUsr) {
+            await safeUpdate(
               taskId,
               COLLECTION.TASKS,
               { status: 'pending', completedAt: null },
               () => updateDoc(doc(db, COLLECTION.TASKS, taskId), { status: 'pending', completedAt: null as any })
-            ).catch(() => {});
-          }
-          const coreCache = await readCoreCacheMulti();
-          if (coreCache.tasks) {
-            const updatedTasks = coreCache.tasks.map(t => t.id === taskId ? { ...t, status: 'pending' as const } : t);
-            await writeCoreCacheMulti({ tasks: updatedTasks });
+            );
           }
         } catch (e) {
           console.warn('[WidgetSync] Background task undo failed:', e);
@@ -837,22 +845,40 @@ export async function handleWidgetClickAction(
           }
 
           let subjectUpdates: any = null;
+          let atomicSubjectUpdates: any = null;
+          let offlineSubjectUpdates: any = null;
           if (subject) {
             let newAttended: number;
             let newTotal: number;
+            let attDelta = 0;
+            let totDelta = 0;
             if (existingLog) {
               const oldAction = existingLog.action;
               const oldAtt = oldAction === 'attended' ? 1 : 0;
               const newAtt = status === 'attended' ? 1 : 0;
               const oldTot = oldAction === 'cancelled' ? 0 : 1;
               const newTot = 1;
-              newAttended = Math.max(0, (subject[attendedKey] || 0) + (newAtt - oldAtt));
-              newTotal    = Math.max(0, (subject[totalKey]    || 0) + (newTot - oldTot));
+              attDelta = newAtt - oldAtt;
+              totDelta = newTot - oldTot;
+              newAttended = Math.max(0, (subject[attendedKey] || 0) + attDelta);
+              newTotal    = Math.max(0, (subject[totalKey]    || 0) + totDelta);
             } else {
-              newAttended = (subject[attendedKey] || 0) + (status === 'attended' ? 1 : 0);
-              newTotal    = (subject[totalKey]    || 0) + 1;
+              attDelta = status === 'attended' ? 1 : 0;
+              totDelta = 1;
+              newAttended = (subject[attendedKey] || 0) + attDelta;
+              newTotal    = (subject[totalKey]    || 0) + totDelta;
             }
             subjectUpdates = { [attendedKey]: newAttended, [totalKey]: newTotal };
+            atomicSubjectUpdates = { lastUpdated: Date.now() };
+            offlineSubjectUpdates = { lastUpdated: Date.now() };
+            if (attDelta !== 0) {
+              atomicSubjectUpdates[attendedKey] = increment(attDelta);
+              offlineSubjectUpdates[attendedKey] = { __zentrackIncrement: attDelta };
+            }
+            if (totDelta !== 0) {
+              atomicSubjectUpdates[totalKey] = increment(totDelta);
+              offlineSubjectUpdates[totalKey] = { __zentrackIncrement: totDelta };
+            }
           }
 
           const targetLog = {
@@ -869,15 +895,16 @@ export async function handleWidgetClickAction(
             idx: sessionIdx,
           };
 
+          if (subject && subjectUpdates) {
+            await safeUpdate(
+              subject.id,
+              COLLECTION.ATTENDANCE,
+              offlineSubjectUpdates,
+              () => updateDoc(doc(db, COLLECTION.ATTENDANCE, subject.id), atomicSubjectUpdates)
+            ).catch(() => {});
+          }
           await safeWrite(
-            async () => {
-              const batch = writeBatch(db);
-              if (subject && subjectUpdates) {
-                batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id), subjectUpdates);
-              }
-              batch.set(doc(db, COLLECTION.ATTENDANCE_LOGS, deterministicId), targetLog, { merge: true });
-              await batch.commit();
-            },
+            () => setDoc(doc(db, COLLECTION.ATTENDANCE_LOGS, deterministicId), targetLog, { merge: true }),
             COLLECTION.ATTENDANCE_LOGS,
             'set',
             targetLog,
@@ -984,17 +1011,24 @@ export async function handleWidgetClickAction(
             const newTotal    = Math.max(0, (subject[totalKey]    || 0) + totDelta);
             const subjectUpdates = { [attendedKey]: newAttended, [totalKey]: newTotal };
 
+            const subjPayload = { ...subjectUpdates, lastUpdated: Date.now() };
+            const targetLogId = existingLog.id || deterministicId;
+            await safeUpdate(
+              subject.id,
+              COLLECTION.ATTENDANCE,
+              subjPayload,
+              () => updateDoc(doc(db, COLLECTION.ATTENDANCE, subject.id), subjPayload)
+            ).catch(() => {});
             await safeWrite(
-              async () => {
+              () => {
                 const batch = writeBatch(db);
-                batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id), subjectUpdates);
-                batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, existingLog.id || deterministicId));
-                await batch.commit();
+                batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, targetLogId));
+                return batch.commit();
               },
               COLLECTION.ATTENDANCE_LOGS,
               'delete',
               null,
-              existingLog.id || deterministicId
+              targetLogId
             ).catch(() => {});
 
             const updatedLogs = (academicCache.attendanceLogs || []).filter(l =>
@@ -1073,6 +1107,8 @@ export async function handleWidgetClickAction(
       const existingLogs = wellnessCache.gymLogs || [];
       const updatedLogs = [todayLog, ...existingLogs.filter((l: any) => l.date !== todayDateStr)];
       await writeWellnessCache({ gymLogs: updatedLogs }, true);
+      updateL1Cache('gymLogs', updatedLogs);
+      DeviceEventEmitter.emit('gym_logged_from_widget', { date: todayDateStr, log: todayLog });
 
       await AsyncStorage.setItem('@zentrack_active_workout_state', JSON.stringify({
         date: todayDateStr,
@@ -1246,6 +1282,8 @@ export async function handleWidgetClickAction(
         todayLog.updatedAt = Date.now();
         const updatedLogs = [todayLog, ...existingLogs.filter((l: any) => l.date !== dateStr)];
         await writeWellnessCache({ gymLogs: updatedLogs }, true);
+        updateL1Cache('gymLogs', updatedLogs);
+        DeviceEventEmitter.emit('gym_logged_from_widget', { date: dateStr, log: todayLog });
 
         if (user) {
           const docId = `${user.uid}_${dateStr}`;
@@ -1291,6 +1329,8 @@ export async function handleWidgetClickAction(
             targetExLog.setsLog[setIdx].weight = ex.sets[setIdx].weight;
             todayLog.updatedAt = Date.now();
             await writeWellnessCache({ gymLogs: existingLogs }, true);
+            updateL1Cache('gymLogs', existingLogs);
+            DeviceEventEmitter.emit('gym_logged_from_widget', { date: dateStr, log: todayLog });
             if (user) {
               const docId = `${user.uid}_${dateStr}`;
               safeWrite(
@@ -1335,13 +1375,44 @@ export async function handleWidgetClickAction(
         const afterNext = currentWorkout.allExercises?.[currentWorkout.currentExerciseIndex + 1];
         currentWorkout.nextExerciseName = afterNext?.name;
       } else {
-        // Last exercise skipped -> complete session
         currentWorkout.isActive = false;
         currentWorkout.isCompleted = true;
         const durationMins = Math.max(1, Math.round((Date.now() - ((currentWorkout as any).workoutStartTime || Date.now())) / 60000));
         currentWorkout.workoutDurationMinutes = durationMins;
         awardXP('GYM_SESSION').catch(() => {});
         dismissActiveWorkoutNotification().catch(() => {});
+
+        try {
+          const wellnessCache = await readWellnessCache();
+          const existingLogs = wellnessCache.gymLogs || [];
+          const existingToday = existingLogs.find((l: any) => l.date === dateStr) || {
+            date: dateStr,
+            exercises: [],
+          };
+          const completedLog = {
+            ...existingToday,
+            completed: true,
+            workoutStartTime: undefined,
+            workoutDurationMinutes: durationMins,
+            updatedAt: Date.now(),
+          };
+          const updatedLogs = [completedLog, ...existingLogs.filter((l: any) => l.date !== dateStr)];
+          await writeWellnessCache({ gymLogs: updatedLogs }, true);
+          updateL1Cache('gymLogs', updatedLogs);
+          DeviceEventEmitter.emit('gym_workout_completed', { date: dateStr, duration: durationMins });
+
+          if (user) {
+            const docId = `${user.uid}_${dateStr}`;
+            await safeWrite(
+              () => setDoc(doc(db, COLLECTION.GYM_LOGS, docId), completedLog, { merge: true }),
+              COLLECTION.GYM_LOGS,
+              'set',
+              completedLog,
+              docId
+            ).catch(() => {});
+          }
+          await AsyncStorage.removeItem('@zentrack_active_workout_state').catch(() => {});
+        } catch {}
       }
 
       currentWorkout.lastUpdated = Date.now();
@@ -1361,20 +1432,41 @@ export async function handleWidgetClickAction(
       awardXP('GYM_SESSION').catch(() => {});
       dismissActiveWorkoutNotification().catch(() => {});
 
-      if (user) {
-        const docId = `${user.uid}_${dateStr}`;
-        await safeWrite(
-          () => updateDoc(doc(db, COLLECTION.GYM_LOGS, docId), {
-            completed: true,
-            workoutDurationMinutes: durationMins,
-            updatedAt: Date.now(),
-          }),
-          COLLECTION.GYM_LOGS,
-          'update',
-          { completed: true, workoutDurationMinutes: durationMins, updatedAt: Date.now() },
-          docId
-        ).catch(() => {});
-      }
+      try {
+        const wellnessCache = await readWellnessCache();
+        const existingLogs = wellnessCache.gymLogs || [];
+        const existingToday = existingLogs.find((l: any) => l.date === dateStr) || {
+          date: dateStr,
+          exercises: [],
+        };
+        const completedLog = {
+          ...existingToday,
+          completed: true,
+          workoutStartTime: undefined,
+          workoutDurationMinutes: durationMins,
+          updatedAt: Date.now(),
+        };
+        const updatedLogs = [completedLog, ...existingLogs.filter((l: any) => l.date !== dateStr)];
+        await writeWellnessCache({ gymLogs: updatedLogs }, true);
+        updateL1Cache('gymLogs', updatedLogs);
+        DeviceEventEmitter.emit('gym_workout_completed', { date: dateStr, duration: durationMins });
+
+        if (user) {
+          const docId = `${user.uid}_${dateStr}`;
+          await safeWrite(
+            () => updateDoc(doc(db, COLLECTION.GYM_LOGS, docId), {
+              completed: true,
+              workoutDurationMinutes: durationMins,
+              updatedAt: Date.now(),
+            }),
+            COLLECTION.GYM_LOGS,
+            'update',
+            { completed: true, workoutDurationMinutes: durationMins, updatedAt: Date.now() },
+            docId
+          ).catch(() => {});
+        }
+        await AsyncStorage.removeItem('@zentrack_active_workout_state').catch(() => {});
+      } catch {}
 
       currentWorkout.lastUpdated = Date.now();
       await saveCachedLiveWorkoutData(currentWorkout);

@@ -5,7 +5,7 @@
  */
 
 import React, { useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Svg, { Circle as SvgCircle, Defs, LinearGradient as SvgLinearGradient, RadialGradient, Stop } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -26,7 +26,15 @@ import AnimatedPressable from '../AnimatedPressable';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '../../theme/tokens';
 
-interface UrgentItem { id: string; title: string; dueDate: string; }
+export interface UrgentItem {
+  id: string;
+  title: string;
+  dueDate: string;
+  formattedDate: string;
+  urgency: 'overdue' | 'due_soon' | 'due_later';
+  urgencyLabel: string;
+  diffDays: number;
+}
 
 export interface NextClassData {
   id: string;
@@ -76,6 +84,7 @@ interface UnifiedLifeWidgetProps {
   onPressRing?: () => void;
   onCapture?: () => void;
   onPressAssignments?: () => void;
+  onToggleAssignment?: (assignmentId: string) => void;
 }
 
 // ── AnimatedXPValue: Reanimated-native text ticker ──────────────────────────
@@ -126,9 +135,45 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
   onPressRing,
   onCapture,
   onPressAssignments,
+  onToggleAssignment,
 }: UnifiedLifeWidgetProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
+  // ── Urgency categorization: Overdue > Due soon > Due later ─────────────
+  const highestUrgency = useMemo(() => {
+    if (urgentAssignments.some(a => a.urgency === 'overdue')) return 'overdue';
+    if (urgentAssignments.some(a => a.urgency === 'due_soon')) return 'due_soon';
+    return 'due_later';
+  }, [urgentAssignments]);
+
+  const bannerTheme = useMemo(() => {
+    if (highestUrgency === 'overdue') {
+      return {
+        title: 'Overdue',
+        color: isDark ? '#F87171' : '#DC2626',
+        bg: isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(220, 38, 38, 0.08)',
+        borderColor: isDark ? 'rgba(239, 68, 68, 0.35)' : 'rgba(220, 38, 38, 0.25)',
+        icon: 'alert-circle' as const,
+      };
+    }
+    if (highestUrgency === 'due_soon') {
+      return {
+        title: 'Due soon',
+        color: colors.accentAmber || '#F59E0B',
+        bg: colors.accentAmberDim || 'rgba(245, 158, 11, 0.12)',
+        borderColor: (colors.accentAmber || '#F59E0B') + '40',
+        icon: 'warning-outline' as const,
+      };
+    }
+    return {
+      title: 'Due later',
+      color: isDark ? '#38BDF8' : '#0284C7',
+      bg: isDark ? 'rgba(56, 189, 248, 0.10)' : 'rgba(2, 132, 199, 0.08)',
+      borderColor: isDark ? 'rgba(56, 189, 248, 0.30)' : 'rgba(2, 132, 199, 0.22)',
+      icon: 'calendar-outline' as const,
+    };
+  }, [highestUrgency, isDark, colors]);
 
   // ── Gap 3: Streak badge pulse — heartbeat when streak > 0 ──────────────────
   const streakPulse = useSharedValue(1);
@@ -453,19 +498,53 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
         </AnimatedPressable>
       )}
 
-      {/* URGENT BANNER */}
+      {/* ASSIGNMENT REMINDER BANNER */}
       {urgentAssignments.length > 0 && (
-        <AnimatedPressable style={styles.urgentBanner} activeOpacity={0.8} onPress={onPressAssignments}>
-          <Ionicons name="warning-outline" size={14} color={colors.accentAmber} style={{ marginRight: 8 }} />
+        <AnimatedPressable
+          style={[
+            styles.urgentBanner,
+            {
+              backgroundColor: bannerTheme.bg,
+              borderColor: bannerTheme.borderColor,
+            },
+          ]}
+          activeOpacity={0.8}
+          onPress={onPressAssignments}
+        >
+          <Ionicons
+            name={bannerTheme.icon}
+            size={16}
+            color={bannerTheme.color}
+            style={{ marginRight: 10, alignSelf: 'flex-start', marginTop: 2 }}
+          />
           <View style={{ flex: 1 }}>
-            <Text style={styles.urgentTitle}>Due soon</Text>
-            {urgentAssignments.map(a => (
-              <Text key={a.id as any} style={styles.urgentItem} numberOfLines={1}>
-                · {a.title} — {a.dueDate === todayStr ? 'Today' : a.dueDate === in3daysStr ? 'in 3 days' : a.dueDate}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+              <Text style={[styles.urgentTitle, { color: bannerTheme.color, marginBottom: 0 }]}>
+                {bannerTheme.title}
               </Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+            </View>
+
+            {urgentAssignments.map(a => (
+              <View key={a.id as any} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}>
+                {onToggleAssignment && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      onToggleAssignment(a.id);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{ marginRight: 6 }}
+                  >
+                    <Ionicons name="ellipse-outline" size={15} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                )}
+                <Text style={[styles.urgentItem, { flex: 1 }]} numberOfLines={1}>
+                  · {a.title} — {a.formattedDate}
+                </Text>
+              </View>
             ))}
           </View>
-          <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
         </AnimatedPressable>
       )}
     </View>

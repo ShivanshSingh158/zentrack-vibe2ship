@@ -48,7 +48,7 @@ export interface RecurrenceRule {
 }
 
 export interface Task {
-  id: string; title: string; status: "pending" | "completed";
+  id: string; title: string; text?: string; status: "pending" | "completed";
   priority: "P1" | "P2" | "P3" | "high" | "medium" | "low";
   date?: string; tags?: string[]; userId: string; isRecurring?: boolean;
   recurrenceRule?: RecurrenceRule; recurringSourceId?: string;
@@ -123,10 +123,31 @@ export interface StorageNode {
 
 export interface Note { id: string; title: string; content: string; tags?: string[]; createdAt?: any; userId: string; }
 
-export interface GoalKeyResult { id: string; title: string; completed: boolean; }
+export interface GoalKeyResult {
+  id: string;
+  title: string;
+  completed: boolean;
+  targetValue?: number;
+  currentValue?: number;
+  unit?: string;
+  history?: any[];
+  syncType?: string;
+  syncQuery?: string;
+  text?: string;
+}
 export interface Goal {
-  id: string; title: string; status: string; progress?: number; userId: string;
-  description?: string; deadline?: string; firstStep?: string; successMetric?: string; keyResults?: GoalKeyResult[];
+  id: string;
+  title: string;
+  status: string;
+  progress?: number;
+  userId: string;
+  description?: string;
+  deadline?: string;
+  firstStep?: string;
+  successMetric?: string;
+  subject?: string;
+  keyResults?: GoalKeyResult[];
+  createdAt?: any;
   updatedAt?: number;
 }
 
@@ -178,6 +199,7 @@ export interface AttendanceSubject {
   classesAttended: number; classesTotal: number;
   labsAttended?: number; labsTotal?: number; targetPercentage: number; schedule?: any; schemaVersion?: number;
   lastUpdated?: number; color?: string; order?: number;
+  createdAt?: number;
 }
 
 export interface AttendanceLog {

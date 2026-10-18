@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput, ScrollView, Platform,
-  KeyboardAvoidingView, ActivityIndicator, Alert,
+  KeyboardAvoidingView, ActivityIndicator, Alert, FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
@@ -159,7 +159,10 @@ export default function ExerciseSwapScreen() {
     if (userGymPlan?.customDays && Object.keys(userGymPlan.customDays).length > 0) {
       Object.values(userGymPlan.customDays).forEach((day: any) => processDay(day, 'My Routine'));
     } else {
-      GYM_PLAN_ARNOLD.forEach(day => processDay(day, 'Arnold Routine'));
+      const templateId = userGymPlan?.templateId;
+      const activePlan = templateId === 'arnold' ? GYM_PLAN_ARNOLD : (templateId === 'ppl' ? GYM_PLAN_PPL : GYM_PLAN);
+      const label = templateId === 'arnold' ? 'Arnold Routine' : (templateId === 'ppl' ? 'PPL Routine' : 'Standard Routine');
+      activePlan.forEach(day => processDay(day, label));
     }
 
     return results.sort((a, b) => {
@@ -168,6 +171,9 @@ export default function ExerciseSwapScreen() {
       return a.dayIndex - b.dayIndex;
     });
   }, [originalExercise, origMuscle, canonicalMuscle, userGymPlan]);
+
+  const templateExercisesRef = useRef(templateExercises);
+  templateExercisesRef.current = templateExercises;
 
   // ── Load AI recommendations & Instant Fallback ──────────────────────────────
   useEffect(() => {
@@ -190,7 +196,7 @@ export default function ExerciseSwapScreen() {
 
     async function fetchAiSwaps() {
       try {
-        const templateExerciseNames = templateExercises.map(t => t.name).slice(0, 5).join(', ');
+        const templateExerciseNames = templateExercisesRef.current.map(t => t.name).slice(0, 5).join(', ');
         const prompt = `Exercise to swap: "${origName}" (Target Muscle: ${origMuscle}, Parent Group: ${canonicalMuscle}).
 The user is working out and wants alternative exercises that hit the EXACT same movement plane and muscle fibers.
 ${templateExerciseNames ? `Note: User's workout routine already includes: [${templateExerciseNames}].` : ''}
@@ -223,9 +229,10 @@ Return ONLY a raw valid JSON array of 6 objects:
           const cleanJsonStr = textResult.replace(/```json/g, '').replace(/```/g, '').trim();
           const parsed = JSON.parse(cleanJsonStr);
           if (Array.isArray(parsed) && parsed.length >= 3) {
-            const formattedPromises = parsed.slice(0, 6).map(async (item: any, i: number) => {
+            // Render suggestions immediately without 6 blocking network lookups;
+            // Video ID is resolved on-demand when user selects the exercise to swap.
+            const formatted = parsed.slice(0, 6).map((item: any, i: number) => {
               const exName = item.name || instantList[i]?.name || 'Alternative Exercise';
-              const vidId = (await autoResolveExerciseVideoId(exName)) || instantList[i]?.videoId || '';
               return {
                 id: `sara_ai_${i}_${Date.now()}`,
                 name: exName,
@@ -234,10 +241,9 @@ Return ONLY a raw valid JSON array of 6 objects:
                 targetReps: item.targetReps || instantList[i]?.targetReps || '8-12',
                 restTimeSecs: typeof item.restTimeSecs === 'number' ? item.restTimeSecs : instantList[i]?.restTimeSecs || 90,
                 reason: item.reason || '',
-                videoId: vidId,
+                videoId: instantList[i]?.videoId || '',
               };
             });
-            const formatted = await Promise.all(formattedPromises);
             if (!isCancelled) setAiSwaps(formatted);
           }
         }
@@ -250,7 +256,7 @@ Return ONLY a raw valid JSON array of 6 objects:
 
     fetchAiSwaps();
     return () => { isCancelled = true; };
-  }, [origName, origMuscle, canonicalMuscle, rawMuscle, templateExercises]);
+  }, [origName, origMuscle, canonicalMuscle, rawMuscle]);
 
   // ── Build Unified Catalogue for "All Exercises" Tab ─────────────────────────
   const allExercises = useMemo(() => {
@@ -273,6 +279,8 @@ Return ONLY a raw valid JSON array of 6 objects:
       for (const ex of day.exercises) {
         const key = (ex.name || '').toLowerCase().trim();
         if (!key || map.has(key)) continue;
+        const muscleColor = resolveMuscleColor(ex.muscle || 'Mixed');
+        const muscleBgColor = hexToRgba(muscleColor, 0.1);
         map.set(key, {
           id: ex.id || `tpl_${key}`,
           name: ex.name,
@@ -284,6 +292,8 @@ Return ONLY a raw valid JSON array of 6 objects:
           isFromTemplate: true,
           templateDayName: dayTag,
           aliases: [],
+          muscleColor,
+          muscleBgColor,
         });
       }
     }
@@ -291,6 +301,8 @@ Return ONLY a raw valid JSON array of 6 objects:
     for (const db of EXERCISE_DATABASE) {
       const key = (db.name || '').toLowerCase().trim();
       if (!key || map.has(key)) continue;
+      const muscleColor = resolveMuscleColor(db.muscle || 'Mixed');
+      const muscleBgColor = hexToRgba(muscleColor, 0.1);
       map.set(key, {
         id: db.id || `db_${key}`,
         name: db.name,
@@ -301,6 +313,8 @@ Return ONLY a raw valid JSON array of 6 objects:
         videoId: (db as any).videoId && (db as any).videoId !== '1' ? (db as any).videoId : undefined,
         isFromTemplate: false,
         aliases: db.aliases || [],
+        muscleColor,
+        muscleBgColor,
       });
     }
 
@@ -552,8 +566,15 @@ Return ONLY a raw valid JSON array of 6 objects:
               )}
             </ScrollView>
 
-            <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-              {filteredExercises.map(ex => (
+            <FlatList
+              data={filteredExercises}
+              keyExtractor={item => item.id}
+              initialNumToRender={12}
+              maxToRenderPerBatch={12}
+              windowSize={5}
+              contentContainerStyle={styles.list}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item: ex }) => (
                 <TouchableOpacity
                   key={ex.id}
                   style={styles.exerciseRow}
@@ -572,20 +593,19 @@ Return ONLY a raw valid JSON array of 6 objects:
                     </View>
                     <Text style={styles.exTarget}>{ex.targetSets} sets × {ex.targetReps} reps</Text>
                   </View>
-                  <View style={[styles.musclePill, { backgroundColor: hexToRgba(resolveMuscleColor(ex.muscle), 0.1) }]}>
-                    <View style={[styles.muscleDot, { backgroundColor: resolveMuscleColor(ex.muscle) }]} />
-                    <Text style={[styles.muscleText, { color: resolveMuscleColor(ex.muscle) }]}>{ex.muscle}</Text>
+                  <View style={[styles.musclePill, { backgroundColor: ex.muscleBgColor }]}>
+                    <View style={[styles.muscleDot, { backgroundColor: ex.muscleColor }]} />
+                    <Text style={[styles.muscleText, { color: ex.muscleColor }]}>{ex.muscle}</Text>
                   </View>
                 </TouchableOpacity>
-              ))}
-
-              {filteredExercises.length === 0 && (
+              )}
+              ListEmptyComponent={
                 <View style={styles.emptyState}>
                   <Ionicons name="barbell-outline" size={32} color={colors.textMuted} />
                   <Text style={styles.emptyText}>No exercises found.</Text>
                 </View>
-              )}
-            </ScrollView>
+              }
+            />
           </>
         ) : (
           <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>

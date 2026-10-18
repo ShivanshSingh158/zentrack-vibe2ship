@@ -33,7 +33,8 @@ import Svg, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
-import { serverTimestamp } from 'firebase/firestore';
+import { serverTimestamp, doc, collection } from 'firebase/firestore';
+import { db } from '../services/firebase';
 
 import { useTheme } from '../contexts/ThemeContext';
 import { useWellnessData } from '../contexts/domains/WellnessContext';
@@ -41,7 +42,7 @@ import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { useGymProfile } from '../hooks/useGymProfile';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
 import { callProxy } from '../services/geminiProxy';
-import { formatLocalDateStr } from '../utils/dateUtils';
+import { formatLocalDateStr, offsetDateStr } from '../utils/dateUtils';
 import { getBootManifestSync, updateL1Cache } from '../utils/bootManifest';
 import { queueWrite } from '../services/offlineSync';
 import { COLLECTION } from '../config/constants';
@@ -212,24 +213,23 @@ export default function WellbeingDashboardScreen() {
     if (amountMl <= 0) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const newLogId = `local_water_${Date.now()}`;
-    optimisticAddWaterLog({
+    const now = Date.now();
+    const waterRef = doc(collection(db, COLLECTION.WATER_LOGS));
+    const newLogId = waterRef.id;
+    const payload = {
       id: newLogId,
       userId: user?.uid || '',
       date: todayStr,
       amountMl,
-      timestamp: Date.now(),
-    });
+      timestamp: now,
+      createdAt: now,
+    };
+
+    optimisticAddWaterLog(payload);
+    setIsCustomLogModalOpen(false);
 
     try {
-      await queueWrite(COLLECTION.WATER_LOGS, 'add', {
-        userId: user?.uid || '',
-        date: todayStr,
-        amountMl,
-        timestamp: Date.now(),
-        createdAt: serverTimestamp(),
-      });
-      setIsCustomLogModalOpen(false);
+      await queueWrite(COLLECTION.WATER_LOGS, 'set', payload, newLogId);
     } catch (e) {
       console.warn('[Wellbeing] Error logging water', e);
     }
@@ -245,7 +245,7 @@ export default function WellbeingDashboardScreen() {
         onPress: async () => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           optimisticDeleteWaterLog(logId);
-          if (logId && !logId.startsWith('local_')) {
+          if (logId) {
             await queueWrite(COLLECTION.WATER_LOGS, 'delete', null, logId);
           }
         },
@@ -281,31 +281,29 @@ export default function WellbeingDashboardScreen() {
 
   // ── Hydration Streak ───────────────────────────────────────────────────────
   const streakDays = useMemo(() => {
-    let streak = 0;
-    let checkIdx = days14.length - 1;
-
-    // If today is met, count it and look backward; else start evaluating from yesterday
-    if (todayWater >= waterGoal) {
-      streak++;
-      checkIdx--;
-    } else {
-      checkIdx--;
+    if (!waterGoal || waterGoal <= 0) return 0;
+    const dailyTotals = new Map<string, number>();
+    for (const w of waterLogs || []) {
+      const d = (w.date || '').slice(0, 10);
+      if (!d) continue;
+      dailyTotals.set(d, (dailyTotals.get(d) || 0) + (w.amountMl || 0));
     }
 
-    while (checkIdx >= 0) {
-      const date = days14[checkIdx];
-      const sum = (waterLogs || [])
-        .filter((w) => (w.date || '').slice(0, 10) === date)
-        .reduce((acc, l) => acc + (l.amountMl || 0), 0);
-      if (sum >= waterGoal) {
+    let streak = 0;
+    const todayMet = (dailyTotals.get(todayStr) || 0) >= waterGoal;
+    if (todayMet) streak++;
+
+    // Walk backward up to 365 days max (prevents infinite loop while supporting 1-year streaks)
+    for (let offset = 1; offset <= 365; offset++) {
+      const dStr = offsetDateStr(todayStr, -offset);
+      if ((dailyTotals.get(dStr) || 0) >= waterGoal) {
         streak++;
-        checkIdx--;
       } else {
         break;
       }
     }
     return streak;
-  }, [waterLogs, waterGoal, days14, todayWater]);
+  }, [waterLogs, waterGoal, todayStr]);
 
   // ── Circadian Intraday Distribution (Morning vs Afternoon vs Evening) ───────
   const timeOfDayDist = useMemo(() => {

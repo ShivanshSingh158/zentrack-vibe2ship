@@ -1,4 +1,4 @@
-import { StyleSheet, Dimensions } from 'react-native';
+import { StyleSheet, Dimensions, Platform } from 'react-native';
 import { PomodoroMode } from './pomodoroTimeMath';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -102,10 +102,10 @@ export function makeStyles(
       paddingHorizontal: isWide ? 28 : 20,
       paddingTop: 8,
       shadowColor: '#000000',
-      shadowOffset: { width: 0, height: isWide ? 0 : -10 },
-      shadowOpacity: isDark ? 0.95 : 0.16,
-      shadowRadius: 36,
-      elevation: 36,
+      shadowOffset: { width: 0, height: isWide ? 0 : -6 },
+      shadowOpacity: isDark ? 0.5 : 0.12,
+      shadowRadius: 16,
+      elevation: Platform.OS === 'android' ? 12 : 24,
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
       borderBottomWidth: isWide ? 1 : 0,

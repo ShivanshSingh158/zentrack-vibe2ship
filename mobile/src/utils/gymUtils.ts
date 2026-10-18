@@ -2,6 +2,7 @@ import { EXERCISE_DATABASE } from '../data/exerciseDatabase';
 import { getCanonicalExerciseKey } from '../data/exerciseAliasMap';
 import { GymExerciseLog, GymDayLog } from '../types/gym.types';
 import { computeOrGetHotCache, generateDatasetFingerprint } from './hotCacheStore';
+export { computeOrGetHotCache, generateDatasetFingerprint };
 
 export const MUSCLE_COLORS: Record<string, string> = {
   'Chest': '#FF6B6B', 'Back': '#4DABF7', 'Shoulders': '#9775FA',
@@ -19,8 +20,13 @@ export const MUSCLE_COLORS: Record<string, string> = {
   'Quad Teardrop': '#FF922B', 'Glutes/Abductors': '#FF8787',
   'Gastrocnemius': '#A9E34B',
   'Upper Abs': '#FF8787', 'Lower Abs': '#FF8787', 'Transverse Abs': '#FF8787',
-  'Forearm Flexors': '#15AABF', 'Forearm Extensors': '#15AABF', 'Brachioradialis': '#15AABF'
+  'Forearm Flexors': '#15AABF', 'Forearm Extensors': '#15AABF', 'Brachioradialis': '#15AABF',
+  'Lats': '#4DABF7', 'Glutes': '#FF8787', 'Traps': '#AE3EC9', 'Full Body': '#a599ff'
 };
+
+const MUSCLE_COLORS_LOWER = new Map<string, string>(
+  Object.entries(MUSCLE_COLORS).map(([k, v]) => [k.toLowerCase(), v])
+);
 
 export const MUSCLE_CANONICAL: Record<string, string> = {
   chest: 'Chest',
@@ -84,11 +90,17 @@ export function canonicalizeMuscle(muscle?: string): string {
     return MUSCLE_CANONICAL[clean];
   }
 
-  // 2. Pattern-based grouping
+  // 2. Pattern-based grouping (Issue 51: Glutes & Abductors separated from Hamstrings)
   if (clean.includes('forearm') || clean.includes('wrist') || clean.includes('brachio') || clean.includes('grip')) {
     return 'Forearms';
   }
-  if (clean.includes('glute') || clean.includes('hamstring') || clean.includes('hams') || clean.includes('abductor')) {
+  if (clean.includes('abductor') || clean.includes('adductor')) {
+    return 'Glutes/Abductors';
+  }
+  if (clean.includes('glute') && !clean.includes('ham') && !clean.includes('ghr')) {
+    return 'Glutes';
+  }
+  if (clean.includes('hamstring') || clean.includes('hams') || clean.includes('glute ham') || clean.includes('ghr')) {
     return 'Hamstrings';
   }
   if (clean.includes('chest') || clean.includes('pec')) {
@@ -125,8 +137,7 @@ export function canonicalizeMuscle(muscle?: string): string {
 
 export const resolveMuscleColor = (m: string | undefined | null) => {
   if (!m) return '#a855f7';
-  const found = Object.keys(MUSCLE_COLORS).find(k => k.toLowerCase() === m.toLowerCase());
-  return found ? MUSCLE_COLORS[found] : '#a855f7';
+  return MUSCLE_COLORS_LOWER.get(m.trim().toLowerCase()) ?? '#a855f7';
 };
 
 /**
@@ -274,7 +285,7 @@ export const calculateExerciseMaxWeight = (exercise: GymExerciseLog | undefined 
   if (!exercise || !exercise.setsLog || exercise.setsLog.length === 0) return 0;
   const validSets = exercise.setsLog.filter(s => {
     const w = s?.weight !== undefined && s?.weight !== null ? s.weight : (s as any)?.weightKg;
-    return (s.completed || (w && s.reps)) && w && Number(w) > 0;
+    return s.completed === true && w != null && Number(w) > 0;
   });
   if (validSets.length === 0) return 0;
   return Math.max(...validSets.map(s => {
@@ -287,7 +298,7 @@ export const calculateEstimated1RM = (exercise: GymExerciseLog | undefined | nul
   if (!exercise || !exercise.setsLog || exercise.setsLog.length === 0) return 0;
   const validSets = exercise.setsLog.filter(s => {
     const w = s?.weight !== undefined && s?.weight !== null ? s.weight : (s as any)?.weightKg;
-    return (s.completed || (w && s.reps)) && w && Number(w) > 0 && s.reps && Number(s.reps) > 0;
+    return s.completed === true && w != null && Number(w) > 0 && s.reps != null && Number(s.reps) > 0;
   });
   if (validSets.length === 0) return 0;
   
@@ -304,22 +315,23 @@ export const calculateEstimated1RM = (exercise: GymExerciseLog | undefined | nul
 export const calculateHistorical1RM = (gymLogs: any[], exerciseIdOrName: string): number => {
   if (!gymLogs || gymLogs.length === 0 || !exerciseIdOrName) return 0;
   const targetKey = normalizeExerciseKey(exerciseIdOrName);
-  let max1RM = 0;
-  
-  gymLogs.forEach(log => {
-    const ex = log.exercises?.find((e: any) => e?.name && normalizeExerciseKey(e.name) === targetKey);
-    if (ex) {
-      const ex1RM = calculateEstimated1RM(ex);
-      if (ex1RM > max1RM) max1RM = ex1RM;
-    }
+  const cacheKey = `hist_1rm_${targetKey}_${generateDatasetFingerprint(gymLogs)}`;
+  return computeOrGetHotCache(cacheKey, () => {
+    let max1RM = 0;
+    gymLogs.forEach(log => {
+      const ex = log.exercises?.find((e: any) => e?.name && normalizeExerciseKey(e.name) === targetKey);
+      if (ex) {
+        const ex1RM = calculateEstimated1RM(ex);
+        if (ex1RM > max1RM) max1RM = ex1RM;
+      }
+    });
+    return max1RM;
   });
-  
-  return max1RM;
 };
 
 export const calculateExerciseAvgReps = (exercise: GymExerciseLog | undefined | null): number => {
   if (!exercise || !exercise.setsLog || exercise.setsLog.length === 0) return 0;
-  const validSets = exercise.setsLog.filter(s => (s.completed || (s.weight && s.reps)) && s.reps && Number(s.reps) > 0);
+  const validSets = exercise.setsLog.filter(s => s.completed === true && s.reps != null && Number(s.reps) > 0);
   if (validSets.length === 0) return 0;
   const totalReps = validSets.reduce((sum, s) => sum + Number(s.reps), 0);
   return Math.round(totalReps / validSets.length);
@@ -366,11 +378,16 @@ export function buildExerciseHistoryIndex(
   const emptyIndex = new Map<string, PreviousExerciseSession>();
   if (!gymLogs || gymLogs.length === 0) return emptyIndex;
 
-  const cacheKey = `ex_hist_idx_${beforeDate || 'all'}_${generateDatasetFingerprint(gymLogs)}`;
+  // Issue 3: Filter past logs before fingerprint so mutating today's active session doesn't miss the cache!
+  const pastLogs = beforeDate
+    ? gymLogs.filter(l => l.date < beforeDate && Array.isArray(l.exercises) && l.exercises.length > 0)
+    : gymLogs.filter(l => Array.isArray(l.exercises) && l.exercises.length > 0);
+
+  const cacheKey = `ex_hist_idx_${beforeDate || 'all'}_${generateDatasetFingerprint(pastLogs)}`;
   return computeOrGetHotCache(cacheKey, () => {
     const index = new Map<string, PreviousExerciseSession>();
-    const sorted = gymLogs
-      .filter(l => (!beforeDate || l.date < beforeDate) && Array.isArray(l.exercises) && l.exercises.length > 0)
+    const sorted = pastLogs
+      .slice()
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
     for (const log of sorted) {
@@ -453,14 +470,24 @@ export interface MuscleTargetResolution {
  * 2. Uses explicitMuscle if provided.
  * 3. Falls back to precise biomechanical keyword analysis (never blind 'Chest' fallbacks).
  */
+let exerciseDbByKey: Map<string, any> | null = null;
+function getExerciseDbByKey(): Map<string, any> {
+  if (!exerciseDbByKey) {
+    exerciseDbByKey = new Map<string, any>(
+      EXERCISE_DATABASE.map(e => [normalizeExerciseKey(e.name), e])
+    );
+  }
+  return exerciseDbByKey;
+}
+
 export function resolveExerciseTargetMuscle(
   exerciseName: string,
   explicitMuscle?: string | null
 ): MuscleTargetResolution {
-  // 1. Try to find the exercise in EXERCISE_DATABASE
+  // 1. Try to find the exercise in EXERCISE_DATABASE (Issue 50: O(1) Map lookup)
   if (exerciseName) {
     const key = normalizeExerciseKey(exerciseName);
-    const dbMatch = EXERCISE_DATABASE.find(e => normalizeExerciseKey(e.name) === key);
+    const dbMatch = getExerciseDbByKey().get(key);
     if (
       dbMatch &&
       dbMatch.muscle &&
@@ -617,14 +644,17 @@ export function resolveExerciseTargetMuscle(
     return { targetMuscle: 'Quads', canonicalGroup: 'Quads' };
   }
 
-  // Hamstrings
+  // Hamstrings (Issue 52: merged complete keyword list)
   if (
     lower.includes('leg curl') ||
     lower.includes('hamstring') ||
     lower.includes('romanian') ||
     lower.includes('rdl') ||
     lower.includes('stiff leg') ||
-    lower.includes('good morning')
+    lower.includes('stiff-leg') ||
+    lower.includes('good morning') ||
+    lower.includes('glute ham') ||
+    lower.includes('ghr')
   ) {
     return { targetMuscle: 'Hamstrings', canonicalGroup: 'Hamstrings' };
   }
@@ -669,21 +699,6 @@ export function resolveExerciseTargetMuscle(
     (lower.includes('glute') && !lower.includes('ham') && !lower.includes('ghr'))
   ) {
     return { targetMuscle: 'Glutes', canonicalGroup: 'Glutes' };
-  }
-
-  // Hamstrings (Knee Flexion & Hip Hinges)
-  if (
-    lower.includes('leg curl') ||
-    lower.includes('rdl') ||
-    lower.includes('romanian') ||
-    lower.includes('good morning') ||
-    lower.includes('stiff leg') ||
-    lower.includes('stiff-leg') ||
-    lower.includes('hamstring') ||
-    lower.includes('glute ham') ||
-    lower.includes('ghr')
-  ) {
-    return { targetMuscle: 'Hamstrings', canonicalGroup: 'Hamstrings' };
   }
 
   // Forearms
@@ -915,4 +930,5 @@ export function getExerciseSwapAlternatives(
 
   return results;
 }
+
 

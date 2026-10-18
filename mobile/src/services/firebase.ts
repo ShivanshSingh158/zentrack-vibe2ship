@@ -4,8 +4,6 @@ import { GoogleAuthProvider, initializeAuth } from 'firebase/auth';
 import { getReactNativePersistence } from 'firebase/auth';
 import {
   initializeFirestore,
-  persistentLocalCache,
-  persistentSingleTabManager,
   memoryLocalCache,
   memoryLruGarbageCollector
 } from 'firebase/firestore';

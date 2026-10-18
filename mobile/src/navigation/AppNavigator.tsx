@@ -28,7 +28,6 @@ import { auth } from '../services/firebase';
 import { performSignOut } from '../contexts/domains/CoreDataContext';
 import { cacheAwareLazy, startPrefetching, prefetchRemainingModules } from '../utils/ModulePrefetcher';
 import { loadBootManifest, getBootManifestSync, updateL1Cache, clearBootManifest } from '../utils/bootManifest';
-import { registerActiveWorkoutNotificationListeners } from '../services/activeWorkoutNotificationService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
@@ -87,7 +86,8 @@ const Stack = createNativeStackNavigator();
 const Tab   = createBottomTabNavigator();
 
 // Exported for imperative navigation from notification handlers in App.tsx
-export const navigationRef = createNavigationContainerRef<any>();
+import { navigationRef } from './navigationRef';
+export { navigationRef };
 
 // --- Per-screen ErrorBoundary HOC --------------------------------------------
 function withErrorBoundary<T extends object>(
@@ -166,21 +166,42 @@ const ALLOWED_SAVE_ROUTES = new Set([
 
 
 
-// --- Full Component Map for Bottom Tabs --------------------------------------
-// withTabEntrance applied to ALL tab screens for unified Apple iOS-grade
-// ease-out-expo fade + spring lift on every focus event.
-// Runs 100% on UI thread (Reanimated worklets) — 60fps regardless of JS load.
+/**
+ * Freezes JS re-renders on inactive tabs while keeping their native Fabric view
+ * surface mounted in memory (0ms tab switch, zero Android grey-screen bug).
+ */
+function withFocusFreeze<T extends object>(
+  Component: React.ComponentType<T>,
+  screenName: string
+): React.ComponentType<T> {
+  const MemoizedInner = React.memo(
+    ({ passthroughProps }: { isFocused: boolean; passthroughProps: T }) => (
+      <ErrorBoundary screenName={screenName}>
+        <Component {...passthroughProps} />
+      </ErrorBoundary>
+    ),
+    (prev, next) => !next.isFocused // Never re-render in JS while tab is in the background!
+  );
+
+  const FocusGate = (props: T) => {
+    const isFocused = useIsFocused();
+    return <MemoizedInner isFocused={isFocused} passthroughProps={props} />;
+  };
+  FocusGate.displayName = `FocusFrozen(${screenName})`;
+  return FocusGate;
+}
+
 const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
-  Tasks:       withTabEntrance(withErrorBoundary(TasksScreen,       'Tasks')),
-  Attendance:  withTabEntrance(withErrorBoundary(AttendanceScreen,  'Attendance')),
-  Gym:         withTabEntrance(withErrorBoundary(GymStack,          'Gym')),
-  Calendar:    withTabEntrance(withErrorBoundary(CalendarScreen,    'Calendar')),
-  Habits:      withTabEntrance(withErrorBoundary(HabitsScreen,      'Habits')),
-  Analytics:   withTabEntrance(withErrorBoundary(AnalyticsScreen,   'Analytics')),
-  Notes:       withTabEntrance(withErrorBoundary(NotesScreen,       'Notes')),
-  Grades:      withTabEntrance(withErrorBoundary(GradesScreen,      'Grades')),
-  Assignments: withTabEntrance(withErrorBoundary(AssignmentsScreen, 'Assignments')),
-  Learning:    withTabEntrance(withErrorBoundary(LearningScreen,    'Learning')),
+  Tasks:       withFocusFreeze(TasksScreen,       'Tasks'),
+  Attendance:  withFocusFreeze(AttendanceScreen,  'Attendance'),
+  Gym:         withFocusFreeze(GymStack,          'Gym'),
+  Calendar:    withFocusFreeze(CalendarScreen,    'Calendar'),
+  Habits:      withFocusFreeze(HabitsScreen,      'Habits'),
+  Analytics:   withFocusFreeze(AnalyticsScreen,   'Analytics'),
+  Notes:       withFocusFreeze(NotesScreen,       'Notes'),
+  Grades:      withFocusFreeze(GradesScreen,      'Grades'),
+  Assignments: withFocusFreeze(AssignmentsScreen, 'Assignments'),
+  Learning:    withFocusFreeze(LearningScreen,    'Learning'),
 };
 
 const ALL_NAV_MODULE_IDS = Object.keys(COMPONENT_MAP);
@@ -203,12 +224,10 @@ function NestedHeader({ title }: { title: string }) {
 
 import { usePinnedModules } from '../contexts/PinnedModulesContext';
 import { TelegramTabBar } from '../components/Navigation/TelegramTabBar';
-import { withTabEntrance } from '../components/Navigation/withTabEntrance';
 
 // --- SafeDashboard & SafeMore (defined before MainTabNavigator that uses them) -------------
-// withTabEntrance adds Apple iOS-grade ease-out-expo fade + spring lift on every tab focus
-const SafeDashboard = withTabEntrance(withErrorBoundary(DashboardScreen, 'Dashboard'));
-const SafeMore      = withTabEntrance(withErrorBoundary(MoreScreen,      'More'));
+const SafeDashboard = withFocusFreeze(DashboardScreen, 'Dashboard');
+const SafeMore      = withFocusFreeze(MoreScreen,      'More');
 
 const TabBarNullButton = () => null;
 
@@ -226,21 +245,42 @@ function MainTabNavigator() {
 
   const effectivePinned = useMemo(() => pinnedKey.split(','), [pinnedKey]);
 
-  // State to trigger background warm-mounting of pinned tabs AFTER Home settles
-  const [warmPinnedTabs, setWarmPinnedTabs] = useState(false);
+  // Staggered warm-mounting: warm 1 pinned tab every 700ms AFTER initial boot + Firestore syncs settle.
+  // Never mount all 4 tabs on the same frame at 350ms!
+  const [warmedTabs, setWarmedTabs] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let cancelled = false;
+
     const handle = InteractionManager.runAfterInteractions(() => {
-      // Warm ONLY the 4 pinned tabs on boot (drops prefetch time from 7.5s down to 1.8s)
+      if (cancelled) return;
       startPrefetching(effectivePinned, true);
-      // Wait for Home first paint and user gestures to settle (350ms), then warm-mount pinned tabs
-      const timer = setTimeout(() => {
-        setWarmPinnedTabs(true);
-      }, 350);
-      return () => clearTimeout(timer);
+
+      effectivePinned.forEach((modId, idx) => {
+        const t = setTimeout(() => {
+          if (cancelled) return;
+          InteractionManager.runAfterInteractions(() => {
+            if (!cancelled) {
+              setWarmedTabs(prev => {
+                if (prev.has(modId)) return prev;
+                const next = new Set(prev);
+                next.add(modId);
+                return next;
+              });
+            }
+          });
+        }, 1800 + idx * 700);
+        timers.push(t);
+      });
     });
-    return () => handle.cancel();
-  }, [pinnedKey]);
+
+    return () => {
+      cancelled = true;
+      handle.cancel();
+      timers.forEach(clearTimeout);
+    };
+  }, [pinnedKey, effectivePinned]);
 
   // PERF FIX: Throttle AsyncStorage saves
   const lastTabSaveRef = useRef<number>(0);
@@ -278,13 +318,14 @@ function MainTabNavigator() {
       <Tab.Screen name="Home" component={SafeDashboard} options={{ lazy: false }} />
       {ALL_NAV_MODULE_IDS.map((modId) => {
         const isPinned = effectivePinned.includes(modId);
+        const isWarmed = isPinned && warmedTabs.has(modId);
         return (
           <Tab.Screen
             key={modId}
             name={modId}
             component={COMPONENT_MAP[modId]}
             options={{
-              lazy: isPinned ? !warmPinnedTabs : true,
+              lazy: !isWarmed,
               ...(!isPinned ? {
                 tabBarItemStyle: { display: 'none' },
                 tabBarButton:    TabBarNullButton,
@@ -338,11 +379,6 @@ function NestedScreens() {
 function RootNavigatorWithSara() {
   const { colors } = useTheme();
   const { isSheetOpen, setIsSheetOpen } = usePomodoro();
-
-  useEffect(() => {
-    const unsub = registerActiveWorkoutNotificationListeners();
-    return () => unsub();
-  }, []);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -553,25 +589,6 @@ export default function AppNavigator() {
       }
     });
 
-    // OTA update check -- rate-limited to once per hour
-    if (!__DEV__) {
-      (async () => {
-        try {
-          const HOUR_MS   = 60 * 60 * 1000;
-          const lastCheck = await AsyncStorage.getItem('@zentrack_last_update_check').catch(() => null);
-          if (lastCheck && Date.now() - parseInt(lastCheck, 10) < HOUR_MS) return;
-          await AsyncStorage.setItem('@zentrack_last_update_check', String(Date.now()));
-          const update = await Updates.checkForUpdateAsync();
-          if (update.isAvailable) {
-            // Silently fetch the update bundle in background.
-            // When user opens the app next time, the new version launches automatically in 0ms!
-            await Updates.fetchUpdateAsync();
-            console.log('[Updates] New bundle silently downloaded. Will apply automatically on next launch.');
-          }
-        } catch { /* offline -- skip silently */ }
-      })();
-    }
-
     // AppState heartbeat & Lifecycle
     //
     // INSTAGRAM/WHATSAPP FOREGROUND ARCHITECTURE:
@@ -583,37 +600,25 @@ export default function AppNavigator() {
     //
     // FIX:
     // 1. Short resume (< 15 min): Return immediately (0ms overhead, zero I/O, zero re-renders).
-    // 2. Long resume (> 30 min): Navigate Home, and defer non-blocking health check by 2.5s.
+    // 2. Long resume (> 15 min): Defer token health check by 3.5s. NEVER emit firestore_force_reconnect.
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === 'active') {
         const bgTimestamp = lastBackgroundTimestamp;
         lastBackgroundTimestamp = null;
 
-        // SHORT RESUME FAST-PATH (< 15 min):
-        // Instant 0ms resume — no I/O, no listener restart, no nav freeze.
         if (!bgTimestamp || Date.now() - bgTimestamp < 15 * 60 * 1000) {
           return;
         }
 
-        const wasLongBackground = Date.now() - bgTimestamp > 30 * 60 * 1000;
-
-        // STEP 1: If the user was gone for >30 min, navigate Home.
-        if (wasLongBackground && navigationRef.isReady()) {
-          // @ts-ignore
-          navigationRef.navigate('MainTabs', { screen: 'Home' });
-        }
-
-        // STEP 2: Defer background health-check by 2.5s so initial UI paint & tab touches are 100% fluid.
+        // Defer token health check by 3.5s after interactions settle.
+        // NEVER emit 'firestore_force_reconnect' — tearing down onSnapshot listeners
+        // when memoryLocalCache is enabled evicts the entire RAM cache and forces
+        // a 2-3s full database re-download!
         setTimeout(() => {
           InteractionManager.runAfterInteractions(async () => {
             try {
               if (auth.currentUser) {
-                // getIdToken(false) uses cached token if valid, refreshing ONLY if expired (>60 min)
                 await auth.currentUser.getIdToken(false);
-              }
-              // Only restart listeners after long dormancy (>30 min)
-              if (wasLongBackground) {
-                DeviceEventEmitter.emit('firestore_force_reconnect');
               }
             } catch (error: any) {
               if (isAuthFatalError(error)) {
@@ -624,7 +629,7 @@ export default function AppNavigator() {
               }
             }
           });
-        }, 2500);
+        }, 3500);
       } else if (nextState === 'background' || nextState === 'inactive') {
         lastBackgroundTimestamp = Date.now();
         // Defer cleanup to avoid competing with background transition animation

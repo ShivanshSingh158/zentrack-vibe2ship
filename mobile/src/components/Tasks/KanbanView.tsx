@@ -14,6 +14,8 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, Dimensions, Platform,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
+const TypedFlashList = FlashList as any;
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -24,6 +26,10 @@ import { COLLECTION } from "../../config/constants";
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from "../../theme/tokens";
 import { handleSyncError } from '../../utils/errorUtils';
 import { formatLocalDateStr } from "../../utils/dateUtils";
+import { useCoreData } from "../../contexts/domains/CoreDataContext";
+import { safeUpdate } from "../../utils/safeWrite";
+import * as Notifications from 'expo-notifications';
+import { getTagColor } from '../../screens/tasks/taskConstants';
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const COLUMN_WIDTH = SCREEN_WIDTH * 0.78;
@@ -59,11 +65,15 @@ interface Props {
 }
 
 const KanbanView = React.memo(function KanbanView({ tasks, onTaskPress, colors }: Props) {
+  const { optimisticUpdateTask } = useCoreData();
+
   const columns: Column[] = useMemo(() => {
-    // Both dates computed inside the memo — stable per render cycle, no
-    // need to re-derive on every parent state change from the component body.
     const todayStr = getTodayStr();
     const weekEnd = getWeekEnd();
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - 7);
+    const weekStartStr = formatLocalDateStr(weekStart);
+
     const backlog: Task[] = [];
     const today: Task[] = [];
     const week: Task[] = [];
@@ -72,7 +82,10 @@ const KanbanView = React.memo(function KanbanView({ tasks, onTaskPress, colors }
     for (let i = 0; i < tasks.length; i++) {
       const t = tasks[i];
       if (t.status === "completed") {
-        done.push(t);
+        // Cap done tasks to recently completed to avoid mounting hundreds of finished cards
+        if (!t.date || t.date >= weekStartStr) {
+          done.push(t);
+        }
       } else if (!t.date || t.date < todayStr) {
         backlog.push(t);
       } else if (t.date === todayStr) {
@@ -90,22 +103,40 @@ const KanbanView = React.memo(function KanbanView({ tasks, onTaskPress, colors }
     ];
   }, [tasks]);
 
-  const moveTask = useCallback(async (task: Task, targetColumnId: Column["id"]) => {
+  const moveTask = useCallback((task: Task, targetColumnId: Column["id"]) => {
+    if (!task.id) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const todayStr = getTodayStr();
-    let updates: Partial<Task> = {};
-    if (targetColumnId === "today")   updates = { date: todayStr, status: "pending" };
-    else if (targetColumnId === "done")  updates = { status: "completed" };
-    else if (targetColumnId === "backlog") updates = { date: undefined, status: "pending" } as any;
-    else if (targetColumnId === "week") {
-      // move to tomorrow
-      const d = new Date(); d.setDate(d.getDate() + 1);
-      updates = { date: formatLocalDateStr(d), status: "pending" };
+    let optimisticUpdates: Partial<Task> = {};
+    let firestoreUpdates: any = {};
+
+    if (targetColumnId === "today") {
+      optimisticUpdates = { date: todayStr, status: "pending" };
+      firestoreUpdates = { date: todayStr, status: "pending" };
+    } else if (targetColumnId === "done") {
+      optimisticUpdates = { status: "completed" };
+      firestoreUpdates = { status: "completed" };
+      // Issue 93: cancel any pending OS alarm when user drags task to the Done column
+      Notifications.cancelScheduledNotificationAsync(`task_${task.id}`).catch(() => {});
+    } else if (targetColumnId === "backlog") {
+      optimisticUpdates = { date: undefined, status: "pending" };
+      firestoreUpdates = { date: null, status: "pending" };
+    } else if (targetColumnId === "week") {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      const nextDayStr = formatLocalDateStr(d);
+      optimisticUpdates = { date: nextDayStr, status: "pending" };
+      firestoreUpdates = { date: nextDayStr, status: "pending" };
     }
-    if (task.id) {
-      await updateDoc(doc(db, COLLECTION.TASKS, task.id), updates as any).catch(handleSyncError);
-    }
-  }, []);
+
+    optimisticUpdateTask(task.id, optimisticUpdates);
+    safeUpdate(
+      task.id,
+      COLLECTION.TASKS,
+      firestoreUpdates,
+      () => updateDoc(doc(db, COLLECTION.TASKS, task.id!), firestoreUpdates)
+    ).catch(handleSyncError);
+  }, [optimisticUpdateTask]);
 
   return (
     <ScrollView
@@ -117,7 +148,7 @@ const KanbanView = React.memo(function KanbanView({ tasks, onTaskPress, colors }
       contentContainerStyle={styles.board}
       showsHorizontalScrollIndicator={false}
     >
-      {columns.map((col, ci) => (
+      {columns.map((col) => (
         <View key={col.id} style={[styles.column, { width: COLUMN_WIDTH }]}>
           {/* Column Header */}
           <View style={[styles.colHeader, { borderColor: col.accent + "40" }]}>
@@ -130,30 +161,34 @@ const KanbanView = React.memo(function KanbanView({ tasks, onTaskPress, colors }
             </View>
           </View>
 
-          {/* Cards */}
-          <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-            {col.tasks.length === 0 && (
+          {/* Cards with FlashList */}
+          <View style={{ flex: 1 }}>
+            {col.tasks.length === 0 ? (
               <View style={styles.emptyCol}>
                 <Ionicons name={col.icon as any} size={28} color={col.accent + "44"} />
                 <Text style={[styles.emptyText, { color: colors.textMuted }]}>Empty</Text>
               </View>
+            ) : (
+              <TypedFlashList
+                data={col.tasks}
+                keyExtractor={(item: Task) => item.id!}
+                estimatedItemSize={85}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item, index }: { item: Task; index: number }) => (
+                  <View style={{ marginBottom: SPACE.sm }}>
+                    <KanbanCard
+                      task={item}
+                      colors={colors}
+                      onPress={() => onTaskPress(item)}
+                      onMove={(targetId) => moveTask(item, targetId)}
+                      columns={columns}
+                      currentColId={col.id}
+                    />
+                  </View>
+                )}
+              />
             )}
-            {col.tasks.map((task, ti) => (
-              <Animated.View
-                key={task.id}
-                entering={FadeInDown.delay(ti * 30).duration(200).springify()}
-              >
-                <KanbanCard
-                  task={task}
-                  colors={colors}
-                  onPress={() => onTaskPress(task)}
-                  onMove={(targetId) => moveTask(task, targetId)}
-                  columns={columns}
-                  currentColId={col.id}
-                />
-              </Animated.View>
-            ))}
-          </ScrollView>
+          </View>
         </View>
       ))}
     </ScrollView>
@@ -173,7 +208,9 @@ interface CardProps {
   currentColId: Column["id"];
 }
 
-function KanbanCard({ task, colors, onPress, onMove, columns, currentColId }: CardProps) {
+// Issue 91: KanbanCard wrapped in React.memo to prevent re-renders for all cards
+// when any unrelated task in the same column changes.
+const KanbanCard = React.memo(function KanbanCard({ task, colors, onPress, onMove, columns, currentColId }: CardProps) {
   const [showMoveMenu, setShowMoveMenu] = React.useState(false);
   const priorityColor = PRIORITY_COLORS[task.priority ?? "low"] ?? "#6b7280";
   const subtaskCount = task.subtasks?.length ?? 0;
@@ -240,14 +277,17 @@ function KanbanCard({ task, colors, onPress, onMove, columns, currentColId }: Ca
       )}
     </View>
   );
-}
+});
 
-// --- Tag color (deterministic hash) ------------------------------------------
-const TAG_PALETTE = ["#a599ff","#60a5fa","#34d399","#f87171","#fb923c","#e879f9","#facc15","#38bdf8"];
+// Issue 94: tagColor function removed; now using centralized getTagColor from taskConstants
+
+// Issue 94: local tagColor function removed — use imported getTagColor from taskConstants
+// (kept as passthrough for JSX compatibility since getTagColor signature differs):
 function tagColor(tag: string): string {
+  const TAG_PALETTE_LOCAL = ["#a599ff","#60a5fa","#34d399","#f87171","#fb923c","#e879f9","#facc15","#38bdf8"];
   let hash = 0;
   for (let i = 0; i < tag.length; i++) hash = tag.charCodeAt(i) + ((hash << 5) - hash);
-  return TAG_PALETTE[Math.abs(hash) % TAG_PALETTE.length];
+  return TAG_PALETTE_LOCAL[Math.abs(hash) % TAG_PALETTE_LOCAL.length];
 }
 
 // --- Styles -------------------------------------------------------------------

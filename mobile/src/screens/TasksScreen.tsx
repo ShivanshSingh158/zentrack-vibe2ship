@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, Pressable, Platform, StatusBar, Linking, PanResponder, InteractionManager } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, Pressable, Platform, StatusBar, Linking, PanResponder, InteractionManager, BackHandler, AppState } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
+const TypedFlashList = FlashList as any;
 import Animated, {
   FadeIn,
   FadeInUp,
@@ -23,6 +24,10 @@ import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/nativ
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
 import { requestNotificationPermissions } from '../services/notifications';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../services/firebase';
+import { COLLECTION } from '../config/constants';
+import { safeWrite } from '../utils/safeWrite';
 
 import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -66,83 +71,8 @@ import type { Task } from '../contexts/MobileDataContext';
 
 const taskKeyExtractor = (item: any) => item.id;
 
-/**
- * TaskRowMemo — Thin memoized adapter that bridges TasksScreen's stable
- * callback API to TaskRow's original prop interface.
- *
- * WHY THIS EXISTS:
- * TaskRow is already wrapped in React.memo, BUT renderItem was passing
- * new inline arrow functions (e.g. `() => completeTask(item)`) on every
- * render. Arrow functions always produce a new object reference, which
- * defeats memo entirely. All 200 rows re-rendered on every single state
- * change (e.g. toggling one checkbox).
- *
- * HOW IT WORKS:
- * - Parent passes stable `useCallback` refs (onComplete: (task) => void).
- * - TaskRowMemo wraps each ref into the row-specific signature TaskRow
- *   expects (onComplete: () => void) using its own internal useCallback.
- * - Because TaskRowMemo is itself React.memo'd with a custom comparator,
- *   it only re-renders when THIS row's task data or isSelected changes.
- *   Every other row stays frozen.
- */
-interface TaskRowMemoProps {
-  task: Task;
-  isOverdue: boolean;
-  isBulkEdit?: boolean;
-  isSelected?: boolean;
-  onComplete: (task: Task) => void;
-  onReschedule: (taskId: string) => void;
-  onPress: (task: Task) => void;
-  onLongPress?: (task: Task) => void;
-  onDelete?: (task: Task) => void;
-  onToggleSelect: (taskId: string) => void;
-  onUpdateTask: (taskId: string, updates: Partial<Task>) => void;
-}
-
-const TaskRowMemo = React.memo(function TaskRowMemo({
-  task, isOverdue, isBulkEdit, isSelected,
-  onComplete, onReschedule, onPress, onLongPress, onDelete, onToggleSelect, onUpdateTask,
-}: TaskRowMemoProps) {
-  const handleComplete  = useCallback(() => onComplete(task), [onComplete, task]);
-  const handleReschedule = useCallback(() => onReschedule(task.id!), [onReschedule, task.id]);
-  const handlePress     = useCallback(() => onPress(task), [onPress, task]);
-  const handleLongPress = useCallback(() => (onLongPress ? onLongPress(task) : onPress(task)), [onLongPress, onPress, task]);
-  const handleDelete    = useCallback(() => onDelete?.(task), [onDelete, task]);
-  const handleToggle    = useCallback(() => onToggleSelect(task.id!), [onToggleSelect, task.id]);
-  const handleUpdate    = useCallback((id: string, updates: Partial<Task>) => onUpdateTask(id, updates), [onUpdateTask]);
-  const handleAddSubtask = useCallback(() => onPress(task), [onPress, task]);
-
-  return (
-    <TaskRow
-      task={task}
-      isOverdue={isOverdue}
-      isBulkEdit={isBulkEdit}
-      isSelected={isSelected}
-      onComplete={handleComplete}
-      onReschedule={handleReschedule}
-      onPress={handlePress}
-      onLongPress={handleLongPress}
-      onDelete={handleDelete}
-      onToggleSelect={handleToggle}
-      onUpdateTask={handleUpdate}
-      onAddSubtask={handleAddSubtask}
-    />
-  );
-}, (prev, next) =>
-  // Custom comparator: only re-render if this row's data or selection changed.
-  // This is the key gate that keeps 199 untouched rows frozen.
-  prev.task === next.task &&
-  prev.isOverdue === next.isOverdue &&
-  prev.isSelected === next.isSelected &&
-  prev.isBulkEdit === next.isBulkEdit &&
-  prev.onComplete === next.onComplete &&
-  prev.onReschedule === next.onReschedule &&
-  prev.onPress === next.onPress &&
-  prev.onLongPress === next.onLongPress &&
-  prev.onDelete === next.onDelete
-);
-
-
+// Module-level cached permission to avoid blocking bridge call on every mount
+let cachedNotifPermission: boolean | null = null;
 
 export default function TasksScreen() {
   const { colors, isDark } = useTheme();
@@ -155,9 +85,31 @@ export default function TasksScreen() {
   const isInitialLoading = !tasksReady && (!tasks || tasks.length === 0);
   const { openPomodoro } = usePomodoro();
   const todayDateStr = useMemo(() => formatLocalDateStr(new Date()), []);
+  const [currentMinuteTick, setCurrentMinuteTick] = useState(() => Math.floor(Date.now() / 60000));
 
-  // 1. Recurring Spawn Logic (Deferred background run)
-  useRecurringSpawn(tasks, user?.uid, optimisticAddTask);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentMinuteTick(Math.floor(Date.now() / 60000));
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Preload lazy sheet & alternate view chunks after interactions so first tap is instantaneous (Issue 72)
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      import('../components/UniversalCalendarModal');
+      import('../components/Tasks/BulkRescheduleSheet');
+      import('../components/Tasks/TaskTemplatesSheet');
+      import('../components/Tasks/TaskTimeLogSheet');
+      import('../components/Tasks/VoiceDictationOverlay');
+      import('../components/Tasks/TimelineView');
+      import('../components/Tasks/KanbanView');
+    });
+    return () => handle.cancel?.();
+  }, []);
+
+  // 1. Recurring Spawn Logic (Deferred background run, guarded by tasksReady)
+  useRecurringSpawn(tasks, user?.uid, optimisticAddTask, tasksReady);
 
   // 2. Data/State Hook
   const {
@@ -174,6 +126,18 @@ export default function TasksScreen() {
     toggleTaskSelection,
   } = useTasksData(tasks);
 
+  // Hardware back button dismisses bulk edit mode on Android (Issue 99)
+  useEffect(() => {
+    if (!isBulkEdit) return;
+    const onBackPress = () => {
+      setIsBulkEdit(false);
+      setSelectedTaskIds(new Set());
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [isBulkEdit, setIsBulkEdit, setSelectedTaskIds]);
+
   const [isVoiceDictationOpen, setIsVoiceDictationOpen] = useState(false);
 
   const route = useRoute<any>();
@@ -183,25 +147,15 @@ export default function TasksScreen() {
     }
   }, [route.params?.openAddTask, route.params?.timestamp]);
 
-  // Pre-warm primary modals after initial paint so tapping "+ Add task" has 0ms latency
-  useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      import('./tasks/NewTaskModal');
-      import('./tasks/EditTaskModal');
-    });
-    return () => handle.cancel?.();
-  }, []);
-
   const [contextMenuTask, setContextMenuTask] = useState<Task | null>(null);
 
-  // Morphing View Switcher Animation
+  // Morphing View Switcher Animation (Issue 73: bounded modulo 360, removed redundant withSequence)
   const viewRotate = useSharedValue(0);
   const animViewRotateStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${viewRotate.value}deg` }],
   }));
 
   // Direction-aware view cycle: list → timeline → kanban → list
-  // The cycle order determines the slide direction: cycling forward = slide left
   const VIEW_ORDER = ['list', 'timeline', 'kanban'] as const;
   const prevViewRef = useRef(viewMode);
 
@@ -209,9 +163,10 @@ export default function TasksScreen() {
     const curIdx = VIEW_ORDER.indexOf(viewMode as any);
     const nextIdx = (curIdx + 1) % VIEW_ORDER.length;
     prevViewRef.current = viewMode;
-    viewRotate.value = withSequence(
-      withTiming(viewRotate.value + 90, { duration: 180, easing: Easing.bezier(0.16, 1, 0.3, 1) })
-    );
+    viewRotate.value = withTiming((viewRotate.value + 90) % 360, {
+      duration: 180,
+      easing: Easing.bezier(0.16, 1, 0.3, 1),
+    });
     setViewMode(VIEW_ORDER[nextIdx]);
   }, [setViewMode, viewRotate, viewMode]);
 
@@ -244,15 +199,14 @@ export default function TasksScreen() {
   const lastScrollY = useRef(0);
   const handleScroll = useCallback((e: any) => {
     const offsetY = e?.nativeEvent?.contentOffset?.y ?? 0;
-    // Auto-hiding bottom navigation bar on scroll (fast & smooth)
     if (offsetY <= 35) {
       setTabBarVisible(true);
     } else {
       const diff = offsetY - lastScrollY.current;
       if (diff > 10) {
-        setTabBarVisible(false); // Scroll down -> hide
+        setTabBarVisible(false);
       } else if (diff < -6) {
-        setTabBarVisible(true); // Scroll up -> show instantly
+        setTabBarVisible(true);
       }
     }
     lastScrollY.current = offsetY;
@@ -261,45 +215,25 @@ export default function TasksScreen() {
   // ── Swipe-to-change-date Engine ──
   const [swipeDirection, setSwipeDirection] = useState<'forward' | 'backward'>('forward');
 
-  const goToNextDay = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setSwipeDirection('forward');
-    setSelectedDate((prevDate) => offsetDateStr(prevDate, 1));
-  }, [setSelectedDate]);
-
-  const goToPrevDay = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setSwipeDirection('backward');
-    setSelectedDate((prevDate) => offsetDateStr(prevDate, -1));
-  }, [setSelectedDate]);
+  const selectedDateRef = useRef(selectedDate);
+  selectedDateRef.current = selectedDate;
 
   const handleDateSelect = useCallback((newDate: string) => {
-    if (newDate > selectedDate) {
+    if (newDate > selectedDateRef.current) {
       setSwipeDirection('forward');
-    } else if (newDate < selectedDate) {
+    } else if (newDate < selectedDateRef.current) {
       setSwipeDirection('backward');
     }
     setSelectedDate(newDate);
-  }, [selectedDate, setSelectedDate]);
+  }, [setSelectedDate]);
 
   const displayedTasks = selectedDateTasks;
 
-  const sections = useMemo(() => {
-    if (displayedTasks.length === 0) return [];
-    return [{
-      title: selectedDate === todayDateStr ? 'TODAY' : formatDateWithDay(selectedDate).toUpperCase(),
-      data: displayedTasks,
-      isSelectedDate: true,
-    }];
-  }, [displayedTasks, selectedDate, todayDateStr]);
+  // Stable refs for isBulkEdit to preserve TaskRow memoization
+  const isBulkEditRef = useRef(isBulkEdit);
+  isBulkEditRef.current = isBulkEdit;
 
-
-  // ── Stable handler refs — created once, never recreated on re-render ──────────
-  // Passed into TaskRowMemo so React.memo actually prevents TaskRow re-renders.
-  // Previously, inline `() => completeTask(item)` closures defeated React.memo
-  // because each renderItem call produced new function objects, forcing all rows
-  // to re-render whenever isBulkEdit or selectedTaskIds changed.
-  const onCompleteRef = useCallback((task: any) => completeTask(task), [completeTask]);
+  const onCompleteRef = useCallback((task: Task) => completeTask(task), [completeTask]);
   const onRescheduleRef = useCallback((taskId: string) => {
     setSelectedTaskIds(new Set([taskId]));
     setBulkRescheduleModal(true);
@@ -309,72 +243,101 @@ export default function TasksScreen() {
   const [recentlyDeletedTask, setRecentlyDeletedTask] = useState<Task | null>(null);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleUndoDelete = useCallback(() => {
-    if (recentlyDeletedTask) {
+  useEffect(() => {
+    return () => {
       if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-      optimisticAddTask(recentlyDeletedTask);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    };
+  }, []);
+
+  const handleUndoDelete = useCallback(() => {
+    if (recentlyDeletedTask && recentlyDeletedTask.id) {
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+      const restored = recentlyDeletedTask;
       setRecentlyDeletedTask(null);
+      optimisticAddTask(restored);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      safeWrite(
+        (payload) => setDoc(doc(db, COLLECTION.TASKS, restored.id), payload, { merge: true }),
+        COLLECTION.TASKS,
+        'set',
+        restored,
+        restored.id
+      ).catch(console.warn);
     }
   }, [recentlyDeletedTask, optimisticAddTask]);
 
-  const onDeleteRef = useCallback((task: any) => {
+  const onDeleteRef = useCallback((task: Task) => {
     if (!task?.id) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     deleteTask(task.id);
     setRecentlyDeletedTask(task);
     if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
     undoTimeoutRef.current = setTimeout(() => {
+      undoTimeoutRef.current = null;
       setRecentlyDeletedTask(null);
     }, 4500);
   }, [deleteTask]);
 
-  const onPressRef = useCallback((task: any) => {
-    if (isBulkEdit) {
-      toggleTaskSelection(task.id);
+  const onPressRef = useCallback((task: Task) => {
+    if (isBulkEditRef.current) {
+      if (task.id) toggleTaskSelection(task.id);
     } else {
       setEditingTask(task);
     }
-  }, [isBulkEdit, toggleTaskSelection, setEditingTask]);
+  }, [toggleTaskSelection, setEditingTask]);
 
-  const onLongPressRef = useCallback((task: any) => {
+  const onLongPressRef = useCallback((task: Task) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (!isBulkEdit) {
-      setIsBulkEdit(true);
-      toggleTaskSelection(task.id);
+    if (isBulkEditRef.current) {
+      if (task.id) toggleTaskSelection(task.id);
+    } else {
+      // Wire WhatsApp-grade context menu on long press
+      setContextMenuTask(task);
     }
-  }, [isBulkEdit, toggleTaskSelection, setIsBulkEdit]);
+  }, [toggleTaskSelection]);
 
-  const onToggleSelectRef = useCallback((taskId: string) => toggleTaskSelection(taskId), [toggleTaskSelection]);
-  const onUpdateTaskRef = useCallback((id: string, updates: any) => updateTask(id, updates), [updateTask]);
+  const onToggleSelectRef = useCallback((taskId: string) => {
+    toggleTaskSelection(taskId);
+  }, [toggleTaskSelection]);
 
-  // Modal-specific stable press handlers — close the modal first, then open edit.
-  // Passed to TaskRowMemo inside Overdue/Inbox so those rows stay frozen on parent re-renders.
-  const onOverduePressRef = useCallback((task: any) => {
+  const onUpdateTaskRef = useCallback((id: string, updates: Partial<Task>) => updateTask(id, updates), [updateTask]);
+
+  const onAddSubtaskRef = useCallback((task: Task) => setEditingTask(task), [setEditingTask]);
+
+  // Modal-specific stable press handlers
+  const onOverduePressRef = useCallback((task: Task) => {
     setIsOverdueModalOpen(false);
     setEditingTask(task);
   }, [setIsOverdueModalOpen, setEditingTask]);
+
   const onOverdueRescheduleRef = useCallback((taskId: string) => {
     setIsOverdueModalOpen(false);
     setSelectedTaskIds(new Set([taskId]));
     setBulkRescheduleModal(true);
   }, [setIsOverdueModalOpen, setSelectedTaskIds, setBulkRescheduleModal]);
-  const onInboxPressRef = useCallback((task: any) => {
+
+  const onInboxPressRef = useCallback((task: Task) => {
     setIsInboxModalOpen(false);
     setEditingTask(task);
   }, [setIsInboxModalOpen, setEditingTask]);
+
   const onInboxRescheduleRef = useCallback((taskId: string) => {
     setIsInboxModalOpen(false);
     setSelectedTaskIds(new Set([taskId]));
     setBulkRescheduleModal(true);
   }, [setIsInboxModalOpen, setSelectedTaskIds, setBulkRescheduleModal]);
 
+  const selectedTaskIdsRef = useRef(selectedTaskIds);
+  selectedTaskIdsRef.current = selectedTaskIds;
+
   const renderItem = useCallback(({ item }: { item: any }) => (
-    <TaskRowMemo
+    <TaskRow
       task={item}
       isOverdue={item.date ? item.date < todayDateStr && item.status !== 'completed' : false}
-      isBulkEdit={isBulkEdit}
-      isSelected={selectedTaskIds.has(item.id!)}
+      isBulkEdit={isBulkEditRef.current}
+      isSelected={selectedTaskIdsRef.current.has(item.id!)}
+      todayDateStr={todayDateStr}
+      currentMinuteTick={currentMinuteTick}
       onComplete={onCompleteRef}
       onReschedule={onRescheduleRef}
       onPress={onPressRef}
@@ -382,8 +345,9 @@ export default function TasksScreen() {
       onDelete={onDeleteRef}
       onToggleSelect={onToggleSelectRef}
       onUpdateTask={onUpdateTaskRef}
+      onAddSubtask={onAddSubtaskRef}
     />
-  ), [isBulkEdit, selectedTaskIds, todayDateStr, onCompleteRef, onRescheduleRef, onPressRef, onLongPressRef, onDeleteRef, onToggleSelectRef, onUpdateTaskRef]);
+  ), [todayDateStr, currentMinuteTick, onCompleteRef, onRescheduleRef, onPressRef, onLongPressRef, onDeleteRef, onToggleSelectRef, onUpdateTaskRef, onAddSubtaskRef]);
 
   const listHeaderComponent = useMemo(() => {
     if (displayedTasks.length === 0) return null;
@@ -401,25 +365,43 @@ export default function TasksScreen() {
     return conflicts.filter(c => c.modules.includes('tasks') && !c.modules.includes('academic'));
   }, [conflicts]);
 
-  const [hasNotifPermission, setHasNotifPermission] = useState<boolean | null>(true);
+  const [hasNotifPermission, setHasNotifPermission] = useState<boolean | null>(() => cachedNotifPermission ?? true);
 
-  const checkNotifPermission = useCallback(async () => {
-    try {
-      const { status } = await Notifications.getPermissionsAsync();
-      setHasNotifPermission(status === 'granted');
-    } catch {
-      setHasNotifPermission(null);
-    }
+  const checkNotifPermission = useCallback(() => {
+    const handle = InteractionManager.runAfterInteractions(async () => {
+      try {
+        const { status } = await Notifications.getPermissionsAsync();
+        const granted = status === 'granted';
+        cachedNotifPermission = granted;
+        setHasNotifPermission(prev => prev === granted ? prev : granted);
+      } catch {
+        // Leave existing state
+      }
+    });
+    return () => handle.cancel?.();
   }, []);
 
   useEffect(() => {
-    checkNotifPermission();
+    const cleanup = checkNotifPermission();
+    return cleanup;
   }, [checkNotifPermission]);
+
+  // Re-check notification permissions when app returns to foreground from OS settings (Issue 100)
+  useEffect(() => {
+    if (hasNotifPermission !== false) return;
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        checkNotifPermission();
+      }
+    });
+    return () => sub.remove();
+  }, [hasNotifPermission, checkNotifPermission]);
 
   const handleRequestNotifPermission = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const granted = await requestNotificationPermissions();
+      cachedNotifPermission = granted;
       if (!granted) {
         Alert.alert(
           'Notifications Required',
@@ -442,14 +424,14 @@ export default function TasksScreen() {
       
       {/* PROACTIVE WIDGET */}
       {taskConflicts.length > 0 && (
-        <View style={{ paddingHorizontal: 24, marginBottom: 16, marginTop: 8 }}>
+        <View style={styles.proactiveConflictContainer}>
           {taskConflicts.map(c => (
-            <View key={c.id} style={{ backgroundColor: isDark ? 'rgba(255, 105, 97, 0.12)' : '#fee2e2', padding: 16, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: isDark ? 'rgba(255, 105, 97, 0.25)' : '#fca5a5' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <View key={c.id} style={styles.proactiveConflictCard}>
+              <View style={styles.proactiveConflictHeader}>
                 <Ionicons name="warning" size={16} color={colors.error} />
-                <Text style={{ fontFamily: 'Inter_700Bold', color: colors.error, fontSize: 14 }}>Conflict Detected</Text>
+                <Text style={styles.proactiveConflictTitle}>Conflict Detected</Text>
               </View>
-              <Text style={{ fontFamily: 'Inter_400Regular', color: colors.error, fontSize: 12 }}>{c.message} {c.suggestion}</Text>
+              <Text style={styles.proactiveConflictBody}>{c.message} {c.suggestion}</Text>
             </View>
           ))}
         </View>
@@ -461,7 +443,7 @@ export default function TasksScreen() {
         <View style={styles.topHeaderIcons}>
           {isBulkEdit ? (
             <AnimatedPressable 
-              style={[styles.iconBtn, { width: 34, height: 34, borderRadius: 17, backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : colors.surface2, alignItems: 'center', justifyContent: 'center' }]} 
+              style={[styles.iconBtn, styles.closeBulkEditBtn]} 
               onPress={() => { setIsBulkEdit(false); setSelectedTaskIds(new Set()); }}
             >
               <Ionicons name="close" size={18} color={colors.accentPrimary} />
@@ -483,26 +465,26 @@ export default function TasksScreen() {
                     <Text style={styles.badgeText}>{inboxTasks.length}</Text>
                   </View>
                 ) : null}
-                <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>Inbox</Text>
+                <Text style={styles.headerBtnText}>Inbox</Text>
               </AnimatedPressable>
               {/* Pomodoro Timer button */}
               <AnimatedPressable style={styles.iconBtn} onPress={() => openPomodoro()}>
                 <Ionicons name="timer-outline" size={20} color={colors.textPrimary} />
-                <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>Timer</Text>
+                <Text style={styles.headerBtnText}>Timer</Text>
               </AnimatedPressable>
               <AnimatedPressable style={styles.iconBtn} onPress={handleToggleView}>
                 <Animated.View style={animViewRotateStyle}>
                   <Ionicons name={viewMode === 'list' ? 'time-outline' : viewMode === 'timeline' ? 'git-branch-outline' : 'list'} size={20} color={colors.textPrimary} />
                 </Animated.View>
-                <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>View</Text>
+                <Text style={styles.headerBtnText}>View</Text>
               </AnimatedPressable>
               <AnimatedPressable style={styles.iconBtn} onPress={() => setIsNewTaskOpen(true)}>
                 <Ionicons name="add" size={22} color={colors.textPrimary} />
-                <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>Add</Text>
+                <Text style={styles.headerBtnText}>Add</Text>
               </AnimatedPressable>
               <AnimatedPressable style={styles.iconBtn} onPress={() => setIsMenuOpen(true)}>
                 <Ionicons name="ellipsis-horizontal" size={20} color={colors.textPrimary} />
-                <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>More</Text>
+                <Text style={styles.headerBtnText}>More</Text>
               </AnimatedPressable>
             </>
           )}
@@ -514,32 +496,18 @@ export default function TasksScreen() {
         <TaskDateStrip selectedDate={selectedDate} onSelectDate={handleDateSelect} taskDates={taskDates} />
       </View>
 
-
-
       {/* NOTIFICATION PERMISSION WARNING BANNER */}
       {hasNotifPermission === false && (
         <AnimatedPressable
-          style={{
-            marginHorizontal: 16,
-            marginBottom: 10,
-            paddingVertical: 10,
-            paddingHorizontal: 14,
-            backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#fffbeb',
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: isDark ? 'rgba(245, 158, 11, 0.35)' : '#fde68a',
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-          }}
+          style={styles.notifBanner}
           onPress={handleRequestNotifPermission}
         >
           <Ionicons name="notifications-off" size={18} color="#f59e0b" />
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: isDark ? '#fbbf24' : '#b45309', fontFamily: 'Inter_600SemiBold' }}>
+          <View style={styles.notifBannerContent}>
+            <Text style={styles.notifBannerTitle}>
               Notifications Disabled
             </Text>
-            <Text style={{ fontSize: 11, color: isDark ? '#d1d5db' : '#92400e', fontFamily: 'Inter_400Regular' }}>
+            <Text style={styles.notifBannerSubtitle}>
               Task reminders and alarms won't fire. Tap to enable.
             </Text>
           </View>
@@ -579,12 +547,18 @@ export default function TasksScreen() {
         </Suspense>
       )}
 
-      {/* Edit & New Task Modals — 0ms instant Frame-0 response */}
+      {/* Edit & New Task Modals — only mounted when visible */}
       {!!editingTask && (
         <EditTaskModal visible={!!editingTask} onClose={() => setEditingTask(null)} task={editingTask} />
       )}
       {isNewTaskOpen && !!user && (
-        <NewTaskModal visible={isNewTaskOpen} onClose={() => setIsNewTaskOpen(false)} userId={user.uid} selectedDate={selectedDate} listCount={selectedDateTasks.length} />
+        <NewTaskModal
+          visible={isNewTaskOpen}
+          onClose={() => setIsNewTaskOpen(false)}
+          userId={user.uid}
+          selectedDate={selectedDate}
+          listCount={selectedDateTasks.length}
+        />
       )}
       {isVoiceDictationOpen && (
         <Suspense fallback={null}>
@@ -605,7 +579,7 @@ export default function TasksScreen() {
           </ScrollView>
         ) : viewMode === 'timeline' ? (
           <Animated.View
-            key={`timeline-${selectedDate}`}
+            key="timeline"
             entering={
               swipeDirection === 'forward'
                 ? SlideInRight.duration(200).easing(Easing.out(Easing.cubic))
@@ -636,10 +610,12 @@ export default function TasksScreen() {
           </Animated.View>
         ) : (
           <View style={{ flex: 1 }}>
-            <FlashList
+            <TypedFlashList
               data={displayedTasks}
               renderItem={renderItem}
               keyExtractor={taskKeyExtractor}
+              estimatedItemSize={54}
+              extraData={selectedTaskIds}
               ListHeaderComponent={listHeaderComponent}
               contentContainerStyle={[
                 styles.listContent,
@@ -697,7 +673,7 @@ export default function TasksScreen() {
           <Text style={styles.floatingAddText}>Add task</Text>
         </AnimatedPressable>
         <AnimatedPressable
-          style={[styles.floatingAddBtn, { backgroundColor: '#FF453A', paddingHorizontal: 16, shadowColor: '#FF453A', shadowOpacity: 0.35, shadowRadius: 14, elevation: 6 }]}
+          style={[styles.floatingAddBtn, styles.voiceActionBtn]}
           variant="cta"
           onPress={() => setIsVoiceDictationOpen(true)}
         >
@@ -706,44 +682,48 @@ export default function TasksScreen() {
         </AnimatedPressable>
       </View>
 
-      {/* OVERDUE MODAL — strictly conditional to avoid running overdueTasks.map on mount */}
-      {isOverdueModalOpen && (
-        <BottomSheet visible={isOverdueModalOpen} onClose={() => setIsOverdueModalOpen(false)} avoidKeyboard={false}>
-          <View style={{ flexShrink: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, paddingHorizontal: 8, paddingTop: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name="warning" size={24} color={colors.error} style={{ marginRight: 12 }} />
-                <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: colors.textPrimary }}>Overdue Tasks</Text>
-              </View>
-              {overdueTasks.length > 0 && (
-                <Pressable onPress={() => {
-                  Alert.alert(
-                    "Clear Overdue Tasks",
-                    "Are you sure you want to completely delete all overdue tasks? This cannot be undone.",
-                    [
-                      { text: "Cancel", style: "cancel" },
-                      { 
-                        text: "Clear All", 
-                        style: "destructive", 
-                        onPress: () => {
-                          overdueTasks.forEach(t => optimisticDeleteTask(t.id!));
-                          bulkDelete(new Set(overdueTasks.map(t => t.id!)));
-                          setIsOverdueModalOpen(false);
-                        } 
-                      }
-                    ]
-                  );
-                }}>
-                  <Text style={{ color: colors.error, fontSize: 14, fontFamily: 'Inter_600SemiBold', padding: 8 }}>Clear All</Text>
-                </Pressable>
-              )}
+      {/* OVERDUE MODAL — virtualized with FlashList (Issue 70: kept mounted for smooth slide-down exit) */}
+      <BottomSheet visible={isOverdueModalOpen} onClose={() => setIsOverdueModalOpen(false)} avoidKeyboard={false}>
+        <View style={{ flexShrink: 1, minHeight: 200, maxHeight: 600 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, paddingHorizontal: 8, paddingTop: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="warning" size={24} color={colors.error} style={{ marginRight: 12 }} />
+              <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: colors.textPrimary }}>Overdue Tasks</Text>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
-              {overdueTasks.map((t, idx) => (
-                <Animated.View key={t.id} entering={FadeInDown.duration(180).delay(Math.min(idx * 30, 200))}>
-                  <TaskRowMemo
-                    task={t}
+            {overdueTasks.length > 0 && (
+              <Pressable onPress={() => {
+                Alert.alert(
+                  "Clear Overdue Tasks",
+                  "Are you sure you want to completely delete all overdue tasks? This cannot be undone.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { 
+                      text: "Clear All", 
+                      style: "destructive", 
+                      onPress: () => {
+                        bulkDelete(new Set(overdueTasks.map(t => t.id!)));
+                        setIsOverdueModalOpen(false);
+                      } 
+                    }
+                  ]
+                );
+              }}>
+                <Text style={{ color: colors.error, fontSize: 14, fontFamily: 'Inter_600SemiBold', padding: 8 }}>Clear All</Text>
+              </Pressable>
+            )}
+          </View>
+          <TypedFlashList
+            data={overdueTasks}
+            keyExtractor={taskKeyExtractor}
+            estimatedItemSize={54}
+            renderItem={({ item, index }: { item: Task; index: number }) => (
+              index < 8 ? (
+                <Animated.View entering={FadeInDown.duration(180).delay(index * 25)}>
+                  <TaskRow
+                    task={item}
                     isOverdue={true}
+                    todayDateStr={todayDateStr}
+                    currentMinuteTick={currentMinuteTick}
                     onComplete={onCompleteRef}
                     onReschedule={onOverdueRescheduleRef}
                     onPress={onOverduePressRef}
@@ -751,53 +731,95 @@ export default function TasksScreen() {
                     onDelete={onDeleteRef}
                     onToggleSelect={onToggleSelectRef}
                     onUpdateTask={onUpdateTaskRef}
+                    onAddSubtask={onAddSubtaskRef}
                   />
                 </Animated.View>
-              ))}
-            </ScrollView>
-          </View>
-        </BottomSheet>
-      )}
+              ) : (
+                <TaskRow
+                  task={item}
+                  isOverdue={true}
+                  todayDateStr={todayDateStr}
+                  currentMinuteTick={currentMinuteTick}
+                  onComplete={onCompleteRef}
+                  onReschedule={onOverdueRescheduleRef}
+                  onPress={onOverduePressRef}
+                  onLongPress={onLongPressRef}
+                  onDelete={onDeleteRef}
+                  onToggleSelect={onToggleSelectRef}
+                  onUpdateTask={onUpdateTaskRef}
+                  onAddSubtask={onAddSubtaskRef}
+                />
+              )
+            )}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 20 }}
+          />
+        </View>
+      </BottomSheet>
 
-      {/* INBOX MODAL — strictly conditional to avoid running inboxTasks.map on mount */}
-      {isInboxModalOpen && (
-        <BottomSheet visible={isInboxModalOpen} onClose={() => setIsInboxModalOpen(false)} avoidKeyboard={false}>
-          <View style={{ flexShrink: 1, maxHeight: 600 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingHorizontal: 8, paddingTop: 20 }}>
-              <Ionicons name="file-tray" size={24} color={colors.accentPrimary} style={{ marginRight: 12 }} />
-              <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: colors.textPrimary }}>Inbox</Text>
-            </View>
-            {inboxTasks.length === 0 ? (
-              <Text style={{ color: colors.textTertiary, fontFamily: 'Inter_500Medium', textAlign: 'center', marginTop: 20, paddingBottom: 40 }}>No tasks in your inbox.</Text>
-            ) : (
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-                {inboxTasks.map((t, idx) => (
-                  <Animated.View key={t.id} entering={FadeInDown.duration(180).delay(Math.min(idx * 30, 200))}>
-                    <TaskRowMemo
-                      key={t.id}
-                      task={t}
+      {/* INBOX MODAL — virtualized with FlashList (Issue 70: kept mounted for smooth slide-down exit) */}
+      <BottomSheet visible={isInboxModalOpen} onClose={() => setIsInboxModalOpen(false)} avoidKeyboard={false}>
+        <View style={{ flexShrink: 1, minHeight: 200, maxHeight: 600 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingHorizontal: 8, paddingTop: 20 }}>
+            <Ionicons name="file-tray" size={24} color={colors.accentPrimary} style={{ marginRight: 12 }} />
+            <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: colors.textPrimary }}>Inbox</Text>
+          </View>
+          {inboxTasks.length === 0 ? (
+            <Text style={{ color: colors.textTertiary, fontFamily: 'Inter_500Medium', textAlign: 'center', marginTop: 20, paddingBottom: 40 }}>No tasks in your inbox.</Text>
+          ) : (
+            <TypedFlashList
+              data={inboxTasks}
+              keyExtractor={taskKeyExtractor}
+              estimatedItemSize={54}
+              renderItem={({ item, index }: { item: Task; index: number }) => (
+                index < 8 ? (
+                  <Animated.View entering={FadeInDown.duration(180).delay(index * 25)}>
+                    <TaskRow
+                      task={item}
                       isOverdue={false}
+                      isBulkEdit={isBulkEdit}
+                      isSelected={selectedTaskIds.has(item.id!)}
+                      todayDateStr={todayDateStr}
+                      currentMinuteTick={currentMinuteTick}
                       onComplete={onCompleteRef}
                       onReschedule={onInboxRescheduleRef}
                       onPress={onInboxPressRef}
                       onLongPress={onLongPressRef}
                       onDelete={onDeleteRef}
-                      isBulkEdit={isBulkEdit}
-                      isSelected={selectedTaskIds.has(t.id!)}
                       onToggleSelect={onToggleSelectRef}
                       onUpdateTask={onUpdateTaskRef}
+                      onAddSubtask={onAddSubtaskRef}
                     />
                   </Animated.View>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        </BottomSheet>
-      )}
+                ) : (
+                  <TaskRow
+                    task={item}
+                    isOverdue={false}
+                    isBulkEdit={isBulkEdit}
+                    isSelected={selectedTaskIds.has(item.id!)}
+                    todayDateStr={todayDateStr}
+                    currentMinuteTick={currentMinuteTick}
+                    onComplete={onCompleteRef}
+                    onReschedule={onInboxRescheduleRef}
+                    onPress={onInboxPressRef}
+                    onLongPress={onLongPressRef}
+                    onDelete={onDeleteRef}
+                    onToggleSelect={onToggleSelectRef}
+                    onUpdateTask={onUpdateTaskRef}
+                    onAddSubtask={onAddSubtaskRef}
+                  />
+                )
+              )}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 40 }}
+            />
+          )}
+        </View>
+      </BottomSheet>
 
-      {/* OVERFLOW MENU MODAL — strictly conditional */}
+      {/* OVERFLOW MENU MODAL — strictly conditional (Issue 71: animationType="none" prevents double fade) */}
       {isMenuOpen && (
-        <Modal visible={isMenuOpen} transparent animationType="fade" onRequestClose={() => setIsMenuOpen(false)}>
+        <Modal visible={isMenuOpen} transparent animationType="none" onRequestClose={() => setIsMenuOpen(false)}>
           <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setIsMenuOpen(false)}>
             <Animated.View entering={FadeIn.duration(150)} style={styles.menuContainer}>
               <TouchableOpacity style={styles.menuItem} onPress={() => { setSortBy('priority'); setIsMenuOpen(false); }}>

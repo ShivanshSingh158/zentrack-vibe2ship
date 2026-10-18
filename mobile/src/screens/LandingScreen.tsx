@@ -130,6 +130,15 @@ export default function LandingScreen() {
     return () => clearInterval(timer);
   }, [isUserInteracting]);
 
+  useEffect(() => {
+    return () => {
+      if (userInteractTimeoutRef.current) {
+        clearTimeout(userInteractTimeoutRef.current);
+        userInteractTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   if (!fontsLoaded) {
     return <View style={[styles.root, { backgroundColor: colors.background }]} />;
   }

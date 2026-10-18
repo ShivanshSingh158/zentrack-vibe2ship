@@ -19,7 +19,7 @@ import {
   TouchableOpacity, Platform, TextInputSelectionChangeEventData,
   NativeSyntheticEvent,
 } from 'react-native';
-import Animated, { FadeInDown, FadeOutUp, useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeOutUp, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { parseNLTask, ParsedTask, NLPToken } from '../../utils/dateUtils';
@@ -83,7 +83,7 @@ export default function NLPTaskInput({
   const { colors, isDark } = useTheme();
   const tokenColors = useMemo(() => getTokenColors(isDark), [isDark]);
   const inputRef = useRef<TextInput>(null);
-  const chipScale = useSharedValue(1);
+  // Issue 88: chipScale SharedValue was allocated but never used — deleted
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   
   // Local state to prevent keystroke dropping during heavy parent re-renders
@@ -162,16 +162,18 @@ export default function NLPTaskInput({
         {/* ── Crisp, single-rendered TextInput ─────────────────────────────── */}
         <TextInput
           ref={inputRef}
-          style={[styles.input, { color: voiceState === 'recording' ? colors.accentPrimary : colors.textPrimary, paddingRight: hideMic ? 16 : 48 }]}
-          value={voiceState === 'recording' ? 'Listening...' : localText}
+          style={[styles.input, { color: colors.textPrimary, paddingRight: hideMic ? 16 : 48 }]}
+          value={localText}
           onChangeText={handleLocalChangeText}
           placeholder={voiceState === 'recording' ? 'Listening...' : (placeholder || "Add a task... try 'report friday 3pm high'")}
           placeholderTextColor={voiceState === 'recording' ? colors.accentPrimary : colors.textMuted}
           autoFocus={autoFocus}
           editable={voiceState !== 'recording' && voiceState !== 'processing'}
-          returnKeyType="default"
-          multiline={true}
-          blurOnSubmit={false}
+          // Issue 66: pass onSubmitEditing and set returnKeyType/blurOnSubmit so parent handlers fire
+          onSubmitEditing={onSubmitEditing}
+          returnKeyType="done"
+          blurOnSubmit={true}
+          multiline={false}
           autoCorrect={false}
           spellCheck={false}
           autoCapitalize="sentences"
@@ -192,14 +194,14 @@ export default function NLPTaskInput({
       {/* ── Parsed token chips ───────────────────────────────────────────── */}
       {hasChips && (
         <Animated.View
-          entering={FadeInDown.duration(180).springify()}
+          entering={FadeInDown.duration(150)}
           exiting={FadeOutUp.duration(120)}
           style={styles.chipsRow}
         >
           {visibleTokens.map((tok, i) => (
             <Animated.View
-              key={`${tok.type}-${i}`}
-              entering={FadeInDown.delay(i * 40).duration(160).springify()}
+              key={`${tok.type}-${tok.display}`}
+              entering={FadeInDown.delay(i * 30).duration(150)}
             >
               <TouchableOpacity
                 style={[styles.chip, {

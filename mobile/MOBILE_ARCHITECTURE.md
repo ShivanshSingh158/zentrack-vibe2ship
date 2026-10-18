@@ -92,6 +92,20 @@ mobile/
 ├── plugins/
 │   └── withAndroidManifestMod.js         # Native Android Manifest Permissions & Flags Modifier
 └── src/
+    ├── core/                             # PHASE 1: Database, Offline Sync & Hot Caches (@core)
+    │   ├── database.ts                   # Firebase instances & schema validation guards
+    │   ├── sync.ts                       # WhatsApp-grade safeWrite & offline LWW queue
+    │   └── cache.ts                      # O(1) fingerprint generator & hot-store memoization
+    ├── state/                            # PHASE 2: Consolidated Domain State (@state)
+    │   └── index.ts                      # CoreData, Planner, Wellness, Academic, Creative, Theme
+    ├── features/                         # PHASE 4: Screen-Wise & Feature-Slice Architecture (@features)
+    │   ├── gym/                          # Screens, useGymLog, 1RM, warmups, audio, skeletons & widgets
+    │   ├── tasks/                        # Screens, useTasksFirestore, recurring spawn, Pomodoro
+    │   ├── academic/                     # Attendance, SGPA/CGPA Grades, Assignments & timetable
+    │   ├── habits/                       # Habit grids, sobriety streaks, water log sheets
+    │   ├── calendar/                     # Month views, day schedules, event detail sheets
+    │   ├── dashboard/                    # UnifiedLifeWidget, quick capture, XP constellation
+    │   └── learning/                     # Notes vault, SM-2 flashcard reviews, video notes
     ├── agent/                            # SARA AI Intelligence Subsystem
     │   ├── orchestrator.ts               # SARA Chat Orchestrator (CMG + IRCI + Streaming REST)
     │   ├── intentClassifier.ts           # On-Device IRCI Synchronous Intent Classifier (<5ms)
@@ -108,7 +122,6 @@ mobile/
     │   ├── Learning/                     # YouTube Player, AI Flashcards & Mind Map Canvas
     │   ├── Navigation/                   # Telegram-Style Floating Glass Bottom Navigation Bar
     │   ├── Notes/                        # Markdown Editor, StorageNode Rows & Floating Context Popovers
-    │   ├── PlacementHub/                 # LeetCode Scraper, DSA Heatmap & Striver SDE Sheet
     │   ├── SARA/                         # Voice Orb, Dynamic Bubbles & Action Confirmation Cards
     │   ├── Tasks/                        # Task Rows, NLP Task Input, Pomodoro Sheets & Dictation
     │   ├── Vault/                        # Local Offline Document Viewer & Download HUD
@@ -329,7 +342,6 @@ The application uses React Navigation v7 with a native stack hierarchy:
 | **Goals** | `Goals` | [`src/screens/GoalsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GoalsScreen.tsx) | OKR Goal Tracker, milestone breakdowns, progress completion rings, target deadline markers. |
 | **Grades** | `Grades` | [`src/screens/GradesScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GradesScreen.tsx) | University SGPA/CGPA grade calculation, semester subject credit weighting, target GPA projection. |
 | **Learning** | `Learning` | [`src/screens/LearningScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/LearningScreen.tsx) | Synchronized YouTube player, AI tutor chat, VS Code syntax highlighter, interactive mind map. |
-| **Placement Hub** | `PlacementHub` | [`src/screens/PlacementHubScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/PlacementHubScreen.tsx) | LeetCode GraphQL scraper, Striver SDE sheet checklist, DSA activity heatmap, Pattern Vault. |
 | **Analytics** | `Analytics` | [`src/screens/AnalyticsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AnalyticsScreen.tsx) | Concentric dual-ring Zen Score, 4-pillar balance tracks, task velocity chart, habit spline area wave. |
 | **Wellbeing** | `WellbeingDashboard` | [`src/screens/WellbeingDashboardScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/WellbeingDashboardScreen.tsx) | Sleep stage logs, hydration intervals, physical recovery scores, daily work-life balance insights. |
 | **XP Constellation**| `XPConstellation` | [`src/screens/XPConstellationScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/XPConstellationScreen.tsx) | Interactive galaxy map representing 20 mastery tiers, mascot lore codex, kinetic spring physics. |
@@ -433,12 +445,9 @@ MobileDataProvider (Composite Wrapper in App.tsx)
 | Hook Export | File Path | Signature / Return Type | Purpose & Details |
 |---|---|---|---|
 | `useGymLog` | [`src/hooks/useGymLog.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useGymLog.ts) | `(overrideDateStr?: string) => GymLogHookState` | Workout session state machine protecting active in-progress sets from Firestore echo overrides. |
-| `useGymProfile` | [`src/hooks/useGymProfile.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useGymProfile.ts) | `() => { profile, updateProfile }` | Gym user profile, target split settings, and bodyweight stats persistence. |
-| `usePlacementData` | [`src/hooks/usePlacementData.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/usePlacementData.ts) | `() => PlacementHookState` | Placement Hub state machine: LeetCode profile scraper, DSA checkboxes, and Pattern Vault notes. |
 | `useSaraNavigation` | [`src/hooks/useSaraNavigation.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useSaraNavigation.ts) | `() => { processAnswerForNavigation }` | Regex parser extracting `[NAVIGATE:ScreenName]` from SARA answers and executing route navigation. |
 | `useSaraSurface` | [`src/hooks/useSaraSurface.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useSaraSurface.ts) | `(screenName: string) => { activeBanner, dismissBanner }` | Evaluates per-screen anomaly triggers (e.g. attendance < 75%) and displays HUD banners. |
 | `useTabBarBadges` | [`src/hooks/useTabBarBadges.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useTabBarBadges.ts) | `() => Record<string, number>` | Computes active notification badge counts for bottom tabs (pending tasks, at-risk classes, gym). |
-| `useProactiveAgent`| [`src/hooks/useProactiveAgent.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useProactiveAgent.ts) | `() => void` | Runs background conflict detection and anomaly checks when app state changes. |
 | `useCachedFirestoreCollection` | [`src/hooks/useCachedFirestoreCollection.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useCachedFirestoreCollection.ts) | `<T>(collection, cacheKey, parser) => { data, loading }` | Generic hook providing instant AsyncStorage L1 hydration followed by live Firestore updates. |
 | `useDeferredMemo` | [`src/hooks/useDeferredMemo.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useDeferredMemo.ts) | `<T>(factory, deps) => T` | Defers expensive computations to `InteractionManager.runAfterInteractions` to preserve 60/120fps. |
 | `useSafeTimeout` | [`src/hooks/useSafeTimeout.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useSafeTimeout.ts) | `() => { setSafeTimeout }` | Memory-safe auto-clearing timeout wrapper preventing leaks on component unmount. |
@@ -568,3 +577,22 @@ Never call raw `setDoc`, `updateDoc`, or `deleteDoc` directly in UI components. 
 
 ### Rule 10: Unified Design Tokens & Haptic Primitives
 **Never hardcode hex color strings or raw `Haptics.*` calls** in screens and components. Always resolve colors from `useTheme().colors` (supporting Obsidian Cosmos & Frost Quartz) and trigger vibrations via `feedback.tap()`, `feedback.commit()`, and `feedback.success()` from `src/utils/haptics.ts`.
+
+---
+
+## 14. Changelog
+
+### 2026-10-17 — Zombie AlarmManager Double-Firing Fix (4-Part Patch)
+- **FIXED** `mobile/src/services/notifications.ts` — Root-caused the `"Hydration Check"` appearing at both 14:58 and 15:00 as two separate Android `AlarmManager` `PendingIntent` alarms (zombie + live).
+- **FIX 1 — Engine Version**: Added `NOTIF_ENGINE_VERSION = 'v6_strict_slot_ids_2026_10_17'` as the first element of `_buildFingerprint()`. Without this, the fingerprint guard saw `existingOsAlarms.length > 0` (zombie 14:58 alarms) and `return`-ed early without running the updated scheduler, permanently blocking the fix.
+- **FIX 2 — Per-ID Alarm Sweep**: Replaced bare `cancelAllScheduledNotificationsAsync()` with an explicit `Promise.all(existingOsAlarms.map(a => cancelScheduledNotificationAsync(a.identifier)))` sweep + 150ms `setTimeout` settle before calling global cancelAll. Ensures Android's `NotificationsService` intent queue fully drains before new alarms are written.
+- **FIX 3 — Deterministic Slot ID**: Water reminder `notifId` now uses `water_d{dayOffset}_h{hour}_m{minute}` (slot-based) instead of `water_{unixSec}` (timestamp-based). A timestamp ID is unique every run, so AlarmManager creates a second orphan `PendingIntent` instead of overwriting. A slot ID is stable across runs for the same logical slot.
+- **FIX 4 — SlotKey Propagation**: `enqueue()` in Section 13 now passes `slotKey` in `notif.data` so the identifier builder in the flush loop reads it directly instead of re-deriving from the trigger timestamp.
+
+### 2026-10-17 (2) — Complete Double-Fire Fix: All 14 Notification Types (5-Part Patch)
+- **ROOT CAUSE CONFIRMED**: On OxygenOS/ColorOS/OneUI, Android's `AlarmManager` delivers alarms ~2 min early (maintenance window). A 15:00 alarm fires at 14:58. `scheduleAllNotifications()` wakes at 14:58:05, sees `15:00 > 14:58` → TRUE, re-schedules the 15:00 slot as a brand-new alarm. That fires again at 15:00. Additionally, the old 20-second clamp (`trigger <= now → now+1s`) caused any alarm firing within 20s to be re-enqueued and fired immediately a second time.
+- **FIX 1 — 150s Guard in `enqueue()`**: Replaced `if (trigger <= now - 20s) return` + `clamp to now+1s` with `if (trigger <= now + 150s) return`. Any slot within 2.5 minutes is already in-flight in `AlarmManager` and must not be re-queued. This makes the entire scheduler immune to the maintenance window on all OEM variants.
+- **FIX 2 — All-Deterministic Slot IDs**: Replaced `Math.floor(getTime()/1000)` suffix on ALL 14 notification types with entity+date+slot-type keys: `task_{id}_{sub}_{date}`, `habit_{id}_{type}_{date}`, `class_{id}_{idx}_{type}_{date}_{hm}`, `event_{id}_{date}`, `asn_{id}_{type}_{date}`, `gym_{type}_{date}`, `brief_{date}`, and `sys_{type}_{date}_{hm}` / `gen_{channel}_{date}_{hm}` catch-alls for the 10 previously-`undefined` types. AlarmManager now overwrites the same `PendingIntent` on every reschedule.
+- **FIX 3 — Unified `scheduleSingleTaskReminder` ID**: Changed identifier from `task_${id}` to `task_${id}_exact_${dateStr}`, matching the batch scheduler exactly. Also added cancel of all 4 ID variants (`task_${id}`, `exact`, `buf`, `5m`) on every call to clean up stale alarms from previous builds.
+- **FIX 4 — Removed Duplicate Assignment Notifications**: Deleted the `scheduleNotificationAsync` calls for `assignment_24h_${newId}` and `assignment_2h_${newId}` from `mobile/src/screens/AssignmentsScreen.tsx`. Section 7 of `scheduleAllNotifications()` already covers these deterministically. Cancel-on-delete calls preserved for legacy cleanup.
+- **FIX 5 — Engine Version Bumped to `v7_all_deterministic_slot_ids_2026_10_17`**: Forces an immediate clean sweep of all old Unix-timestamp and random-UUID `PendingIntent`s from `AlarmManager` on every device's first launch of the new bundle.

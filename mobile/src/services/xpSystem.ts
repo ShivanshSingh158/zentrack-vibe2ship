@@ -17,7 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DeviceEventEmitter } from 'react-native';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { updateL1Cache } from '../utils/bootManifest';
+import { updateL1Cache, getBootManifestSync } from '../utils/bootManifest';
 import { safeWrite } from '../utils/safeWrite';
 import { COLLECTION } from '../config/constants';
 
@@ -122,14 +122,29 @@ export interface XPState {
 // ── In-Memory & Resilient Remote Sync ────────────────────────────────────────
 let _inMemoryXP: number | null = null;
 
+export function clearXPMemory(): void {
+  _inMemoryXP = null;
+}
+
 /**
  * Reconciles incoming Firestore XP with local in-memory/AsyncStorage cache.
  * Always takes the highest cumulative XP to ensure zero progress loss across devices.
  */
-export function syncXPWithFirestore(firestoreXP: number) {
+export async function syncXPWithFirestore(firestoreXP: number): Promise<void> {
   if (typeof firestoreXP !== 'number' || isNaN(firestoreXP)) return;
+
+  if (_inMemoryXP === null) {
+    const bootXp = getBootManifestSync()?.xp;
+    if (typeof bootXp === 'number' && bootXp > 0) {
+      _inMemoryXP = bootXp;
+    } else {
+      const stored = await AsyncStorage.getItem(XP_KEY).catch(() => null);
+      _inMemoryXP = stored ? (parseInt(stored, 10) || 0) : 0;
+    }
+  }
+
   const currentLocal = _inMemoryXP ?? 0;
-  
+
   if (firestoreXP >= currentLocal) {
     _inMemoryXP = firestoreXP;
     updateL1Cache('xp', firestoreXP);
@@ -225,11 +240,39 @@ export function getLevel(xp: number): XPState {
   };
 }
 
+let _xpFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let _pendingXPToSync: { uid: string; xp: number } | null = null;
+
+export function flushPendingXPCloudSync(): void {
+  if (!_pendingXPToSync) return;
+  if (_xpFlushTimer) {
+    clearTimeout(_xpFlushTimer);
+    _xpFlushTimer = null;
+  }
+  const { uid, xp } = _pendingXPToSync;
+  _pendingXPToSync = null;
+  safeWrite(
+    () => setDoc(doc(db, COLLECTION.USER_PROFILES, uid), { xp, lastXpAwardedAt: Date.now() }, { merge: true }),
+    COLLECTION.USER_PROFILES,
+    'set',
+    { xp, lastXpAwardedAt: Date.now() },
+    uid
+  ).catch(e => console.warn('[XP] Firestore safeWrite failed:', e));
+}
+
+function scheduleXPCloudFlush(uid: string, xpToSync: number): void {
+  _pendingXPToSync = { uid, xp: xpToSync };
+  if (_xpFlushTimer) clearTimeout(_xpFlushTimer);
+  _xpFlushTimer = setTimeout(() => {
+    flushPendingXPCloudSync();
+  }, 8000);
+}
+
 /**
  * Award XP for a given source.
  * 1. Updates in-memory and local cache for 0ms UI reactivity.
  * 2. Emits live device event for instant visual feedback.
- * 3. Persists directly to Firestore via safeWrite (with AsyncStorage offline queue fallback).
+ * 3. Persists directly to Firestore via safeWrite (debounced/coalesced).
  */
 export async function awardXP(
   source: keyof typeof XP_SOURCES,
@@ -268,16 +311,10 @@ export async function awardXP(
     });
   } catch {}
 
-  // 3. Reliable Firestore Database write via safeWrite (online + offline queue fallback)
+  // 3. Reliable Firestore Database write (debounced/coalesced to prevent write amplification)
   const uid = auth.currentUser?.uid;
   if (uid) {
-    safeWrite(
-      () => setDoc(doc(db, COLLECTION.USER_PROFILES, uid), { xp: newXP, lastXpAwardedAt: Date.now() }, { merge: true }),
-      COLLECTION.USER_PROFILES,
-      'set',
-      { xp: newXP, lastXpAwardedAt: Date.now() },
-      uid
-    ).catch(e => console.warn('[XP] Firestore safeWrite failed:', e));
+    scheduleXPCloudFlush(uid, newXP);
   }
 
   const newState = getLevel(newXP);

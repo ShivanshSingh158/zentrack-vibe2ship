@@ -319,21 +319,11 @@ export function LiveWorkoutWidget({ data, width = 330, height = 280 }: LiveWorko
                           width: 6,
                           height: 6,
                           borderRadius: 3,
-                          backgroundColor: done ? C.green : C.surface2,
+                          backgroundColor: done ? C.green : i === currentSetIdx ? C.orange : C.surface2,
                           marginRight: 4,
                         }}
                       />
                     ))}
-                    {/* Active Set indicator */}
-                    <FlexWidget
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor: C.orange,
-                        marginRight: 4,
-                      }}
-                    />
                   </FlexWidget>
                 ) : null}
               </FlexWidget>

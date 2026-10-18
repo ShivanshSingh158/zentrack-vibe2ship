@@ -45,13 +45,10 @@ function formatRestTime(seconds: number): string {
  * timer cues remain active.
  */
 export async function updateActiveWorkoutNotification(
-  payload: ActiveWorkoutNotificationPayload
+  _payload: ActiveWorkoutNotificationPayload
 ): Promise<void> {
-  lastNotificationState = payload;
-  // Always dismiss any existing active workout notification to avoid shade clutter
-  if (isNotificationActive) {
-    await dismissActiveWorkoutNotification();
-  }
+  // Always dismiss any lingering lockscreen HUD notification
+  await dismissActiveWorkoutNotification();
 }
 
 /**
@@ -68,9 +65,7 @@ export async function dismissActiveWorkoutNotification(): Promise<void> {
   }
   try {
     await Notifications.dismissNotificationAsync(WORKOUT_NOTIFICATION_ID);
-  } catch (err) {
-    console.warn('[ActiveWorkoutNotification] Dismiss failed:', err);
-  }
+  } catch {}
 }
 
 export function isWorkoutNotificationActive(): boolean {

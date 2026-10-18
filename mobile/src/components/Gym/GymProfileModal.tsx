@@ -44,7 +44,7 @@ function OptionPill<T extends string>({
   isDark = true,
 }: {
   options: { key: T; label: string }[];
-  value: T | null;
+  value?: T | null;
   onSelect: (v: T) => void;
   colors: any;
   isDark?: boolean;

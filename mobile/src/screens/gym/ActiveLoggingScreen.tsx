@@ -4,7 +4,6 @@ import {
   Platform, KeyboardAvoidingView, ScrollView, ActivityIndicator, AppState,
   Keyboard, DeviceEventEmitter, InteractionManager
 } from 'react-native';
-import ConfettiCannon from 'react-native-confetti-cannon';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +19,8 @@ import { calculateExerciseMaxWeight, getPreviousExerciseSession, resolveExercise
 import { hapticLight, hapticMedium, hapticSuccess } from '../../utils/haptics';
 import { autoResolveExerciseVideoId } from '../../services/exerciseVideoResolver';
 import { getOverloadSuggestion, getRestDuration } from '../../services/progressiveOverload';
+import { awardXP } from '../../services/xpSystem';
+import { playSetCompleteTone } from '../../services/gymSoundSynthesizer';
 import { GymNavigationParamList } from '../../types/gym.types';
 
 // Extracted Sub-Components & Styles
@@ -27,13 +28,12 @@ import { makeActiveLoggingStyles } from './activeLoggingStyles';
 import SwipeableSetRow from '../../components/Gym/SwipeableSetRow';
 import ActiveExerciseHeader from '../../components/Gym/ActiveExerciseHeader';
 import ActiveExerciseVideo from '../../components/Gym/ActiveExerciseVideo';
-import ActiveQuickChips from '../../components/Gym/ActiveQuickChips';
 import SupersetPickerModal from '../../components/Gym/SupersetPickerModal';
 import ActiveSwapModal from '../../components/Gym/ActiveSwapModal';
 import AnimatedRestTimer from '../../components/Gym/AnimatedRestTimer';
 import { insertWarmupLadder } from '../../utils/warmupGenerator';
 import { saveCachedLiveWorkoutData, updateLiveWorkoutWidget } from '../../services/widgetSyncService';
-import { updateActiveWorkoutNotification, dismissActiveWorkoutNotification } from '../../services/activeWorkoutNotificationService';
+import { dismissActiveWorkoutNotification } from '../../services/activeWorkoutNotificationService';
 import type { LiveWorkoutWidgetData } from '../../types/widget.types';
 
 interface SetInputState {
@@ -41,12 +41,12 @@ interface SetInputState {
   reps: string;
 }
 
-// ─── Pure Helper: Parse Upper Circuit of Reps (e.g., "10-12" -> 12, "8-10" -> 10) ───
+// ─── Pure Helper: Parse Upper Circuit of Reps (e.g., "10-12" or "10–12" -> 12, "8-10" -> 10) ───
 export function parseUpperTargetReps(targetRepsStr?: string | number | null): number {
   if (!targetRepsStr) return 10;
   const str = String(targetRepsStr).trim();
-  if (str.includes('-')) {
-    const parts = str.split('-');
+  if (/[-–—]/.test(str)) {
+    const parts = str.split(/[-–—]/);
     const upper = parseInt(parts[parts.length - 1].trim(), 10);
     if (!isNaN(upper) && upper > 0) return Math.min(50, upper);
   }
@@ -274,8 +274,7 @@ function computeInitialSetInputs(
   date: string | undefined
 ): SetInputState[] {
   if (!exercise || !exercise.setsLog) return [];
-  const prevSession = getPreviousExerciseSession(exercise.name, gymLogs, date || todayStr());
-  const lastSessionSets = exercise.lastSessionSets || prevSession?.sets || [];
+  const lastSessionSets = exercise.lastSessionSets ?? getPreviousExerciseSession(exercise.name, gymLogs, date || todayStr())?.sets ?? [];
   const lastValidPastSet = lastSessionSets.length > 0 ? lastSessionSets[lastSessionSets.length - 1] : null;
   return exercise.setsLog.map((s: any, idx: number) => {
     if (s.completed) {
@@ -318,7 +317,6 @@ export default function ActiveLoggingScreen() {
     makeSwapPermanent,
     logSetAndStartTimer,
     endWorkout,
-    updateNotes,
   } = useGymLog(date);
 
   // Auto-engage workout timer if arrived from GPS / geofence and workout was not yet started
@@ -337,9 +335,10 @@ export default function ActiveLoggingScreen() {
   // Prevent phone screen from locking or sleeping during active workout
   useKeepAwake();
 
-  const [showPR, setShowPR] = useState(false);
-  const [workoutNotes, setWorkoutNotes] = useState(log?.notes || '');
-  const [showNotesInput, setShowNotesInput] = useState(!!log?.notes);
+  const isLoggingSetRef = useRef(false);
+  const supersetJumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handlersRef = useRef<any>({});
+
   const [appState, setAppState] = useState(AppState.currentState);
 
   useEffect(() => {
@@ -487,6 +486,13 @@ export default function ActiveLoggingScreen() {
       // OS push notifications for rest timer/set logging are muted per user preference.
       // Widget sync (Android home screen widget) remains active above.
     }, 500); // 500ms debounce — widget doesn't need 1Hz updates
+
+    return () => {
+      if (widgetSyncDebounceRef.current) {
+        clearTimeout(widgetSyncDebounceRef.current);
+        widgetSyncDebounceRef.current = null;
+      }
+    };
   }, [activeExercises, safeIdx, log?.completed, log?.workoutDurationMinutes, restTimerStartTime, restTimerDurationSecs]);
 
   // Clean up lock screen notification on mount, unmount, or workout completion
@@ -501,17 +507,23 @@ export default function ActiveLoggingScreen() {
 
   const realExerciseIndex = useMemo(() => {
     if (!log?.exercises || !exercise) return safeIdx;
-    const idx = log.exercises.findIndex(e => e.name === exercise.name);
+    const idx = log.exercises.findIndex(e =>
+      (e.exerciseId && exercise.exerciseId && e.exerciseId === exercise.exerciseId) ||
+      (e._idx !== undefined && exercise._idx !== undefined && e._idx === exercise._idx) ||
+      e.name === exercise.name
+    );
     return idx !== -1 ? idx : safeIdx;
-  }, [log?.exercises, exercise?.name, safeIdx]);
+  }, [log?.exercises, exercise?.exerciseId, exercise?._idx, exercise?.name, safeIdx]);
 
   // Superset partner exercise lookup
   const partnerExercise = useMemo(() => {
     if (!exercise?.supersetGroup) return null;
     return activeExercises.find(
-      (e, i) => e.supersetGroup === exercise.supersetGroup && i !== safeIdx
+      (e, i) => e.supersetGroup === exercise.supersetGroup &&
+        i !== safeIdx &&
+        ((e.exerciseId && exercise.exerciseId && e.exerciseId !== exercise.exerciseId) || e.name !== exercise.name)
     );
-  }, [exercise?.supersetGroup, activeExercises, safeIdx]);
+  }, [exercise?.supersetGroup, exercise?.exerciseId, exercise?.name, activeExercises, safeIdx]);
 
   const targetDateStr = date || todayStr();
   // Filter historical gym logs strictly BEFORE targetDateStr so today's live sets don't churn history
@@ -664,6 +676,23 @@ export default function ActiveLoggingScreen() {
     }
   }, [exercise, isRefreshingVideo, realExerciseIndex, updateExercise]);
 
+  const stateRef = useRef({
+    setInputs,
+    exercise,
+    overloadSuggestion,
+    realExerciseIndex,
+    exercises,
+    activeExIndex,
+  });
+  stateRef.current = {
+    setInputs,
+    exercise,
+    overloadSuggestion,
+    realExerciseIndex,
+    exercises,
+    activeExIndex,
+  };
+
   const handleTextChange = useCallback((setIdx: number, field: 'reps' | 'weight', text: string) => {
     let sanitized = text.trim();
 
@@ -673,7 +702,7 @@ export default function ActiveLoggingScreen() {
         sanitized = '1000';
       }
     } else if (field === 'reps') {
-      if (sanitized.includes('-')) {
+      if (/[-–—]/.test(sanitized)) {
         sanitized = String(parseUpperTargetReps(sanitized));
       } else {
         const num = parseInt(sanitized, 10);
@@ -690,7 +719,7 @@ export default function ActiveLoggingScreen() {
 
     setSetInputs(prev => {
       const next = [...prev];
-      const curSet = exercise?.setsLog?.[setIdx];
+      const curSet = stateRef.current.exercise?.setsLog?.[setIdx];
       const current = next[setIdx] || {
         weight: curSet?.weight != null ? String(curSet.weight) : '',
         reps: curSet?.reps != null ? String(curSet.reps) : ''
@@ -698,11 +727,13 @@ export default function ActiveLoggingScreen() {
       next[setIdx] = { ...current, [field]: sanitized };
       return next;
     });
-  }, [exercise?.setsLog]);
+  }, []);
 
   const handleBlur = useCallback((setIdx: number) => {
+    if (isLoggingSetRef.current) return;
+    const { exercise, setInputs: curInputs, overloadSuggestion: curOverload, realExerciseIndex: curRealIdx } = stateRef.current;
     if (!exercise) return;
-    const input = setInputs[setIdx];
+    const input = curInputs[setIdx];
     const curSet = exercise.setsLog[setIdx];
     const isWeightEdited = userEditedFieldsRef.current[setIdx]?.weight;
     const isRepsEdited = userEditedFieldsRef.current[setIdx]?.reps;
@@ -712,7 +743,7 @@ export default function ActiveLoggingScreen() {
       curSet,
       null,
       null,
-      overloadSuggestion,
+      curOverload,
       exercise.targetReps,
       isWeightEdited,
       isRepsEdited
@@ -724,25 +755,30 @@ export default function ActiveLoggingScreen() {
         i === setIdx ? { ...s, weight: resolved.weight, reps: resolved.reps } : s
       ),
     };
-    updateExercise(realExerciseIndex, newEx);
-  }, [exercise, setInputs, overloadSuggestion, realExerciseIndex, updateExercise]);
+    updateExercise(curRealIdx, newEx);
+  }, [updateExercise]);
 
   const handleLogSet = useCallback(() => {
-    if (!exercise || activeSetIndex === -1) return;
+    const { exercise, setInputs: curInputs, overloadSuggestion: curOverload, realExerciseIndex: curRealIdx, exercises: allExs, activeExIndex: curActiveIdx } = stateRef.current;
+    const curActiveSetIndex = exercise ? exercise.setsLog.findIndex(s => !s.completed) : -1;
+    if (!exercise || curActiveSetIndex === -1) return;
+
+    isLoggingSetRef.current = true;
     Keyboard.dismiss();
+    setTimeout(() => { isLoggingSetRef.current = false; }, 300);
     hapticMedium();
 
-    const currentSet = exercise.setsLog[activeSetIndex];
-    const input = setInputs[activeSetIndex];
-    const isWeightEdited = userEditedFieldsRef.current[activeSetIndex]?.weight;
-    const isRepsEdited = userEditedFieldsRef.current[activeSetIndex]?.reps;
+    const currentSet = exercise.setsLog[curActiveSetIndex];
+    const input = curInputs[curActiveSetIndex];
+    const isWeightEdited = userEditedFieldsRef.current[curActiveSetIndex]?.weight;
+    const isRepsEdited = userEditedFieldsRef.current[curActiveSetIndex]?.reps;
 
     const resolved = resolveSetWeightAndReps(
       input,
       currentSet,
       null,
       null,
-      overloadSuggestion,
+      curOverload,
       exercise.targetReps,
       isWeightEdited,
       isRepsEdited
@@ -751,32 +787,35 @@ export default function ActiveLoggingScreen() {
     const newEx = {
       ...exercise,
       setsLog: exercise.setsLog.map((s, i) =>
-        i === activeSetIndex ? { ...s, weight: resolved.weight, reps: resolved.reps, completed: true } : s
+        i === curActiveSetIndex ? { ...s, weight: resolved.weight, reps: resolved.reps, completed: true } : s
       ),
     };
 
     setSetInputs(prev => prev.map((inp, i) =>
-      i === activeSetIndex ? { weight: resolved.weight !== null ? String(resolved.weight) : '', reps: String(resolved.reps) } : inp
+      i === curActiveSetIndex ? { weight: resolved.weight !== null ? String(resolved.weight) : '', reps: String(resolved.reps) } : inp
     ));
 
-    const nextJumpIdx = findNextSupersetExerciseIndex(exercises, activeExIndex, exercise.supersetGroup);
+    const nextJumpIdx = findNextSupersetExerciseIndex(allExs, curActiveIdx, exercise.supersetGroup);
     const restSecs = nextJumpIdx !== -1 ? 30 : getRestDuration(exercise);
 
-    logSetAndStartTimer(realExerciseIndex, newEx, restSecs, exercise.name);
+    logSetAndStartTimer(curRealIdx, newEx, restSecs, exercise.name);
 
     if (nextJumpIdx !== -1) {
-      setTimeout(() => setActiveExIndex(nextJumpIdx), 400);
+      if (supersetJumpTimerRef.current) clearTimeout(supersetJumpTimerRef.current);
+      supersetJumpTimerRef.current = setTimeout(() => setActiveExIndex(nextJumpIdx), 400);
     }
-  }, [exercise, activeSetIndex, setInputs, overloadSuggestion, exercises, activeExIndex, realExerciseIndex, logSetAndStartTimer]);
+  }, [logSetAndStartTimer]);
 
   const handleAdjustWeight = useCallback((delta: number) => {
+    const { exercise, setInputs: curInputs, overloadSuggestion: curOverload } = stateRef.current;
     if (!exercise) return;
-    const targetIdx = activeSetIndex !== -1 ? activeSetIndex : exercise.setsLog.length - 1;
+    const curActiveSetIndex = exercise.setsLog.findIndex(s => !s.completed);
+    const targetIdx = curActiveSetIndex !== -1 ? curActiveSetIndex : exercise.setsLog.length - 1;
     if (targetIdx < 0) return;
     hapticLight();
 
     const curSet = exercise.setsLog[targetIdx];
-    const curInput = setInputs[targetIdx];
+    const curInput = curInputs[targetIdx];
     const prevSet = targetIdx > 0 ? exercise.setsLog[targetIdx - 1] : null;
 
     let baseWeight = 0;
@@ -786,22 +825,24 @@ export default function ActiveLoggingScreen() {
       baseWeight = Number(curSet.weight);
     } else if (prevSet?.weight != null && Number(prevSet.weight) > 0) {
       baseWeight = Number(prevSet.weight);
-    } else if (overloadSuggestion?.recommended) {
-      baseWeight = Number(overloadSuggestion.recommended);
+    } else if (curOverload?.recommended) {
+      baseWeight = Number(curOverload.recommended);
     }
 
     const newWeight = Math.min(1000, Math.max(0, Math.round((baseWeight + delta) * 10) / 10));
     handleTextChange(targetIdx, 'weight', String(newWeight));
-  }, [exercise, activeSetIndex, setInputs, overloadSuggestion, handleTextChange]);
+  }, [handleTextChange]);
 
   const handleAdjustReps = useCallback((delta: number) => {
+    const { exercise, setInputs: curInputs } = stateRef.current;
     if (!exercise) return;
-    const targetIdx = activeSetIndex !== -1 ? activeSetIndex : exercise.setsLog.length - 1;
+    const curActiveSetIndex = exercise.setsLog.findIndex(s => !s.completed);
+    const targetIdx = curActiveSetIndex !== -1 ? curActiveSetIndex : exercise.setsLog.length - 1;
     if (targetIdx < 0) return;
     hapticLight();
 
     const curSet = exercise.setsLog[targetIdx];
-    const curInput = setInputs[targetIdx];
+    const curInput = curInputs[targetIdx];
     const prevSet = targetIdx > 0 ? exercise.setsLog[targetIdx - 1] : null;
 
     let baseReps = 10;
@@ -817,24 +858,26 @@ export default function ActiveLoggingScreen() {
 
     const newReps = Math.min(50, Math.max(1, baseReps + delta));
     handleTextChange(targetIdx, 'reps', String(newReps));
-  }, [exercise, activeSetIndex, setInputs, handleTextChange]);
+  }, [handleTextChange]);
 
   const handleRepeatPreviousSet = useCallback(() => {
+    const { exercise, setInputs: curInputs, overloadSuggestion: curOverload } = stateRef.current;
     if (!exercise) return;
-    const targetIdx = activeSetIndex !== -1 ? activeSetIndex : exercise.setsLog.length - 1;
+    const curActiveSetIndex = exercise.setsLog.findIndex(s => !s.completed);
+    const targetIdx = curActiveSetIndex !== -1 ? curActiveSetIndex : exercise.setsLog.length - 1;
     if (targetIdx < 0) return;
     hapticLight();
 
     const prevSet = targetIdx > 0 ? exercise.setsLog[targetIdx - 1] : null;
-    const prevInput = targetIdx > 0 ? setInputs[targetIdx - 1] : null;
+    const prevInput = targetIdx > 0 ? curInputs[targetIdx - 1] : null;
 
     let repWeight = '';
     if (prevInput?.weight) {
       repWeight = prevInput.weight;
     } else if (prevSet?.weight != null && Number(prevSet.weight) > 0) {
       repWeight = String(prevSet.weight);
-    } else if (overloadSuggestion?.recommended) {
-      repWeight = String(Math.min(1000, Number(overloadSuggestion.recommended)));
+    } else if (curOverload?.recommended) {
+      repWeight = String(Math.min(1000, Number(curOverload.recommended)));
     }
 
     let repReps = '';
@@ -843,51 +886,91 @@ export default function ActiveLoggingScreen() {
     } else if (prevSet?.reps != null && Number(prevSet.reps) > 0) {
       repReps = String(parseUpperTargetReps(prevSet.reps));
     } else {
-      // Match Target upper bound (e.g. 10-12 -> 12)
       repReps = String(parseUpperTargetReps(exercise.targetReps));
     }
 
     if (repWeight) handleTextChange(targetIdx, 'weight', repWeight);
     if (repReps) handleTextChange(targetIdx, 'reps', repReps);
-  }, [exercise, activeSetIndex, setInputs, overloadSuggestion, handleTextChange]);
+  }, [handleTextChange]);
 
   const handleNextExercise = useCallback(async () => {
     Keyboard.dismiss();
-    if (activeExIndex < exercises.length - 1) {
+    const { activeExIndex: curIdx, exercises: curExs } = stateRef.current;
+    if (curIdx < curExs.length - 1) {
       hapticMedium();
-      setActiveExIndex(activeExIndex + 1);
+      if (supersetJumpTimerRef.current) clearTimeout(supersetJumpTimerRef.current);
+      setActiveExIndex(curIdx + 1);
     } else {
       hapticSuccess();
+      if (widgetSyncDebounceRef.current) {
+        clearTimeout(widgetSyncDebounceRef.current);
+        widgetSyncDebounceRef.current = null;
+      }
       clearRestTimer();
       await endWorkout(true);
       navigation.replace('WorkoutSummary', { date });
     }
-  }, [activeExIndex, exercises.length, clearRestTimer, endWorkout, navigation, date]);
+  }, [clearRestTimer, endWorkout, navigation, date]);
 
   const handleDeleteSet = useCallback((idx: number) => {
+    const { exercise, realExerciseIndex: curRealIdx } = stateRef.current;
     if (!exercise) return;
     hapticLight();
     const newEx = {
       ...exercise,
       setsLog: exercise.setsLog.filter((_, i) => i !== idx).map((s, i) => ({ ...s, setNumber: i + 1 })),
     };
-    updateExercise(realExerciseIndex, newEx);
+    updateExercise(curRealIdx, newEx);
     setSetInputs(prev => prev.filter((_, i) => i !== idx));
-  }, [exercise, realExerciseIndex, updateExercise]);
+
+    // Re-index userEditedFieldsRef and liveInputsRef to prevent index desync
+    const newUserEdited: { [idx: number]: { weight?: boolean; reps?: boolean } } = {};
+    const newLiveInputs: { [idx: number]: { weight?: string; reps?: string } } = {};
+    Object.keys(userEditedFieldsRef.current).forEach(k => {
+      const numK = Number(k);
+      if (numK < idx) {
+        newUserEdited[numK] = userEditedFieldsRef.current[numK];
+      } else if (numK > idx) {
+        newUserEdited[numK - 1] = userEditedFieldsRef.current[numK];
+      }
+    });
+    Object.keys(liveInputsRef.current).forEach(k => {
+      const numK = Number(k);
+      if (numK < idx) {
+        newLiveInputs[numK] = liveInputsRef.current[numK];
+      } else if (numK > idx) {
+        newLiveInputs[numK - 1] = liveInputsRef.current[numK];
+      }
+    });
+    userEditedFieldsRef.current = newUserEdited;
+    liveInputsRef.current = newLiveInputs;
+  }, [updateExercise]);
+
+  // Keep handlersRef current for native DeviceEventEmitter listeners
+  handlersRef.current = {
+    handleLogSet,
+    handleAdjustWeight,
+    handleNextExercise,
+    clearRestTimer,
+    setRestTimerDuration,
+    restTimerInitial,
+  };
 
   // Handle interactive lock screen notification actions (Done Set, Add Weight, Next Exercise, Skip Rest)
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('ACTIVE_WORKOUT_ACTION', (payload: any) => {
+      const h = handlersRef.current;
+      if (!h) return;
       if (payload.action === 'DONE_SET') {
-        handleLogSet();
+        h.handleLogSet?.();
       } else if (payload.action === 'ADD_WEIGHT') {
-        handleAdjustWeight(payload.delta || 2.5);
+        h.handleAdjustWeight?.(payload.delta || 2.5);
       } else if (payload.action === 'NEXT_EXERCISE') {
-        handleNextExercise();
+        h.handleNextExercise?.();
       } else if (payload.action === 'SKIP_REST') {
-        clearRestTimer();
+        h.clearRestTimer?.();
       } else if (payload.action === 'ADD_REST_SECONDS') {
-        setRestTimerDuration(restTimerInitial + (payload.seconds || 30));
+        h.setRestTimerDuration?.(h.restTimerInitial + (payload.seconds || 30));
       }
     });
 
@@ -898,8 +981,11 @@ export default function ActiveLoggingScreen() {
     return () => {
       sub.remove();
       finishSub.remove();
+      if (supersetJumpTimerRef.current) {
+        clearTimeout(supersetJumpTimerRef.current);
+      }
     };
-  }, [handleLogSet, handleAdjustWeight, handleNextExercise, clearRestTimer, setRestTimerDuration, restTimerInitial, navigation]);
+  }, [navigation]);
 
   const warmupSets = useMemo(() => exercise?.setsLog.filter(s => s.isWarmup) || [], [exercise?.setsLog]);
   const hasWarmups = warmupSets.length > 0;
@@ -928,13 +1014,21 @@ export default function ActiveLoggingScreen() {
         weight: (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ? String(s.weight) : '',
         reps: (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0) ? String(s.reps) : '',
       })));
+      userEditedFieldsRef.current = {};
+      liveInputsRef.current = {};
       return;
     }
 
-    // Determine target working weight
+    // Determine target working weight: check liveInputsRef / setInputs first!
     let targetW = 40;
+    const firstWorkingIdx = exercise.setsLog.findIndex(s => !s.isWarmup);
+    const liveFirstWorkingWeight = firstWorkingIdx >= 0 ? (liveInputsRef.current[firstWorkingIdx]?.weight || setInputs[firstWorkingIdx]?.weight) : undefined;
+    const parsedLiveWeight = liveFirstWorkingWeight ? parseFloat(liveFirstWorkingWeight) : null;
+
     const firstWorking = exercise.setsLog.find(s => !s.isWarmup && s.weight != null && Number(s.weight) > 0);
-    if (firstWorking?.weight) {
+    if (parsedLiveWeight && parsedLiveWeight > 0) {
+      targetW = parsedLiveWeight;
+    } else if (firstWorking?.weight) {
       targetW = Number(firstWorking.weight);
     } else if (overloadSuggestion?.recommended) {
       targetW = Number(overloadSuggestion.recommended);
@@ -953,7 +1047,9 @@ export default function ActiveLoggingScreen() {
       weight: (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ? String(s.weight) : '',
       reps: (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0) ? String(s.reps) : '',
     })));
-  }, [exercise, overloadSuggestion, lastTimeData, realExerciseIndex, updateExercise]);
+    userEditedFieldsRef.current = {};
+    liveInputsRef.current = {};
+  }, [exercise, overloadSuggestion, lastTimeData, realExerciseIndex, updateExercise, setInputs]);
 
   const handleAddSet = useCallback(() => {
     if (!exercise) return;
@@ -976,17 +1072,31 @@ export default function ActiveLoggingScreen() {
       ],
     };
     updateExercise(realExerciseIndex, newEx);
-    setSetInputs(prev => [...prev, { weight: '', reps: '' }]);
+    setSetInputs(prev => [
+      ...prev,
+      {
+        weight: weightVal != null ? String(weightVal) : '',
+        reps: repsVal != null ? String(repsVal) : '',
+      },
+    ]);
   }, [exercise, setInputs, realExerciseIndex, updateExercise]);
 
   const handleToggleSetComplete = useCallback((setIdx: number) => {
+    const { exercise, setInputs: curInputs, realExerciseIndex: curRealIdx } = stateRef.current;
     if (!exercise) return;
+    isLoggingSetRef.current = true;
     Keyboard.dismiss();
+    setTimeout(() => { isLoggingSetRef.current = false; }, 300);
     hapticLight();
 
-    const input = setInputs[setIdx];
+    const input = curInputs[setIdx];
     const curSet = exercise.setsLog[setIdx];
     const targetCompleted = !curSet.completed;
+
+    if (targetCompleted) {
+      awardXP('GYM_SET').catch(() => {});
+      playSetCompleteTone();
+    }
 
     let weightVal: number | null = null;
     if (input?.weight !== '' && input?.weight !== undefined) {
@@ -1001,7 +1111,7 @@ export default function ActiveLoggingScreen() {
     } else if (curSet?.reps != null && Number(curSet.reps) > 0) {
       repsVal = Number(curSet.reps);
     } else {
-      repsVal = parseInt(String(exercise.targetReps || '8').split('-')[0], 10) || 8;
+      repsVal = parseInt(String(exercise.targetReps || '8').split(/[-–—]/)[0], 10) || 8;
     }
 
     const newEx = {
@@ -1015,11 +1125,12 @@ export default function ActiveLoggingScreen() {
         } : s
       ),
     };
-    updateExercise(realExerciseIndex, newEx);
-  }, [exercise, setInputs, realExerciseIndex, updateExercise]);
+    updateExercise(curRealIdx, newEx);
+  }, [updateExercise]);
 
   // Stable unified set action dispatcher — passed to SwipeableSetRow instead of 5 inline
   // arrow functions, so React.memo can bail out on unrelated re-renders (timer ticks, etc.).
+  // With zero reactive dependencies, it never changes reference across keystrokes!
   const handleSetAction = useCallback((idx: number, action: 'textChange' | 'blur' | 'toggle' | 'delete' | 'swipe', payload?: any) => {
     switch (action) {
       case 'textChange': handleTextChange(idx, payload.field, payload.text); break;
@@ -1029,6 +1140,61 @@ export default function ActiveLoggingScreen() {
       case 'swipe':      handleToggleSetComplete(idx); break;
     }
   }, [handleTextChange, handleBlur, handleToggleSetComplete, handleDeleteSet]);
+
+  // ── All Hooks MUST be declared BEFORE any conditional early returns (React Rules of Hooks) ──
+  const handleSwapPress = useCallback(() => {
+    hapticMedium();
+    setSwapModalEverShown(true);
+    setShowSwapModal(true);
+  }, []);
+
+  const handleSupersetPress = useCallback(() => {
+    hapticMedium();
+    setSupersetPickerEverShown(true);
+    setShowSupersetPicker(true);
+  }, []);
+
+  const handleVideoToggle = useCallback(() => {
+    hapticMedium();
+    const curEx = stateRef.current.exercise;
+    const curRealIdx = stateRef.current.realExerciseIndex;
+    if (!curEx) return;
+    if (!curEx.videoId) {
+      setShowVideo(true);
+      autoResolveExerciseVideoId(curEx.name).then(resolvedId => {
+        if (resolvedId) {
+          updateExercise(curRealIdx, { ...curEx, videoId: resolvedId });
+        }
+      });
+    } else {
+      setShowVideo(prev => !prev);
+    }
+  }, [updateExercise]);
+
+  const handleSwitchToPartner = useCallback(() => {
+    hapticLight();
+    const partner = partnerExercise;
+    if (!partner) return;
+    const partnerIdx = activeExercises.findIndex(e =>
+      (e.exerciseId && partner.exerciseId && e.exerciseId === partner.exerciseId) || e.name === partner.name
+    );
+    if (partnerIdx !== -1) {
+      if (supersetJumpTimerRef.current) clearTimeout(supersetJumpTimerRef.current);
+      setActiveExIndex(partnerIdx);
+    }
+  }, [partnerExercise, activeExercises]);
+
+  const handleTimerAdd = useCallback(() => {
+    setRestTimerDuration(restTimerInitial + 30);
+  }, [setRestTimerDuration, restTimerInitial]);
+
+  const handleTimerSubtract = useCallback(() => {
+    setRestTimerDuration(Math.max(10, restTimerInitial - 30));
+  }, [setRestTimerDuration, restTimerInitial]);
+
+  const handleTimerSkip = useCallback(() => {
+    clearRestTimer();
+  }, [clearRestTimer]);
 
   // Loading skeleton
   if (!log || !log.exercises) {
@@ -1065,9 +1231,18 @@ export default function ActiveLoggingScreen() {
 
   if (!exercise) {
     return (
-      <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ color: colors.textMuted }}>No exercises found.</Text>
-      </View>
+      <SafeAreaView style={styles.root}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Active Workout</Text>
+          <View style={{ width: 32 }} />
+        </View>
+        <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
+          <Text style={{ color: colors.textMuted }}>No exercises found for this session.</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -1106,34 +1281,10 @@ export default function ActiveLoggingScreen() {
               onRepeatPrevious={handleRepeatPreviousSet}
               colors={colors}
               styles={styles}
-              onSwapPress={() => {
-                hapticMedium();
-                setSwapModalEverShown(true); // Lazy-mount guard: first open inserts the modal tree
-                setShowSwapModal(true);
-              }}
-              onSupersetPress={() => {
-                hapticMedium();
-                setSupersetPickerEverShown(true); // Lazy-mount guard
-                setShowSupersetPicker(true);
-              }}
-              onVideoToggle={() => {
-                hapticMedium();
-                if (!exercise.videoId) {
-                  setShowVideo(true);
-                  autoResolveExerciseVideoId(exercise.name).then(resolvedId => {
-                    if (resolvedId) {
-                      updateExercise(realExerciseIndex, { ...exercise, videoId: resolvedId });
-                    }
-                  });
-                } else {
-                  setShowVideo(prev => !prev);
-                }
-              }}
-              onSwitchToPartner={() => {
-                hapticLight();
-                const partnerIdx = activeExercises.findIndex(e => e.exerciseId === partnerExercise?.exerciseId);
-                if (partnerIdx !== -1) setActiveExIndex(partnerIdx);
-              }}
+              onSwapPress={handleSwapPress}
+              onSupersetPress={handleSupersetPress}
+              onVideoToggle={handleVideoToggle}
+              onSwitchToPartner={handleSwitchToPartner}
             />
 
             {/* Form Video Player Component */}
@@ -1246,24 +1397,12 @@ export default function ActiveLoggingScreen() {
             <AnimatedRestTimer
               startTime={restTimerStartTime}
               durationSecs={restTimerDurationSecs}
-              onAdd={() => setRestTimerDuration(restTimerInitial + 30)}
-              onSubtract={() => setRestTimerDuration(Math.max(10, restTimerInitial - 30))}
-              onSkip={() => clearRestTimer()}
+              onAdd={handleTimerAdd}
+              onSubtract={handleTimerSubtract}
+              onSkip={handleTimerSkip}
             />
           </View>
         ) : null}
-
-        {/* PR Celebration Overlay */}
-        {showPR && (
-          <View style={{ ...styles.root, position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} pointerEvents="none">
-            <ConfettiCannon count={100} origin={{ x: -10, y: 0 }} />
-            <View style={{ position: 'absolute', top: '20%', width: '100%', alignItems: 'center' }}>
-              <View style={{ backgroundColor: colors.accentPrimary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 30 }}>
-                <Text style={{ color: '#000', fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.lg }}>🎉 New Personal Record!</Text>
-              </View>
-            </View>
-          </View>
-        )}
 
         {/* ── FIX 4: Lazy-mount Superset Modal — only inserted into the tree on first open.
              Before first open: zero JS evaluation, zero layout cost, zero PanResponder init. */}
@@ -1282,7 +1421,9 @@ export default function ActiveLoggingScreen() {
             onSelectPartner={(altEx) => {
               const groupLetter = exercise.supersetGroup || altEx.supersetGroup || String.fromCharCode(65 + Math.floor(Math.random() * 26));
               updateExercise(realExerciseIndex, { ...exercise, supersetGroup: groupLetter });
-              const partnerRealIdx = log.exercises.findIndex((e: any) => e.exerciseId === altEx.exerciseId);
+              const partnerRealIdx = log?.exercises?.findIndex((e: any) =>
+                (e.exerciseId && altEx.exerciseId && e.exerciseId === altEx.exerciseId) || e.name === altEx.name
+              ) ?? -1;
               if (partnerRealIdx !== -1) {
                 updateExercise(partnerRealIdx, { ...altEx, supersetGroup: groupLetter });
               }
@@ -1310,31 +1451,63 @@ export default function ActiveLoggingScreen() {
                 resolvedVideoId = (await autoResolveExerciseVideoId(alt.name)) || '';
               }
 
+              const targetDateStr = date || todayStr();
+              const prevSession = getPreviousExerciseSession(alt.name, gymLogs, targetDateStr);
+              const lastSets = prevSession?.sets || [];
+              const lastValidSet = lastSets.length > 0 ? lastSets[lastSets.length - 1] : null;
+              const targetSetsCount = alt.targetSets || 3;
+              const defaultTargetReps = parseUpperTargetReps(alt.targetReps || '8-12');
+
+              const initialSetsLog = Array.from({ length: targetSetsCount }, (_, i) => {
+                const lastSet = lastSets[i] || lastValidSet;
+                const setWeight = (lastSet?.weight != null && Number(lastSet.weight) > 0) ? Number(lastSet.weight) : null;
+                return {
+                  setNumber: i + 1,
+                  reps: lastSet?.reps ? Number(lastSet.reps) : defaultTargetReps,
+                  weight: setWeight,
+                  completed: false,
+                };
+              });
+
               const updatedEx = {
                 ...exercise,
                 exerciseId: `swap_${Date.now()}`,
                 name: alt.name,
                 muscle: alt.muscle || exercise.muscle,
-                targetSets: alt.targetSets || 3,
+                targetSets: targetSetsCount,
                 targetReps: alt.targetReps || '8-12',
                 restTimeSecs: alt.restTimeSecs || 90,
                 videoId: resolvedVideoId,
-                setsLog: Array.from({ length: alt.targetSets || 3 }, (_, i) => ({
-                  setNumber: i + 1,
-                  reps: null,
-                  weight: null,
-                  completed: false,
-                })),
+                lastSessionSets: lastSets.length > 0 ? lastSets : undefined,
+                setsLog: initialSetsLog,
               };
 
               updateExercise(realExerciseIndex, updatedEx);
+              setSetInputs(initialSetsLog.map(s => ({
+                weight: s.weight != null ? String(s.weight) : '',
+                reps: s.reps != null ? String(s.reps) : '',
+              })));
+              userEditedFieldsRef.current = {};
+              liveInputsRef.current = {};
+
               setShowSwapModal(false);
               Alert.alert(
                 'Keep Swap Permanent?',
                 `Do you want to use ${alt.name} for future workouts?`,
                 [
                   { text: 'No, just for today', style: 'cancel' },
-                  { text: 'Yes, update plan', onPress: () => makeSwapPermanent(oldName, alt.name, alt.videoId) }
+                  {
+                    text: 'Yes, update plan',
+                    onPress: () => makeSwapPermanent(
+                      oldName,
+                      alt.name,
+                      resolvedVideoId || alt.videoId,
+                      alt.muscle || exercise.muscle,
+                      alt.targetSets,
+                      alt.targetReps,
+                      alt.restTimeSecs
+                    )
+                  }
                 ]
               );
             }}

@@ -138,7 +138,7 @@ export const LifeHomeDashboard: React.FC = () => {
   } = globalData;
   const user = auth.currentUser;
   const navigate = useNavigate();
-  const todayStr = useMemo(() => getLocalDateString(new Date()), []);
+  const [todayStr, setTodayStr] = useState(() => getLocalDateString(new Date()));
   const { startTimer } = usePomodoroContext();
 
   const [profileStreak, setProfileStreak] = useState<number | null>(null);
@@ -274,16 +274,20 @@ export const LifeHomeDashboard: React.FC = () => {
     window.dispatchEvent(new CustomEvent('zen-theme-toggle', { detail: { theme: newTheme } }));
   };
 
-  // Live time ticker
+  // Live time ticker & midnight day-roll watcher
   const [timeStr, setTimeStr] = useState('');
   useEffect(() => {
-    const updateTime = () => {
-      const d = new Date();
-      setTimeStr(d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      const now = new Date();
+      setTimeStr(now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
+      const currentDay = getLocalDateString(now);
+      setTodayStr(prev => (prev !== currentDay ? currentDay : prev));
+      const msToNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds() + 50;
+      timeoutId = setTimeout(tick, Math.max(1000, msToNextMinute));
     };
-    updateTime();
-    const t = setInterval(updateTime, 1000);
-    return () => clearInterval(t);
+    tick();
+    return () => clearTimeout(timeoutId);
   }, []);
 
   // Greeting
@@ -774,14 +778,15 @@ export const LifeHomeDashboard: React.FC = () => {
       return acc + (isNaN(val) ? 0 : val);
     }, 0);
 
-    if (firestoreTotal > 0) {
+    if (!globalData.isLoading) {
       localStorage.setItem(`zen_water_${todayStr}`, firestoreTotal.toString());
       return firestoreTotal;
     }
 
+    if (firestoreTotal > 0) return firestoreTotal;
     const saved = localStorage.getItem(`zen_water_${todayStr}`);
     return saved ? parseInt(saved, 10) : 0;
-  }, [todayWaterLogs, todayStr]);
+  }, [todayWaterLogs, todayStr, globalData.isLoading]);
 
   const logWater = async (delta: number) => {
     playPopSound();
@@ -860,66 +865,6 @@ export const LifeHomeDashboard: React.FC = () => {
     return null;
   }, [calendarEvents, todayStr, pendingTasks]);
 
-  // Unified Today's Master Flow Items (Tasks + Workouts)
-  // Hard Constraint / Rule:
-  // 1. ALL pending tasks ALWAYS float to the top (chronologically sorted).
-  // 2. ALL completed tasks ALWAYS sink to the bottom.
-  const masterFlowItems = useMemo(() => {
-    const items: Array<{
-      id: string;
-      kind: 'task' | 'workout';
-      isDone: boolean;
-      timeMins: number;
-      data: any;
-    }> = [];
-
-    // 1. Tasks
-    (todayTasks || []).forEach(t => {
-      const isDone = t.status === 'completed';
-      let timeMins = 999;
-      if (t.timeSlot) {
-        const parts = t.timeSlot.split('-');
-        timeMins = parseTimeToMinutes(parts[0]?.trim());
-      }
-      items.push({
-        id: `task-${t.id}`,
-        kind: 'task',
-        isDone,
-        timeMins,
-        data: t,
-      });
-    });
-
-    // 2. Today Workout Log (if completed on mobile/web)
-    const todayGymLog = (gymLogs || []).find((g: any) => {
-      if (!g) return false;
-      if (g.date === todayStr) return true;
-      if (g.timestamp) {
-        const d = new Date(g.timestamp);
-        return getLocalDateString(d) === todayStr;
-      }
-      return false;
-    });
-
-    if (todayGymLog) {
-      items.push({
-        id: `gym-${todayGymLog.id || 'today'}`,
-        kind: 'workout',
-        isDone: true,
-        timeMins: 999,
-        data: todayGymLog,
-      });
-    }
-
-    return items.sort((a, b) => {
-      const aDone = a.isDone ? 1 : 0;
-      const bDone = b.isDone ? 1 : 0;
-      if (aDone !== bDone) {
-        return aDone - bDone; // 0 (Pending/Unlogged) FIRST, 1 (Completed/Logged) LAST
-      }
-      return a.timeMins - b.timeMins; // within same group, sort chronologically
-    });
-  }, [todayTasks, gymLogs, todayStr]);
 
   // Cumulative Real-Time XP & Level
   const activeXP = userXP;
@@ -1075,177 +1020,6 @@ export const LifeHomeDashboard: React.FC = () => {
     };
   }, [gymLogs, todayStr]);
 
-  // Real Quests dynamically compiled from user's live data:
-  // 1. Time-sorted Classes/Labs & Tasks (Chronological from morning to evening, with Class/Lab pills)
-  // 2. Instead of XP, show scheduled time from when to when on tasks and classes
-  // 3. Active habits follow active tasks and classes
-  // 4. Any task or class completed, absent, or cancelled goes to the very last
-  const quests = useMemo(() => {
-    type QuestItem = {
-      id: string;
-      title: string;
-      badge?: string;
-      badgeType?: 'class' | 'lab';
-      status?: 'attended' | 'missed' | 'cancelled';
-      timeDisplay?: string;
-      timeMinutes: number;
-      xp: number;
-      isDone: boolean;
-      type: 'task' | 'class' | 'habit';
-      action: () => void;
-    };
-
-    const parseItemTimeMinutes = (timeStr?: string | null): number => {
-      if (!timeStr) return 9999;
-      const startPart = timeStr.split(/[-–]/)[0]?.trim();
-      const mins = parseTimeToMinutes(startPart);
-      return mins === 999 ? 9999 : mins;
-    };
-
-    const formatWhenToWhen = (timeStr?: string | null, isLab = false, estimatedDurationMins?: number): string => {
-      if (!timeStr) return '';
-      const clean = timeStr.trim();
-      if (!clean || !/\d/.test(clean)) return '';
-
-      if (/[-–—]|(?:\s+to\s+)/i.test(clean)) {
-        return formatTimeRangeDisplay(clean);
-      }
-
-      const startMins = parseTimeToMinutes(clean);
-      if (startMins === 999) return clean;
-
-      const defaultDuration = estimatedDurationMins || (isLab ? 120 : 60);
-      const endMins = (startMins + defaultDuration) % (24 * 60);
-
-      const formatMins = (mins: number) => {
-        const h = Math.floor(mins / 60);
-        const m = mins % 60;
-        const ampm = h >= 12 ? 'PM' : 'AM';
-        const hour12 = h % 12 || 12;
-        if (m === 0) return `${hour12}:00 ${ampm}`;
-        return `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
-      };
-
-      return `${formatMins(startMins)} – ${formatMins(endMins)}`;
-    };
-
-    const scheduledQuests: QuestItem[] = [];
-
-    // 1. Classes & Labs
-    if (todayClasses.length > 0) {
-      todayClasses.forEach(cls => {
-        let mins = cls.timeMins !== undefined && cls.timeMins !== 999 ? cls.timeMins : parseItemTimeMinutes(cls.time);
-        if (mins === 999) mins = 9999;
-
-        const isAtt = !!cls.isAttended;
-        const isMis = !!cls.isMissed;
-        const isCan = !!cls.isCancelled;
-        const isLogged = isAtt || isMis || isCan;
-        const timeRangeStr = formatWhenToWhen(cls.time, cls.type === 'lab');
-
-        scheduledQuests.push({
-          id: `quest-class-${cls.id}`,
-          title: `Attend ${cls.title}`,
-          badge: cls.type === 'lab' ? 'Lab' : 'Class',
-          badgeType: cls.type === 'lab' ? 'lab' : 'class',
-          status: isMis ? 'missed' : isCan ? 'cancelled' : isAtt ? 'attended' : undefined,
-          timeDisplay: timeRangeStr,
-          timeMinutes: mins,
-          xp: 35,
-          isDone: isLogged,
-          type: 'class',
-          action: () => {
-            if (!isLogged) {
-              handleLogAttendance(cls.subject, cls.type, 'attended', cls.idx);
-            } else if (cls.logId) {
-              handleUndoAttendance(cls.logId, cls.subject, cls.action || (isMis ? 'missed' : isCan ? 'cancelled' : 'attended'), cls.type);
-            }
-          },
-        });
-      });
-    } else if (nextUpcomingClassesInfo.classes.length > 0) {
-      const topNext = nextUpcomingClassesInfo.classes[0];
-      scheduledQuests.push({
-        id: `quest-class-prep`,
-        title: `Prep for ${topNext.title} (${nextUpcomingClassesInfo.dayName})`,
-        badge: topNext.type === 'lab' ? 'Lab' : 'Class',
-        badgeType: topNext.type === 'lab' ? 'lab' : 'class',
-        timeDisplay: formatWhenToWhen(topNext.time, topNext.type === 'lab'),
-        timeMinutes: parseItemTimeMinutes(topNext.time),
-        xp: 30,
-        isDone: false,
-        type: 'class',
-        action: () => setShowNextDaySchedule(true),
-      });
-    } else if ((attendanceSubjects || []).length > 0) {
-      const topSubj = attendanceSubjects[0];
-      scheduledQuests.push({
-        id: `quest-academic-notes`,
-        title: `Review ${topSubj.name} notes`,
-        badge: 'Class',
-        badgeType: 'class',
-        timeDisplay: '',
-        timeMinutes: 9999,
-        xp: 30,
-        isDone: false,
-        type: 'class',
-        action: () => navigate('/attendance'),
-      });
-    }
-
-    // 2. Real Today's Tasks
-    const actionableTasks = todayTasks.length > 0 ? todayTasks : inboxTasks;
-    actionableTasks.forEach(t => {
-      const parsedTime = parseNLTask(t.title || t.text || '').timeSlot;
-      const rawTime = t.timeSlot || (t as any).time || parsedTime;
-      const mins = parseItemTimeMinutes(rawTime);
-      const timeRangeStr = formatWhenToWhen(rawTime, false, t.estimatedMinutes);
-
-      scheduledQuests.push({
-        id: `quest-task-${t.id}`,
-        title: t.title || t.text || 'Daily Task',
-        timeDisplay: timeRangeStr,
-        timeMinutes: mins,
-        xp: 50,
-        isDone: t.status === 'completed',
-        type: 'task',
-        action: () => toggleTask(t),
-      });
-    });
-
-    // 3. Real User Habits Quests
-    const habitQuests: QuestItem[] = [];
-    (habits || []).forEach(h => {
-      const done = isHabitDone(h.id);
-      habitQuests.push({
-        id: `quest-habit-${h.id}`,
-        title: h.name || h.title || 'Daily Habit',
-        timeMinutes: 99999,
-        xp: 40,
-        isDone: done,
-        type: 'habit',
-        action: () => toggleHabit(h.id),
-      });
-    });
-
-    // Sorting Rules:
-    const activeScheduled = scheduledQuests
-      .filter(q => !q.isDone)
-      .sort((a, b) => a.timeMinutes - b.timeMinutes);
-
-    const activeHabits = habitQuests.filter(q => !q.isDone);
-
-    const completedScheduled = scheduledQuests
-      .filter(q => q.isDone)
-      .sort((a, b) => a.timeMinutes - b.timeMinutes);
-    const completedHabits = habitQuests.filter(q => q.isDone);
-
-    return [...activeScheduled, ...activeHabits, ...completedScheduled, ...completedHabits];
-  }, [
-    todayClasses, nextUpcomingClassesInfo, attendanceSubjects,
-    todayTasks, inboxTasks, habits, habitLogs, optimisticHabits,
-    todayStr, navigate
-  ]);
 
   // Group upcoming tasks by relative day (Tomorrow, In 2 days, etc.)
   const upcomingGrouped = useMemo(() => {

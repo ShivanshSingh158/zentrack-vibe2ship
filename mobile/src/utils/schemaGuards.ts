@@ -115,7 +115,7 @@ export function sanitizeEnum<T extends string>(val: any, allowed: T[], fallback:
 export function parseTask(docData: any, docId: string): Task {
   const d = docData && typeof docData === 'object' ? docData : {};
   const id = sanitizeString(docId || d.id, 'task_' + Date.now());
-  const title = sanitizeString(d.title, 'Untitled Task', 300);
+  const title = sanitizeString(d.title || d.text, 'Untitled Task', 300);
   const isDocCompleted = d.status === 'completed' || d.status === 'done' || Boolean(d.completed);
   const status: 'pending' | 'completed' = isDocCompleted ? 'completed' : 'pending';
   const priority = sanitizeEnum<'P1' | 'P2' | 'P3' | 'high' | 'medium' | 'low'>(
@@ -373,26 +373,43 @@ export function parseCustomEvent(docData: any, docId: string): CustomEvent {
 export function parseGoal(docData: any, docId: string): Goal {
   const d = docData && typeof docData === 'object' ? docData : {};
   const keyResults = Array.isArray(d.keyResults)
-    ? d.keyResults.map((kr: any, idx: number) => ({
-        id: sanitizeString(kr?.id, `kr_${idx}`),
-        title: sanitizeString(kr?.title, 'Key Result', 200),
-        completed: Boolean(kr?.completed),
-      }))
+    ? d.keyResults.map((kr: any, idx: number) => {
+        const targetValue = sanitizeNumber(kr?.targetValue, 100, 1, 1000000);
+        const currentValue = sanitizeNumber(
+          kr?.currentValue,
+          kr?.completed ? targetValue : 0,
+          0,
+          1000000
+        );
+        const title = sanitizeString(kr?.title || kr?.text, 'Key Result', 200);
+        return {
+          ...kr, // Preserve Web OKR fields (history, syncType, syncQuery, unit)
+          id: sanitizeString(kr?.id, `kr_${idx}`),
+          title,
+          text: title,
+          targetValue,
+          currentValue,
+          unit: sanitizeString(kr?.unit, '%', 20),
+          completed: Boolean(kr?.completed || currentValue >= targetValue),
+        };
+      })
     : [];
 
   return {
     id: sanitizeString(docId || d.id, 'goal_' + Date.now()),
     userId: sanitizeString(d.userId, ''),
     title: sanitizeString(d.title, 'Untitled Goal', 300),
-    status: sanitizeString(d.status, 'in_progress', 30),
+    status: sanitizeString(d.status, 'active', 30),
     progress: sanitizeNumber(d.progress, 0, 0, 100),
     description: d.description ? sanitizeString(d.description, '', 1000) : undefined,
     deadline: d.deadline ? sanitizeString(d.deadline, '', 20) : undefined,
+    subject: d.subject ? sanitizeString(d.subject, '', 100) : undefined,
     firstStep: d.firstStep ? sanitizeString(d.firstStep, '', 300) : undefined,
     successMetric: d.successMetric ? sanitizeString(d.successMetric, '', 300) : undefined,
     keyResults,
+    createdAt: sanitizeNumber(d.createdAt, Date.now(), 0),
     updatedAt: sanitizeNumber(d.updatedAt, Date.now(), 0),
-  };
+  } as Goal;
 }
 
 export function parseStorageNode(docData: any, docId: string): StorageNode {

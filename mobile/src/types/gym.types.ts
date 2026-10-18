@@ -108,12 +108,35 @@ export interface UserGymPlanDoc {
 export type GymGoal = 'strength' | 'hypertrophy' | 'weightLoss' | 'recomp' | 'maintenance';
 
 export interface GymProfile {
-  userId: string;
-  bodyweightKg: number | null;
-  heightCm: number | null;
-  ageYears: number | null;
-  trainingExperienceMonths: number | null;  // e.g. 6, 12, 24
-  primaryGoal: GymGoal;
+  userId?: string;
+  /** Bodyweight in kg (supports both weightKg and bodyweightKg) */
+  weightKg?: number | null;
+  bodyweightKg?: number | null;
+  /** Height in cm */
+  heightCm?: number | null;
+  /** Age in years (supports both age and ageYears) */
+  age?: number | null;
+  ageYears?: number | null;
+  /** Gender */
+  gender?: 'male' | 'female' | 'other' | null;
+  /** Primary training goal (supports both goal and primaryGoal) */
+  goal?: 'hypertrophy' | 'strength' | 'fat_loss' | 'athletic' | null;
+  primaryGoal?: GymGoal | string | null;
+  /** Training experience (supports both experience and trainingExperienceMonths) */
+  experience?: 'beginner' | 'intermediate' | 'advanced' | null;
+  trainingExperienceMonths?: number | null;
+  /** Equipment available */
+  equipment?: 'full_gym' | 'home_gym' | 'bodyweight' | null;
+  /** Preferred training days per week */
+  daysPerWeek?: number | null;
+  /** Free-text injuries / limitations */
+  limitations?: string;
+  /** Comma-separated exercises to avoid */
+  exercisesToAvoid?: string;
+  /** Major muscles user wants to focus on */
+  focusMuscles?: string;
+  /** Any other preferences or notes */
+  notes?: string;
   targetBodyweightKg?: number | null;
   targetTimelineWeeks?: number | null;
   currentMesocycleWeek?: number | null;
@@ -122,7 +145,7 @@ export interface GymProfile {
   dietaryPreference?: string | null;
   foodAllergies?: string | null;
   activityLevel?: string | null;
-  updatedAt: number;
+  updatedAt?: number;
 }
 
 /** One entry per exercise in the gymPRs/{userId} document */

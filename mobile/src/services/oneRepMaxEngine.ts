@@ -36,7 +36,7 @@ export function epley1RM(weight: number, reps: number): number {
 export function brzycki1RM(weight: number, reps: number): number {
   if (weight <= 0 || reps <= 0) return 0;
   if (reps === 1) return weight;
-  const r = Math.min(reps, 36);
+  const r = Math.min(reps, REP_CAP);
   return weight * (36 / (37 - r));
 }
 

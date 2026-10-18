@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, withRepeat, withSequence,
-  Easing, useAnimatedProps, withSpring, FadeIn, FadeOut, runOnJS,
+  Easing, useAnimatedProps, withSpring, FadeIn, FadeOut, runOnJS, cancelAnimation,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
@@ -74,7 +74,7 @@ interface PomodoroSheetProps {
   selectedDate?: string;
 }
 
-export default function PomodoroSheet({
+function PomodoroSheetContent({
   visible: propVisible,
   onClose: propOnClose,
   tasks = [],
@@ -287,6 +287,12 @@ export default function PomodoroSheet({
       pulseOpacity.value = withTiming(0.08, { duration: 300 });
       liveDotOpacity.value = withTiming(1, { duration: 250 });
     }
+    // Issue 81: cancel all infinite withRepeat animations when effect re-runs or component unmounts
+    return () => {
+      cancelAnimation(pulseScale);
+      cancelAnimation(pulseOpacity);
+      cancelAnimation(liveDotOpacity);
+    };
   }, [status]);
 
   const sheetAnimStyle = useAnimatedStyle(() => ({ transform: [{ translateY: slideY.value }] }));
@@ -320,7 +326,7 @@ export default function PomodoroSheet({
   }, [displayMode, timeLeft, currentTotal]);
 
   useEffect(() => {
-    progress.value = withTiming(progressRatio, { duration: 350, easing: Easing.out(Easing.cubic) });
+    progress.value = progressRatio;
   }, [progressRatio]);
 
   const animatedRingProps = useAnimatedProps(() => ({
@@ -444,7 +450,8 @@ export default function PomodoroSheet({
       return `Ready to focus • ${linkedTask.title || (linkedTask as any).text}`;
     }
     return `Deep Work & Flow State • ${formatDurationLabel(config.focus)} cadence`;
-  }, [status, linkedTask, currentTotal, timeLeft, config.focus]);
+    // Issue 83: timeLeft removed from deps — it's not used in the memo body but caused 1Hz recomputes
+  }, [status, linkedTask, currentTotal, config.focus]);
 
   if (!mounted) return null;
 
@@ -1007,7 +1014,7 @@ export default function PomodoroSheet({
             <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
           </Animated.View>
 
-          <Animated.View style={[s.sheet, sheetAnimStyle]}>
+          <Animated.View style={[s.sheet, sheetAnimStyle]} renderToHardwareTextureAndroid={true}>
             {/* Grab Handle — tap or pull down to close smoothly */}
             <Pressable
               onPress={handleClose}
@@ -1140,4 +1147,15 @@ export default function PomodoroSheet({
       )}
     </Modal>
   );
+}
+
+export default function PomodoroSheet(props: PomodoroSheetProps) {
+  const { isSheetOpen } = usePomodoro();
+  const isVisible = props.visible !== undefined ? props.visible : isSheetOpen;
+
+  if (!isVisible) {
+    return null;
+  }
+
+  return <PomodoroSheetContent {...props} visible={isVisible} />;
 }

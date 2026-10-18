@@ -5,6 +5,7 @@ import { doc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
 import { COLLECTION } from '../config/constants';
 import { getBootManifestSync, updateL1Cache } from '../utils/bootManifest';
+import { safeWrite } from '../utils/safeWrite';
 
 const DEFAULT_PINNED_MODULES = ['Tasks', 'Gym', 'Calendar', 'Attendance'];
 
@@ -68,10 +69,14 @@ export function PinnedModulesProvider({ children }: { children: React.ReactNode 
     DeviceEventEmitter.emit('pinned_modules_changed', clamped);
 
     if (auth.currentUser?.uid) {
-      setDoc(
-        doc(db, COLLECTION.USER_PROFILES, auth.currentUser.uid),
-        { pinnedModules: clamped },
-        { merge: true }
+      const uid = auth.currentUser.uid;
+      const payload = { pinnedModules: clamped, updatedAt: Date.now() };
+      safeWrite(
+        () => setDoc(doc(db, COLLECTION.USER_PROFILES, uid), payload, { merge: true }),
+        COLLECTION.USER_PROFILES,
+        'set',
+        payload,
+        uid
       ).catch(() => {});
     }
   }, []);

@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, Dimensions, ScrollView } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, useWindowDimensions, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -16,7 +16,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { GymNavigationParamList } from '../../types/gym.types';
-import { calculateExerciseMaxWeight, formatIndianDatePretty } from '../../utils/gymUtils';
+import { calculateExerciseMaxWeight, formatIndianDatePretty, normalizeExerciseKey } from '../../utils/gymUtils';
+import { dateStrOffset, todayStr } from '../../hooks/useGymLog';
 import { springs } from '../../theme/motion';
 import { feedback } from '../../utils/haptics';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
@@ -42,6 +43,7 @@ export default function WorkoutSummaryScreen() {
   const [newPR, setNewPR] = useState<{ name: string; weight: number } | null | undefined>(undefined);
   const [showConfetti, setShowConfetti] = useState(true);
   const [showAllExercises, setShowAllExercises] = useState(false);
+  const hasAwardedPrRef = useRef(false);
 
   useEffect(() => {
     if (readOnly) { setNewPR(null); return; }
@@ -60,12 +62,11 @@ export default function WorkoutSummaryScreen() {
 
       const pastLogs = gymLogs.filter(l => l.date < logDate!);
 
-      // O(N×K) pre-indexed Map — one pass over all past sets, then O(1) lookup per today's exercise.
-      // Replaces the old O(N×M×K) triple-nested loop (N=today's exercises, M=past logs, K=exercises/log).
+      // O(N×K) pre-indexed Map keyed strictly by normalized exercise name
       const pastMaxByKey = new Map<string, number>();
       for (const pl of pastLogs) {
         for (const ex of (pl.exercises || [])) {
-          const key = (ex.exerciseId || ex.name || '').toLowerCase();
+          const key = normalizeExerciseKey(ex.name);
           if (!key) continue;
           const m = calculateExerciseMaxWeight(ex as any);
           if (m > (pastMaxByKey.get(key) || 0)) pastMaxByKey.set(key, m);
@@ -77,14 +78,17 @@ export default function WorkoutSummaryScreen() {
         if (!ex.setsLog) continue;
         const todayMax = calculateExerciseMaxWeight(ex as any);
         if (todayMax === 0) continue;
-        const key = (ex.exerciseId || ex.name || '').toLowerCase();
+        const key = normalizeExerciseKey(ex.name);
+        if (!key) continue;
         const pastMax = pastMaxByKey.get(key) || 0;
-        if (todayMax > pastMax) {
+        // Require pastMax > 0 so first-time exercises never trigger false PR
+        if (pastMax > 0 && todayMax > pastMax) {
           found = { name: ex.name, weight: todayMax };
           break;
         }
       }
-      if (found) {
+      if (found && !hasAwardedPrRef.current) {
+        hasAwardedPrRef.current = true;
         awardXP('GYM_PR').catch(() => {});
       }
       setNewPR(found);
@@ -113,6 +117,7 @@ export default function WorkoutSummaryScreen() {
     const exercises: Array<{ name: string; sets: number; maxWeight: number; reps: number }> = [];
 
     todayLog?.exercises?.forEach(ex => {
+      if (ex.skipped) return;
       let exSets = 0;
       let exMaxWeight = 0;
       let exTotalReps = 0;
@@ -120,7 +125,7 @@ export default function WorkoutSummaryScreen() {
       ex.setsLog?.forEach((set: any) => {
         const w = (set?.weight !== null && set?.weight !== undefined && !isNaN(Number(set.weight))) ? Number(set.weight) : (set?.weightKg ? Number(set.weightKg) : 0);
         const r = (set?.reps !== null && set?.reps !== undefined && !isNaN(Number(set.reps))) ? Number(set.reps) : 0;
-        if (set.completed || (todayLog as any).completed || (w > 0 && r > 0)) {
+        if (set.completed === true) {
           exSets++;
           if (w > 0 && r > 0) {
             totalVolume += w * r;
@@ -191,28 +196,28 @@ export default function WorkoutSummaryScreen() {
   const prStyle = useAnimatedStyle(() => ({ transform: [{ scale: prScale.value }], opacity: prOpacity.value }));
   const streakStyle = useAnimatedStyle(() => ({ transform: [{ scale: streakScale.value }], opacity: streakOpacity.value }));
 
-  const screenWidth = Dimensions.get('window').width;
+  const { width: screenWidth } = useWindowDimensions();
 
   const chartData = useMemo(() => {
     if (!gymLogs || gymLogs.length === 0) return null;
     const cacheKey = `summary_chart_${selectedLift}_${selectedMetric}_${isDark ? 'd' : 'l'}_${generateDatasetFingerprint(gymLogs)}`;
     return computeOrGetHotCache(cacheKey, () => {
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-      const ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split('T')[0];
+      const ninetyDaysAgoStr = dateStrOffset(-90, todayStr());
       const logsInRange = gymLogs.filter(l => l.date >= ninetyDaysAgoStr).sort((a, b) => a.date.localeCompare(b.date));
 
       const labels: string[] = [];
       const dataPoints: number[] = [];
 
+      const targetLiftKey = normalizeExerciseKey(selectedLift);
+
       logsInRange.forEach(log => {
         if (!log.exercises) return;
-        const liftEx = log.exercises.find(e => e.name.toLowerCase() === selectedLift.toLowerCase() || e.name.toLowerCase().includes(selectedLift.toLowerCase()));
+        const liftEx = log.exercises.find(e => e?.name && !e.skipped && normalizeExerciseKey(e.name) === targetLiftKey);
         if (liftEx && liftEx.setsLog) {
           let max1RM = 0;
           let totalVolume = 0;
           liftEx.setsLog.forEach((set: any) => {
-            if ((set.completed || (log as any).completed || (set.weight && set.reps)) && set.weight && set.reps) {
+            if (set.completed === true && set.weight && set.reps) {
               const est1RM = set.weight * (1 + set.reps / 30);
               if (est1RM > max1RM) max1RM = est1RM;
               totalVolume += set.weight * set.reps;

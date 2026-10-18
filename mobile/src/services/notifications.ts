@@ -1,4 +1,4 @@
-/**
+﻿/**
  * notifications.ts â€” ZenTrack Mobile
  *
  * scheduleAllNotifications() â€” the single source of truth for all local notifications.
@@ -26,10 +26,10 @@ import { formatLocalDateStr } from '../utils/dateUtils';
 
 import { auth } from './firebase';
 import { calculateBunkMath } from '../utils/academicMath';
-import { getBootManifestSync, updateL1Cache } from '../utils/bootManifest';
+import { getBootManifestSync, updateL1Cache, loadBootManifest } from '../utils/bootManifest';
 
 // Extracted channels, priorities & pools
-import { PRIORITY, ALARM_CAP, requestNotificationPermissions, ensureNotificationChannels } from './notificationChannels';
+import { PRIORITY, ALARM_CAP, requestNotificationPermissions, ensureNotificationChannels, getSoundChannelId } from './notificationChannels';
 import {
   getRandomMessage,
   shuffleArray,
@@ -88,26 +88,47 @@ export async function openExactAlarmSettings(): Promise<void> {
 
 function parseTimeString(t?: string): { hours: number; minutes: number } | null {
   if (!t || typeof t !== 'string') return null;
-  const str = t.trim().toLowerCase();
-  const colonMatch = str.match(/(\d{1,2})[:.:](\d{2})\s*(am|pm)?/);
+  const raw = t.trim().toLowerCase();
+
+  // Split ranges like "11:00 - 12:00 pm" or "11:00 am to 1:00 pm"
+  const rangeParts = raw.split(/\s*(?:[-–—]|to)\s*/);
+  const startStr = rangeParts[0]?.trim() || '';
+  const endStr = rangeParts[1]?.trim() || '';
+  const trailingMeridiem = endStr.match(/\b(am|pm)\b/)?.[1];
+
+  // Strictly match HH:MM (only colon ':', never decimal dot '.')
+  const colonMatch = startStr.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/);
   if (colonMatch) {
     let h = parseInt(colonMatch[1], 10);
     const min = parseInt(colonMatch[2], 10);
     const ampm = colonMatch[3];
     if (ampm === 'pm' && h < 12) h += 12;
     if (ampm === 'am' && h === 12) h = 0;
-    if (!isNaN(h) && !isNaN(min) && h >= 0 && h < 24 && min >= 0 && min < 60) return { hours: h, minutes: min };
+    // Only inherit trailing PM if start has no meridiem and is 1..7 (e.g. "2:00 - 4:00 pm" -> 14:00; "11:00 - 12:00 pm" stays 11:00 AM)
+    if (!ampm && trailingMeridiem === 'pm' && h >= 1 && h <= 7) {
+      h += 12;
+    }
+    if (h >= 0 && h < 24 && min >= 0 && min < 60) {
+      return { hours: h, minutes: min };
+    }
   }
-  const hourAmPmMatch = str.match(/(\d{1,2})\s*(am|pm)/);
+
+  // Match "11 am" / "11pm"
+  const hourAmPmMatch = startStr.match(/^(\d{1,2})\s*(am|pm)$/);
   if (hourAmPmMatch) {
     let h = parseInt(hourAmPmMatch[1], 10);
     const ampm = hourAmPmMatch[2];
     if (ampm === 'pm' && h < 12) h += 12;
     if (ampm === 'am' && h === 12) h = 0;
-    if (!isNaN(h) && h >= 0 && h < 24) return { hours: h, minutes: 0 };
+    if (h >= 0 && h < 24) return { hours: h, minutes: 0 };
   }
-  const rawH = parseInt(str, 10);
-  if (!isNaN(rawH) && rawH >= 0 && rawH < 24) return { hours: rawH, minutes: 0 };
+
+  // Match bare 24h integer ONLY if the entire string is 1-2 digits (never "11 chapters")
+  if (/^\d{1,2}$/.test(startStr)) {
+    const rawH = parseInt(startStr, 10);
+    if (rawH >= 0 && rawH < 24) return { hours: rawH, minutes: 0 };
+  }
+
   return null;
 }
 
@@ -188,44 +209,30 @@ export function getLastScheduleStatus() {
 const _NOTIF_SCHEDULE_COLLECTION = 'notification_schedules';
 const _CLOUD_SYNC_TIMEOUT_MS = 3000;
 
-async function _pullFingerprintFromFirestore(userId: string): Promise<string | null> {
-  try {
-    const db = getFirestore();
-    const ref = doc(db, _NOTIF_SCHEDULE_COLLECTION, userId);
-    const snap = await Promise.race<any>([
-      getDoc(ref),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), _CLOUD_SYNC_TIMEOUT_MS)),
-    ]);
-    if (!snap || !snap.exists()) return null;
-    const data = snap.data();
-    return typeof data?.fingerprint === 'string' ? data.fingerprint : null;
-  } catch {
-    return null; // offline or timeout: fall through to local cache
-  }
+async function _pullFingerprintFromFirestore(_userId: string): Promise<string | null> {
+  return null; // Local device OS alarms are isolated to this hardware
 }
 
-async function _pushFingerprintToFirestore(userId: string, fingerprint: string): Promise<void> {
-  try {
-    const db = getFirestore();
-    const ref = doc(db, _NOTIF_SCHEDULE_COLLECTION, userId);
-    await setDoc(ref, {
-      fingerprint,
-      scheduledAt: Date.now(),
-      deviceModel: Device.modelName ?? 'unknown',
-    }, { merge: true });
-  } catch {
-    // Non-fatal: local scheduling already succeeded
-  }
+async function _pushFingerprintToFirestore(_userId: string, _fingerprint: string): Promise<void> {
+  // Local device OS alarms are isolated to this hardware; do not push to cloud
 }
+
+// Bump this string whenever the scheduling logic changes — forces a full wipe+reschedule
+// on every device that has a stale fingerprint from an older JS bundle.
+const NOTIF_ENGINE_VERSION = 'v7_all_deterministic_slot_ids_2026_10_17';
 
 function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | null>): string {
+  const todayDateStr = formatLocalDateStr(new Date());
+
   const attendanceFingerprint = (params.attendance || [])
     .map(s => `${s.id}_${s.classesTotal}_${s.classesAttended}_${s.labsTotal || 0}_${s.labsAttended || 0}_${s.lastUpdated || 0}`)
     .join(';');
+
   const taskFingerprint = (params.tasks || [])
     .filter(t => t.status !== 'completed')
     .map(t => `${t.id}_${t.title || ''}_${t.date}_${t.timeSlot || ''}_${t.isReminder ? '1' : '0'}`)
     .join(';');
+
   const eventFingerprint = (params.customEvents || [])
     .map(e => `${e.id}_${e.title || ''}_${e.date}_${e.startTime || ''}`)
     .join(';');
@@ -234,15 +241,24 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     .map(l => `${l.id || ''}_${l.subjectId || ''}_${l.type || ''}_${l.idx ?? ''}_${l.action}_${(l.date || '').slice(0, 10)}`)
     .join(';');
 
+  const habitLogsTodayHash = (params.habitLogs || [])
+    .filter(l => (l.date || '').slice(0, 10) === todayDateStr)
+    .map(l => `${l.habitId}_${l.count ?? 1}_${l.isFreeze ? 1 : 0}`)
+    .sort()
+    .join(';');
+
+  const assignmentHash = (params.assignments || [])
+    .map(a => `${a.id}_${a.status || ''}_${(a as any).completed ? 1 : 0}_${a.dueDate || ''}`)
+    .sort()
+    .join(';');
+
   const flashcardDueCount = (params.flashcards || [])
-    .filter(f => f.nextReviewDate && f.nextReviewDate <= formatLocalDateStr(new Date())).length;
+    .filter(f => f.nextReviewDate && f.nextReviewDate <= todayDateStr).length;
 
   const gymPlanFingerprint = params.userGymPlan
     ? `${params.userGymPlan.id || ''}_${params.userGymPlan.templateId || ''}_${params.userGymPlan.updatedAt || ''}_${params.userGymPlan.schedulePattern || ''}`
     : '';
 
-  // Hash gym log content (not just count) so post-workout schedule correctly refreshes
-  // after exercises are logged. Hashes: date + exercise count + completed sets count per log.
   const gymLogContentHash = (params.gymLogs || [])
     .map(g => {
       const exercises = g.exercises || [];
@@ -254,35 +270,20 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     })
     .join(';');
 
-  // Track today's total water logged to invalidate fingerprint immediately when goal is hit
-  const todayDateStr = formatLocalDateStr(new Date());
-  const waterTodayMl = (params.waterLogs || [])
-    .filter(w => (w.date || '').slice(0, 10) === todayDateStr)
-    .reduce((acc, w) => acc + (w.amountMl || 0), 0);
+  const todayWaterLogs = (params.waterLogs || []).filter(
+    w => (w.date || '').slice(0, 10) === todayDateStr
+  );
+  const waterTodayMl = todayWaterLogs.reduce((acc, w) => acc + (w.amountMl || 0), 0);
+  const lastWaterTs = todayWaterLogs.reduce((max, w) => Math.max(max, w.timestamp || 0), 0);
+  // Bucket to the minute so millisecond syncs never thrash the fingerprint
+  const lastWaterMinuteBucket = Math.floor(lastWaterTs / 60000);
 
-  // Invalidate when user changes notification preferences
-  const prefsFingerprint = kv ? [
-    kv['@zentrack_water_reminder_freq'] || '0',
-    kv['zentrack_notif_task_buffer'] || '60',
-    kv['zentrack_notif_morning_brief_time'] || '07:30',
-    kv['zentrack_notif_overdue_nudge_time'] || '08:00',
-    kv['zentrack_notif_quiet_hours'] || 'false',
-    kv['zentrack_notif_quiet_start'] || '23:00',
-    kv['zentrack_notif_quiet_end'] || '07:00',
-    kv['zentrack_notif_habit_streak_time'] || '20:00',
-    kv['@gym_notification_time'] || '18:00',
-    kv['zentrack_notif_mod_tasks'] || 'true',
-    kv['zentrack_notif_mod_habits'] || 'true',
-    kv['zentrack_notif_mod_gym'] || 'true',
-    kv['zentrack_notif_mod_attendance'] || 'true',
-    kv['zentrack_notif_weekend_mode'] || 'false',
-    kv['zentrack_default_notif_time'] || '09:00',
-    kv['zentrack_notif_calendar_offset'] || '60',
-    kv['zentrack_notif_task_5min_alert'] || 'true',
-    kv['zentrack_notif_overdue_nudge'] || 'true',
-    kv['zentrack_notif_habit_streak_risk'] || 'true',
-    kv['zentrack_notif_weekly_review'] || 'true',
-  ].join(',') : '';
+  const prefsFingerprint = kv
+    ? Object.keys(kv)
+        .sort()
+        .map(k => `${k}=${kv[k] ?? ''}`)
+        .join(',')
+    : '';
 
   const holidayFingerprint = (params.holidays || [])
     .map((h: any) => typeof h === 'string' ? h.trim().slice(0, 10) : (h?.date ? String(h.date).trim().slice(0, 10) : ''))
@@ -291,14 +292,17 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     .join(',');
 
   return [
+    NOTIF_ENGINE_VERSION,
     taskFingerprint,
     eventFingerprint,
     gymPlanFingerprint,
     (params.habitLogs || []).length,
+    habitLogsTodayHash,
     gymLogContentHash,
-    (params.assignments || []).length,
+    assignmentHash,
     (params.waterLogs || []).length,
     waterTodayMl,
+    lastWaterMinuteBucket,
     (params.sleepLogs || []).length,
     attendanceLogFingerprint,
     (params.attendance || []).length,
@@ -377,9 +381,17 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
     const activeStateRaw = await AsyncStorage.getItem('@zentrack_active_workout_state');
     if (activeStateRaw) {
       const activeState = JSON.parse(activeStateRaw);
-      if (activeState && !activeState.completed) {
-        console.log('[Notifications] Active workout in progress (inner guard) â€” skipping reschedule.');
+      const startedAt =
+        activeState?.workoutStartTime ||
+        activeState?.startedAt ||
+        activeState?.updatedAt ||
+        0;
+      const isFresh = startedAt > 0 && Date.now() - startedAt < 3 * 60 * 60 * 1000;
+      if (activeState && !activeState.completed && isFresh) {
+        console.log('[Notifications] Active workout in progress — skipping reschedule.');
         return;
+      } else if (activeState && !activeState.completed && !isFresh) {
+        await AsyncStorage.removeItem('@zentrack_active_workout_state').catch(() => {});
       }
     }
   } catch {
@@ -444,9 +456,9 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         'zentrack_notif_morning_brief_time', 'zentrack_notif_overdue_nudge_time', 'zentrack_notif_quiet_start',
         'zentrack_notif_quiet_end', 'zentrack_notif_task_buffer', 'zentrack_notif_inactivity_days',
         'zentrack_notif_habit_streak_time', 'zentrack_default_notif_time',
-        'zentrack_notif_calendar_offset',
+        'zentrack_notif_calendar_offset', 'zentrack_notif_notifs_sound',
         '@gym_notification_time', '@gym_notification_enabled',
-        '@zentrack_water_reminder_freq', '@zentrack_sleep_reminders_enabled',
+        '@zentrack_water_reminder_freq', '@zentrack_last_water_notif_ts', '@zentrack_sleep_reminders_enabled',
         '@zentrack_sleep_reminder_night', '@zentrack_sleep_reminder_morning',
         'zentrack_water_goal_ml', '@zentrack_user_name', 'zentrack_user_name',
         ...attendance.flatMap(s => [
@@ -498,18 +510,39 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       // and reschedule them afterward so an in-progress workout isn't disrupted.
       // BUG-12 FIX: If all user data arrays are empty (likely offline cold-start), skip
       // the cancel+reschedule entirely â€” a wipe with no data would leave the user with
-      // zero notifications until the app is foregrounded.
+      const waterFreqSetting = parseFloat(kv['@zentrack_water_reminder_freq'] ?? '2');
+      const hasActiveSystemReminders =
+        waterFreqSetting > 0 ||
+        kv['zentrack_notif_morning_brief'] !== 'false' ||
+        kv['@zentrack_sleep_reminders_enabled'] === 'true';
+
       const dataIsEmpty =
         tasks.length === 0 &&
         allHabits.length === 0 &&
         attendance.length === 0 &&
-        assignments.length === 0;
+        assignments.length === 0 &&
+        customEvents.length === 0 &&
+        waterLogs.length === 0 &&
+        !hasActiveSystemReminders;
+
       if (dataIsEmpty) {
-        console.warn('[Notifications] All data arrays empty (likely offline) â€” skipping reschedule to preserve existing notifications.');
+        console.warn('[Notifications] All data arrays and system reminders empty (likely offline) — skipping reschedule to preserve existing notifications.');
         return;
       }
 
-      await Notifications.cancelAllScheduledNotificationsAsync();
+      // Fix: Explicitly cancel every individual alarm ID first so Android's AlarmManager
+      // flushes each PendingIntent immediately, then call the global cancelAll + settle 150ms
+      // for the native NotificationsService intent queue to drain. Without the per-ID sweep,
+      // orphaned PendingIntents from a previous JS bundle survive cancelAll and produce zombie alarms.
+      if (existingOsAlarms.length > 0) {
+        await Promise.all(
+          existingOsAlarms.map(alarm =>
+            Notifications.cancelScheduledNotificationAsync(alarm.identifier).catch(() => {})
+          )
+        );
+      }
+      await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+      await new Promise(resolve => setTimeout(resolve, 150));
 
       const boolVal = (suffix: string, def = true) => {
         const v = kv[`zentrack_notif_${suffix}`];
@@ -548,6 +581,9 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       const habitStreakTimeStr   = strVal('habit_streak_time', '20:00');
       // Calendar event offset in minutes (user-configurable, default 60 min)
       const calendarOffsetMin   = parseInt(kv['zentrack_notif_calendar_offset'] ?? '60', 10) || 60;
+      const notifsSound         = kv['zentrack_notif_notifs_sound'] ?? 'default';
+      const taskAlarmChannel    = getSoundChannelId('task_alarm', notifsSound);
+      const remindersChannel    = getSoundChannelId('reminders', notifsSound);
 
       const defaultTimeStr = kv['zentrack_default_notif_time'] ?? '09:00';
       const defaultTime = parseHM(defaultTimeStr);
@@ -588,9 +624,15 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         channel = 'default',
         categoryId?: string
       ) {
-        if (trigger.getTime() <= now.getTime() - 20000) return;
-        const validTrigger = trigger.getTime() <= now.getTime() ? new Date(now.getTime() + 1000) : trigger;
-        pendingQueue.push({ priority, title, body, trigger: validTrigger, data, channel, categoryId });
+        // CRITICAL FIX: Reject any trigger within 150 seconds of now.
+        // On OxygenOS/ColorOS, Android AlarmManager delivers alarms up to ~2 min early.
+        // When a 15:00 alarm fires at 14:58, the background scheduler wakes at 14:58:05,
+        // sees 15:00 > 14:58 (TRUE), and re-queues the 15:00 slot as a brand-new alarm.
+        // That new alarm then fires again at 15:00 — the double-fire. The 150s guard
+        // makes the scheduler immune: if the slot is within 2.5 min, it's already in flight.
+        // We drop past triggers entirely (no clamping to now+1s — that caused instant re-fires).
+        if (trigger.getTime() <= now.getTime() + 150 * 1000) return;
+        pendingQueue.push({ priority, title, body, trigger, data, channel, categoryId });
       }
 
       // â”€â”€ 1. Morning Briefings (Today & Tomorrow) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -774,7 +816,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
                 getRandomMessage(TASK_BUFFER_POOLS(task.title, taskBufferMin)),
                 tBuffer,
                 { taskId: task.id, taskTitle: task.title },
-                'task_alarm',
+                taskAlarmChannel,
                 actionableNotifs ? 'task_reminder' : undefined
               );
             }
@@ -789,7 +831,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
                   'Your task starts in 5 minutes. Finish up and get ready.',
                   t5,
                   { taskId: task.id, taskTitle: task.title },
-                  'task_alarm',
+                  taskAlarmChannel,
                   actionableNotifs ? 'task_reminder' : undefined
                 );
               }
@@ -806,7 +848,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
                   : `Scheduled task: ${task.timeSlot || 'Starting now'}. Tap to open or mark as done.`,
                 base,
                 { taskId: task.id, taskTitle: task.title, isReminder: isUrgent },
-                isUrgent ? 'task_urgent_alarm_v1' : 'reminders',
+                isUrgent ? 'task_urgent_alarm_v1' : remindersChannel,
                 actionableNotifs ? 'task_reminder' : undefined
               );
             }
@@ -871,7 +913,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
               getRandomMessage(CALENDAR_EVENT_POOLS(event.title, event.startTime, offsetLabel)),
               evTrigger,
               { eventId: event.id },
-              'reminders'  // BUG-11 FIX: use 'reminders' channel (louder) â€” calendar events are time-critical
+              remindersChannel
             );
           }
         }
@@ -1405,61 +1447,76 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // â”€â”€ 13. Hydration Checks (4-Day Rolling) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-      const waterReminderFreq = parseInt(kv['@zentrack_water_reminder_freq'] || '0', 10);
-      if (waterReminderFreq > 0) {
-        const savedWaterGoal = kv['zentrack_water_goal_ml'];
-        const DAILY_WATER_GOAL_ML = savedWaterGoal ? parseInt(savedWaterGoal, 10) : 3800;
-        const waterLoggedTodayMl = waterLogs
-          .filter(w => (w.date || '').slice(0, 10) === todayStr)
-          .reduce((sum, w) => sum + (w.amountMl || 0), 0);
-        const waterGoalMet = waterLoggedTodayMl >= DAILY_WATER_GOAL_ML;
+      // ── 13. Hydration Checks (7-Day Rolling) ─────────────────────────
+      const rawWaterFreq = kv['@zentrack_water_reminder_freq'];
+      const waterReminderFreq =
+        rawWaterFreq === null || rawWaterFreq === undefined
+          ? 2
+          : parseFloat(rawWaterFreq);
 
-        // Pre-shuffle titles and body pools so each reminder throughout the day is unique & non-repetitive
-        const shuffledTitles = shuffleArray(WATER_TITLES_POOL);
-        const shuffledEmptyBodies = shuffleArray(WATER_EMPTY_POOLS());
-        let titleIdx = 0;
-        let bodyIdx = 0;
+      const waterGoalMl = parseInt(kv['zentrack_water_goal_ml'] || '3800', 10) || 3800;
+      const todayWaterLogs = (waterLogs || []).filter(
+        w => (w.date || '').slice(0, 10) === todayStr
+      );
+      const todayWaterMl = todayWaterLogs.reduce((sum, w) => sum + (w.amountMl || 0), 0);
+      const lastDrinkTs = todayWaterLogs.reduce((max, w) => Math.max(max, w.timestamp || 0), 0);
+      const waterGoalMet = todayWaterMl >= waterGoalMl;
 
-        const START_HOUR = 8;
-        const END_HOUR = 22; // 10 PM daytime window
+      if (waterReminderFreq > 0 && !isNaN(waterReminderFreq)) {
+        const intervalMs = Math.round(waterReminderFreq * 60 * 60 * 1000);
+        // Active hydration window: 08:00 AM (or quietEnd) to 21:30 / 9:30 PM Night Taper (or quietStart - 30m)
+        const wakeMins = quietHoursEnabled ? Math.max(8 * 60, quietEnd.hours * 60 + quietEnd.minutes) : 8 * 60;
+        const cutoffMins = quietHoursEnabled ? Math.min(21 * 60 + 30, quietStart.hours * 60 + quietStart.minutes - 30) : 21 * 60 + 30;
 
-        // Unified clean clock-hour checkpoints (9:00 AM to 9:00 PM) for today and future days.
-        // Snapping to clean clock hours eliminates odd-minute drift (e.g. 2:59 PM) and enforcing
-        // a 30-minute guard prevents immediate double-fires (e.g. 2:59 PM and 3:00 PM).
-        for (let dayOffset = 0; dayOffset <= 3; dayOffset++) {
+        const loggedL = (todayWaterMl / 1000).toFixed(1);
+        const remainingL = (Math.max(0, waterGoalMl - todayWaterMl) / 1000).toFixed(1);
+        const goalL = (waterGoalMl / 1000).toFixed(1);
+        const lastWaterNotifTs = parseInt(kv['@zentrack_last_water_notif_ts'] || '0', 10);
+
+        for (let dayOffset = 0; dayOffset <= 6; dayOffset++) {
           if (dayOffset === 0 && waterGoalMet) continue;
 
           const baseDay = new Date(now);
-          baseDay.setDate(baseDay.getDate() + dayOffset);
+          baseDay.setDate(now.getDate() + dayOffset);
+          const baseDayStr = formatLocalDateStr(baseDay);
 
-          for (let h = 9; h <= 21; h += waterReminderFreq) {
-            const waterTrigger = dateAtHM(baseDay, h, 0);
-            // Must be at least 30 minutes in the future to prevent double-firing right after app activity
-            if (waterTrigger.getTime() <= now.getTime() + 30 * 60 * 1000) continue;
+          // Day 0 with a logged drink today: anchor directly to `lastDrinkTs` so reminders fire every N hours after drinking!
+          // Day 0 with NO drink yet (or future days 1..6): anchor deterministically to 07:00 AM so opening the app never shifts the schedule!
+          const dayBaselineMs = dateAtHM(baseDay, 7, 0).getTime();
+          const anchorMs = dayOffset === 0 && lastDrinkTs > dayBaselineMs ? lastDrinkTs : dayBaselineMs;
 
-            let waterBody: string;
-            if (dayOffset === 0 && waterLoggedTodayMl > 0) {
-              const remaining = Math.max(0, DAILY_WATER_GOAL_ML - waterLoggedTodayMl);
-              const remainingL = (remaining / 1000).toFixed(1);
-              const goalL = (DAILY_WATER_GOAL_ML / 1000).toFixed(1);
-              const loggedL = (waterLoggedTodayMl / 1000).toFixed(1);
-              const progressPool = shuffleArray(WATER_PROGRESS_POOLS(loggedL, remainingL, goalL));
-              waterBody = progressPool[bodyIdx % progressPool.length];
-            } else {
-              waterBody = shuffledEmptyBodies[bodyIdx % shuffledEmptyBodies.length];
+          for (let nextMs = anchorMs + intervalMs; ; nextMs += intervalMs) {
+            const waterTrigger = new Date(nextMs);
+            if (formatLocalDateStr(waterTrigger) !== baseDayStr) break;
+
+            const triggerMins = waterTrigger.getHours() * 60 + waterTrigger.getMinutes();
+            if (triggerMins > cutoffMins) break; // Hard stop at 9:30 PM Night Taper (never fires at 11:00 PM)
+            if (triggerMins < wakeMins) continue; // Skip anything before 8:00 AM / quietEnd
+
+            // Must be at least 15 minutes in the future (prevents re-scheduling a slot that just fired or is firing now e.g. at :58 for :00)
+            if (waterTrigger.getTime() <= now.getTime() + 15 * 60 * 1000) continue;
+
+            // If a water reminder was already delivered recently (within 45 minutes), skip any reminder in this slot
+            if (dayOffset === 0 && lastWaterNotifTs > 0 && Math.abs(waterTrigger.getTime() - lastWaterNotifTs) < 45 * 60 * 1000) {
+              continue;
             }
 
-            const waterTitle = shuffledTitles[titleIdx % shuffledTitles.length];
-            titleIdx++;
-            bodyIdx++;
+            const title = getRandomMessage(WATER_TITLES_POOL);
+            const body =
+              dayOffset === 0 && todayWaterMl > 0
+                ? getRandomMessage(WATER_PROGRESS_POOLS(loggedL, remainingL, goalL))
+                : getRandomMessage(WATER_EMPTY_POOLS());
 
+            // slotKey encodes day offset + trigger hour:minute so the notifId is deterministic
+            // across rescheduling runs. This prevents Android AlarmManager from treating a
+            // rescheduled 15:00 slot and a zombie 14:58 slot as two separate PendingIntents.
+            const slotKey = `d${dayOffset}_h${waterTrigger.getHours()}_m${waterTrigger.getMinutes()}`;
             enqueue(
-              PRIORITY.HIGH,
-              waterTitle,
-              waterBody,
+              dayOffset === 0 ? PRIORITY.MEDIUM : PRIORITY.LOW,
+              title,
+              body,
               waterTrigger,
-              { type: 'water_reminder' },
+              { type: 'water_reminder', screen: 'WellbeingDashboard', slotKey },
               'wellness'
             );
           }
@@ -1513,7 +1570,11 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         modAttendance: boolVal('mod_attendance'),
       })).catch(() => {});
 
-      const scheduledKeys = new Set<string>();
+      interface ScheduledItem {
+        keyId: string;
+        triggerMs: number;
+      }
+      const scheduledItems: ScheduledItem[] = [];
       let scheduledCount = 0;
       let droppedCount = 0;
 
@@ -1540,6 +1601,10 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
 
         // Quiet hours: sara_critical and reminders always ignore, others are deferred to quiet end
         if (isQuiet(finalTrigger) && notif.channel !== 'sara_critical' && notif.channel !== 'reminders') {
+          // NEVER clamp water reminders to 07:00 AM — drop them if they fall in quiet hours
+          if (notif.channel === 'wellness' || notif.data?.type === 'WATER_REMINDER' || notif.data?.type === 'water_reminder') {
+            continue;
+          }
           const catchUp = new Date(finalTrigger);
           catchUp.setHours(quietEnd.hours, quietEnd.minutes, 0, 0);
           if (catchUp <= now) catchUp.setDate(catchUp.getDate() + 1);
@@ -1551,10 +1616,30 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
           continue;
         }
 
-        // Deduplication: same channel + minute bucket + title
-        const dedupeKey = `${notif.channel}_${Math.floor(finalTrigger.getTime() / 60000)}_${notif.title}`;
-        if (scheduledKeys.has(dedupeKey)) continue;
-        scheduledKeys.add(dedupeKey);
+        // Continuous Sliding-Window Deduplication:
+        // Use true temporal distance rather than discrete bucket division so :58 and :00
+        // (which cross integer bucket boundaries) are reliably identified as duplicates.
+        const keyId = notif.data?.taskId
+          || (notif.data?.subjectId ? `class_${notif.data.subjectId}_${notif.data.sessionIdx ?? 0}` : undefined)
+          || notif.data?.habitId
+          || notif.data?.type
+          || `${notif.channel}_${notif.title}`;
+
+        const candidateMs = finalTrigger.getTime();
+
+        // Water reminders must be separated by at least 45 minutes.
+        // Other reminder types must be separated by at least 10 minutes.
+        const minGapMs = (keyId === 'water_reminder' || notif.channel === 'wellness')
+          ? 45 * 60 * 1000
+          : 10 * 60 * 1000;
+
+        const isDuplicate = scheduledItems.some(
+          item => item.keyId === keyId && Math.abs(item.triggerMs - candidateMs) < minGapMs
+        );
+        if (isDuplicate) {
+          continue;
+        }
+        scheduledItems.push({ keyId, triggerMs: candidateMs });
 
         const delaySeconds = Math.max(3, Math.round((finalTrigger.getTime() - Date.now()) / 1000));
         const notifPriority = (notif.channel === 'reminders' || notif.channel === 'sara_critical' || notif.channel === 'wellness' || notif.channel === 'task_alarm')
@@ -1577,22 +1662,45 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
               date: targetFireTime,
             };
 
-        // Deterministic identifier encodes type and entity ID so notification response handlers
-        // in App.tsx can identify tasks/habits/classes on Android without needing a non-serializable 'data' payload.
-        let notifId: string | undefined = undefined;
+        // Deterministic, timestamp-free slot IDs for ALL 14 notification types.
+        // A Unix-second suffix is unique per scheduling run — AlarmManager creates a NEW
+        // PendingIntent instead of overwriting the existing one, causing zombie double-fires.
+        // Entity + date + slot-type IDs are stable across reschedules for the same logical alarm.
+        const fireDateKey = formatLocalDateStr(targetFireTime);
+        const fireHM = `${targetFireTime.getHours()}_${targetFireTime.getMinutes()}`;
+        let notifId: string;
+
         if (notif.data?.taskId) {
-          notifId = `task_${notif.data.taskId}_${Math.floor(targetFireTime.getTime() / 1000)}`;
+          // Distinguish buffer / 5-min / exact alarms for the same task on the same day.
+          const subType = notif.title.startsWith('Upcoming:') ? 'buf'
+            : notif.title.startsWith('5 minutes:') ? '5m'
+            : 'exact';
+          notifId = `task_${notif.data.taskId}_${subType}_${fireDateKey}`;
         } else if (notif.data?.habitId) {
-          notifId = `habit_${notif.data.habitId}_${Math.floor(targetFireTime.getTime() / 1000)}`;
+          const hType = notif.data?.type === 'habit_streak' ? 'risk' : 'daily';
+          notifId = `habit_${notif.data.habitId}_${hType}_${fireDateKey}`;
         } else if (notif.data?.subjectId) {
           const sIdx = typeof notif.data.sessionIdx === 'number' ? notif.data.sessionIdx : 0;
-          notifId = `class_${notif.data.subjectId}_${sIdx}_${Math.floor(targetFireTime.getTime() / 1000)}`;
+          const cType = notif.data.type || 'class';
+          notifId = `class_${notif.data.subjectId}_${sIdx}_${cType}_${fireDateKey}_${fireHM}`;
+        } else if (notif.data?.eventId) {
+          notifId = `event_${notif.data.eventId}_${fireDateKey}`;
+        } else if (notif.data?.asnId) {
+          notifId = `asn_${notif.data.asnId}_${notif.data.type}_${fireDateKey}`;
         } else if (notif.data?.type === 'water_reminder') {
-          notifId = `water_${Math.floor(targetFireTime.getTime() / 1000)}`;
+          notifId = notif.data?.slotKey
+            ? `water_${notif.data.slotKey}`
+            : `water_${fireDateKey}_h${targetFireTime.getHours()}_m${targetFireTime.getMinutes()}`;
         } else if (notif.data?.type === 'morning_brief') {
-          notifId = `brief_${Math.floor(targetFireTime.getTime() / 1000)}`;
+          notifId = `brief_${notif.data?.date || fireDateKey}`;
         } else if (notif.data?.type === 'gym' || notif.data?.type === 'gym_rest') {
-          notifId = `gym_${Math.floor(targetFireTime.getTime() / 1000)}`;
+          notifId = `gym_${notif.data.type}_${fireDateKey}`;
+        } else if (notif.data?.type) {
+          // All other typed system notifications (overdue_nudge, attendance_warning, sleep, etc.)
+          notifId = `sys_${notif.data.type}_${fireDateKey}_${fireHM}`;
+        } else {
+          // Catch-all: channel + date + slot time (inbox_nudge, weekly_review, inactivity, etc.)
+          notifId = `gen_${notif.channel}_${fireDateKey}_${fireHM}`;
         }
 
         preparedList.push({
@@ -1910,16 +2018,23 @@ export async function runNotificationDiagnostic(): Promise<string> {
 
 // â”€â”€ Immediate / Direct Task Reminder Scheduler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function scheduleSingleTaskReminder(task: Task) {
+  // Cancel all identifier variants so stale alarms never accumulate when the task time changes.
+  // The `task_${id}_exact_${dateStr}` form MUST match what scheduleAllNotifications() writes above,
+  // so that whichever runs second simply overwrites the PendingIntent rather than duplicating it.
+  const dateStr = task.date || formatLocalDateStr(new Date());
   if (task.id) {
-    // If reminder was turned off or task completed, ensure any direct notification is cancelled
-    await Notifications.cancelScheduledNotificationAsync(`task_${task.id}`).catch(() => {});
+    await Promise.all([
+      Notifications.cancelScheduledNotificationAsync(`task_${task.id}`).catch(() => {}),
+      Notifications.cancelScheduledNotificationAsync(`task_${task.id}_exact_${dateStr}`).catch(() => {}),
+      Notifications.cancelScheduledNotificationAsync(`task_${task.id}_buf_${dateStr}`).catch(() => {}),
+      Notifications.cancelScheduledNotificationAsync(`task_${task.id}_5m_${dateStr}`).catch(() => {}),
+    ]);
   }
   if (!task.title || task.status === 'completed') return;
   const parsedTime = parseTimeString(task.timeSlot);
   if (!parsedTime && !task.isReminder) return;
 
   const now = new Date();
-  const dateStr = task.date || formatLocalDateStr(now);
   const [year, month, day] = dateStr.split('-').map(Number);
   if (!year) return;
 
@@ -1935,32 +2050,25 @@ export async function scheduleSingleTaskReminder(task: Task) {
     }
   }
 
-  // If the target time is already in the past by more than 30 seconds, do not schedule an immediate alarm
-  if (targetDate.getTime() < now.getTime() - 30 * 1000) {
-    console.log(`[Notifications] Skipping past task reminder for "${task.title}" at ${targetDate.toLocaleTimeString()}`);
+  // Apply the same 150-second guard as enqueue() — if the slot is within 2.5 minutes it is
+  // already in-flight inside AlarmManager and scheduling again would create a duplicate.
+  if (targetDate.getTime() <= now.getTime() + 150 * 1000) {
+    console.log(`[Notifications] Skipping near-future/past task reminder for "${task.title}" at ${targetDate.toLocaleTimeString()}`);
     return;
   }
-
-  const triggerTime = targetDate.getTime() <= now.getTime() ? now.getTime() + 1500 : targetDate.getTime();
-  const delaySeconds = Math.max(2, Math.round((triggerTime - Date.now()) / 1000));
 
   try {
     const isUrgent = !!task.isReminder;
     const targetChannel = isUrgent ? 'task_urgent_alarm_v1' : 'reminders';
-    const targetDateObj = new Date(triggerTime);
     const triggerConfig: any = Platform.OS === 'android'
-      ? {
-          type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
-          date: targetDateObj,
-          channelId: targetChannel,
-        }
-      : {
-          type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
-          date: targetDateObj,
-        };
+      ? { type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date', date: targetDate, channelId: targetChannel }
+      : { type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date', date: targetDate };
+
+    // Deterministic ID matches the batch scheduler — second caller overwrites, not duplicates.
+    const directId = task.id ? `task_${task.id}_exact_${dateStr}` : undefined;
 
     await Notifications.scheduleNotificationAsync({
-      identifier: task.id ? `task_${task.id}` : undefined,
+      ...(directId ? { identifier: directId } : {}),
       content: {
         title: isUrgent ? `⏰ REMINDER: ${task.title}` : task.title,
         body: isUrgent
@@ -1974,7 +2082,7 @@ export async function scheduleSingleTaskReminder(task: Task) {
       } as any,
       trigger: triggerConfig,
     });
-    console.log(`[Notifications] Direct reminder scheduled for "${task.title}" at ${targetDateObj.toLocaleTimeString()}`);
+    console.log(`[Notifications] Direct reminder scheduled for "${task.title}" at ${targetDate.toLocaleTimeString()} [id: ${directId}]`);
   } catch (err) {
     console.warn('[Notifications] scheduleSingleTaskReminder error:', err);
   }
@@ -2005,73 +2113,24 @@ export const BACKGROUND_NOTIFICATION_SYNC_TASK = 'background-notification-sync';
 
 TaskManager.defineTask(BACKGROUND_NOTIFICATION_SYNC_TASK, async () => {
   try {
-    const userId = (await AsyncStorage.getItem('@zentrack_uid')) || (await AsyncStorage.getItem('user_id'));
-    if (!userId) return BackgroundFetch.BackgroundFetchResult.NoData;
-
-    let db;
-    if (!getApps().length) {
-      const firebaseConfig = {
-        apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'AIzaSyCWZ_tUzZynf60lxC3-RweGfZRGlcHBz_s',
-        authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || 'job-tracker-6b672.firebaseapp.com',
-        projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || 'job-tracker-6b672',
-        storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || 'job-tracker-6b672.firebasestorage.app',
-        messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '336719988763',
-        appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || '1:336719988763:web:7da94195ccd2272d6990be',
-      };
-      const app = initializeApp(firebaseConfig);
-      db = getFirestore(app);
-    } else {
-      db = getFirestore(getApps()[0]);
+    const manifest = await loadBootManifest();
+    if (!manifest.optimisticUser?.uid && !auth.currentUser?.uid) {
+      return BackgroundFetch.BackgroundFetchResult.NoData;
     }
 
-    const tmp = new Date();
-    const y = tmp.getFullYear();
-    const m = String(tmp.getMonth() + 1).padStart(2, '0');
-    const dStr = String(tmp.getDate()).padStart(2, '0');
-    const todayStr = `${y}-${m}-${dStr}`;
-
-    // FIX 4.3 & 6.7: Fetch USER_GYM_PLANS & FLASHCARDS docs in headless reschedule
-    const [
-      tasksSnap, eventsSnap, gymSnap, attendanceSnap, attendanceLogsSnap,
-      habitsSnap, habitLogsSnap, assignmentsSnap, waterSnap, sleepSnap, gymPlanSnap, flashcardsSnap,
-      holidaysSnap,
-    ] = await Promise.all([
-      getDocs(query(collection(db, COLLECTION.TASKS), where('userId', '==', userId), where('status', 'in', ['pending', 'in_progress']))),
-      getDocs(query(collection(db, COLLECTION.CALENDAR_EVENTS), where('userId', '==', userId))),
-      getDocs(query(collection(db, COLLECTION.GYM_LOGS), where('userId', '==', userId), where('date', '>=', todayStr))),
-      getDocs(query(collection(db, COLLECTION.ATTENDANCE), where('userId', '==', userId))),
-      getDocs(query(collection(db, COLLECTION.ATTENDANCE_LOGS), where('userId', '==', userId), where('date', '>=', todayStr))),
-      getDocs(query(collection(db, COLLECTION.HABITS), where('userId', '==', userId))),
-      getDocs(query(collection(db, COLLECTION.HABIT_LOGS), where('userId', '==', userId), where('date', '>=', todayStr))),
-      getDocs(query(collection(db, COLLECTION.ASSIGNMENTS), where('userId', '==', userId))),
-      getDocs(query(collection(db, COLLECTION.WATER_LOGS), where('userId', '==', userId), where('date', '>=', todayStr))),
-      getDocs(query(collection(db, COLLECTION.SLEEP_LOGS), where('userId', '==', userId), where('date', '>=', todayStr))),
-      getDocs(query(collection(db, COLLECTION.USER_GYM_PLANS), where('userId', '==', userId))),
-      getDocs(query(collection(db, COLLECTION.FLASHCARDS), where('userId', '==', userId))),
-      getDocs(query(collection(db, COLLECTION.ATTENDANCE_HOLIDAYS), where('userId', '==', userId))),
-    ]);
-
-    const rawGymPlanDoc = gymPlanSnap.docs[0];
-    const fetchedUserGymPlan = rawGymPlanDoc ? ({ id: rawGymPlanDoc.id, ...rawGymPlanDoc.data() } as UserGymPlanDoc) : null;
-    const fetchedHolidays = holidaysSnap.docs.map(d => {
-      const raw = (d.data() as any)?.date;
-      return typeof raw === 'string' ? raw.trim().slice(0, 10) : '';
-    }).filter(Boolean);
-
     await scheduleAllNotifications({
-      tasks: tasksSnap.docs.map(d => ({ id: d.id, ...d.data() } as Task)),
-      customEvents: eventsSnap.docs.map(d => ({ id: d.id, ...d.data() } as CustomEvent)),
-      gymLogs: gymSnap.docs.map(d => ({ id: d.id, ...d.data() } as GymLog)),
-      attendance: attendanceSnap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceSubject)),
-      attendanceLogs: attendanceLogsSnap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceLog)),
-      allHabits: habitsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Habit)),
-      habitLogs: habitLogsSnap.docs.map(d => ({ id: d.id, ...d.data() } as HabitLog)),
-      assignments: assignmentsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Assignment)),
-      waterLogs: waterSnap.docs.map(d => ({ id: d.id, ...d.data() } as WaterLog)),
-      sleepLogs: sleepSnap.docs.map(d => ({ id: d.id, ...d.data() } as SleepLog)),
-      userGymPlan: fetchedUserGymPlan,
-      flashcards: flashcardsSnap.docs.map(d => d.data() as any),
-      holidays: fetchedHolidays,
+      tasks: manifest.tasks || [],
+      customEvents: manifest.customEvents || [],
+      gymLogs: manifest.gymLogs || [],
+      attendance: manifest.attendance || [],
+      attendanceLogs: manifest.attendanceLogs || [],
+      allHabits: manifest.habits || [],
+      habitLogs: manifest.habitLogs || [],
+      assignments: manifest.assignments || [],
+      waterLogs: manifest.waterLogs || [],
+      sleepLogs: manifest.sleepLogs || [],
+      userGymPlan: manifest.userGymPlan || null,
+      holidays: manifest.holidays || [],
     });
 
     return BackgroundFetch.BackgroundFetchResult.NewData;
@@ -2181,7 +2240,7 @@ export async function cancelAllClassNotificationsForDate(dateStr?: string): Prom
         // Fallback: identifier format class_{subjectId}_{sessionIdx}_{unixSec}
         const parts = id.split('_');
         if (parts.length >= 4) {
-          const sec = parseInt(parts[3], 10);
+          const sec = parseInt(parts[parts.length - 1], 10);
           if (!isNaN(sec) && sec > 0) {
             const fireDateStr = formatLocalDateStr(new Date(sec * 1000));
             if (fireDateStr === targetDateStr) matchesDate = true;
@@ -2235,7 +2294,7 @@ export async function cancelClassNotificationsImmediately(
 
       // Is this a class/lab notification?
       // Strategy 1 (Android + iOS): identifier prefix
-      const isClassIdentifier = id.startsWith(`class_`);
+      const isClassIdentifier = id.startsWith(`class_`) || id.startsWith(`lab_`);
       // Strategy 2 (iOS only): data.type since data is available on iOS
       const isClassData =
         data.type === `class_pre` ||
@@ -2251,7 +2310,7 @@ export async function cancelClassNotificationsImmediately(
       if (isClassIdentifier) {
         // identifier: class_{subjectId}_{sessionIdx}_{unixSec}
         const parts = id.split(`_`);
-        const idSubjId = parts.length >= 2 ? parts[1] : undefined;
+        const idSubjId = parts.length >= 4 ? parts.slice(1, -2).join('_') : (parts.length >= 2 ? parts[1] : undefined);
         if (subjectId && idSubjId === subjectId) {
           matchesSubject = true;
         }
@@ -2296,8 +2355,8 @@ export async function cancelClassNotificationsImmediately(
 
         if (isClassIdentifier) {
           const parts = id.split(`_`);
-          if (parts.length >= 3) {
-            const parsed = parseInt(parts[2], 10);
+          if (parts.length >= 4) {
+            const parsed = parseInt(parts[parts.length - 2], 10);
             if (!isNaN(parsed)) notifSessionIdx = parsed;
           }
         }

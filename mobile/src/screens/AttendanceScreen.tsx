@@ -8,12 +8,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import SaraHUDBanner from '../components/SARA/SaraHUDBanner';
 import { useTheme } from "../contexts/ThemeContext";
-import { useSaraSurface } from '../hooks/useSaraSurface';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
 
-// â”€â”€ Lazy-loaded Modals: Skips parsing ~1,400 LOC of modals on initial boot / tab warm-up â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Lazy-loaded Modals: Skips parsing ~1,400 LOC of modals on initial boot / tab warm-up Ã¢â€â‚¬Ã¢â€â‚¬
 const AddSubjectModal = React.lazy(() => import('../components/Academic/AddSubjectModal').then(m => ({ default: m.AddSubjectModal })));
 const TimetableModal = React.lazy(() => import('../components/Academic/TimetableModal').then(m => ({ default: m.TimetableModal })));
 const ClassNotifSettingsModal = React.lazy(() => import('../components/Academic/ClassNotifSettingsModal'));
@@ -53,9 +51,8 @@ import Reanimated, {
   LinearTransition,
   Easing,
 } from 'react-native-reanimated';
-import { Svg, Circle } from 'react-native-svg';
 
-// ── Spring-Compressing Action Chip (Frame-0 Touch Physics) ──
+// â”€â”€ Spring-Compressing Action Chip (Frame-0 Touch Physics) â”€â”€
 const SpringChip = React.memo(function SpringChip({
   onPress,
   style,
@@ -79,7 +76,7 @@ const SpringChip = React.memo(function SpringChip({
   );
 });
 
-// ── Apple iOS Tactile Header Action Button (Frame-0 Touch Physics) ──
+// â”€â”€ Apple iOS Tactile Header Action Button (Frame-0 Touch Physics) â”€â”€
 const TactileHeaderBtn = React.memo(function TactileHeaderBtn({
   onPress,
   children,
@@ -103,45 +100,9 @@ const TactileHeaderBtn = React.memo(function TactileHeaderBtn({
   );
 });
 
-// â”€â”€ Smooth Rolling Number Counter (300ms Cubic Ease-Out) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const RollingNumber = React.memo(function RollingNumber({
-  value,
-  suffix = '',
-  style,
-}: {
-  value: number;
-  suffix?: string;
-  style?: any;
-}) {
-  const [displayVal, setDisplayVal] = useState(value);
-  const animVal = useRef(value);
+// â”€â”€ Smooth Rolling Number Counter (Zero-overhead direct render) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  useEffect(() => {
-    if (animVal.current === value) return;
-    const start = animVal.current;
-    const end = value;
-    const duration = 300;
-    const startTime = Date.now();
-
-    const timer = setInterval(() => {
-      const now = Date.now();
-      const progress = Math.min(1, (now - startTime) / duration);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const current = Math.round(start + (end - start) * eased);
-      setDisplayVal(current);
-      if (progress >= 1) {
-        clearInterval(timer);
-        animVal.current = end;
-      }
-    }, 16);
-
-    return () => clearInterval(timer);
-  }, [value]);
-
-  return <Text style={style}>{displayVal}{suffix}</Text>;
-});
-
-// â”€â”€ Elastic Progress Bar with Spring Deceleration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Elastic Progress Bar with Spring Deceleration Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 const ElasticProgressBar = React.memo(function ElasticProgressBar({
   pct,
   color,
@@ -156,8 +117,10 @@ const ElasticProgressBar = React.memo(function ElasticProgressBar({
   const animatedPct = useSharedValue(pct);
 
   useEffect(() => {
-    animatedPct.value = withTiming(Math.max(0, Math.min(100, pct)), {
-      duration: 320,
+    animatedPct.value = withSpring(Math.max(0, Math.min(100, pct)), {
+      damping: 20,
+      stiffness: 180,
+      mass: 0.6,
     });
   }, [pct, animatedPct]);
 
@@ -173,51 +136,11 @@ const ElasticProgressBar = React.memo(function ElasticProgressBar({
   );
 });
 
-// â”€â”€ Bunk Safety Gauge Circular Ring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const BunkSafetyRing = React.memo(function BunkSafetyRing({
-  pct,
-  color,
-  size = 32,
-  strokeWidth = 3,
-}: {
-  pct: number;
-  color: string;
-  size?: number;
-  strokeWidth?: number;
-}) {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const clampedPct = Math.max(0, Math.min(100, pct));
-  const strokeDashoffset = circumference - (circumference * clampedPct) / 100;
+// Ã¢â€â‚¬Ã¢â€â‚¬ Bunk Safety Gauge Circular Ring Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke="rgba(255,255,255,0.08)"
-          strokeWidth={strokeWidth}
-          fill="none"
-        />
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={color}
-          strokeWidth={strokeWidth}
-          strokeDasharray={`${circumference} ${circumference}`}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-          fill="none"
-        />
-      </Svg>
-    </View>
-  );
-});
+import { auth } from '../services/firebase';
 
-// â”€â”€ Pure Memoized Session Action Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ Pure Memoized Session Action Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface SessionRowProps {
   session: any;
   sessionIndex?: number;
@@ -225,6 +148,7 @@ interface SessionRowProps {
   colors: any;
   isDark: boolean;
   styles: any;
+  selectedDate?: string;
   onUndo: (logId: string) => void;
   onLog: (subject: any, type: 'class' | 'lab', action: 'attended' | 'missed' | 'cancelled', existingLogId: string | undefined, sessionIdx: number, logDate?: string, isExtra?: boolean) => void;
 }
@@ -236,6 +160,7 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
   colors,
   isDark,
   styles,
+  selectedDate,
   onUndo,
   onLog,
 }: SessionRowProps) {
@@ -247,40 +172,37 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
     log?.action ?? null
   );
 
-  // Fix #6: Debounce guard to prevent rapid-tap race conditions.
-  // Without this, tapping Present twice quickly to untoggle fails because
-  // log?.id is undefined in the closure on the first frame (optimistic log
-  // hasn't been assigned an ID yet), causing onUndo to abort silently while
-  // the first tap already committed to Firestore.
   const processingRef = useRef(false);
-
-  useEffect(() => {
-    setLocalAction(log?.action ?? null);
-  }, [log?.action, log?.id]);
-
-  const isPresent = localAction === 'attended';
-  const isAbsent = localAction === 'missed';
-  const isCancelled = localAction === 'cancelled';
+  const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deferredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { idx: sessionIdx } = session;
   const isExtra = !!session.isExtra;
-
-  // Existing WhatsApp-grade fluid reaction flash overlays
-  const emeraldRipple = useSharedValue(0);
-  const crimsonWave   = useSharedValue(0);
-
-  const animEmeraldStyle = useAnimatedStyle(() => ({
-    opacity: emeraldRipple.value,
-  }));
-
-  const animCrimsonStyle = useAnimatedStyle(() => ({
-    opacity: crimsonWave.value,
-  }));
 
   // rowColorVal: 0=neutral, 1=present, -1=absent, 0.5=cancelled
   const rowColorVal = useSharedValue(
     log?.action === 'attended' ? 1 : log?.action === 'missed' ? -1 : log?.action === 'cancelled' ? 0.5 : 0
   );
+
+  useEffect(() => {
+    const nextAction = log?.action ?? null;
+    setLocalAction(nextAction);
+    rowColorVal.value = withTiming(
+      nextAction === 'attended' ? 1 : nextAction === 'missed' ? -1 : nextAction === 'cancelled' ? 0.5 : 0,
+      { duration: 200 }
+    );
+  }, [log?.action, log?.id, rowColorVal]);
+
+  useEffect(() => {
+    return () => {
+      if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+      if (deferredTimerRef.current) clearTimeout(deferredTimerRef.current);
+    };
+  }, []);
+
+  const isPresent = localAction === 'attended';
+  const isAbsent = localAction === 'missed';
+  const isCancelled = localAction === 'cancelled';
 
   const rowBgStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
@@ -296,91 +218,116 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
     ),
   }));
 
+  const armDebounceLock = useCallback(() => {
+    processingRef.current = true;
+    if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+    lockTimerRef.current = setTimeout(() => {
+      processingRef.current = false;
+      lockTimerRef.current = null;
+    }, 300);
+  }, []);
+
   const handlePressPresent = useCallback(() => {
     if (processingRef.current) return;
-    processingRef.current = true;
-    setTimeout(() => { processingRef.current = false; }, 300);
+    const cleanDate = (session.date || selectedDate || '').slice(0, 10);
+    const todayStr = getLocalDateString(new Date());
+    if (cleanDate > todayStr) {
+      Alert.alert('Future Date', 'Cannot log attendance for future dates.');
+      return;
+    }
+    armDebounceLock();
     if (isPresent) {
       setLocalAction(null);
       rowColorVal.value = withTiming(0, { duration: 200 });
-      if (log?.id) onUndo(log.id);
+      const fallbackDetId = subject?.id && auth.currentUser?.uid
+        ? `${auth.currentUser.uid}_${subject.id}_${cleanDate}_${type}_${sessionIdx}`
+        : '';
+      const undoId = log?.id || fallbackDetId;
+      if (undoId) {
+        if (deferredTimerRef.current) clearTimeout(deferredTimerRef.current);
+        deferredTimerRef.current = setTimeout(() => {
+          onUndo(undoId);
+        }, 60);
+      }
     } else {
-      emeraldRipple.value = withSequence(
-        withTiming(1, { duration: 120 }),
-        withTiming(0, { duration: 420 })
-      );
+      rowColorVal.value = withTiming(1, { duration: 220 });
       setLocalAction('attended');
-      onLog(subject, type, 'attended', log?.id, sessionIdx, undefined, isExtra);
+      if (deferredTimerRef.current) clearTimeout(deferredTimerRef.current);
+      deferredTimerRef.current = setTimeout(() => {
+        onLog(subject, type, 'attended', log?.id, sessionIdx, cleanDate, isExtra);
+      }, 60);
     }
-  }, [isPresent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, emeraldRipple, rowColorVal]);
+  }, [isPresent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, session.date, selectedDate, rowColorVal, armDebounceLock]);
 
   const handlePressAbsent = useCallback(() => {
     if (processingRef.current) return;
-    processingRef.current = true;
-    setTimeout(() => { processingRef.current = false; }, 300);
+    const cleanDate = (session.date || selectedDate || '').slice(0, 10);
+    const todayStr = getLocalDateString(new Date());
+    if (cleanDate > todayStr) {
+      Alert.alert('Future Date', 'Cannot log attendance for future dates.');
+      return;
+    }
+    armDebounceLock();
     if (isAbsent) {
       setLocalAction(null);
       rowColorVal.value = withTiming(0, { duration: 200 });
-      if (log?.id) onUndo(log.id);
+      const fallbackDetId = subject?.id && auth.currentUser?.uid
+        ? `${auth.currentUser.uid}_${subject.id}_${cleanDate}_${type}_${sessionIdx}`
+        : '';
+      const undoId = log?.id || fallbackDetId;
+      if (undoId) {
+        if (deferredTimerRef.current) clearTimeout(deferredTimerRef.current);
+        deferredTimerRef.current = setTimeout(() => {
+          onUndo(undoId);
+        }, 60);
+      }
     } else {
-      crimsonWave.value = withSequence(
-        withTiming(1, { duration: 100 }),
-        withTiming(0, { duration: 380 })
-      );
+      rowColorVal.value = withTiming(-1, { duration: 220 });
       setLocalAction('missed');
-      onLog(subject, type, 'missed', log?.id, sessionIdx, undefined, isExtra);
+      if (deferredTimerRef.current) clearTimeout(deferredTimerRef.current);
+      deferredTimerRef.current = setTimeout(() => {
+        onLog(subject, type, 'missed', log?.id, sessionIdx, cleanDate, isExtra);
+      }, 60);
     }
-  }, [isAbsent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, crimsonWave, rowColorVal]);
+  }, [isAbsent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, session.date, selectedDate, rowColorVal, armDebounceLock]);
 
   const handlePressCancelled = useCallback(() => {
     if (processingRef.current) return;
-    processingRef.current = true;
-    setTimeout(() => { processingRef.current = false; }, 300);
+    const cleanDate = (session.date || selectedDate || '').slice(0, 10);
+    const todayStr = getLocalDateString(new Date());
+    if (cleanDate > todayStr) {
+      Alert.alert('Future Date', 'Cannot log attendance for future dates.');
+      return;
+    }
+    armDebounceLock();
     if (isCancelled) {
       setLocalAction(null);
       rowColorVal.value = withTiming(0, { duration: 200 });
-      if (log?.id) onUndo(log.id);
+      const fallbackDetId = subject?.id && auth.currentUser?.uid
+        ? `${auth.currentUser.uid}_${subject.id}_${cleanDate}_${type}_${sessionIdx}`
+        : '';
+      const undoId = log?.id || fallbackDetId;
+      if (undoId) {
+        if (deferredTimerRef.current) clearTimeout(deferredTimerRef.current);
+        deferredTimerRef.current = setTimeout(() => {
+          onUndo(undoId);
+        }, 60);
+      }
     } else {
       rowColorVal.value = withTiming(0.5, { duration: 220 });
       setLocalAction('cancelled');
-      onLog(subject, type, 'cancelled', log?.id, sessionIdx, undefined, isExtra);
+      if (deferredTimerRef.current) clearTimeout(deferredTimerRef.current);
+      deferredTimerRef.current = setTimeout(() => {
+        onLog(subject, type, 'cancelled', log?.id, sessionIdx, cleanDate, isExtra);
+      }, 60);
     }
-  }, [isCancelled, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, rowColorVal]);
+  }, [isCancelled, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, session.date, selectedDate, rowColorVal, armDebounceLock]);
 
   return (
     <Reanimated.View
       entering={FadeIn.duration(180)}
       style={[styles.sessionCard, { position: 'relative', overflow: 'hidden' }, rowBgStyle]}
     >
-      {/* WhatsApp Emerald Glow Ripple Overlay */}
-      <Reanimated.View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFillObject,
-          {
-            backgroundColor: isDark ? 'rgba(52, 211, 153, 0.20)' : 'rgba(16, 185, 129, 0.16)',
-            borderRadius: 14,
-            borderWidth: 1.5,
-            borderColor: isDark ? 'rgba(52, 211, 153, 0.45)' : 'rgba(16, 185, 129, 0.40)',
-          },
-          animEmeraldStyle,
-        ]}
-      />
-
-      {/* WhatsApp Crimson Warning Wave Overlay */}
-      <Reanimated.View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFillObject,
-          {
-            backgroundColor: isDark ? 'rgba(239, 68, 68, 0.14)' : 'rgba(220, 38, 38, 0.10)',
-            borderRadius: 14,
-            borderWidth: 1.5,
-            borderColor: isDark ? 'rgba(239, 68, 68, 0.45)' : 'rgba(220, 38, 38, 0.35)',
-          },
-          animCrimsonStyle,
-        ]}
-      />
 
       {/* Left: subject name + time + inline class/lab tag */}
       <View style={{ flex: 1, marginRight: 10 }}>
@@ -455,6 +402,7 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
     prev.session.subject?.name === next.session.subject?.name &&
     prev.log?.id === next.log?.id &&
     prev.log?.action === next.log?.action &&
+    prev.selectedDate === next.selectedDate &&
     prev.isDark === next.isDark &&
     prev.colors === next.colors &&
     prev.styles === next.styles &&
@@ -463,7 +411,7 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
   );
 });
 
-// â”€â”€ Pure Memoized Subject Summary Row (By Subject with Decoupled Plain Labels) â”€â”€
+// Ã¢â€â‚¬Ã¢â€â‚¬ Pure Memoized Subject Summary Row (By Subject with Decoupled Plain Labels) Ã¢â€â‚¬Ã¢â€â‚¬
 interface SubjectSummaryRowProps {
   subject: AttendanceSubject;
   index?: number;
@@ -528,7 +476,7 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
       <View style={styles.bySubjectBunkRow}>
         <Ionicons name="checkmark-circle-outline" size={13.5} color={colors.priorityLow || '#30D158'} style={{ marginRight: 4 }} />
         <Text style={{ color: colors.priorityLow || '#30D158', fontSize: 12, fontFamily: FONT_FAMILY.medium }}>
-          Can miss <RollingNumber value={bunk.count} style={{ color: colors.priorityLow || '#30D158', fontSize: 12, fontFamily: FONT_FAMILY.bold }} /> more
+          Can miss <Text style={{ color: colors.priorityLow || '#30D158', fontSize: 12, fontFamily: FONT_FAMILY.bold }}>{bunk.count}</Text> more
         </Text>
       </View>
     );
@@ -547,7 +495,7 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
       <View style={styles.bySubjectBunkRow}>
         <Ionicons name="warning-outline" size={13.5} color={colors.error || '#FF453A'} style={{ marginRight: 4 }} />
         <Text style={{ color: colors.error || '#FF453A', fontSize: 12, fontFamily: FONT_FAMILY.medium }}>
-          Attend <RollingNumber value={needed} style={{ color: colors.error || '#FF453A', fontSize: 12, fontFamily: FONT_FAMILY.bold }} /> more {needed === 1 ? 'class' : 'classes'} to reach {subject.targetPercentage || 75}%
+          Attend <Text style={{ color: colors.error || '#FF453A', fontSize: 12, fontFamily: FONT_FAMILY.bold }}>{needed}</Text> more {needed === 1 ? 'class' : 'classes'} to reach {subject.targetPercentage || 75}%
         </Text>
       </View>
     );
@@ -567,11 +515,9 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
           <Text style={[styles.bySubjectName, { flex: 1, marginRight: 10 }]} numberOfLines={1}>{subject.name}</Text>
           {combinedStatus.pct !== null ? (
             <View style={[styles.bySubjectPctBadge, { backgroundColor: pColor + '14', borderColor: pColor + '35' }]}>
-              <RollingNumber
-                value={Math.round(combinedStatus.pct)}
-                suffix="%"
-                style={[styles.bySubjectPct, { color: pColor }]}
-              />
+              <Text style={[styles.bySubjectPct, { color: pColor }]}>
+                {Math.round(combinedStatus.pct)}%
+              </Text>
             </View>
           ) : (
             <View style={[styles.bySubjectPctBadge, { backgroundColor: (colors.border || '#333') + '20', borderColor: colors.border }]}>
@@ -634,8 +580,6 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
   );
 });
 
-
-
 interface UnloggedSessionRowProps {
   item: {
     id: string;
@@ -671,6 +615,7 @@ const UnloggedSessionRow = React.memo(function UnloggedSessionRow({
 }: UnloggedSessionRowProps) {
   const isLab = item.type === 'lab';
   const dateInfo = formatAttendanceHistoryDate(item.date);
+  const processingRef = useRef(false);
 
   const handlePressCard = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -678,16 +623,22 @@ const UnloggedSessionRow = React.memo(function UnloggedSessionRow({
   }, [item.date, onSelectDate]);
 
   const handlePresent = useCallback(() => {
+    if (processingRef.current) return;
+    processingRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onLog(item.subject, item.type, 'attended', undefined, item.idx, item.date, false);
   }, [item.subject, item.type, item.idx, item.date, onLog]);
 
   const handleAbsent = useCallback(() => {
+    if (processingRef.current) return;
+    processingRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onLog(item.subject, item.type, 'missed', undefined, item.idx, item.date, false);
   }, [item.subject, item.type, item.idx, item.date, onLog]);
 
   const handleCancelled = useCallback(() => {
+    if (processingRef.current) return;
+    processingRef.current = true;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onLog(item.subject, item.type, 'cancelled', undefined, item.idx, item.date, false);
   }, [item.subject, item.type, item.idx, item.date, onLog]);
@@ -718,9 +669,10 @@ const UnloggedSessionRow = React.memo(function UnloggedSessionRow({
               {dateInfo.dayLabel ? `${dateInfo.dayLabel}, ` : ''}{formatDisplayDate(item.date)}
             </Text>
           </View>
-          <Text style={styles.unloggedTimeText}>
-            â±ï¸ {item.timeStr}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <Ionicons name="time-outline" size={11} color={colors.textSecondary} />
+            <Text style={styles.unloggedTimeText}>{item.timeStr}</Text>
+          </View>
         </View>
       </AnimatedPressable>
 
@@ -770,7 +722,7 @@ export default function AttendanceScreen() {
   const getThemeProgressColor = (urgency: string) =>
     urgency === 'danger' ? colors.priorityHigh : urgency === 'warning' ? colors.priorityMed : colors.priorityLow;
 
-  // â”€â”€ Animated pill visibility: 0 at top (pills invisible), fades in on scroll past 20px â”€â”€
+  // Ã¢â€â‚¬Ã¢â€â‚¬ Animated pill visibility: 0 at top (pills invisible), fades in on scroll past 20px Ã¢â€â‚¬Ã¢â€â‚¬
   const pillAnim = useRef(new Animated.Value(0)).current;
   const isPillVisibleRef = useRef(false);
   const lastScrollY = useRef(0);
@@ -782,7 +734,7 @@ export default function AttendanceScreen() {
       // transition animation frame completes. Firing it immediately causes
       // visible jitter because the list is snapping while the screen is
       // still sliding in. At 50ms the transition is done but the eye hasn't
-      // settled on content yet â€” the reset is invisible.
+      // settled on content yet Ã¢â‚¬â€ the reset is invisible.
       const t = setTimeout(() => {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
         isPillVisibleRef.current = false;
@@ -846,8 +798,6 @@ export default function AttendanceScreen() {
     editSubject, setEditSubject,
     extraSubjectId, setExtraSubjectId,
     dismissedWarnings, setDismissedWarnings,
-    overrideOpen, setOverrideOpen,
-    overrideCounts, setOverrideCounts,
     confirmConfig, setConfirmConfig,
     
     // Derived
@@ -856,23 +806,22 @@ export default function AttendanceScreen() {
     globalAttended, globalTotal, globalPct, globalSafe,
   } = data;
 
-  // --- SARA Surface ---
-  const surfaceData = useMemo(() => ({ subjects, logs }), [subjects, logs]);
-  const { surfaceMessage, surfaceActionLabel, dismissBanner } = useSaraSurface("AttendanceScreen", surfaceData as any, user?.uid);
+
 
   const firestoreActions = useAttendanceFirestore({
     user, subjects, logs, selectedDate, logsBySubjectId,
-    overrideCounts, setOverrideOpen, setConfirmConfig,
+    setConfirmConfig,
     optimisticUpdateAttendance: academic.optimisticUpdateAttendance,
     optimisticAddAttendanceLog: academic.optimisticAddAttendanceLog,
     optimisticUpdateAttendanceLog: academic.optimisticUpdateAttendanceLog,
     optimisticRemoveAttendanceLog: academic.optimisticRemoveAttendanceLog,
     optimisticDeleteSubject: academic.optimisticDeleteSubject,
     optimisticToggleHoliday: academic.optimisticToggleHoliday,
+    optimisticClearAttendanceLogs: academic.optimisticClearAttendanceLogs,
   });
   const {
     handleLog, handleUndo, handleToggleHoliday, handleDeleteSubject,
-    handleApplyOverride, handleResetSemester
+    handleResetSemester
   } = firestoreActions;
 
   // Holiday tactile palm tree bounce worklet
@@ -891,18 +840,14 @@ export default function AttendanceScreen() {
 
   const handleAddSubject = () => {
     setIsTimetableOpen(false);
-    setTimeout(() => {
-      setEditSubject(null);
-      setShowAddModal(true);
-    }, 240);
+    setEditSubject(null);
+    setShowAddModal(true);
   };
 
   const handleEditSubject = useCallback((subject: AttendanceSubject) => {
     setIsTimetableOpen(false);
-    setTimeout(() => {
-      setEditSubject(subject);
-      setShowAddModal(true);
-    }, 240);
+    setEditSubject(subject);
+    setShowAddModal(true);
   }, []);
 
   const renderItem = useCallback(({ item: session }: { item: any }) => {
@@ -942,6 +887,7 @@ export default function AttendanceScreen() {
         colors={colors}
         isDark={isDark}
         styles={styles}
+        selectedDate={selectedDate}
         onUndo={handleUndo}
         onLog={handleLog}
       />
@@ -950,7 +896,7 @@ export default function AttendanceScreen() {
 
   const listHeader = useMemo(() => (
     <>
-      {/* â”€â”€ Semester Overview â”€â”€ */}
+      {/* Ã¢â€â‚¬Ã¢â€â‚¬ Semester Overview Ã¢â€â‚¬Ã¢â€â‚¬ */}
       <View style={{ marginBottom: 0 }}>
         <View style={styles.overviewCard}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -959,11 +905,9 @@ export default function AttendanceScreen() {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             {globalPct !== null ? (
-              <RollingNumber
-                value={Math.round(globalPct)}
-                suffix="%"
-                style={[styles.overviewPct, { color: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.error)) : colors.textMuted }]}
-              />
+              <Text style={[styles.overviewPct, { color: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.error)) : colors.textMuted }]}>
+                {Math.round(globalPct)}%
+              </Text>
             ) : (
               <Text style={[styles.overviewPct, { color: colors.textMuted }]}>--%</Text>
             )}
@@ -977,7 +921,7 @@ export default function AttendanceScreen() {
         </View>
       </View>
 
-      {/* â”€â”€ Warnings â”€â”€ */}
+      {/* Ã¢â€â‚¬Ã¢â€â‚¬ Warnings Ã¢â€â‚¬Ã¢â€â‚¬ */}
       {warningSubjects.length > 0 && (
         <View style={styles.warningBanner}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1006,7 +950,7 @@ export default function AttendanceScreen() {
         </View>
       )}
 
-      {/* â”€â”€ Swipeable Horizontal Week Strip â”€â”€ */}
+      {/* Ã¢â€â‚¬Ã¢â€â‚¬ Swipeable Horizontal Week Strip Ã¢â€â‚¬Ã¢â€â‚¬ */}
       <HorizontalWeekStrip
         selectedDate={selectedDate}
         onSelectDate={setSelectedDate}
@@ -1014,7 +958,7 @@ export default function AttendanceScreen() {
         today={today}
       />
 
-      {/* â”€â”€ Daily Schedule â”€â”€ */}
+      {/* Ã¢â€â‚¬Ã¢â€â‚¬ Daily Schedule Ã¢â€â‚¬Ã¢â€â‚¬ */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 2, marginTop: 4, marginBottom: 10 }}>
         <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>TODAY'S CLASSES</Text>
         <TouchableOpacity onPress={() => setIsExtraOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -1052,15 +996,9 @@ export default function AttendanceScreen() {
   return (
     <View style={styles.root}>
       <View style={{ flex: 1 }}>
-        {/* Cap 5: PSI surface banner for at-risk subjects */}
-        <SaraHUDBanner
-          message={surfaceMessage || ''}
-          visible={!!surfaceMessage}
-          onDismiss={dismissBanner}
-          actionLabel={surfaceActionLabel || undefined}
-        />
 
-        {/* â”€â”€ Single Sticky Header (Absolute below status bar, 100% Transparent Background, Morphs to Glass Pills on scroll) â”€â”€ */}
+
+        {/* Ã¢â€â‚¬Ã¢â€â‚¬ Single Sticky Header (Absolute below status bar, 100% Transparent Background, Morphs to Glass Pills on scroll) Ã¢â€â‚¬Ã¢â€â‚¬ */}
         <View style={[styles.topHeaderWrapper, { top: insets.top }]} pointerEvents="box-none">
           <View style={styles.headerInner}>
             <Text style={styles.headerTitle}>Attendance</Text>
@@ -1218,7 +1156,7 @@ export default function AttendanceScreen() {
               <EmptyState
                 style={{ marginTop: 0 }}
                 mascot="idle"
-                title={isSelectedHoliday ? "Holiday 🌴" : "All clear!"}
+                title={isSelectedHoliday ? "Holiday ðŸŒ´" : "All clear!"}
                 subtitle={isSelectedHoliday ? "Enjoy your day off. No classes today." : "No classes scheduled for this day. Relax or catch up on work."}
                 action={subjects.length === 0 ? {
                   label: "Setup Timetable",
@@ -1232,7 +1170,7 @@ export default function AttendanceScreen() {
         />
       )}
 
-      {/* ── Lazy Loaded Modals ── */}
+      {/* â”€â”€ Lazy Loaded Modals â”€â”€ */}
       <Suspense fallback={null}>
         {/* Timetable Modal */}
         {isTimetableOpen && (
@@ -1303,6 +1241,7 @@ export default function AttendanceScreen() {
               handleEditSubject(subj);
             }}
             onResetSubject={(subj) => {
+              setContextMenuSubject(null);
               Alert.alert(
                 'Reset Attendance',
                 `Are you sure you want to reset attendance for "${subj.name}"? This will set attended and total counts to 0.`,
@@ -1311,13 +1250,38 @@ export default function AttendanceScreen() {
                   {
                     text: 'Reset',
                     style: 'destructive',
-                    onPress: () => {
-                      academic.optimisticUpdateAttendance(subj.id, {
+                    onPress: async () => {
+                      const resetPayload = {
                         classesAttended: 0,
                         classesTotal: 0,
                         labsAttended: 0,
                         labsTotal: 0,
+                        lastUpdated: Date.now(),
+                      };
+                      academic.optimisticUpdateAttendance(subj.id, resetPayload);
+                      const subjLogs = logs.filter(l => l.subjectId === subj.id || l.subjectName === subj.name);
+                      subjLogs.forEach(l => {
+                        if (l.id) academic.optimisticRemoveAttendanceLog(l.id);
                       });
+                      const { doc, updateDoc, deleteDoc } = await import('firebase/firestore');
+                      const { db } = await import('../services/firebase');
+                      const { COLLECTION } = await import('../config/constants');
+                      const { safeUpdate, safeDelete } = await import('../utils/safeWrite');
+                      await safeUpdate(
+                        subj.id,
+                        COLLECTION.ATTENDANCE,
+                        resetPayload,
+                        () => updateDoc(doc(db, COLLECTION.ATTENDANCE, subj.id), resetPayload)
+                      ).catch(() => {});
+                      await Promise.all(
+                        subjLogs
+                          .filter(l => !!l.id)
+                          .map(l =>
+                            safeDelete(l.id!, COLLECTION.ATTENDANCE_LOGS, () =>
+                              deleteDoc(doc(db, COLLECTION.ATTENDANCE_LOGS, l.id!))
+                            ).catch(() => {})
+                          )
+                      );
                     },
                   },
                 ]
@@ -1335,7 +1299,7 @@ export default function AttendanceScreen() {
               <View style={{ flex: 1, marginRight: 10 }}>
                 <Text style={styles.sheetTitle}>Unlogged Classes & Labs</Text>
                 <Text style={{ fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
-                  {unloggedSessions.length} {unloggedSessions.length === 1 ? 'past session' : 'past sessions'} pending • Newest first
+                  {unloggedSessions.length} {unloggedSessions.length === 1 ? 'past session' : 'past sessions'} pending â€¢ Newest first
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setIsUnloggedOpen(false)} style={{ padding: 4 }}>
@@ -1350,17 +1314,23 @@ export default function AttendanceScreen() {
               >
                 <Ionicons name="checkmark-done-circle-outline" size={48} color={isDark ? '#34D399' : '#059669'} />
                 <Text style={{ fontSize: 16, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
-                  All Caught Up! 🎉
+                  All Caught Up! ðŸŽ‰
                 </Text>
                 <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', paddingHorizontal: 20 }}>
                   No unlogged classes or labs found in the past 30 days. Everything is up to date.
                 </Text>
               </Reanimated.View>
             ) : (
-              <ScrollView style={{ marginTop: 12, marginBottom: 8 }} showsVerticalScrollIndicator={false}>
-                {unloggedSessions.map(item => (
+              <FlatList
+                data={unloggedSessions}
+                keyExtractor={item => item.id}
+                style={{ marginTop: 12, marginBottom: 8, maxHeight: 400 }}
+                showsVerticalScrollIndicator={false}
+                initialNumToRender={6}
+                maxToRenderPerBatch={6}
+                windowSize={5}
+                renderItem={({ item }) => (
                   <UnloggedSessionRow
-                    key={item.id}
                     item={item}
                     colors={colors}
                     isDark={isDark}
@@ -1371,8 +1341,8 @@ export default function AttendanceScreen() {
                     }}
                     onLog={handleLog}
                   />
-                ))}
-              </ScrollView>
+                )}
+              />
             )}
           </View>
         </BottomSheet>
@@ -1384,7 +1354,7 @@ export default function AttendanceScreen() {
           <View style={{ width: '100%' }}>
             <Text style={[styles.sheetTitle, { marginBottom: 16 }]}>Log Extra Class</Text>
 
-            {/* Subject selector — vertical full-width pills */}
+            {/* Subject selector â€” vertical full-width pills */}
             <ScrollView style={{ maxHeight: 180, marginBottom: 20 }} showsVerticalScrollIndicator={false}>
               {subjects.map(s => (
                 <TouchableOpacity
@@ -1402,7 +1372,7 @@ export default function AttendanceScreen() {
               ))}
             </ScrollView>
 
-            {/* Action rows — CLASS and LAB */}
+            {/* Action rows â€” CLASS and LAB */}
             {(['class', 'lab'] as const).map(type => (
               <View key={type} style={styles.extraTypeRow}>
                 <Text style={styles.extraTypeLabel}>{type === 'class' ? 'Class' : 'Lab'}</Text>
@@ -1410,7 +1380,13 @@ export default function AttendanceScreen() {
                   <TouchableOpacity
                     style={[styles.extraActionBtn, styles.extraActionAttended, !extraSubjectId && { opacity: 0.3 }]}
                     disabled={!extraSubjectId}
-                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'attended', undefined, 0, selectedDate, true); setIsExtraOpen(false); }}
+                    onPress={() => {
+                      const targetSub = subjects.find(s => s.id === extraSubjectId);
+                      if (targetSub) {
+                        handleLog(targetSub, type, 'attended', undefined, 0, selectedDate, true);
+                        setIsExtraOpen(false);
+                      }
+                    }}
                   >
                     <Ionicons name="checkmark" size={15} color={isDark ? "#5eda9e" : "#059669"} />
                     <Text style={styles.extraActionAttendedText}>Attended</Text>
@@ -1418,7 +1394,13 @@ export default function AttendanceScreen() {
                   <TouchableOpacity
                     style={[styles.extraActionBtn, styles.extraActionMissed, !extraSubjectId && { opacity: 0.3 }]}
                     disabled={!extraSubjectId}
-                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'missed', undefined, 0, selectedDate, true); setIsExtraOpen(false); }}
+                    onPress={() => {
+                      const targetSub = subjects.find(s => s.id === extraSubjectId);
+                      if (targetSub) {
+                        handleLog(targetSub, type, 'missed', undefined, 0, selectedDate, true);
+                        setIsExtraOpen(false);
+                      }
+                    }}
                   >
                     <Ionicons name="close" size={15} color={isDark ? "#ff6961" : "#DC2626"} />
                     <Text style={styles.extraActionMissedText}>Missed</Text>

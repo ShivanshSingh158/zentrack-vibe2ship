@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { MultiDayPlanEntry } from '../components/Gym/GymAiMultiDayPlanTypes';
 import type { GymPlanDay } from '../types/gym.types';
+import { resolveExerciseTargetMuscle, getBiomechanicalPrescription } from '../utils/gymUtils';
 
 export interface UseGymAiPlanManagerParams {
   log: any;
@@ -22,15 +23,21 @@ export function useGymAiPlanManager({
   updateFullMasterPlan,
 }: UseGymAiPlanManagerParams) {
   const handleAiAddExercise = useCallback((name: string, targetSets: number, targetReps: string) => {
+    const resolvedMuscle = resolveExerciseTargetMuscle(name).targetMuscle;
+    const prescription = getBiomechanicalPrescription(name, resolvedMuscle);
+    const setsCount = targetSets || prescription.targetSets || 3;
+    const repsStr = targetReps || prescription.targetReps || '8-12';
+    const restSecs = prescription.restTimeSecs || 90;
+
     addExercise({
       exerciseId: `ai_${Date.now()}`,
       name,
-      targetSets,
-      targetReps,
-      muscle: 'Mixed',
+      targetSets: setsCount,
+      targetReps: repsStr,
+      muscle: resolvedMuscle,
       videoId: '',
-      restTimeSecs: 90,
-      setsLog: Array.from({ length: targetSets }, (_, i) => ({
+      restTimeSecs: restSecs,
+      setsLog: Array.from({ length: setsCount }, (_, i) => ({
         setNumber: i + 1,
         reps: null,
         weight: null,
@@ -50,21 +57,29 @@ export function useGymAiPlanManager({
 
   const handleAiGenerateWorkoutPlan = useCallback((planName: string, exercises: { name: string; sets: number; reps: string }[]) => {
     if (!log) return;
-    const newExercises = exercises.map((e, idx) => ({
-      exerciseId: `ai_plan_${Date.now()}_${idx}`,
-      name: e.name,
-      targetSets: e.sets,
-      targetReps: e.reps,
-      muscle: 'Mixed',
-      videoId: '',
-      restTimeSecs: 90,
-      setsLog: Array.from({ length: e.sets }, (_, i) => ({
-        setNumber: i + 1,
-        reps: null,
-        weight: null,
-        completed: false,
-      })),
-    }));
+    const newExercises = exercises.map((e, idx) => {
+      const resolvedMuscle = resolveExerciseTargetMuscle(e.name).targetMuscle;
+      const prescription = getBiomechanicalPrescription(e.name, resolvedMuscle);
+      const setsCount = e.sets || prescription.targetSets || 3;
+      const repsStr = e.reps || prescription.targetReps || '8-12';
+      const restSecs = prescription.restTimeSecs || 90;
+
+      return {
+        exerciseId: `ai_plan_${Date.now()}_${idx}`,
+        name: e.name,
+        targetSets: setsCount,
+        targetReps: repsStr,
+        muscle: resolvedMuscle,
+        videoId: '',
+        restTimeSecs: restSecs,
+        setsLog: Array.from({ length: setsCount }, (_, i) => ({
+          setNumber: i + 1,
+          reps: null,
+          weight: null,
+          completed: false,
+        })),
+      };
+    });
 
     saveLog({
       ...log,
@@ -81,16 +96,20 @@ export function useGymAiPlanManager({
         name: d.dayName,
         subtitle: d.focus || d.dayName,
         focus: d.focus || d.dayName,
-        exercises: d.exercises.map((ex: any, idx: number) => ({
-          id: `ai_import_${d.dayIndex}_${Date.now()}_${idx}`,
-          name: ex.name,
-          targetSets: ex.targetSets,
-          targetReps: ex.targetReps,
-          muscle: ex.muscle || 'Mixed',
-          videoId: '',
-          restTimeSecs: 90,
-          isCompound: false,
-        })),
+        exercises: d.exercises.map((ex: any, idx: number) => {
+          const resolvedMuscle = resolveExerciseTargetMuscle(ex.name, ex.muscle).targetMuscle;
+          const prescription = getBiomechanicalPrescription(ex.name, resolvedMuscle);
+          return {
+            id: `ai_import_${d.dayIndex}_${Date.now()}_${idx}`,
+            name: ex.name,
+            targetSets: ex.targetSets || prescription.targetSets || 3,
+            targetReps: ex.targetReps || prescription.targetReps || '8-12',
+            muscle: resolvedMuscle,
+            videoId: '',
+            restTimeSecs: prescription.restTimeSecs || 90,
+            isCompound: false,
+          };
+        }),
         isRest: false,
       };
     }
@@ -112,14 +131,17 @@ export function useGymAiPlanManager({
       isRest: false,
     };
 
+    const resolvedMuscle = resolveExerciseTargetMuscle(exercise.name, exercise.muscle).targetMuscle;
+    const prescription = getBiomechanicalPrescription(exercise.name, resolvedMuscle);
+
     const newExercise = {
       id: `ai_single_${dayIndex}_${Date.now()}`,
       name: exercise.name,
-      targetSets: exercise.targetSets,
-      targetReps: exercise.targetReps,
-      muscle: exercise.muscle || 'Mixed',
+      targetSets: exercise.targetSets || prescription.targetSets || 3,
+      targetReps: exercise.targetReps || prescription.targetReps || '8-12',
+      muscle: resolvedMuscle,
       videoId: '',
-      restTimeSecs: 90,
+      restTimeSecs: prescription.restTimeSecs || 90,
       isCompound: false,
     };
 

@@ -196,7 +196,11 @@ export function resolveMonthDay(monthStr: string, dayNum: number): Date | null {
   const now = new Date();
   const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   let candidate = new Date(now.getFullYear(), monthIdx, dayNum);
-  if (candidate < todayDate) candidate = new Date(now.getFullYear() + 1, monthIdx, dayNum);
+  if (candidate.getMonth() !== monthIdx) return null;
+  if (candidate < todayDate) {
+    candidate = new Date(now.getFullYear() + 1, monthIdx, dayNum);
+    if (candidate.getMonth() !== monthIdx) return null;
+  }
   return candidate;
 }
 
@@ -1038,7 +1042,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
         if (period === 'pm' && h < 12) h += 12;
         if (period === 'am' && h === 12) h = 0;
         const hh = h.toString().padStart(2, '0');
-        const mm = mins.toString().padStart(2, '00');
+        const mm = mins.toString().padStart(2, '0');
         timeSlot = `${hh}:${mm}`;
         const hr12 = h % 12 || 12;
         const ampm = h >= 12 ? 'pm' : 'am';
@@ -1086,7 +1090,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
         let h = parseInt(quarterToM[1], 10);
         if (h < 8 && !hasMorningHint) h += 12;
         const baseH = h - 1;
-        timeSlot = `${baseH.toString().padStart(2, '00')}:45`;
+        timeSlot = `${baseH.toString().padStart(2, '0')}:45`;
         const hr12 = baseH % 12 || 12;
         registerToken('time', quarterToM[0], `${hr12}:45${baseH >= 12 ? 'pm' : 'am'}`);
       }

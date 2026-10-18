@@ -1,13 +1,13 @@
-﻿import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useCallback, useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  PanResponder,
   Dimensions,
   LayoutChangeEvent,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -172,40 +172,47 @@ const WeekRow = React.memo(function WeekRow({
   onSelectDate,
   colors,
   isDark,
-  pillWidth,
+  containerWidth,
   pillActiveStyle,
+  hasPill,
 }: {
   dates: DateObj[];
   taskDates?: Set<string>;
   onSelectDate: (d: string) => void;
   colors: any;
   isDark: boolean;
-  pillWidth: number;
+  containerWidth: number;
   pillActiveStyle: any;
+  hasPill: boolean;
 }) {
   const activeIndex = dates.findIndex(d => d.active);
 
-  // Pill starts at the correct position immediately (no wrong initial value)
-  const pillX = useSharedValue(activeIndex >= 0 ? activeIndex * pillWidth : -999);
+  // Exact flex layout math: 8px padding on each side (16px total) + 6 gaps of 6px (36px total)
+  const itemWidth = Math.max(0, (containerWidth - 52) / 7);
+  const step = itemWidth + 6;
+
+  // Pill starts at exact item position (never -999 which leaks on wide displays)
+  const pillX = useSharedValue(activeIndex >= 0 ? activeIndex * step : 0);
 
   useEffect(() => {
-    const target = activeIndex >= 0 ? activeIndex * pillWidth : -999;
-    pillX.value = withSpring(target, {
-      damping: 26,
-      stiffness: 280,
-      mass: 0.75,
-    });
-  }, [activeIndex, pillWidth]);
+    if (activeIndex >= 0) {
+      pillX.value = withSpring(activeIndex * step, {
+        damping: 26,
+        stiffness: 280,
+        mass: 0.75,
+      });
+    }
+  }, [activeIndex, step]);
 
   const pillStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: pillX.value }],
   }));
 
   return (
-    <View style={[styles_weekPage, { width: pillWidth * 7 }]}>
-      {pillWidth > 0 && (
+    <View style={[styles_weekPage, { width: containerWidth }]}>
+      {hasPill && activeIndex >= 0 && itemWidth > 0 && (
         <Animated.View
-          style={[pillActiveStyle, { width: pillWidth - 6 }, pillStyle]}
+          style={[pillActiveStyle, { width: itemWidth }, pillStyle]}
           pointerEvents="none"
         />
       )}
@@ -256,6 +263,9 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({
   const currentDateRef = useRef(selectedDate);
   currentDateRef.current = selectedDate;
 
+  const onSelectDateRef = useRef(onSelectDate);
+  onSelectDateRef.current = onSelectDate;
+
   // Keep anchor in sync if selectedDate moves outside the current 7-day window
   useEffect(() => {
     if (!anchorDateRef.current) return;
@@ -266,17 +276,18 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({
     if (cur < minD || cur > maxD) setAnchorDate(selectedDate);
   }, [selectedDate]);
 
+  // Prev and next weeks do NOT depend on selectedDate — eliminates 14 date recalculations per tap
   const prevWeekDates = useMemo(() => {
-    return generateDatesForAnchor(offsetDateStr(anchorDate, -7), selectedDate);
-  }, [anchorDate, selectedDate]);
+    return generateDatesForAnchor(offsetDateStr(anchorDate, -7), '');
+  }, [anchorDate]);
 
   const currentWeekDates = useMemo(() => {
     return generateDatesForAnchor(anchorDate, selectedDate);
   }, [anchorDate, selectedDate]);
 
   const nextWeekDates = useMemo(() => {
-    return generateDatesForAnchor(offsetDateStr(anchorDate, 7), selectedDate);
-  }, [anchorDate, selectedDate]);
+    return generateDatesForAnchor(offsetDateStr(anchorDate, 7), '');
+  }, [anchorDate]);
 
   const activeDateObj = useMemo(() => {
     const found = currentWeekDates.find((d) => d.active);
@@ -297,14 +308,20 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({
     };
   }, [currentWeekDates, selectedDate]);
 
-  const pillWidth = containerWidth / 7;
-
   const translateX = useSharedValue(-initialWidth);
-  const isAnimatingRef = useRef(false);
+  const [needResetTranslate, setNeedResetTranslate] = useState(false);
 
   useEffect(() => {
     translateX.value = -containerWidth;
   }, [containerWidth, translateX]);
+
+  // Reset translateX after anchorDate has committed render to eliminate 1-2 frame visual flash
+  useEffect(() => {
+    if (needResetTranslate) {
+      translateX.value = -containerWidthRef.current;
+      setNeedResetTranslate(false);
+    }
+  }, [anchorDate, needResetTranslate, translateX]);
 
   const animatedPagerStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -321,70 +338,76 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({
   }, [translateX]);
 
   const commitNextWeek = useCallback(() => {
+    Haptics.selectionAsync();
     const nextAnchor = offsetDateStr(anchorDateRef.current, 7);
     const nextSelected = offsetDateStr(currentDateRef.current, 7);
     setAnchorDate(nextAnchor);
-    onSelectDate(nextSelected);
-    translateX.value = -containerWidthRef.current;
-    isAnimatingRef.current = false;
-  }, [onSelectDate, translateX]);
+    onSelectDateRef.current(nextSelected);
+    setNeedResetTranslate(true);
+  }, []);
 
   const commitPrevWeek = useCallback(() => {
+    Haptics.selectionAsync();
     const prevAnchor = offsetDateStr(anchorDateRef.current, -7);
     const prevSelected = offsetDateStr(currentDateRef.current, -7);
     setAnchorDate(prevAnchor);
-    onSelectDate(prevSelected);
-    translateX.value = -containerWidthRef.current;
-    isAnimatingRef.current = false;
-  }, [onSelectDate, translateX]);
+    onSelectDateRef.current(prevSelected);
+    setNeedResetTranslate(true);
+  }, []);
 
   const handleJumpToToday = useCallback(() => {
     Haptics.selectionAsync();
     const todayStr = formatLocalDateStr(new Date());
     setAnchorDate(todayStr);
-    onSelectDate(todayStr);
+    onSelectDateRef.current(todayStr);
     translateX.value = -containerWidthRef.current;
-  }, [onSelectDate, translateX]);
+  }, [translateX]);
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gs) => {
-          if (isAnimatingRef.current) return false;
-          return Math.abs(gs.dx) > 12 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5;
-        },
-        onPanResponderGrant: () => {},
-        onPanResponderMove: (_, gs) => {
-          if (isAnimatingRef.current) return;
-          translateX.value = -containerWidthRef.current + gs.dx;
-        },
-        onPanResponderRelease: (_, gs) => {
-          if (isAnimatingRef.current) return;
-          const w = containerWidthRef.current;
-          if (gs.dx < -32 || gs.vx < -0.35) {
-            isAnimatingRef.current = true;
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            translateX.value = withTiming(-2 * w, { duration: 200, easing: Easing.bezier(0.25, 0.1, 0.25, 1) },
-              (finished) => { if (finished) runOnJS(commitNextWeek)(); });
-          } else if (gs.dx > 32 || gs.vx > 0.35) {
-            isAnimatingRef.current = true;
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            translateX.value = withTiming(0, { duration: 200, easing: Easing.bezier(0.25, 0.1, 0.25, 1) },
-              (finished) => { if (finished) runOnJS(commitPrevWeek)(); });
-          } else {
-            translateX.value = withSpring(-w, { damping: 28, stiffness: 300, mass: 0.8 });
-          }
-        },
-        onPanResponderTerminate: () => {
-          if (isAnimatingRef.current) return;
-          translateX.value = withSpring(-containerWidthRef.current, { damping: 28, stiffness: 300, mass: 0.8 });
-        },
-      }),
-    [commitNextWeek, commitPrevWeek, translateX]
-  );
+  // Native UI thread 60/120fps gesture with zero bridge latency
+  const panGesture = useMemo(() => {
+    return Gesture.Pan()
+      .activeOffsetX([-8, 8])
+      .failOffsetY([-14, 14])
+      .onUpdate((event) => {
+        'worklet';
+        const w = containerWidth;
+        translateX.value = -w + event.translationX;
+      })
+      .onEnd((event) => {
+        'worklet';
+        const w = containerWidth;
+        const threshold = Math.min(w * 0.18, 50);
+
+        if (event.translationX < -threshold || event.velocityX < -350) {
+          // Slide to next week
+          translateX.value = withTiming(
+            -2 * w,
+            { duration: 180, easing: Easing.bezier(0.25, 0.1, 0.25, 1) },
+            () => {
+              'worklet';
+              runOnJS(commitNextWeek)();
+            }
+          );
+        } else if (event.translationX > threshold || event.velocityX > 350) {
+          // Slide to prev week
+          translateX.value = withTiming(
+            0,
+            { duration: 180, easing: Easing.bezier(0.25, 0.1, 0.25, 1) },
+            () => {
+              'worklet';
+              runOnJS(commitPrevWeek)();
+            }
+          );
+        } else {
+          // Snap back
+          translateX.value = withTiming(-w, { duration: 160 });
+        }
+      });
+  }, [containerWidth, commitNextWeek, commitPrevWeek, translateX]);
 
   return (
-    <View style={[styles.container, style]} onLayout={onContainerLayout} {...panResponder.panHandlers}>
+    <GestureDetector gesture={panGesture}>
+      <View style={[styles.container, style]} onLayout={onContainerLayout}>
       <View style={styles.headerRow}>
         <View style={styles.headerLeftCol}>
           <Text style={styles.dayFullText}>{activeDateObj.dayFull}</Text>
@@ -405,12 +428,13 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({
         </View>
       </View>
 
-      <Animated.View style={[styles.pagerRow, animatedPagerStyle]}>
-        <WeekRow dates={prevWeekDates}    taskDates={taskDates} onSelectDate={onSelectDate} colors={colors} isDark={isDark} pillWidth={pillWidth} pillActiveStyle={styles.activePill} />
-        <WeekRow dates={currentWeekDates} taskDates={taskDates} onSelectDate={onSelectDate} colors={colors} isDark={isDark} pillWidth={pillWidth} pillActiveStyle={styles.activePill} />
-        <WeekRow dates={nextWeekDates}    taskDates={taskDates} onSelectDate={onSelectDate} colors={colors} isDark={isDark} pillWidth={pillWidth} pillActiveStyle={styles.activePill} />
-      </Animated.View>
-    </View>
+        <Animated.View style={[styles.pagerRow, animatedPagerStyle]}>
+          <WeekRow dates={prevWeekDates}    taskDates={taskDates} onSelectDate={onSelectDate} colors={colors} isDark={isDark} containerWidth={containerWidth} pillActiveStyle={styles.activePill} hasPill={false} />
+          <WeekRow dates={currentWeekDates} taskDates={taskDates} onSelectDate={onSelectDate} colors={colors} isDark={isDark} containerWidth={containerWidth} pillActiveStyle={styles.activePill} hasPill={true} />
+          <WeekRow dates={nextWeekDates}    taskDates={taskDates} onSelectDate={onSelectDate} colors={colors} isDark={isDark} containerWidth={containerWidth} pillActiveStyle={styles.activePill} hasPill={false} />
+        </Animated.View>
+      </View>
+    </GestureDetector>
   );
 });
 

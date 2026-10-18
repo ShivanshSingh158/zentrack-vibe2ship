@@ -243,13 +243,11 @@ export const CalendarDayView = React.memo(function CalendarDayView({
                     ]}
                     onPress={() => {
                       if (event.type === 'gym') {
-                        const log = gymLogs?.find((g: any) => g.id === event.id);
-                        if (log) {
-                          setSelectedGymLog(log);
-                          setGymStartTimeInput(event.startTime || '10:00');
-                          setGymEndTimeInput(event.endTime || '11:00');
-                          setShowGymModal(true);
-                        }
+                        const log = gymLogs?.find((g: any) => g.id === event.id || g.date === event.date) || { id: event.id || `gym_${event.date}`, date: event.date };
+                        setSelectedGymLog(log);
+                        setGymStartTimeInput(event.startTime || '10:00');
+                        setGymEndTimeInput(event.endTime || '11:00');
+                        setShowGymModal(true);
                       } else {
                         setSelectedEvent(event);
                         setShowEventModal(true);

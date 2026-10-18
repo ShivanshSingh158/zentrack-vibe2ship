@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Task } from '../../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, SHADOW } from '../../theme/tokens';
@@ -16,40 +16,45 @@ const { width } = Dimensions.get('window');
 const GRID_GAP = 12;
 const CARD_WIDTH = (width - 40 - GRID_GAP) / 2; // 20 padding on each side
 
-export default function MatrixView({ tasks, onTaskPress }: MatrixViewProps) {
+const MatrixView = React.memo(function MatrixView({ tasks, onTaskPress }: MatrixViewProps) {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors);
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const todayStr = formatLocalDateStr(new Date());
-  const tomorrowObj = new Date();
-  tomorrowObj.setDate(tomorrowObj.getDate() + 1);
-  const tomorrowStr = formatLocalDateStr(tomorrowObj);
+  const { q1, q2, q3, q4, todayStr, tomorrowStr } = useMemo(() => {
+    const today = formatLocalDateStr(new Date());
+    const tomorrowObj = new Date();
+    tomorrowObj.setDate(tomorrowObj.getDate() + 1);
+    const tomorrow = formatLocalDateStr(tomorrowObj);
 
-  // Helper to determine if a date is soon
-  const isUrgentDate = (date?: string) => {
-    if (!date) return true; // Inbox/No date = urgent
-    return date <= tomorrowStr;
-  };
+    const isUrgentDate = (date?: string) => !date || date <= tomorrow;
+    const isImportant = (priority: string) => priority === 'high' || priority === 'P1';
+    const isMedium = (priority: string) => priority === 'medium' || priority === 'P2';
 
-  const isImportant = (priority: string) => {
-    return priority === 'high' || priority === 'P1';
-  };
+    const r1: Task[] = [];
+    const r2: Task[] = [];
+    const r3: Task[] = [];
+    const r4: Task[] = [];
 
-  // Q1: Urgent & Important
-  const q1 = tasks.filter(t => t.status !== 'completed' && isImportant(t.priority) && isUrgentDate(t.date));
-  
-  // Q2: Not Urgent & Important OR Medium priority
-  const q2 = tasks.filter(t => t.status !== 'completed' && ((isImportant(t.priority) && !isUrgentDate(t.date)) || priorityIs(t.priority, 'medium', 'P2')));
-  
-  // Q3: Urgent & Not Important
-  const q3 = tasks.filter(t => t.status !== 'completed' && priorityIs(t.priority, 'low', 'P3') && isUrgentDate(t.date));
-  
-  // Q4: Not Urgent & Not Important
-  const q4 = tasks.filter(t => t.status !== 'completed' && priorityIs(t.priority, 'low', 'P3') && !isUrgentDate(t.date));
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      if (t.status === 'completed') continue;
+      const urgent = isUrgentDate(t.date);
+      const important = isImportant(t.priority);
+      const med = isMedium(t.priority);
 
-  function priorityIs(p: string, str1: string, str2: string) {
-    return p === str1 || p === str2;
-  }
+      if (important && urgent) {
+        r1.push(t);
+      } else if ((important && !urgent) || med) {
+        r2.push(t);
+      } else if (urgent) {
+        r3.push(t);
+      } else {
+        r4.push(t);
+      }
+    }
+
+    return { q1: r1, q2: r2, q3: r3, q4: r4, todayStr: today, tomorrowStr: tomorrow };
+  }, [tasks]);
 
   const renderQuadrant = (title: string, sub: string, quadrantTasks: Task[], bgColor: string, icon: any, color: string) => (
     <View style={styles.quadrant}>
@@ -68,7 +73,7 @@ export default function MatrixView({ tasks, onTaskPress }: MatrixViewProps) {
         {quadrantTasks.length === 0 ? (
           <Text style={styles.emptyText}>Empty</Text>
         ) : (
-          quadrantTasks.map(t => (
+          quadrantTasks.slice(0, 50).map(t => (
             <AnimatedPressable
               key={t.id}
               style={[
@@ -102,7 +107,9 @@ export default function MatrixView({ tasks, onTaskPress }: MatrixViewProps) {
       </View>
     </ScrollView>
   );
-}
+});
+
+export default MatrixView;
 
 const makeStyles = (colors: any) => StyleSheet.create({
   container: {

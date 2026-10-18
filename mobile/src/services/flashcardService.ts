@@ -3,10 +3,11 @@
  * SM-2 Spaced Repetition Flashcard Engine for Active Recall.
  */
 
-import { collection, doc, addDoc, updateDoc, query, where, getDocs } from 'firebase/firestore';
+import { collection, doc, addDoc, updateDoc, setDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 import { COLLECTION } from '../config/constants';
 import { callProxy, parseProxyResponse } from './geminiProxy';
+import { safeWrite } from '../utils/safeWrite';
 
 export interface Flashcard {
   id?: string;
@@ -74,6 +75,7 @@ export function calculateNextReview(
       } else {
         intervalDays = Math.round(intervalDays * easeFactor);
       }
+      easeFactor = Math.max(1.3, easeFactor);
       break;
     case 'easy':
       repetitions = repetitions + 1;
@@ -197,7 +199,16 @@ export async function saveFlashcardsToFirestore(
       continue; // Skip duplicate card
     }
 
-    await addDoc(collection(db, COLLECTION.FLASHCARDS), {
+    // Deterministic doc ID from question hash
+    let hash = 0;
+    for (let i = 0; i < normQuestion.length; i++) {
+      hash = ((hash << 5) - hash + normQuestion.charCodeAt(i)) | 0;
+    }
+    const cardId = `fc_${userId}_${Math.abs(hash)}`;
+    const cardRef = doc(db, COLLECTION.FLASHCARDS, cardId);
+
+    const payload = {
+      id: cardId,
       userId,
       question: card.question.trim(),
       answer: card.answer.trim(),
@@ -209,7 +220,15 @@ export async function saveFlashcardsToFirestore(
       easeFactor: 2.5,
       nextReviewDate: today,
       createdAt: Date.now(),
-    });
+    };
+
+    await safeWrite(
+      () => setDoc(cardRef, payload, { merge: true }),
+      COLLECTION.FLASHCARDS,
+      'set',
+      payload,
+      cardId
+    );
     existingQuestions.add(normQuestion);
     count++;
   }
@@ -246,7 +265,7 @@ export async function getDueFlashcards(userId: string): Promise<Flashcard[]> {
 }
 
 /**
- * Records a review grade and updates the card's interval in Firestore.
+ * Records a review grade and updates the card's interval in Firestore via safeWrite.
  */
 export async function submitFlashcardReview(
   cardId: string,
@@ -257,11 +276,19 @@ export async function submitFlashcardReview(
   const next = calculateNextReview(currentCard, grade);
 
   const cardRef = doc(db, COLLECTION.FLASHCARDS, cardId);
-  await updateDoc(cardRef, {
+  const updates = {
     repetitions: next.repetitions,
     intervalDays: next.intervalDays,
     easeFactor: next.easeFactor,
     nextReviewDate: next.nextReviewDate,
     lastReviewedAt: Date.now(),
-  });
+  };
+
+  await safeWrite(
+    () => updateDoc(cardRef, updates),
+    COLLECTION.FLASHCARDS,
+    'update',
+    updates,
+    cardId
+  );
 }

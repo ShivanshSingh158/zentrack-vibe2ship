@@ -210,11 +210,12 @@ export async function downloadAndCacheFile(
 
   const filename = await getCacheFilenameForUrl(url, originalFilename);
   const targetPath = `${dir}${filename}`;
+  const tempPath = `${targetPath}.tmp_${Date.now()}`;
 
   try {
     const downloadResumable = FileSystem.createDownloadResumable(
       url,
-      targetPath,
+      tempPath,
       {},
       (downloadProgress) => {
         if (downloadProgress.totalBytesExpectedToWrite > 0 && onProgress) {
@@ -227,17 +228,23 @@ export async function downloadAndCacheFile(
     );
 
     const result = await downloadResumable.downloadAsync();
-    if (result && result.uri) {
-      onProgress?.(100);
-      return { localUri: result.uri, fromCache: false };
+    if (!result || !result.status || result.status < 200 || result.status >= 300) {
+      try {
+        await FileSystem.deleteAsync(tempPath, { idempotent: true });
+      } catch {}
+      throw new Error(`Download failed with HTTP status ${result?.status ?? 'unknown'}`);
     }
+
+    // Atomic move from temp to final destination
+    await FileSystem.moveAsync({ from: tempPath, to: targetPath });
+    onProgress?.(100);
     return { localUri: targetPath, fromCache: false };
   } catch (err) {
-    // Clean up partial file on failure
+    // Clean up temporary file on failure
     try {
-      const info = await FileSystem.getInfoAsync(targetPath);
+      const info = await FileSystem.getInfoAsync(tempPath);
       if (info.exists) {
-        await FileSystem.deleteAsync(targetPath, { idempotent: true });
+        await FileSystem.deleteAsync(tempPath, { idempotent: true });
       }
     } catch {}
     throw err;

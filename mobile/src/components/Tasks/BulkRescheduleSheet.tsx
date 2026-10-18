@@ -7,14 +7,14 @@ import { Task } from '../../contexts/MobileDataContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
 const RESCHEDULE_TIME_SLOTS = [
-  '6:00 AM–7:00 AM','7:00 AM–8:00 AM','7:30 AM–8:30 AM',
-  '8:00 AM–9:00 AM','8:30 AM–10:30 AM','9:00 AM–10:00 AM',
-  '10:00 AM–11:00 AM','11:00 AM–12:00 PM','11:30 AM–1:30 PM',
-  '12:00 PM–1:00 PM','1:00 PM–2:00 PM','1:30 PM–3:30 PM',
-  '2:00 PM–3:00 PM','3:00 PM–4:00 PM','3:30 PM–5:00 PM',
-  '4:00 PM–5:00 PM','5:00 PM–6:00 PM','5:30 PM–7:00 PM',
-  '6:00 PM–7:00 PM','6:30 PM–8:30 PM','7:00 PM–8:00 PM',
-  '8:00 PM–9:00 PM','9:00 PM–10:00 PM','9:15 PM–10:00 PM',
+  '6:00 AM - 7:00 AM','7:00 AM - 8:00 AM','7:30 AM - 8:30 AM',
+  '8:00 AM - 9:00 AM','8:30 AM - 10:30 AM','9:00 AM - 10:00 AM',
+  '10:00 AM - 11:00 AM','11:00 AM - 12:00 PM','11:30 AM - 1:30 PM',
+  '12:00 PM - 1:00 PM','1:00 PM - 2:00 PM','1:30 PM - 3:30 PM',
+  '2:00 PM - 3:00 PM','3:00 PM - 4:00 PM','3:30 PM - 5:00 PM',
+  '4:00 PM - 5:00 PM','5:00 PM - 6:00 PM','5:30 PM - 7:00 PM',
+  '6:00 PM - 7:00 PM','6:30 PM - 8:30 PM','7:00 PM - 8:00 PM',
+  '8:00 PM - 9:00 PM','9:00 PM - 10:00 PM','9:15 PM - 10:00 PM',
 ];
 
 function parseF(s: string): number | null {
@@ -57,11 +57,11 @@ export default function BulkRescheduleSheet({ visible, onClose, selectedTaskIds,
   [allTasks, pickedDate, selectedTaskIds]);
 
   function slotConflict(slot: string): string | null {
-    const [sStr, eStr] = slot.split(/[-–]/);
+    const [sStr, eStr] = slot.split(/\s*[-–—]\s*/);
     const sF = parseF(sStr); if (sF === null) return null;
     const eF = eStr ? parseF(eStr) : sF + 1;
     for (const b of existingBlocks) {
-      const [bsStr, beStr] = b.slot.split(/[-–]/);
+      const [bsStr, beStr] = b.slot.split(/\s*[-–—]\s*/);
       const bsF = parseF(bsStr); if (bsF === null) continue;
       const beF = beStr ? parseF(beStr) : bsF + 1;
       if (sF < (beF ?? bsF + 1) && (eF ?? sF + 1) > bsF) return b.title;
@@ -244,7 +244,7 @@ export default function BulkRescheduleSheet({ visible, onClose, selectedTaskIds,
                 <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 15, color: isDark ? '#1a110a' : '#FFFFFF' }}>
                   {saving
                     ? 'Moving…'
-                    : `Move to ${friendlyDate}${pickedSlot ? ` · ${pickedSlot.split('–')[0].trim()}` : ''}`
+                    : `Move to ${friendlyDate}${pickedSlot ? ` · ${pickedSlot.split(/\s*[-–—]\s*/)[0].trim()}` : ''}`
                   }
                 </Text>
               </TouchableOpacity>

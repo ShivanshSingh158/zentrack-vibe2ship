@@ -28,60 +28,83 @@ import { buildLiveWorkoutWidgetData, saveCachedLiveWorkoutData, updateLiveWorkou
 
 let currentRestTimerNotifId: string | null = null;
 
-// ── Date helpers — ALL use LOCAL date components, not UTC ────────────────────
-// Using `toISOString()` or `new Date(dateStr).getDay()` silently uses UTC,
-// which in IST (UTC+5:30) gives the previous day after midnight → wrong plan day.
-export function todayStr() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+// Issue 4: Module-scope debounce queue keyed by logId so all useGymLog instances share a single write queue
+const globalPendingFirestoreWrites = new Map<string, { log: GymDayLog; timer: ReturnType<typeof setTimeout> | null }>();
+
+async function executeFirestoreLogWrite(logId: string, updatedLog: GymDayLog) {
+  try {
+    const docRef = doc(db, COLLECTION.GYM_LOGS, logId);
+    const sanitizedLog: any = { id: logId };
+    Object.keys(updatedLog).forEach(key => {
+      if (key === '_idx') return;
+      const val = (updatedLog as any)[key];
+      if (val === undefined || val === null) {
+        sanitizedLog[key] = deleteField();
+      } else {
+        sanitizedLog[key] = deepSanitize(val);
+      }
+    });
+    if (Array.isArray(sanitizedLog.exercises)) {
+      sanitizedLog.exercises = sanitizedLog.exercises.map((ex: any) => {
+        const cleanEx = { ...ex };
+        delete cleanEx._idx;
+        delete cleanEx.lastSessionSets;
+        return cleanEx;
+      });
+    }
+    if (updatedLog.completed) {
+      sanitizedLog.workoutStartTime = deleteField();
+      sanitizedLog.restTimerStartTime = deleteField();
+      sanitizedLog.restTimerDurationSecs = deleteField();
+      sanitizedLog.restTimerExerciseName = deleteField();
+    }
+    await safeWrite(
+      () => setDoc(docRef, sanitizedLog, { merge: true }),
+      COLLECTION.GYM_LOGS,
+      'set',
+      sanitizedLog,
+      logId
+    );
+  } catch (e) {
+    console.error('[Gym] Save error', e);
+  }
 }
 
-export function dateStrOffset(offsetDays: number, fromStr?: string) {
-  let d: Date;
-  if (fromStr) {
-    // Parse as local components to avoid UTC midnight → previous day in UTC+ zones
-    const [y, mo, day] = fromStr.split('-').map(Number);
-    d = new Date(y, mo - 1, day);
+export async function flushGlobalPendingFirestoreWrite(targetLogId?: string) {
+  if (targetLogId) {
+    const entry = globalPendingFirestoreWrites.get(targetLogId);
+    if (!entry) return;
+    if (entry.timer) clearTimeout(entry.timer);
+    globalPendingFirestoreWrites.delete(targetLogId);
+    await executeFirestoreLogWrite(targetLogId, entry.log);
   } else {
-    d = new Date();
+    const entries = Array.from(globalPendingFirestoreWrites.entries());
+    globalPendingFirestoreWrites.clear();
+    for (const [id, entry] of entries) {
+      if (entry.timer) clearTimeout(entry.timer);
+      await executeFirestoreLogWrite(id, entry.log);
+    }
   }
-  d.setDate(d.getDate() + offsetDays);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
 }
 
-export function planDayIndexForDate(dateStr: string) {
-  // FIX: parse dateStr as LOCAL components — new Date('YYYY-MM-DD') treats it
-  // as UTC midnight, which in UTC+5:30 is actually 11:30 PM the day before.
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dayOfWeek = new Date(y, m - 1, d).getDay(); // local time → correct day
-  return WEEKDAY_TO_PLAN[dayOfWeek] ?? 7;
-}
-
-export function getCustomPlanDay(customDays: any, planIdx: number) {
-  if (!customDays) return null;
-  if (Array.isArray(customDays)) {
-    return customDays.find(d => d && (d.dayIndex === planIdx || Number(d.dayIndex) === Number(planIdx))) || null;
-  }
-  return customDays[planIdx] || customDays[String(planIdx)] || null;
-}
-
-export function resolvePlanDay(userGymPlan: any, planIdx: number): GymPlanDay {
-  const rawCustom = getCustomPlanDay(userGymPlan?.customDays, planIdx);
-  const customHasExercises = rawCustom && Array.isArray(rawCustom.exercises) && rawCustom.exercises.length > 0;
-  if (rawCustom && (rawCustom.isRest || customHasExercises)) {
-    return rawCustom;
-  }
-  return GYM_PLAN.find((d: GymPlanDay) => d.dayIndex === planIdx) || GYM_PLAN_ARNOLD.find((d: GymPlanDay) => d.dayIndex === planIdx) || GYM_PLAN[0];
-}
+// ── Re-export date & plan helpers from gymPlan (breaks circular dependency with widgetSyncService) ──
+import {
+  todayStr,
+  dateStrOffset,
+  planDayIndexForDate,
+  getCustomPlanDay,
+  resolvePlanDay,
+} from '../data/gymPlan';
+export {
+  todayStr,
+  dateStrOffset,
+  planDayIndexForDate,
+  getCustomPlanDay,
+  resolvePlanDay,
+};
 
 export function useGymLog(dateStr: string) {
-  const { gymLogs, gymLogsReady, ensureSubscribed: gymEnsureSubscribed, userGymPlan, updateMasterPlan, optimisticAddGymLog, optimisticUpdateGymLog } = useWellnessData();
+  const { gymLogs, gymLogsReady, ensureSubscribed: gymEnsureSubscribed, userGymPlan, updateMasterPlan, updateFullMasterPlan, optimisticAddGymLog, optimisticUpdateGymLog } = useWellnessData();
   const { user } = useCoreData();
 
   // ── FIX 1: Ref-based gymLogs access inside saveLog ────────────────────────
@@ -114,7 +137,16 @@ export function useGymLog(dateStr: string) {
         name: existingPlan?.name || `Day ${planDayIndex}`,
         subtitle: existingPlan?.subtitle || '',
         focus: existingPlan?.focus || '',
-        exercises: newExercises as any,
+        exercises: newExercises.map(ex => ({
+          id: ex.exerciseId || (ex as any).id || `ex_${normalizeExerciseKey(ex.name)}`,
+          name: ex.name,
+          targetSets: ex.targetSets,
+          targetReps: ex.targetReps,
+          muscle: ex.muscle,
+          videoId: ex.videoId,
+          restTimeSecs: ex.restTimeSecs,
+          isCompound: ex.isCompound,
+        })) as any,
         isRest: existingPlan?.isRest || false,
       });
     }, 3500)
@@ -126,53 +158,11 @@ export function useGymLog(dateStr: string) {
   // Tracks the most recent local write timestamp so we can skip stale Firestore snapshots
   const localWriteAtRef = useRef<number>(0);
 
-  // ── Debounced Firestore write: collapse rapid set-logs into a single write ───
-  // Every set-log tap calls saveLog() which previously fired setDoc() immediately.
-  // For a 30-set workout = 30 writes = 30 snapshot echoes = 30 potential flickers.
-  // Instead: optimistic update fires instantly (UI is always correct), and the
-  // actual Firestore write is debounced to 1500ms after the LAST call.
-  // endWorkout (completed=true) bypasses the debounce and flushes immediately.
-  const pendingFirestoreLogRef = useRef<{ logId: string; log: GymDayLog } | null>(null);
-  const firestoreDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const flushPendingFirestoreWrite = useCallback(async () => {
-    if (firestoreDebounceTimerRef.current) {
-      clearTimeout(firestoreDebounceTimerRef.current);
-      firestoreDebounceTimerRef.current = null;
-    }
-    const pending = pendingFirestoreLogRef.current;
-    if (!pending) return;
-    pendingFirestoreLogRef.current = null;
-    const { logId, log: updatedLog } = pending;
-    try {
-      const docRef = doc(db, COLLECTION.GYM_LOGS, logId);
-      const sanitizedLog: any = { id: logId };
-      Object.keys(updatedLog).forEach(key => {
-        if (key === '_idx') return;
-        const val = (updatedLog as any)[key];
-        if (val === undefined || val === null) {
-          sanitizedLog[key] = deleteField();
-        } else {
-          sanitizedLog[key] = deepSanitize(val);
-        }
-      });
-      if (updatedLog.completed) {
-        sanitizedLog.workoutStartTime = deleteField();
-        sanitizedLog.restTimerStartTime = deleteField();
-        sanitizedLog.restTimerDurationSecs = deleteField();
-        sanitizedLog.restTimerExerciseName = deleteField();
-      }
-      await safeWrite(
-        () => setDoc(docRef, sanitizedLog, { merge: true }),
-        COLLECTION.GYM_LOGS,
-        'set',
-        sanitizedLog,
-        logId
-      );
-    } catch (e) {
-      console.error('[Gym] Save error', e);
-    }
-  }, []);
+    if (!user) return;
+    const logId = logRef.current?.id || `${user.uid}_${dateStr}`;
+    await flushGlobalPendingFirestoreWrite(logId);
+  }, [user, dateStr]);
 
   const historyIndex = useMemo(
     () => buildExerciseHistoryIndex(gymLogs, dateStr),
@@ -253,10 +243,13 @@ export function useGymLog(dateStr: string) {
       );
       const firestoreIsStale = logRef.current !== null && firestoreCompletedCount < localCompletedCount;
 
-      // ── Active workout protection: never let a Firestore snapshot echo overwrite an active
-      // in-progress workout session that already has equal or newer local completed sets.
+      // ── Active workout protection: only block stale Firestore snapshot echoes that are older
+      // than our local state or have fewer completed sets than local in-progress workout.
       const isLocalSessionActive = logRef.current !== null && !logRef.current.completed;
-      if (isLocalSessionActive && firestoreCompletedCount <= localCompletedCount) {
+      if (isLocalSessionActive && existingTs <= localTs) {
+        return;
+      }
+      if (isLocalSessionActive && firestoreCompletedCount < localCompletedCount) {
         return;
       }
 
@@ -285,14 +278,16 @@ export function useGymLog(dateStr: string) {
             patchedMuscle = resolveExerciseTargetMuscle(ex.name, ex.muscle).targetMuscle;
           }
 
-          // Pre-fill unlogged set values with last session's exact set data
+          // Pre-fill unlogged set values with last session's exact set data (Issue 5: preserve explicit 0 weight)
           const patchedSetsLog = (ex.setsLog || []).map((s: any, sIdx: number) => {
             const lastSet = lastSets?.[sIdx] || lastValidSet;
-            const userLoggedWeight = (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ? Number(s.weight) : null;
+            const hasUserWeight = s.weight !== null && s.weight !== undefined && !isNaN(Number(s.weight));
+            const userLoggedWeight = hasUserWeight ? Number(s.weight) : null;
             const finalWeight = userLoggedWeight ?? (lastSet?.weight != null && Number(lastSet.weight) > 0 ? Number(lastSet.weight) : null);
 
-            const userLoggedReps = (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0) ? Number(s.reps) : null;
-            const defaultTargetReps = parseInt(String(ex.targetReps || '8-12').split('-')[0], 10) || 8;
+            const hasUserReps = s.reps !== null && s.reps !== undefined && !isNaN(Number(s.reps));
+            const userLoggedReps = hasUserReps ? Number(s.reps) : null;
+            const defaultTargetReps = parseInt(String(ex.targetReps || '8-12').split(/[-–—]/)[0], 10) || 8;
             const finalReps = userLoggedReps ?? (lastSet?.reps ? Number(lastSet.reps) : defaultTargetReps);
 
             return {
@@ -307,7 +302,7 @@ export function useGymLog(dateStr: string) {
             _idx: idx,
             muscle: patchedMuscle,
             videoId: patchedVideoId,
-            lastSessionSets: ex.lastSessionSets || lastSets || undefined,
+            lastSessionSets: lastSets || ex.lastSessionSets || undefined,
             setsLog: patchedSetsLog,
           };
         });
@@ -335,7 +330,7 @@ export function useGymLog(dateStr: string) {
             setsLog: Array.from({ length: e.targetSets }, (_, i) => {
               const lastSet = lastSets?.[i] || lastValidSet;
               const setWeight = (lastSet?.weight != null && Number(lastSet.weight) > 0) ? Number(lastSet.weight) : null;
-              const defaultTargetReps = parseInt(String(e.targetReps || '8-12').split('-')[0], 10) || 8;
+              const defaultTargetReps = parseInt(String(e.targetReps || '8-12').split(/[-–—]/)[0], 10) || 8;
               return {
                 setNumber: i + 1,
                 reps: lastSet?.reps ? Number(lastSet.reps) : defaultTargetReps,
@@ -362,7 +357,7 @@ export function useGymLog(dateStr: string) {
         const prevSession = historyIndex.get(normalizeExerciseKey(e.name));
         const lastSets = prevSession?.sets || null;
         const lastValidSet = lastSets && lastSets.length > 0 ? lastSets[lastSets.length - 1] : null;
-        const defaultTargetReps = parseInt(String(e.targetReps || '8-12').split('-')[0], 10) || 8;
+        const defaultTargetReps = parseInt(String(e.targetReps || '8-12').split(/[-–—]/)[0], 10) || 8;
 
         let patchedMuscle = e.muscle;
         if (!patchedMuscle || ['general', 'unknown', 'none', 'mixed', 'null', 'undefined'].includes(patchedMuscle.trim().toLowerCase())) {
@@ -425,70 +420,54 @@ export function useGymLog(dateStr: string) {
     const writeAt = Date.now();
     localWriteAtRef.current = writeAt;
 
+    // Issue 1 & 2: Broadcast local mutation to all mounted useGymLog instances for instant cross-screen sync
+    DeviceEventEmitter.emit('gym_log_local_mutation', { date: updatedLog.date, log: updatedLog });
+
     // ── STEP 1: Optimistic update — instant UI, no waiting for Firestore.
-    // For completed workouts, update immediately to avoid microtask unmount races.
-    if (updatedLog.completed) {
-      unstable_batchedUpdates(() => {
-        if (gymLogsRef.current.some(l => l.id === logId || l.date === updatedLog.date)) {
-          optimisticUpdateGymLog(logId, updatedLog as any);
-        } else {
-          optimisticAddGymLog(updatedLog as any);
-        }
-      });
-    } else {
-      queueMicrotask(() => {
-        unstable_batchedUpdates(() => {
-          if (gymLogsRef.current.some(l => l.id === logId || l.date === updatedLog.date)) {
-            optimisticUpdateGymLog(logId, updatedLog as any);
-          } else {
-            optimisticAddGymLog(updatedLog as any);
-          }
-        });
-      });
-    }
-
-    // ── STEP 2: Debounced Firestore write — collapses rapid set-logs. ─────────
-    // For a 30-set workout, without debouncing = 30 setDoc() calls = 30 snapshot
-    // echoes = 30 potential re-renders. With 1500ms debounce, only the FINAL
-    // state of each burst is written. Completed workouts flush immediately.
-    pendingFirestoreLogRef.current = { logId, log: updatedLog };
-
-    if (updatedLog.completed) {
-      // Completed workout: flush immediately — never debounce final state.
-      flushPendingFirestoreWrite();
-    } else {
-      // Normal set-log: debounce 1500ms. Each new call resets the timer,
-      // so only the last state in a rapid burst reaches Firestore.
-      if (firestoreDebounceTimerRef.current) {
-        clearTimeout(firestoreDebounceTimerRef.current);
+    unstable_batchedUpdates(() => {
+      if (gymLogsRef.current.some(l => l.id === logId || l.date === updatedLog.date)) {
+        optimisticUpdateGymLog(logId, updatedLog as any);
+      } else {
+        optimisticAddGymLog(updatedLog as any);
       }
-      firestoreDebounceTimerRef.current = setTimeout(() => {
-        firestoreDebounceTimerRef.current = null;
-        flushPendingFirestoreWrite();
-      }, 1500);
+    });
+
+    // ── STEP 2: Debounced Firestore write via module-level shared queue (Issue 4) ───
+    const existingEntry = globalPendingFirestoreWrites.get(logId);
+    if (existingEntry?.timer) {
+      clearTimeout(existingEntry.timer);
     }
-  // ── gymLogs removed from deps — accessed via gymLogsRef instead.
-  }, [user, optimisticAddGymLog, optimisticUpdateGymLog, flushPendingFirestoreWrite]);
+
+    if (updatedLog.completed) {
+      globalPendingFirestoreWrites.delete(logId);
+      executeFirestoreLogWrite(logId, updatedLog);
+    } else {
+      const timer = setTimeout(() => {
+        globalPendingFirestoreWrites.delete(logId);
+        executeFirestoreLogWrite(logId, updatedLog);
+      }, 1500);
+      globalPendingFirestoreWrites.set(logId, { log: updatedLog, timer });
+    }
+  }, [user, optimisticAddGymLog, optimisticUpdateGymLog]);
 
   // ── Flush pending Firestore write on unmount ──────────────────────────────
-  // If the user backs out of the workout screen while the 1500ms debounce timer
-  // is still counting down, flush immediately so no set data is lost.
   useEffect(() => {
     return () => {
       flushPendingFirestoreWrite();
     };
   }, [flushPendingFirestoreWrite]);
 
-  const mutateLog = useCallback((recipe: (prev: GymDayLog) => GymDayLog | null) => {
-    const current = logRef.current;
-    if (!current) return null;
-    const next = recipe(current);
-    if (!next || next === current) return current;
-    logRef.current = next;
-    setLog(next);
-    saveLog(next);
-    return next;
-  }, [saveLog]);
+  // Issue 1 & 2: Listen for local mutations across all sibling screens (ExerciseSwap, ExerciseDetail, CardioLog)
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('gym_log_local_mutation', (event: any) => {
+      if (event?.date && event.date !== dateStr) return;
+      if (event?.log) {
+        logRef.current = event.log;
+        setLog(event.log);
+      }
+    });
+    return () => sub.remove();
+  }, [dateStr]);
 
   // ── Cross-instance sync: mark log completed when ANY useGymLog calls endWorkout ────
   // GymHomeScreen and ActiveLoggingScreen each mount their own useGymLog instance.
@@ -762,6 +741,20 @@ export function useGymLog(dateStr: string) {
       await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId).catch(() => {});
       currentRestTimerNotifId = null;
     }
+    if (durationSecs > 0) {
+      try {
+        const notifId = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Rest is over',
+            body: `${exerciseName ? exerciseName + ' — ' : ''}Time for your next set!`,
+            data: { type: 'rest_over' },
+            channelId: 'timer',
+          } as any,
+          trigger: { seconds: durationSecs, channelId: 'timer' } as any,
+        });
+        currentRestTimerNotifId = notifId;
+      } catch {}
+    }
   }, [saveLog]);
 
   const swapExercise = useCallback((exerciseIndex: number, newName: string, newVideoId?: string, newMuscle?: string) => {
@@ -783,49 +776,60 @@ export function useGymLog(dateStr: string) {
     });
   }, [saveLog]);
 
-  const makeSwapPermanent = useCallback(async (origName: string, newName: string, newVideoId?: string, newMuscle?: string) => {
+  const makeSwapPermanent = useCallback(async (
+    origName: string,
+    newName: string,
+    newVideoId?: string,
+    newMuscle?: string,
+    newSets?: number,
+    newReps?: string,
+    newRestTime?: number
+  ) => {
     if (!user || !userGymPlan) return;
 
-    const newPlan = JSON.parse(JSON.stringify(userGymPlan));
-    
-    // Convert array to record if it was corrupted
-    let currentCustomDays = newPlan.customDays || {};
+    let currentCustomDays: Record<string, any> = { ...(userGymPlan.customDays || {}) };
     if (Array.isArray(currentCustomDays)) {
       const fixed: any = {};
-      currentCustomDays.forEach(d => { if (d && d.dayIndex) fixed[d.dayIndex] = d; });
+      (currentCustomDays as any[]).forEach(d => { if (d && d.dayIndex) fixed[d.dayIndex] = d; });
       currentCustomDays = fixed;
     }
 
     let changed = false;
+    const basePlan = userGymPlan.templateId === 'arnold' ? GYM_PLAN_ARNOLD : GYM_PLAN;
 
-    GYM_PLAN.forEach(day => {
+    basePlan.forEach(day => {
       const dayIndex = day.dayIndex;
-      const targetDay = currentCustomDays[dayIndex] || JSON.parse(JSON.stringify(day));
+      const targetDay = currentCustomDays[dayIndex] ? { ...currentCustomDays[dayIndex] } : { ...day };
       if (targetDay.exercises) {
-        targetDay.exercises.forEach((ex: any) => {
+        let dayExercisesChanged = false;
+        const newExercises = targetDay.exercises.map((ex: any) => {
           if (ex.name === origName) {
-            ex.name = newName;
-            ex.muscle = resolveExerciseTargetMuscle(newName, newMuscle || ex.muscle).targetMuscle;
-            if (newVideoId !== undefined) ex.videoId = newVideoId;
+            dayExercisesChanged = true;
             changed = true;
-            currentCustomDays[dayIndex] = targetDay;
+            return {
+              ...ex,
+              name: newName,
+              muscle: resolveExerciseTargetMuscle(newName, newMuscle || ex.muscle).targetMuscle,
+              ...(newVideoId !== undefined ? { videoId: newVideoId } : {}),
+              ...(newSets !== undefined ? { targetSets: newSets } : {}),
+              ...(newReps !== undefined ? { targetReps: newReps } : {}),
+              ...(newRestTime !== undefined ? { restTimeSecs: newRestTime } : {}),
+            };
           }
+          return ex;
         });
+        if (dayExercisesChanged) {
+          targetDay.exercises = newExercises;
+          currentCustomDays[dayIndex] = targetDay;
+        }
       }
     });
 
     if (changed) {
-      newPlan.customDays = currentCustomDays;
-      const docRef = doc(db, COLLECTION.USER_GYM_PLANS, user.uid);
-      await safeWrite(
-        () => setDoc(docRef, newPlan, { merge: true }),
-        COLLECTION.USER_GYM_PLANS,
-        'set',
-        newPlan,
-        user.uid
-      );
+      await updateFullMasterPlan(currentCustomDays);
+      // Redundant safeWrite removed: updateFullMasterPlan already persists to Firestore!
     }
-  }, [user, userGymPlan]);
+  }, [user, userGymPlan, updateFullMasterPlan]);
 
   const startWorkout = useCallback(() => {
     setLog(prev => {
@@ -843,7 +847,7 @@ export function useGymLog(dateStr: string) {
         const today = todayStr();
         const widgetData = buildLiveWorkoutWidgetData({
           todayStr: today,
-          gymLogs: [updated, ...(gymLogs || []).filter(l => l.date !== today)],
+          gymLogs: [updated, ...(gymLogsRef.current || []).filter(l => l.date !== today)],
           userGymPlan,
         });
         saveCachedLiveWorkoutData(widgetData).catch(() => {});
@@ -852,7 +856,7 @@ export function useGymLog(dateStr: string) {
 
       return updated;
     });
-  }, [saveLog, gymLogs, userGymPlan]);
+  }, [saveLog, userGymPlan]);
 
   const endWorkout = useCallback(async (_force?: boolean) => {
     awardXP('GYM_SESSION').catch(() => {});
@@ -966,7 +970,7 @@ export function useGymLog(dateStr: string) {
         const today = todayStr();
         const widgetData = buildLiveWorkoutWidgetData({
           todayStr: today,
-          gymLogs: [updated, ...(gymLogs || []).filter(l => l.date !== today)],
+          gymLogs: [updated, ...(gymLogsRef.current || []).filter(l => l.date !== today)],
           userGymPlan,
         });
         saveCachedLiveWorkoutData(widgetData).catch(() => {});
@@ -985,7 +989,7 @@ export function useGymLog(dateStr: string) {
     AsyncStorage.removeItem('@zentrack_active_workout_state').catch(() => {});
     AsyncStorage.removeItem(`@gym_active_session_${today}`).catch(() => {});
     dismissActiveWorkoutNotification().catch(() => {});
-  }, [saveLog, gymLogs, userGymPlan]);
+  }, [saveLog, userGymPlan]);
 
   const startRestTimer = useCallback(async (durationSecs: number, exerciseName?: string) => {
     setLog(prev => {
@@ -1005,6 +1009,20 @@ export function useGymLog(dateStr: string) {
       await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId).catch(() => {});
       currentRestTimerNotifId = null;
     }
+    if (durationSecs > 0) {
+      try {
+        const notifId = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Rest is over',
+            body: `${exerciseName ? exerciseName + ' — ' : ''}Time for your next set!`,
+            data: { type: 'rest_over' },
+            channelId: 'timer',
+          } as any,
+          trigger: { seconds: durationSecs, channelId: 'timer' } as any,
+        });
+        currentRestTimerNotifId = notifId;
+      } catch {}
+    }
   }, [saveLog]);
 
   const clearRestTimer = useCallback(async () => {
@@ -1022,7 +1040,7 @@ export function useGymLog(dateStr: string) {
     });
 
     if (currentRestTimerNotifId) {
-      await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId);
+      await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId).catch(() => {});
       currentRestTimerNotifId = null;
     }
   }, [saveLog]);
@@ -1032,10 +1050,17 @@ export function useGymLog(dateStr: string) {
   // so we must NOT add it on top of the current value.
   const setRestTimerDuration = useCallback(async (absoluteSecs: number) => {
     const newDuration = Math.max(0, absoluteSecs);
+    const currentLog = logRef.current;
+    const exName = currentLog?.restTimerExerciseName;
+    const startMs = currentLog?.restTimerStartTime || Date.now();
+    const elapsedSecs = Math.max(0, Math.round((Date.now() - startMs) / 1000));
+    const remainingSecs = Math.max(1, newDuration - elapsedSecs);
+
+    // Update local state without rewriting the entire Firestore log doc on every ±30s tap
     setLog(prev => {
       if (!prev) return prev;
       const updated = { ...prev, restTimerDurationSecs: newDuration, updatedAt: Date.now() };
-      saveLog(updated);
+      logRef.current = updated;
       return updated;
     });
 
@@ -1043,26 +1068,31 @@ export function useGymLog(dateStr: string) {
       await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId).catch(() => {});
       currentRestTimerNotifId = null;
     }
-  }, [saveLog]);
+
+    if (remainingSecs > 0) {
+      try {
+        const notifId = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Rest is over',
+            body: `${exName ? exName + ' — ' : ''}Time for your next set!`,
+            data: { type: 'rest_over' },
+            channelId: 'timer',
+          } as any,
+          trigger: { seconds: remainingSecs, channelId: 'timer' } as any,
+        });
+        currentRestTimerNotifId = notifId;
+      } catch {}
+    }
+  }, []);
 
   const swapDayRoutine = useCallback((targetDayIndex: number) => {
     const targetPlanDay = getCustomPlanDay(userGymPlan?.customDays, targetDayIndex) || GYM_PLAN.find(d => d.dayIndex === targetDayIndex);
     if (!targetPlanDay) return;
 
-    const getLastSessionSets = (exerciseId: string, exerciseName: string) => {
-      const sorted = [...gymLogs].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-      for (const pastLog of sorted) {
-        if (pastLog.date === dateStr) continue;
-        const match = (pastLog.exercises || []).find((ex: any) => ex.exerciseId === exerciseId || ex.name === exerciseName);
-        if (match?.setsLog?.length > 0) {
-          return match.setsLog as { reps: number | null; weight: number | null; completed: boolean }[];
-        }
-      }
-      return null;
-    };
-
     const newExercises = !targetPlanDay.isRest ? targetPlanDay.exercises.map((e: any, idx: number) => {
-      const lastSets = getLastSessionSets(e.id, e.name);
+      const prevSession = historyIndex.get(normalizeExerciseKey(e.name));
+      const lastSets = prevSession?.sets || null;
+      const defaultTargetReps = parseInt(String(e.targetReps || '8-12').split(/[-–—]/)[0], 10) || 8;
       return {
         _idx: idx,
         exerciseId: e.id,
@@ -1075,7 +1105,7 @@ export function useGymLog(dateStr: string) {
         lastSessionSets: lastSets ?? undefined,
         setsLog: Array.from({ length: e.targetSets }, (_, i) => ({
           setNumber: i + 1,
-          reps: lastSets?.[i]?.reps ?? null,
+          reps: lastSets?.[i]?.reps ?? defaultTargetReps,
           weight: lastSets?.[i]?.weight ?? null,
           completed: false,
         })),
@@ -1102,7 +1132,7 @@ export function useGymLog(dateStr: string) {
       saveLog(updated);
       return updated;
     });
-  }, [userGymPlan, gymLogs, dateStr, user?.uid, saveLog]);
+  }, [userGymPlan, historyIndex, dateStr, user?.uid, saveLog]);
 
   const triggerDeload = useCallback(() => {
     setLog(prev => {
@@ -1111,10 +1141,16 @@ export function useGymLog(dateStr: string) {
         const newTargetSets = Math.max(1, ex.targetSets - 1);
         const cleanedReps = ex.targetReps ? String(ex.targetReps).replace(' (RPE 7)', '') : ex.targetReps;
         
-        // Trim setsLog to match new targetSets if we haven't already completed them
-        const setsLog = ex.setsLog.slice(0, newTargetSets);
+        const warmups = (ex.setsLog || []).filter(s => s.isWarmup);
+        const working = (ex.setsLog || []).filter(s => !s.isWarmup);
+        const completedWorking = working.filter(s => s.completed);
+        const uncompletedWorking = working.filter(s => !s.completed);
+        const targetUncompletedCount = Math.max(0, newTargetSets - completedWorking.length);
+        const trimmedWorking = [...completedWorking, ...uncompletedWorking.slice(0, targetUncompletedCount)];
         
-        return { ...ex, targetSets: newTargetSets, targetReps: cleanedReps, setsLog };
+        const nextSets = [...warmups, ...trimmedWorking].map((s, idx) => ({ ...s, setNumber: idx + 1 }));
+        
+        return { ...ex, targetSets: newTargetSets, targetReps: cleanedReps, setsLog: nextSets };
       });
       const updated = { ...prev, exercises, updatedAt: Date.now() };
       saveLog(updated);
@@ -1147,22 +1183,39 @@ export function useGymLog(dateStr: string) {
     if (!targetPlanDay) return;
 
     const isRest = targetPlanDay.isRest === true;
-    const newExercises = !isRest ? targetPlanDay.exercises.map((e: any, idx: number) => ({
-      _idx: idx,
-      exerciseId: e.id,
-      name: e.name,
-      targetSets: e.targetSets,
-      targetReps: e.targetReps,
-      muscle: e.muscle,
-      videoId: e.videoId,
-      restTimeSecs: e.restTimeSecs,
-      setsLog: Array.from({ length: e.targetSets }, (_, i) => ({
-        setNumber: i + 1,
-        reps: null,
-        weight: null,
-        completed: false,
-      })),
-    })) : [];
+    const newExercises = !isRest ? targetPlanDay.exercises.map((e: any, idx: number) => {
+      const prevSession = historyIndex.get(normalizeExerciseKey(e.name));
+      const lastSets = prevSession?.sets || null;
+      const lastValidSet = lastSets && lastSets.length > 0 ? lastSets[lastSets.length - 1] : null;
+      const defaultTargetReps = parseInt(String(e.targetReps || '8-12').split(/[-–—]/)[0], 10) || 8;
+
+      let patchedMuscle = e.muscle;
+      if (!patchedMuscle || ['general', 'unknown', 'none', 'mixed', 'null', 'undefined'].includes(patchedMuscle.trim().toLowerCase())) {
+        patchedMuscle = resolveExerciseTargetMuscle(e.name, e.muscle).targetMuscle;
+      }
+
+      return {
+        _idx: idx,
+        exerciseId: e.id,
+        name: e.name,
+        targetSets: e.targetSets,
+        targetReps: e.targetReps,
+        muscle: patchedMuscle,
+        videoId: e.videoId,
+        restTimeSecs: e.restTimeSecs,
+        lastSessionSets: lastSets ?? undefined,
+        setsLog: Array.from({ length: e.targetSets }, (_, i) => {
+          const lastSet = lastSets?.[i] || lastValidSet;
+          const setWeight = (lastSet?.weight != null && Number(lastSet.weight) > 0) ? Number(lastSet.weight) : null;
+          return {
+            setNumber: i + 1,
+            reps: lastSet?.reps ? Number(lastSet.reps) : defaultTargetReps,
+            weight: setWeight,
+            completed: false,
+          };
+        }),
+      };
+    }) : [];
 
     const updated: GymDayLog = {
       ...(logRef.current || { userId: user?.uid || '', date: dateStr, cardio: [], createdAt: Date.now() }),
@@ -1177,7 +1230,7 @@ export function useGymLog(dateStr: string) {
 
     setLog(updated);
     saveLog(updated);
-  }, [dateStr, user?.uid, saveLog]);
+  }, [dateStr, user?.uid, saveLog, historyIndex]);
 
   return {
     log,

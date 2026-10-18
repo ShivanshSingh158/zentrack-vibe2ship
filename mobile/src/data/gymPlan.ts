@@ -219,6 +219,54 @@ export const GYM_PLAN_PPL: GymPlanDay[] = [
 
 export const GYM_PLAN = GYM_PLAN_PPL;
 
+// ── Date & Plan Resolution Helpers ──────────────────────────────────────────
+export function todayStr(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function dateStrOffset(offsetDays: number, fromStr?: string): string {
+  let d: Date;
+  if (fromStr) {
+    const [y, mo, day] = fromStr.split('-').map(Number);
+    d = new Date(y, mo - 1, day);
+  } else {
+    d = new Date();
+  }
+  d.setDate(d.getDate() + offsetDays);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function planDayIndexForDate(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dayOfWeek = new Date(y, m - 1, d).getDay();
+  return WEEKDAY_TO_PLAN[dayOfWeek] ?? 7;
+}
+
+export function getCustomPlanDay(customDays: any, planIdx: number): GymPlanDay | null {
+  if (!customDays) return null;
+  if (Array.isArray(customDays)) {
+    return customDays.find(d => d && (d.dayIndex === planIdx || Number(d.dayIndex) === Number(planIdx))) || null;
+  }
+  return customDays[planIdx] || customDays[String(planIdx)] || null;
+}
+
+export function resolvePlanDay(userGymPlan: any, planIdx: number): GymPlanDay {
+  const rawCustom = getCustomPlanDay(userGymPlan?.customDays, planIdx);
+  const customHasExercises = rawCustom && Array.isArray(rawCustom.exercises) && rawCustom.exercises.length > 0;
+  if (rawCustom && (rawCustom.isRest || customHasExercises)) {
+    return rawCustom;
+  }
+  const basePlan = userGymPlan?.templateId === 'arnold' ? GYM_PLAN_ARNOLD : GYM_PLAN;
+  return basePlan.find((d: GymPlanDay) => d.dayIndex === planIdx) || GYM_PLAN_ARNOLD.find((d: GymPlanDay) => d.dayIndex === planIdx) || GYM_PLAN[0];
+}
+
 // Curated 8 best distinct alternatives ranked by Biomechanical Hypertrophy Tiers (S Tier -> A+ Tier -> A Tier -> B Tier).
 export const EXERCISE_ALTERNATIVES: Record<string, { 
   name: string; 

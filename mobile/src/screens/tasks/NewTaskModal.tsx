@@ -25,22 +25,28 @@ import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import BottomSheet from '../../components/ui/BottomSheet';
 import NLPTaskInput from '../../components/Tasks/NLPTaskInput';
 import AnimatedPressable from '../../components/AnimatedPressable';
+import { feedback } from '../../utils/haptics';
 
 const VoiceDictationOverlay = React.lazy(() => import('../../components/Tasks/VoiceDictationOverlay'));
 const RecurrencePickerModal = React.lazy(() => import('../../components/Tasks/RecurrencePickerModal'));
 const UniversalCalendarModal = React.lazy(() => import('../../components/UniversalCalendarModal'));
 
-// Module-level tag library memory cache for 0ms Frame-0 read
-let cachedTagLibrary: string[] | null = null;
 import { parseNLTask, ParsedTask, NLPToken, parseLocalDate, toYMD, cleanTaskTitle, formatRecurrenceLabel } from '../../utils/dateUtils';
 import { isSilenceOrNoise } from '../../services/voiceEngine';
 import {
   TAG_STORAGE_KEY, TAG_PALETTE, tagColorFor,
-  today, formatDisplayDate, formatTimeDisplay,
-  Priority,
+  getToday, formatDisplayDate, formatTimeDisplay,
+  Priority, cachedTagLibrary, setCachedTagLibrary, EMPTY_PARSED_TASK,
+  TIME_RANGE_REGEX,
 } from './taskConstants';
 import { makeTasksStyles } from './tasksStyles';
 import { scheduleSingleTaskReminder } from '../../services/notifications';
+import * as Notifications from 'expo-notifications';
+
+// Issue 97: hoisted to module scope so they don't re-allocate on every render
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export { DAY_NAMES, MONTH_NAMES };
 
 interface Props {
   visible: boolean;
@@ -94,13 +100,13 @@ const TaskQuickOptionsBar = React.memo(function TaskQuickOptionsBar({
   onToggleReminder,
 }: TaskQuickOptionsBarProps) {
   const tomorrowStr = useMemo(() => {
-    const d = new Date(today);
+    const d = parseLocalDate(getToday());
     d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
+    return toYMD(d);
   }, []);
 
   const timeLabel = startTime ? formatTimeDisplay(startTime) : 'Time';
-  const dateLabel = taskDate === today ? 'Today'
+  const dateLabel = taskDate === getToday() ? 'Today'
     : taskDate === tomorrowStr
       ? 'Tomorrow'
       : formatDisplayDate(taskDate);
@@ -111,12 +117,12 @@ const TaskQuickOptionsBar = React.memo(function TaskQuickOptionsBar({
         <AnimatedPressable
           style={[
             styles.quickChip,
-            taskDate !== today && { backgroundColor: 'rgba(96, 165, 250, 0.08)', borderColor: 'rgba(96, 165, 250, 0.3)' }
+            taskDate !== getToday() && { backgroundColor: 'rgba(96, 165, 250, 0.08)', borderColor: 'rgba(96, 165, 250, 0.3)' }
           ]}
           onPress={onOpenCalendar}
         >
-          <Ionicons name="calendar-outline" size={13} color={taskDate !== today ? '#60a5fa' : '#8e8e93'} />
-          <Text style={[styles.quickChipText, taskDate !== today && { color: '#60a5fa', fontWeight: '500' }]}>
+          <Ionicons name="calendar-outline" size={13} color={taskDate !== getToday() ? '#60a5fa' : '#8e8e93'} />
+          <Text style={[styles.quickChipText, taskDate !== getToday() && { color: '#60a5fa', fontWeight: '500' }]}>
             {dateLabel}
           </Text>
         </AnimatedPressable>
@@ -255,14 +261,18 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   const [showTagInput, setShowTagInput] = useState(false);
 
   useEffect(() => {
-    if (!visible || cachedTagLibrary) return;
-    AsyncStorage.getItem(TAG_STORAGE_KEY).then(raw => {
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        cachedTagLibrary = parsed;
-        setTagLibrary(parsed);
-      }
-    });
+    if (!visible) return;
+    if (cachedTagLibrary && cachedTagLibrary.length > 0) {
+      setTagLibrary(cachedTagLibrary);
+    } else {
+      AsyncStorage.getItem(TAG_STORAGE_KEY).then(raw => {
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setCachedTagLibrary(parsed);
+          setTagLibrary(parsed);
+        }
+      });
+    }
   }, [visible]);
 
   const addTag = useCallback((tag: string) => {
@@ -271,7 +281,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     setSelectedTags(prev => prev.includes(clean) ? prev : [...prev, clean]);
     setTagLibrary(prev => {
       const next = prev.includes(clean) ? prev : [clean, ...prev];
-      cachedTagLibrary = next;
+      setCachedTagLibrary(next);
       AsyncStorage.setItem(TAG_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
@@ -308,6 +318,13 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   useEffect(() => { setTaskDate(selectedDate); }, [selectedDate, visible]);
 
   const nlpDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Issue 67: sync ref lock prevents double-tap from creating duplicate tasks
+  const isSavingRef = useRef(false);
+
+  // Issue 86: clear debounce on unmount
+  useEffect(() => {
+    return () => { if (nlpDebounceRef.current) clearTimeout(nlpDebounceRef.current); };
+  }, []);
 
   const handleTitleChange = useCallback((text: string) => {
     // Update title immediately on every keystroke — no lag
@@ -326,7 +343,8 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       setNlpParsed(parsed.tokens.length > 0 ? parsed : null);
       if (parsed.date && parsed.tokens.some(t => t.type === 'date')) setTaskDate(parsed.date);
       if (parsed.timeSlot && parsed.tokens.some(t => t.type === 'time')) {
-        const timeParts = parsed.timeSlot.split(/[-–—]/).map(s => s.trim()).filter(Boolean);
+        // Issue 61: use safe range regex, spaces inside "7:30 PM" must not split
+        const timeParts = parsed.timeSlot.split(TIME_RANGE_REGEX).map(s => s.trim()).filter(Boolean);
         setStartTime(timeParts[0] || '');
         setEndTime(parsed.endTimeSlot || (timeParts.length > 1 ? timeParts[timeParts.length - 1] : ''));
         setIsReminder(true);
@@ -443,6 +461,8 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     setSelectedTags([]); setNewTagInput(''); setShowTagInput(false);
     setIsReminder(false);
     setOneTimeDates(undefined);
+    // Issue 67: reset saving lock on form reset
+    isSavingRef.current = false;
   }, []);
 
   // Internal visibility to allow BottomSheet to play its 210ms exit slide before unmounting
@@ -478,7 +498,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   const [showDictationOverlay, setShowDictationOverlay] = useState(false);
 
   const handleVoiceTasksExtracted = async (extractedTasks: any[]) => {
-    import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+    feedback.commit();
     
     if (extractedTasks.length > 0) {
       const pt = extractedTasks[0];
@@ -515,11 +535,18 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   };
 
   const handleSave = (overrideTitle?: string) => {
+    // Issue 67: prevent double-tap duplicate creation with a sync ref lock
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
+
     const isOverride = typeof overrideTitle === 'string';
     const rawText = isOverride ? overrideTitle : title;
-    if (!rawText.trim() || isSilenceOrNoise(rawText)) return;
+    if (!rawText.trim() || isSilenceOrNoise(rawText)) {
+      isSavingRef.current = false;
+      return;
+    }
 
-    import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+    feedback.commit();
 
     // ── Always re-parse synchronously at save time ──────────────────────────
     // The debounced nlpParsed may be stale (or null) if the user submitted
@@ -567,105 +594,144 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       }
     }
 
-    // Do instant optimistic update first with deterministic Firestore IDs upfront
+    // Virtual Recurrence Engine: Store 1 single template task with recurrenceRule instead of 90 cloned documents
     if (finalRecurrence && startRecurrenceDate) {
-      let current = new Date(startRecurrenceDate.getTime());
-      const end = finalRecurrence.endDate
-        ? parseLocalDate(finalRecurrence.endDate)
-        : new Date(current.getTime() + 90 * 24 * 60 * 60 * 1000);
-      let count = 0;
-      const MAX_INSTANCES = 90;
+      const docRef = doc(collection(db, COLLECTION.TASKS));
+      const taskId = docRef.id;
+      const dateStr = toYMD(startRecurrenceDate);
+      const finalIsReminder = Boolean(isReminder || ts);
       const sourceId = `rec_${Date.now()}`;
-      const batch = writeBatch(db);
 
-      while (current <= end && count < MAX_INSTANCES) {
-        const docRef = doc(collection(db, COLLECTION.TASKS));
-        const taskId = docRef.id;
-        const dateStr = toYMD(current);
+      const optimisticPayload: any = {
+        id: taskId,
+        userId,
+        title: finalTitle,
+        status: 'pending',
+        priority: finalPriority,
+        date: dateStr,
+        timeSlot: ts || undefined,
+        estimatedMinutes: est,
+        isRecurring: true,
+        recurrenceRule: finalRecurrence,
+        recurringSourceId: sourceId,
+        subject: undefined,
+        tags: selectedTags,
+        order: listCount,
+        subtasks: subtaskObjects,
+        isReminder: finalIsReminder || undefined,
+      };
 
-        optimisticAddTask({
-          id: taskId,
-          userId, title: finalTitle, status: 'pending',
-          priority: finalPriority, date: dateStr, timeSlot: ts || undefined,
-          estimatedMinutes: est, isRecurring: true, recurrenceRule: finalRecurrence || undefined,
-          recurringSourceId: sourceId || undefined, subject: undefined, order: listCount, subtasks: subtaskObjects,
-          isReminder: (isReminder || !!ts) || undefined,
-        });
+      optimisticAddTask(optimisticPayload);
 
-        batch.set(docRef, {
-          userId, title: finalTitle, text: finalTitle, status: 'pending',
-          priority: finalPriority, date: dateStr, timeSlot: ts || null,
-          estimatedMinutes: est, isRecurring: true, recurrenceRule: finalRecurrence,
-          recurringSourceId: sourceId, subject: null, createdAt: serverTimestamp(),
-          order: listCount, subtasks: subtaskObjects,
-          isReminder: (isReminder || !!ts) || false,
-        });
-
-        count++;
-        if (finalRecurrence.type === 'daily' || finalRecurrence.type === 'custom') {
-          current.setDate(current.getDate() + (finalRecurrence.interval || 1));
-        } else if (finalRecurrence.type === 'weekly') {
-          if (finalRecurrence.daysOfWeek?.length > 0) {
-            do { current.setDate(current.getDate() + 1); }
-            while (current <= end && !finalRecurrence.daysOfWeek.includes(current.getDay()));
-          } else {
-            current.setDate(current.getDate() + 7 * (finalRecurrence.interval || 1));
-          }
-        } else if (finalRecurrence.type === 'monthly') {
-          current.setMonth(current.getMonth() + (finalRecurrence.interval || 1));
-        } else {
-          break;
-        }
-      }
+      const firestorePayload = {
+        id: taskId,
+        userId,
+        title: finalTitle,
+        text: finalTitle,
+        status: 'pending',
+        priority: finalPriority,
+        date: dateStr,
+        timeSlot: ts || null,
+        estimatedMinutes: est,
+        isRecurring: true,
+        recurrenceRule: finalRecurrence,
+        recurringSourceId: sourceId,
+        subject: null,
+        tags: selectedTags,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        order: listCount,
+        subtasks: subtaskObjects,
+        isReminder: finalIsReminder,
+      };
 
       resetAndClose();
 
       (async () => {
         try {
-          await batch.commit();
+          await safeWrite(
+            () => setDoc(docRef, firestorePayload),
+            COLLECTION.TASKS,
+            'set',
+            firestorePayload,
+            taskId
+          );
+          // Issue 64: schedule notification for recurring template task
+          if (finalIsReminder && ts) {
+            scheduleSingleTaskReminder({ ...optimisticPayload } as any).catch(console.warn);
+          }
         } catch (e) {
-          console.error('Error committing recurring tasks batch:', e);
+          console.error('Error committing recurring task:', e);
         }
       })();
     } else if (oneTimeDates && oneTimeDates.length > 1 && !finalRecurrence) {
-      // ── One-time multi-day batch (e.g. "only this mon, tue, fri") ──────────
-      // Create one task per resolved date. Uses writeBatch for atomicity.
-      // optimisticAddTask is called for each so the UI updates instantly.
+      const finalIsReminder = Boolean(isReminder || ts);
+      const newOptimisticTasks: any[] = [];
       const batch = writeBatch(db);
-      const subtaskObjects = subtasks.map((s, i) => ({ id: `st-${i}`, title: s, completed: false }));
 
-      for (const dateStr of oneTimeDates) {
+      for (let i = 0; i < oneTimeDates.length; i++) {
+        const dateStr = oneTimeDates[i];
         const docRef = doc(collection(db, COLLECTION.TASKS));
         const taskId = docRef.id;
         const taskPayload: any = {
           id: taskId,
-          userId, title: finalTitle, status: 'pending',
-          priority: finalPriority, date: dateStr, timeSlot: ts || undefined,
-          estimatedMinutes: est, isRecurring: false, recurrenceRule: undefined,
-          recurringSourceId: undefined, subject: undefined, tags: selectedTags,
-          order: listCount, subtasks: subtaskObjects,
-          isReminder: (isReminder || !!ts) || undefined,
+          userId,
+          title: finalTitle,
+          status: 'pending',
+          priority: finalPriority,
+          date: dateStr,
+          timeSlot: ts || undefined,
+          estimatedMinutes: est,
+          isRecurring: false,
+          recurrenceRule: undefined,
+          recurringSourceId: undefined,
+          subject: undefined,
+          tags: selectedTags,
+          order: listCount + i,
+          subtasks: subtaskObjects,
+          isReminder: finalIsReminder || undefined,
         };
-        optimisticAddTask(taskPayload);
-        batch.set(docRef, {
-          userId, title: finalTitle, text: finalTitle, status: 'pending',
-          priority: finalPriority, date: dateStr, timeSlot: ts || null,
-          estimatedMinutes: est, isRecurring: false, recurrenceRule: null,
-          recurringSourceId: null, subject: null, tags: selectedTags,
-          order: listCount, subtasks: subtaskObjects,
-          isReminder: (isReminder || !!ts) || false,
-          createdAt: serverTimestamp(),
-        });
+        newOptimisticTasks.push(taskPayload);
+
+        const firestorePayload = {
+          id: taskId,
+          userId,
+          title: finalTitle,
+          text: finalTitle,
+          status: 'pending',
+          priority: finalPriority,
+          date: dateStr,
+          timeSlot: ts || null,
+          estimatedMinutes: est,
+          isRecurring: false,
+          recurrenceRule: null,
+          recurringSourceId: null,
+          subject: null,
+          tags: selectedTags,
+          order: listCount + i,
+          subtasks: subtaskObjects,
+          isReminder: finalIsReminder,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        batch.set(docRef, firestorePayload);
       }
 
-      import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
+      newOptimisticTasks.forEach(t => optimisticAddTask(t));
+      feedback.success();
       resetAndClose();
 
       (async () => {
         try {
           await batch.commit();
+          // Issue 64: schedule notifications for each multi-day task
+          if (finalIsReminder && ts) {
+            for (const t of newOptimisticTasks) {
+              scheduleSingleTaskReminder(t as any).catch(console.warn);
+            }
+          }
         } catch (e) {
-          console.error('Error committing one-time multi-day batch:', e);
+          console.error('Error committing one-time multi-day tasks in batch:', e);
         }
       })();
     } else {
@@ -724,7 +790,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
           <NLPTaskInput
             value={title}
             onChangeText={handleTitleChange}
-            parsed={nlpParsed ?? { title, date: null, timeSlot: null, priority: 'low', isRecurring: false, recurrenceRule: null, tokens: [] }}
+            parsed={nlpParsed ?? EMPTY_PARSED_TASK}
             onDismissToken={handleDismissToken}
             autoFocus={canFocusInput}
             placeholder="Add a task... try 'report friday 3pm high'"

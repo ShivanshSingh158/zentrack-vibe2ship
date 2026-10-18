@@ -34,9 +34,15 @@ import {
   domainToReasoningLabel,
   AppContext, // import from intentClassifier to avoid circular deps
 } from './intentClassifier';
+import { formatLocalDateStr, offsetDateStr } from '../utils/dateUtils';
+import { isValidWorkoutSession } from '../utils/gymUtils';
 
 // Re-export AppContext for backward compatibility with SaraScreen and other callers
 export type { AppContext };
+
+function _buildTodayISO(): string {
+  return formatLocalDateStr(new Date());
+}
 
 // ─── Context builders (compact — keep payload small) ─────────────────────────
 
@@ -48,10 +54,10 @@ function summarizeTasks(tasks: any[] = []) {
 }
 
 function summarizeHabits(habits: any[] = [], logs: any[] = []) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = _buildTodayISO();
   return habits.slice(0, 20).map(h => ({
     id: h.id, name: h.name, streak: h.streak,
-    doneToday: logs.some(l => l.habitId === h.id && l.date === today),
+    doneToday: logs.some(l => l.habitId === h.id && (l.date || '').slice(0, 10) === today),
   }));
 }
 
@@ -94,7 +100,7 @@ function _buildPromptFingerprint(ctx: AppContext): string {
     (ctx.gymLogs || []).length,
     (ctx.attendance || []).length,
     (ctx.assignments || []).length,
-    new Date().toISOString().slice(0, 10)
+    _buildTodayISO(),
   ].join('|');
 }
 
@@ -122,8 +128,8 @@ function buildSystemPrompt(
     basePrompt = _promptCache.prompt;
   } else {
     const now = new Date();
-    const todayISO = now.toISOString().split('T')[0];
-    const tomorrowISO = new Date(now.getTime() + 86_400_000).toISOString().split('T')[0];
+    const todayISO = formatLocalDateStr(now);
+    const tomorrowISO = offsetDateStr(todayISO, 1);
 
     const tasksSummary = summarizeTasks(ctx.tasks);
     const habitsSummary = summarizeHabits(ctx.habits, ctx.habitLogs);
@@ -205,7 +211,7 @@ ${buildActionRules(tomorrowISO, todayISO)}`;
   // Session awareness and proactive scan are ALWAYS freshly computed (not cached)
   const sessionBlock = buildSessionAwareness(history);
   const now2 = new Date();
-  const tomorrowISO2 = new Date(now2.getTime() + 86_400_000).toISOString().split('T')[0];
+  const tomorrowISO2 = offsetDateStr(formatLocalDateStr(now2), 1);
   const proactiveScan = buildProactiveScan(ctx);
 
   const dynamicSuffix = [
@@ -214,10 +220,6 @@ ${buildActionRules(tomorrowISO, todayISO)}`;
   ].filter(Boolean).join('\n');
 
   return dynamicSuffix ? basePrompt.replace(buildActionRules(tomorrowISO2, _buildTodayISO()), `\n${dynamicSuffix}\n${buildActionRules(tomorrowISO2, _buildTodayISO())}`) : basePrompt;
-}
-
-function _buildTodayISO(): string {
-  return new Date().toISOString().split('T')[0];
 }
 
 // ─── Selective System Prompt Builder (IRCI — Capability 2) ───────────────────
@@ -232,8 +234,8 @@ function buildSelectiveSystemPrompt(
   history: { role: string; text?: string; content?: string }[] = []
 ): string {
   const now = new Date();
-  const todayISO = now.toISOString().split('T')[0];
-  const tomorrowISO = new Date(now.getTime() + 86_400_000).toISOString().split('T')[0];
+  const todayISO = formatLocalDateStr(now);
+  const tomorrowISO = offsetDateStr(todayISO, 1);
 
   const sessionBlock = buildSessionAwareness(history);
   const proactiveScan = buildProactiveScan(ctx);
@@ -263,9 +265,9 @@ ${buildActionRules(tomorrowISO, todayISO)}`;
 }
 
 function buildActionRules(tomorrowISO: string, todayISO: string): string {
-  const day2ISO = new Date(new Date(tomorrowISO).getTime() + 86_400_000).toISOString().split('T')[0];
-  const day3ISO = new Date(new Date(tomorrowISO).getTime() + 2 * 86_400_000).toISOString().split('T')[0];
-  const day4ISO = new Date(new Date(tomorrowISO).getTime() + 3 * 86_400_000).toISOString().split('T')[0];
+  const day2ISO = offsetDateStr(tomorrowISO, 1);
+  const day3ISO = offsetDateStr(tomorrowISO, 2);
+  const day4ISO = offsetDateStr(tomorrowISO, 3);
 
   return `═══ RESPONSE RULES ═══
 
@@ -425,9 +427,9 @@ function buildSessionAwareness(history: { role: string; text?: string; content?:
  */
 function buildProactiveScan(ctx: AppContext): string {
   const now = new Date();
-  const todayISO = now.toISOString().split('T')[0];
-  const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const todayISO = formatLocalDateStr(now);
+  const sevenDaysLater = offsetDateStr(todayISO, 7);
+  const threeDaysLater = offsetDateStr(todayISO, 3);
 
   const lines: string[] = [];
 
@@ -451,13 +453,27 @@ function buildProactiveScan(ctx: AppContext): string {
 
   if (unloggedToday.length > 0) lines.push(`✅ HABITS: ${unloggedToday.length} not yet logged today — "${unloggedToday.slice(0,2).map(h=>h.name).join('", "')}"`);
 
-  // 📚 Attendance
+  // 📚 Attendance (include labs & per-subject targetPercentage)
   const attendance = ctx.attendance || [];
-  const atRiskSubjects = attendance.filter(s => s.classesTotal > 0 && (s.classesAttended / s.classesTotal) < 0.75);
-  const criticalSubjects = attendance.filter(s => s.classesTotal > 0 && (s.classesAttended / s.classesTotal) < 0.65);
+  const getSubjPct = (s: any) => {
+    const att = (s.classesAttended || 0) + (s.labsAttended || 0);
+    const tot = (s.classesTotal || 0) + (s.labsTotal || 0);
+    return { tot, pct: tot > 0 ? (att / tot) * 100 : 100, target: s.targetPercentage || 75 };
+  };
+  const atRiskSubjects = attendance.filter(s => {
+    const { tot, pct, target } = getSubjPct(s);
+    return tot > 0 && pct < target;
+  });
+  const criticalSubjects = attendance.filter(s => {
+    const { tot, pct, target } = getSubjPct(s);
+    return tot > 0 && pct < target - 10;
+  });
 
-  if (criticalSubjects.length > 0) lines.push(`🚨 CRITICAL ATTENDANCE: ${criticalSubjects.map(s => `${s.name} (${Math.round(s.classesAttended/s.classesTotal*100)}%)`).join(', ')}`);
-  else if (atRiskSubjects.length > 0) lines.push(`⚠️ AT-RISK ATTENDANCE: ${atRiskSubjects.map(s => `${s.name} (${Math.round(s.classesAttended/s.classesTotal*100)}%)`).join(', ')}`);
+  if (criticalSubjects.length > 0) {
+    lines.push(`🚨 CRITICAL ATTENDANCE: ${criticalSubjects.map(s => `${s.name} (${Math.round(getSubjPct(s).pct)}%)`).join(', ')}`);
+  } else if (atRiskSubjects.length > 0) {
+    lines.push(`⚠️ AT-RISK ATTENDANCE: ${atRiskSubjects.map(s => `${s.name} (${Math.round(getSubjPct(s).pct)}%)`).join(', ')}`);
+  }
 
   // 📌 Assignments
   const assignments = ctx.assignments || [];
@@ -471,7 +487,7 @@ function buildProactiveScan(ctx: AppContext): string {
 
   // 🏋️ Gym
   const gymLogs = ctx.gymLogs || [];
-  const todayGym = gymLogs.find(g => g.date === todayISO);
+  const todayGym = gymLogs.find(g => g.date === todayISO && isValidWorkoutSession(g));
   const recentGym = gymLogs.filter(g => {
     const d = new Date(g.date);
     return d >= new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
@@ -498,8 +514,8 @@ function buildProactiveScan(ctx: AppContext): string {
 
 function buildCrossModuleInsights(ctx: AppContext): string {
   const now = new Date();
-  const todayISO = now.toISOString().slice(0, 10);
-  const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const todayISO = formatLocalDateStr(now);
+  const sevenDaysLater = offsetDateStr(todayISO, 7);
   
   const urgentExams = (ctx.customEvents || []).filter(e => e.type === 'exam' && e.date >= todayISO && e.date <= sevenDaysLater);
   const urgentDeadlines = (ctx.assignments || []).filter(a => (a.dueDate || '') >= todayISO && (a.dueDate || '') <= sevenDaysLater && a.status !== 'submitted' && a.status !== 'graded');

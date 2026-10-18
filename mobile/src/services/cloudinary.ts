@@ -120,12 +120,12 @@ export const uploadFileToCloudinary = async (
   /** Pass file.size (bytes) from DocumentPicker for accurate timeout scaling */
   fileSize?: number,
 ): Promise<{ url: string; size: number; format?: string; resourceType?: string }> => {
-  const cloudName    = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME   || 'drc8jwyjf';
-  const uploadPreset = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'aoaogtkw';
+  const cloudName    = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME;
+  const uploadPreset = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
   if (!cloudName || !uploadPreset) {
     throw new Error(
-      'Cloudinary is not configured. Please verify EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME and EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET.'
+      'Cloudinary is not configured. Please set EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME and EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET.'
     );
   }
 

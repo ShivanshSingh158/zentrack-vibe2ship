@@ -4,7 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { BlurView } from 'expo-blur';
-import { serverTimestamp } from 'firebase/firestore';
+import { serverTimestamp, doc, setDoc, collection } from 'firebase/firestore';
+import { db } from '../../services/firebase';
+import { safeWrite } from '../../utils/safeWrite';
 import { COLLECTION } from '../../config/constants';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
@@ -43,7 +45,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
 
   const [editingTarget, setEditingTarget] = useState(false);
   const [tempTarget, setTempTarget] = useState(String(target));
-  const [reminderFreq, setReminderFreq] = useState<string>('0');
+  const [reminderFreq, setReminderFreq] = useState<string>('2');
 
   // Weight calculator state
   const [showWeightPrompt, setShowWeightPrompt] = useState(false);
@@ -64,10 +66,16 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   useEffect(() => { setTempTarget(String(target)); }, [target]);
   
   useEffect(() => {
+    if (!visible) return;
     AsyncStorage.getItem('@zentrack_water_reminder_freq').then(val => {
-      if (val) setReminderFreq(val);
+      if (val !== null && val !== undefined) {
+        setReminderFreq(val);
+      } else {
+        setReminderFreq('2');
+        AsyncStorage.setItem('@zentrack_water_reminder_freq', '2').catch(() => {});
+      }
     });
-  }, []);
+  }, [visible]);
 
   // Smart water auto-calculation: runs AT MOST ONCE per app session.
   // Only applies the 40ml/kg formula if no custom target has been saved by the user.
@@ -75,23 +83,44 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   // ignoring any saved custom target and triggering 3 extra side effects per tap.
   useEffect(() => {
     if (!visible || !userWeight || userWeight <= 0) return;
-    if (hasAutoCalculated.current) return; // already ran this session
-    AsyncStorage.getItem(WATER_GOAL_KEY).then(saved => {
-      if (!saved) {
-        // No custom target set — apply formula and save for future sessions
-        const autoGoal = Math.round(userWeight * 40); // 40ml per kg formula
+    if (hasAutoCalculated.current) return;
+    Promise.all([
+      AsyncStorage.getItem(WATER_GOAL_KEY),
+      AsyncStorage.getItem('@zentrack_water_target'),
+    ]).then(([saved, legacy]) => {
+      if (!saved && !legacy) {
+        const autoGoal = Math.round(userWeight * 40);
         onUpdateTarget(autoGoal);
-        AsyncStorage.setItem(WATER_GOAL_KEY, String(autoGoal));
+        AsyncStorage.setItem(WATER_GOAL_KEY, String(autoGoal)).catch(() => {});
+        if (userId) {
+          const payload = { waterGoalMl: autoGoal, waterTarget: autoGoal, updatedAt: Date.now() };
+          safeWrite(
+            () => setDoc(doc(db, COLLECTION.USER_PROFILES, userId), payload, { merge: true }),
+            COLLECTION.USER_PROFILES,
+            'set',
+            payload,
+            userId
+          ).catch(() => {});
+        }
       }
       hasAutoCalculated.current = true;
     });
-  }, [visible, userWeight]);
+  }, [visible, userWeight, userId]);
 
   const handleFreqChange = async (freq: string) => {
     setReminderFreq(freq);
     await AsyncStorage.setItem('@zentrack_water_reminder_freq', freq);
+    if (userId) {
+      const payload = { waterReminderFreq: freq, updatedAt: Date.now() };
+      safeWrite(
+        () => setDoc(doc(db, COLLECTION.USER_PROFILES, userId), payload, { merge: true }),
+        COLLECTION.USER_PROFILES,
+        'set',
+        payload,
+        userId
+      ).catch(() => {});
+    }
     clearScheduleCache();
-    // Defer notification reschedule — avoids blocking the UI thread during slider interaction.
     InteractionManager.runAfterInteractions(() => {
       scheduleAllNotifications({
         tasks: coreData.tasks,
@@ -105,6 +134,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
         waterLogs: wellnessData.waterLogs,
         sleepLogs: wellnessData.sleepLogs,
         userGymPlan: wellnessData.userGymPlan,
+        holidays: academicData.holidays,
       }).catch(console.warn);
     });
   };
@@ -115,12 +145,14 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
       onUpdateTarget(val);
       AsyncStorage.setItem(WATER_GOAL_KEY, String(val));
       if (userId) {
-        queueWrite(COLLECTION.USER_PROFILES, 'update', {
-          id: userId,
-          waterGoalMl: val,
-          waterTarget: val,
-          updatedAt: Date.now(),
-        }).catch(() => {});
+        const payload = { waterGoalMl: val, waterTarget: val, updatedAt: Date.now() };
+        safeWrite(
+          () => setDoc(doc(db, COLLECTION.USER_PROFILES, userId), payload, { merge: true }),
+          COLLECTION.USER_PROFILES,
+          'set',
+          payload,
+          userId
+        ).catch(() => {});
       }
     }
     setEditingTarget(false);
@@ -129,18 +161,19 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   const handleSaveWeightAndCalculateGoal = async () => {
     const w = parseFloat(weightInput);
     if (!isNaN(w) && w > 0) {
-      // Save weight to gym profile
       await saveGymProfile({ weightKg: w });
       const autoGoal = Math.round(w * 40);
       onUpdateTarget(autoGoal);
       await AsyncStorage.setItem(WATER_GOAL_KEY, String(autoGoal));
       if (userId) {
-        queueWrite(COLLECTION.USER_PROFILES, 'update', {
-          id: userId,
-          waterGoalMl: autoGoal,
-          waterTarget: autoGoal,
-          updatedAt: Date.now(),
-        }).catch(() => {});
+        const payload = { waterGoalMl: autoGoal, waterTarget: autoGoal, updatedAt: Date.now() };
+        safeWrite(
+          () => setDoc(doc(db, COLLECTION.USER_PROFILES, userId), payload, { merge: true }),
+          COLLECTION.USER_PROFILES,
+          'set',
+          payload,
+          userId
+        ).catch(() => {});
       }
       setShowWeightPrompt(false);
       setWeightInput('');
@@ -152,30 +185,31 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
     if (amountMl <= 0) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const todayStr = formatLocalDateStr(new Date());
-    
-    // Instant optimistic update (0ms latency in UI)
-    optimisticAddWaterLog({
-      id: `local_water_${Date.now()}`,
+    const now = Date.now();
+    const waterRef = doc(collection(db, COLLECTION.WATER_LOGS));
+    const logId = waterRef.id;
+
+    const waterPayload = {
+      id: logId,
       userId,
       date: todayStr,
       amountMl,
-      timestamp: Date.now(),
-    });
+      timestamp: now,
+      createdAt: now,
+    };
 
-    try {
-      await queueWrite(COLLECTION.WATER_LOGS, 'add', {
-        userId,
-        date: todayStr,
-        amountMl,
-        timestamp: Date.now(),
-        createdAt: serverTimestamp(),
-      });
-      setShowCustomLog(false);
-      setCustomMlInput('');
-      onClose();
-    } catch (e) {
-      console.error('Error logging water', e);
-    }
+    optimisticAddWaterLog(waterPayload);
+    setShowCustomLog(false);
+    setCustomMlInput('');
+    onClose();
+
+    safeWrite(
+      () => setDoc(waterRef, waterPayload),
+      COLLECTION.WATER_LOGS,
+      'set',
+      waterPayload,
+      logId
+    ).catch(e => console.error('Error logging water', e));
   };
 
   const goalLitres = (target / 1000).toFixed(1);
@@ -307,6 +341,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
               {[
                 { label: 'Off', val: '0' },
                 { label: '1h', val: '1' },
+                { label: '1.5h', val: '1.5' },
                 { label: '2h', val: '2' },
                 { label: '3h', val: '3' }
               ].map(opt => (

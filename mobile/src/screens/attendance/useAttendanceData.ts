@@ -12,6 +12,7 @@ import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import type { AttendanceSubject } from '../../contexts/MobileDataContext';
 import { COLLECTION } from '../../config/constants';
 import { handleSyncError } from '../../utils/errorUtils';
+import { safeWrite } from '../../utils/safeWrite';
 import {
   SCHEMA_VERSION, defaultSchedule, DAY_NAMES,
   getLocalDateString, getWeekDates, parseTimeToMinutes,
@@ -54,9 +55,13 @@ export function useAttendanceData() {
   const [editSubject,         setEditSubject]          = useState<AttendanceSubject | null>(null);
   const [extraSubjectId,      setExtraSubjectId]       = useState('');
   const [dismissedWarnings,   setDismissedWarnings]   = useState<Set<string>>(new Set());
-  const [overrideOpen,        setOverrideOpen]         = useState<string | null>(null);
-  const [overrideCounts,      setOverrideCounts]       = useState({ classesAttended: 0, classesTotal: 0, labsAttended: 0, labsTotal: 0 });
   const [confirmConfig,       setConfirmConfig]        = useState<ConfirmConfig>({ visible: false, title: '', message: '', onConfirm: () => {} });
+
+  useEffect(() => {
+    if (subjects.length > 0 && (!extraSubjectId || !subjects.some(s => s.id === extraSubjectId))) {
+      setExtraSubjectId(subjects[0].id!);
+    }
+  }, [subjects, extraSubjectId]);
 
   // ── Schema Migration (Guarded & Deferred) ──────────────────────────────────
   const hasMigratedRef = useRef(false);
@@ -64,77 +69,28 @@ export function useAttendanceData() {
     if (!user || subjects.length === 0 || hasMigratedRef.current || globalAttendanceMigratedUid === user.uid) return;
     hasMigratedRef.current = true;
     globalAttendanceMigratedUid = user.uid;
-    InteractionManager.runAfterInteractions(() => {
-      const batch = writeBatch(db);
-      let needsCommit = false;
+    const handle = InteractionManager.runAfterInteractions(() => {
       subjects.forEach(sub => {
-        if ((sub.schemaVersion || 0) < SCHEMA_VERSION) {
+        if ((sub.schemaVersion || 0) < SCHEMA_VERSION && sub.id) {
           const updates: any = { schemaVersion: SCHEMA_VERSION };
           if (!sub.schedule) updates.schedule = defaultSchedule;
-          batch.update(doc(db, COLLECTION.ATTENDANCE, sub.id), updates);
-          needsCommit = true;
+          safeWrite(
+            () => {
+              const b = writeBatch(db);
+              b.update(doc(db, COLLECTION.ATTENDANCE, sub.id), updates);
+              return b.commit();
+            },
+            COLLECTION.ATTENDANCE,
+            'update',
+            updates,
+            sub.id
+          ).catch(handleSyncError);
         }
       });
-      if (needsCommit) batch.commit().catch(handleSyncError);
     });
+    return () => handle.cancel();
   }, [user?.uid, subjects]);
 
-  // ── Automatic Attendance Deduplication & Reconciliation Routine ────────────
-  // Eliminates duplicate logs created by legacy concurrent writes and recalculates
-  // exact subject counters (classesAttended/classesTotal/labsAttended/labsTotal).
-  // Uses only hasDeduplicatedRef (component-scoped) instead of a module-level UID guard.
-  // The module-level guard would survive tab switches and app resumes, meaning duplicates
-  // created AFTER the first mount would never be cleaned up until force-kill + restart.
-  const hasDeduplicatedRef = useRef(false);
-  useEffect(() => {
-    if (!user || subjects.length === 0 || !logs || logs.length === 0 || hasDeduplicatedRef.current) return;
-    hasDeduplicatedRef.current = true;
-
-    InteractionManager.runAfterInteractions(async () => {
-      try {
-        const nonExtraLogs = logs.filter(l => !l.isExtra);
-        const groups: Record<string, any[]> = {};
-
-        for (let i = 0; i < nonExtraLogs.length; i++) {
-          const l = nonExtraLogs[i];
-          const key = `${l.subjectId || l.subjectName}_${(l.date || '').slice(0, 10)}_${l.type === 'lab' ? 'lab' : 'class'}_${l.idx ?? 0}`;
-          if (!groups[key]) groups[key] = [];
-          groups[key].push(l);
-        }
-
-        const duplicateLogIdsToDelete: string[] = [];
-        let foundDuplicates = false;
-
-        Object.values(groups).forEach(group => {
-          if (group.length > 1) {
-            foundDuplicates = true;
-            // Sort newest first
-            group.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-            // Keep index 0 (newest), mark older duplicates for deletion
-            for (let i = 1; i < group.length; i++) {
-              duplicateLogIdsToDelete.push(group[i].id);
-            }
-          }
-        });
-
-        // If duplicate logs exist, delete ONLY the duplicate log documents.
-        // CRITICAL: Never overwrite subject aggregate counts (classesAttended/classesTotal etc.)
-        // from log counts. This would destroy mid-semester baselines where a student entered
-        // starting counts (e.g. 35 attended / 40 total) without individual past log entries.
-        if (duplicateLogIdsToDelete.length > 0) {
-          const batch = writeBatch(db);
-          duplicateLogIdsToDelete.forEach(id => {
-            batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, id));
-            academic.optimisticRemoveAttendanceLog?.(id);
-          });
-
-          await batch.commit();
-        }
-      } catch (err) {
-        handleSyncError(err);
-      }
-    });
-  }, [user?.uid, subjects, logs, academic]);
 
   // ── Derived values ─────────────────────────────────────────────────────────
   // ── logsBySubjectId — indexed map (strictly deduplicated, sorted newest first) ──
@@ -183,6 +139,14 @@ export function useAttendanceData() {
   const isSelectedHoliday = useMemo(() => holidays.includes(selectedDate), [holidays, selectedDate]);
   const today             = useMemo(() => getLocalDateString(new Date()), []);
   const weekDates         = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
+
+  // ── Past Logs Filter (date < today) ──
+  // Scopes unlogged-sessions scanning to historical days so logging today's
+  // attendance never invalidates the 30-day unlogged memo.
+  const pastLogs = useMemo(() => {
+    if (!logs || logs.length === 0) return [];
+    return logs.filter(l => (l.date || '').slice(0, 10) < today);
+  }, [logs, today]);
 
   // ── Stable Timetable Fingerprint ──
   // Decouples session rendering from mutable attendance counters (attended/total)
@@ -325,11 +289,11 @@ export function useAttendanceData() {
   const { unloggedCount, unloggedSessions } = useMemo(() => {
     if (!subjects || subjects.length === 0) return { unloggedCount: 0, unloggedSessions: [] };
 
-    // Pre-index all existing non-extra logs into a Set: `${subjIdentifier}_${dateStr}_${type}_${idx}`
+    // Pre-index all existing non-extra past logs into a Set: `${subjIdentifier}_${dateStr}_${type}_${idx}`
     const loggedSlotSet = new Set<string>();
-    if (logs && logs.length > 0) {
-      for (let i = 0; i < logs.length; i++) {
-        const l = logs[i];
+    if (pastLogs && pastLogs.length > 0) {
+      for (let i = 0; i < pastLogs.length; i++) {
+        const l = pastLogs[i];
         if (l.isExtra) continue;
         const d = (l.date || '').slice(0, 10);
         const t = l.type === 'lab' ? 'lab' : 'class';
@@ -373,14 +337,10 @@ export function useAttendanceData() {
         const subject = subjects[sIdx];
         if (!subject.id) continue;
 
-        // Fix #14: Don't scan dates before the subject was created/enrolled.
-        // Without this, a student adding a new subject today would see 30 days of
-        // phantom unlogged sessions for a class they just enrolled in.
-        // Use lastUpdated as a proxy for creation date. If it's not set, we can't
-        // bound and must include all 30 days (legacy subjects without timestamps).
-        const subjectCreatedMs = subject.lastUpdated;
-        if (subjectCreatedMs) {
-          const subjectCreatedDate = new Date(subjectCreatedMs);
+        // Only bound if an explicit immutable createdAt timestamp exists.
+        // Never fall back to lastUpdated as a proxy, which updates on every attendance log!
+        if (typeof subject.createdAt === 'number' && subject.createdAt > 0) {
+          const subjectCreatedDate = new Date(subject.createdAt);
           subjectCreatedDate.setHours(0, 0, 0, 0);
           if (pastDate < subjectCreatedDate) continue;
         }
@@ -456,7 +416,7 @@ export function useAttendanceData() {
     }
 
     return { unloggedCount: count, unloggedSessions: list };
-  }, [subjects, holidays, logs, isUnloggedOpen]);
+  }, [subjects, holidays, pastLogs, isUnloggedOpen]);
 
   // ── Selected Date Logs Map for instant O(1) slot resolution in renderItem ──
   const selectedDateLogsBySlot = useMemo(() => {
@@ -509,8 +469,6 @@ export function useAttendanceData() {
     editSubject, setEditSubject,
     extraSubjectId, setExtraSubjectId,
     dismissedWarnings, setDismissedWarnings,
-    overrideOpen, setOverrideOpen,
-    overrideCounts, setOverrideCounts,
     confirmConfig, setConfirmConfig,
     // Derived
     selectedDayOfWeek, isSelectedHoliday, today, weekDates,

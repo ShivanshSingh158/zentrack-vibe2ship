@@ -7,7 +7,7 @@ import type { Semester, SemesterSubject } from '../contexts/MobileDataContext';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../theme/tokens';
-import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import Svg, { Rect, Line, Circle } from 'react-native-svg';
 import { COLLECTION } from '../config/constants';
@@ -16,19 +16,29 @@ import { handleSyncError } from '../utils/errorUtils';
 import EmptyState from '../components/ui/EmptyState';
 import BottomSheet from '../components/ui/BottomSheet';
 import AnimatedPressable from '../components/AnimatedPressable';
-import { safeAdd, safeUpdate, safeDelete } from '../utils/safeWrite';
+import { safeAdd, safeUpdate, safeDelete, safeWrite } from '../utils/safeWrite';
+import { feedback } from '../utils/haptics';
 
 const GRADE_MAP: Record<string, number> = {
-  'A+': 10, 'A': 9, 'B+': 8, 'B': 7, 'C': 6, 'D': 5, 'F': 0
+  'O': 10, 'S': 10, 'A+': 10, 'A': 9, 'A-': 8.5,
+  'B+': 8, 'B': 7, 'B-': 6.5, 'C+': 6.5, 'C': 6,
+  'D': 5, 'E': 4, 'P': 4, 'F': 0, 'RA': 0, 'I': 0,
 };
 
 const GRADE_COLORS: Record<string, { bg: string; text: string }> = {
+  'O':  { bg: 'rgba(165,153,255,0.18)', text: '#A599FF' },
+  'S':  { bg: 'rgba(165,153,255,0.18)', text: '#A599FF' },
   'A+': { bg: 'rgba(165,153,255,0.18)', text: '#A599FF' },
   'A':  { bg: 'rgba(94,218,158,0.18)',  text: '#5EDA9E' },
+  'A-': { bg: 'rgba(94,218,158,0.18)',  text: '#5EDA9E' },
   'B+': { bg: 'rgba(56,189,248,0.18)',  text: '#38BDF8' },
   'B':  { bg: 'rgba(251,191,36,0.18)',  text: '#FBBF24' },
+  'B-': { bg: 'rgba(251,191,36,0.18)',  text: '#FBBF24' },
+  'C+': { bg: 'rgba(251,146,60,0.18)',  text: '#FB923C' },
   'C':  { bg: 'rgba(251,146,60,0.18)',  text: '#FB923C' },
   'D':  { bg: 'rgba(248,113,113,0.18)', text: '#F87171' },
+  'E':  { bg: 'rgba(248,113,113,0.18)', text: '#F87171' },
+  'P':  { bg: 'rgba(56,189,248,0.18)',  text: '#38BDF8' },
   'F':  { bg: 'rgba(239,68,68,0.22)',   text: '#EF4444' },
 };
 
@@ -166,43 +176,51 @@ export default function GradesScreen() {
 
   const handleAddSem = () => {
     if (!semName.trim() || !user) return;
-    
-    import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
-    
-    const semData = {
+
+    feedback.commit();
+
+    const semId = `sem_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const semData: Semester = {
+      id: semId,
       userId: user.uid,
       name: semName.trim(),
       order: semesters.length,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     };
-    safeAdd(
+    safeWrite(
+      () => setDoc(doc(db, COLLECTION.SEMESTERS, semId), semData),
       COLLECTION.SEMESTERS,
+      'set',
       semData,
-      () => addDoc(collection(db, COLLECTION.SEMESTERS), semData)
+      semId
     ).catch(handleSyncError);
-    
+
     setSemModalVisible(false);
     setSemName('');
   };
 
   const handleAddSub = () => {
     if (!subName.trim() || !activeSemId || !user) return;
-    
-    import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
-    
-    const subData = {
+
+    feedback.commit();
+
+    const subId = `semsub_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const subData: SemesterSubject = {
+      id: subId,
       userId: user.uid,
       semesterId: activeSemId,
       name: subName.trim(),
-      credits: parseInt(subCredits) || 4,
-      grade: subGrade.toUpperCase(),
+      credits: parseInt(subCredits, 10) || 4,
+      grade: subGrade.trim().toUpperCase(),
     };
-    safeAdd(
+    safeWrite(
+      () => setDoc(doc(db, COLLECTION.SEMESTER_SUBJECTS, subId), subData),
       COLLECTION.SEMESTER_SUBJECTS,
+      'set',
       subData,
-      () => addDoc(collection(db, COLLECTION.SEMESTER_SUBJECTS), subData)
+      subId
     ).catch(handleSyncError);
-    
+
     setSubModalVisible(false);
     setSubName('');
     setSubCredits('4');
@@ -216,7 +234,7 @@ export default function GradesScreen() {
     if (isNaN(sgpaVal) || sgpaVal < 0 || sgpaVal > 10) return Alert.alert('Invalid SGPA');
     if (isNaN(creditsVal) || creditsVal <= 0) return Alert.alert('Invalid credits');
 
-    import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+    feedback.commit();
 
     const updateData = {
       sgpa: sgpaVal,
@@ -250,7 +268,7 @@ export default function GradesScreen() {
   };
 
   const deleteSem = (id: string) => {
-    Alert.alert('Delete Semester', 'Are you sure?', [
+    Alert.alert('Delete Semester', 'Are you sure? This will also delete all subjects in this semester.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -261,6 +279,16 @@ export default function GradesScreen() {
             COLLECTION.SEMESTERS,
             () => deleteDoc(doc(db, COLLECTION.SEMESTERS, id))
           ).catch(handleSyncError);
+
+          // Cascade delete all subjects belonging to this semester
+          const childSubs = semesterSubjects.filter(s => s.semesterId === id && s.id);
+          childSubs.forEach(sub => {
+            safeDelete(
+              sub.id!,
+              COLLECTION.SEMESTER_SUBJECTS,
+              () => deleteDoc(doc(db, COLLECTION.SEMESTER_SUBJECTS, sub.id!))
+            ).catch(handleSyncError);
+          });
         }
       }
     ]);
@@ -624,7 +652,6 @@ export default function GradesScreen() {
               placeholderTextColor={colors.textMuted}
               value={semName}
               onChangeText={setSemName}
-              autoFocus
             />
             
             <View style={styles.modalActions}>

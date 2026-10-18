@@ -13,17 +13,20 @@
 import { useCallback, useRef, useMemo } from 'react';
 import {
   collection, doc, updateDoc, addDoc, deleteDoc,
-  serverTimestamp, writeBatch,
+  serverTimestamp, writeBatch, setDoc,
 } from 'firebase/firestore';
 import NetInfo from '@react-native-community/netinfo';
-import { Alert } from 'react-native';
+import { Alert, DeviceEventEmitter } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
+import * as Notifications from 'expo-notifications';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
 import { Task } from '../../contexts/MobileDataContext';
 import { awardXP } from '../../services/xpSystem';
 import { handleSyncError } from '../../utils/errorUtils';
 import { safeUpdate, safeWrite, safeDelete } from '../../utils/safeWrite';
-import { setDoc } from 'firebase/firestore';
+import { formatLocalDateStr } from '../../utils/dateUtils';
 
 interface UseTasksFirestoreProps {
   optimisticUpdateTask: (id: string, updates: Partial<Task>) => void;
@@ -75,7 +78,6 @@ export function useTasksFirestore({
     try {
       const todayDate = todayDateStrRef.current;
       const perfectDayKey = `zentrack_perfect_day_${todayDate}`;
-      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
       const alreadyClaimed = await AsyncStorage.getItem(perfectDayKey);
       if (alreadyClaimed) return;
 
@@ -100,8 +102,7 @@ export function useTasksFirestore({
 
       await AsyncStorage.setItem(perfectDayKey, '1');
       await awardXP('PERFECT_DAY');
-      import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
-      const { DeviceEventEmitter } = await import('react-native');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       DeviceEventEmitter.emit('zentrack_perfect_day', { date: todayDate });
     } catch (e) { /* non-critical — never block task completion */ }
   }, []);
@@ -117,14 +118,20 @@ export function useTasksFirestore({
       return; // Suppress rapid accidental double-tap
     }
     inFlightTaskLocks.current.set(task.id, now);
+    setTimeout(() => {
+      inFlightTaskLocks.current.delete(task.id!);
+    }, 300);
+    if (inFlightTaskLocks.current.size > 200) {
+      inFlightTaskLocks.current.clear();
+    }
 
     const newStatus = task.status === 'completed' ? 'pending' : 'completed';
     const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
     // Optimistic update first — UI is instant regardless of connectivity
     optimisticUpdateTaskRef.current(task.id, { status: newStatus, completedAt });
     if (newStatus === 'completed') {
-      import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
-      import('expo-notifications').then(N => N.cancelScheduledNotificationAsync(`task_${task.id}`)).catch(() => {});
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Notifications.cancelScheduledNotificationAsync(`task_${task.id}`).catch(() => {});
     }
     (async () => {
       try {
@@ -139,63 +146,97 @@ export function useTasksFirestore({
           { status: newStatus, completedAt },
           () => updateDoc(doc(db, COLLECTION.TASKS, task.id!), { status: newStatus, completedAt }),
         );
+
+        // Cross-sync: If this task is an assignment task, update assignment in Firestore
+        if (task.id?.startsWith('task_asg_')) {
+          const asgId = task.id.replace('task_', '');
+          const asgStatus = newStatus === 'completed' ? 'submitted' : 'not_started';
+          await safeUpdate(
+            asgId,
+            COLLECTION.ASSIGNMENTS,
+            { status: asgStatus, updatedAt: Date.now() },
+            () => updateDoc(doc(db, COLLECTION.ASSIGNMENTS, asgId), { status: asgStatus, updatedAt: Date.now() }),
+          ).catch(() => {});
+        }
       } catch (error) { console.error('[useTasksFirestore] completeTask error', error); }
     })();
   }, [checkAndAwardPerfectDay]);
+
+  // SUBTASK DEBOUNCE: Debounce network safeUpdate for subtasks by 400ms per taskId (Issue 78)
+  const subtaskDebounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const clearCompletedTasks = useCallback(async (tasks: Task[]) => {
     try {
       const completedTasks = tasks.filter(t => t.status === 'completed');
       if (completedTasks.length === 0) return;
 
-      // Bug 3 + 5 fix: check online first, then apply optimistic removes before the async batch
-      const state = await NetInfo.fetch();
-      if (!state.isConnected) {
-        Alert.alert('You\'re Offline', 'Please reconnect to clear completed tasks.');
-        return;
-      }
-
-      // Optimistic: remove from UI instantly — no waiting for Firestore round-trip (Bug 5 fix)
-      completedTasks.forEach(t => optimisticDeleteTaskRef.current(t.id!));
-
       const batch = writeBatch(db);
-      completedTasks.forEach(t => batch.delete(doc(db, COLLECTION.TASKS, t.id!)));
-      await batch.commit();
-      import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
+      completedTasks.forEach(t => {
+        if (!t.id) return;
+        Notifications.cancelScheduledNotificationAsync(`task_${t.id}`).catch(() => {});
+        optimisticDeleteTaskRef.current(t.id);
+        batch.delete(doc(db, COLLECTION.TASKS, t.id));
+      });
+      await batch.commit().catch(() => {
+        // Fallback to safeDelete if offline
+        completedTasks.forEach(t => {
+          if (t.id) safeDelete(t.id, COLLECTION.TASKS, () => deleteDoc(doc(db, COLLECTION.TASKS, t.id!))).catch(handleSyncError);
+        });
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) { console.error('[useTasksFirestore] clearCompleted error', error); }
   }, []);
 
   const bulkComplete = useCallback(async (selectedTaskIds: Set<string>) => {
     if (selectedTaskIds.size === 0) return;
-    // Bug 3 fix: guard against offline — batch commits are not offline-queueable
-    const state = await NetInfo.fetch();
-    if (!state.isConnected) {
-      Alert.alert('You\'re Offline', 'Bulk complete is not available offline. Complete tasks individually.');
-      return;
-    }
-    import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Heavy));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    const completedAt = new Date().toISOString();
+
     const batch = writeBatch(db);
-    selectedTaskIds.forEach(id => batch.update(doc(db, COLLECTION.TASKS, id), { status: 'completed', completedAt: serverTimestamp() }));
-    try {
-      await batch.commit();
-      setIsBulkEdit(false);
-      setSelectedTaskIds(new Set());
-    } catch (e) { console.error('[useTasksFirestore] bulkComplete error', e); }
+    selectedTaskIds.forEach(id => {
+      Notifications.cancelScheduledNotificationAsync(`task_${id}`).catch(() => {});
+      optimisticUpdateTaskRef.current(id, { status: 'completed', completedAt });
+      batch.update(doc(db, COLLECTION.TASKS, id), { status: 'completed', completedAt });
+    });
+
+    setIsBulkEdit(false);
+    setSelectedTaskIds(new Set());
+
+    batch.commit().catch(() => {
+      // Fallback offline queue
+      selectedTaskIds.forEach(id => {
+        safeUpdate(
+          id,
+          COLLECTION.TASKS,
+          { status: 'completed', completedAt },
+          () => updateDoc(doc(db, COLLECTION.TASKS, id), { status: 'completed', completedAt })
+        ).catch(handleSyncError);
+      });
+    });
   }, [setIsBulkEdit, setSelectedTaskIds]);
 
   const bulkDelete = useCallback(async (selectedTaskIds: Set<string>) => {
     if (selectedTaskIds.size === 0) return;
-    // Bug 3 fix: guard against offline — batch commits are not offline-queueable
-    const state = await NetInfo.fetch();
-    if (!state.isConnected) {
-      Alert.alert('You\'re Offline', 'Bulk delete is not available offline. Delete tasks individually.');
-      return;
-    }
+
     const batch = writeBatch(db);
-    selectedTaskIds.forEach(id => batch.delete(doc(db, COLLECTION.TASKS, id)));
-    await batch.commit();
+    selectedTaskIds.forEach(id => {
+      Notifications.cancelScheduledNotificationAsync(`task_${id}`).catch(() => {});
+      optimisticDeleteTaskRef.current(id);
+      batch.delete(doc(db, COLLECTION.TASKS, id));
+    });
+
     setIsBulkEdit(false);
     setSelectedTaskIds(new Set());
+
+    batch.commit().catch(() => {
+      selectedTaskIds.forEach(id => {
+        safeDelete(
+          id,
+          COLLECTION.TASKS,
+          () => deleteDoc(doc(db, COLLECTION.TASKS, id))
+        ).catch(handleSyncError);
+      });
+    });
   }, [setIsBulkEdit, setSelectedTaskIds]);
 
   const handleBulkReschedule = useCallback(async (selectedTaskIds: Set<string>, newDate: string, newTimeSlot?: string) => {
@@ -203,26 +244,27 @@ export function useTasksFirestore({
     const updates: any = { date: newDate };
     if (newTimeSlot) updates.timeSlot = newTimeSlot;
 
-    // Optimistic update first — UI shifts tasks to new date instantly offline
+    const batch = writeBatch(db);
     selectedTaskIds.forEach(id => {
       optimisticUpdateTaskRef.current(id, updates);
+      batch.update(doc(db, COLLECTION.TASKS, id), updates);
     });
 
     setIsBulkEdit(false);
     setSelectedTaskIds(new Set());
     setBulkRescheduleModal(false);
-    import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    try {
-      const batch = writeBatch(db);
+    batch.commit().catch(() => {
       selectedTaskIds.forEach(id => {
-        batch.update(doc(db, COLLECTION.TASKS, id), updates);
+        safeUpdate(
+          id,
+          COLLECTION.TASKS,
+          updates,
+          () => updateDoc(doc(db, COLLECTION.TASKS, id), updates)
+        ).catch(handleSyncError);
       });
-      await batch.commit();
-    } catch (e) {
-      console.error('[useTasksFirestore] bulkReschedule error', e);
-      handleSyncError(e);
-    }
+    });
   }, [setIsBulkEdit, setSelectedTaskIds, setBulkRescheduleModal]);
 
   const updateTask = useCallback((
@@ -231,6 +273,23 @@ export function useTasksFirestore({
     optimistic = true,
   ) => {
     if (optimistic) optimisticUpdateTaskRef.current(id, updates);
+
+    // If updating subtasks, debounce network write by 400ms to prevent snapshot race conditions (Issue 78)
+    if (updates.subtasks !== undefined) {
+      const existingTimer = subtaskDebounceTimers.current.get(id);
+      if (existingTimer) clearTimeout(existingTimer);
+
+      const timer = setTimeout(() => {
+        subtaskDebounceTimers.current.delete(id);
+        safeUpdate(id, COLLECTION.TASKS, updates as Record<string, any>,
+          () => updateDoc(doc(db, COLLECTION.TASKS, id), updates)
+        ).catch(handleSyncError);
+      }, 400);
+
+      subtaskDebounceTimers.current.set(id, timer);
+      return;
+    }
+
     // safeUpdate: online → Firestore; offline → queue
     safeUpdate(id, COLLECTION.TASKS, updates as Record<string, any>,
       () => updateDoc(doc(db, COLLECTION.TASKS, id), updates)
@@ -323,6 +382,7 @@ export function useTasksFirestore({
 
   const deleteTask = useCallback((taskId: string) => {
     if (!taskId) return;
+    Notifications.cancelScheduledNotificationAsync(`task_${taskId}`).catch(() => {});
     optimisticDeleteTaskRef.current(taskId);
     (async () => {
       try {

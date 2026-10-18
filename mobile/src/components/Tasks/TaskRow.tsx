@@ -1,49 +1,49 @@
-import React, { useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Animated as RNAnimated } from 'react-native';
+import React, { useCallback, useRef, useEffect, useState, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withSequence,
   withTiming,
   withRepeat,
+  cancelAnimation,
   Easing,
   FadeInDown,
   FadeOut,
   SlideOutLeft,
   LinearTransition,
   runOnJS,
+  interpolate,
+  Extrapolation,
+  SharedValue,
 } from 'react-native-reanimated';
-import { Swipeable } from 'react-native-gesture-handler';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Task } from '../../contexts/MobileDataContext';
-import { formatDateShort } from '../../utils/dateUtils';
+import { formatDateShort, formatLocalDateStr } from '../../utils/dateUtils';
 import { useTheme } from '../../contexts/ThemeContext';
+import { getTagColor, TIME_RANGE_REGEX } from '../../screens/tasks/taskConstants';
 
-const today = new Date().toISOString().slice(0, 10);
-
-// Module-level constant — avoids creating a new animation config object on every
-// renderItem call. Reanimated uses reference equality to bail out no-op updates.
-const TASK_ENTER_ANIM = FadeInDown.duration(180).easing(Easing.bezier(0.16, 1, 0.3, 1));
-
-interface TaskRowProps {
+export interface TaskRowProps {
   task: Task;
-  onComplete: () => void;
+  onComplete: (task: Task) => void;
   onCompleteStart?: () => void;
-  onReschedule: () => void;
-  onPress: () => void;
-  onLongPress: () => void;
+  onReschedule?: (taskId: string) => void;
+  onPress: (task: Task) => void;
+  onLongPress?: (task: Task) => void;
   onDelete?: (task: Task) => void;
   isOverdue: boolean;
   isBulkEdit?: boolean;
   isSelected?: boolean;
-  onToggleSelect?: () => void;
+  onToggleSelect?: (taskId: string) => void;
   onUpdateTask?: (taskId: string, updates: Partial<Task>) => void;
-  onAddSubtask?: () => void;
+  onAddSubtask?: (task: Task) => void;
+  todayDateStr?: string;
+  currentMinuteTick?: number;
 }
 
-/** Convert a time string (12-hr or 24-hr, single or range) to a clean display string like "7:30 am to 9:30 am" */
+/** Convert a time string to clean 12-hr display */
 function formatSingleTime(timeStr: string) {
   if (!timeStr) return '';
   const upper = timeStr.trim().toUpperCase();
@@ -64,7 +64,6 @@ function formatSingleTime(timeStr: string) {
     suffix = 'am';
     if (hh === 0) hh = 12;
   } else {
-    // 24-hr format
     suffix = hh >= 12 ? 'pm' : 'am';
     if (hh === 0) hh = 12;
     else if (hh > 12) hh -= 12;
@@ -74,31 +73,19 @@ function formatSingleTime(timeStr: string) {
   return `${hh}:${mmStr} ${suffix}`;
 }
 
+// Issue 61: use safe TIME_RANGE_REGEX — spaces inside "7:30 PM" must not split as range delimiter
 function formatTime12(timeStr?: string) {
   if (!timeStr) return '';
-  const parts = timeStr.split(/[-–—•]| to /i);
+  const parts = timeStr.split(TIME_RANGE_REGEX);
   if (parts.length > 1) {
     return `${formatSingleTime(parts[0].trim())} – ${formatSingleTime(parts[1].trim())}`;
   }
   return formatSingleTime(timeStr);
 }
 
-const getTagColor = (tag: string, colors: any) => {
-  const cleanTag = tag.toLowerCase().replace(/^#/, '').trim();
-  const map: Record<string, string> = {
-    'high': colors.error,
-    'work': colors.accentBlue,
-    'personal': colors.accentGreen,
-    'errand': colors.accentAmber,
-    'gym': colors.accentPrimary,
-    'college': '#a599ff',
-    'finance': '#5eda9e',
-    'placement': '#ff9f4d',
-  };
-  return map[cleanTag] || colors.textTertiary;
-};
+// Issue 94: getTagColor now imported from centralized taskConstants; local duplicate removed
 
-const getFormatSubtext = (task: Task, isOverdue: boolean, priorityColor: string | null, colors: any) => {
+const getFormatSubtext = (task: Task, isOverdue: boolean, priorityColor: string | null, colors: any, todayStr: string) => {
   if (isOverdue) return { text: 'Overdue', color: colors.error, icon: 'alert-circle' as const };
   if (task.timeSlot) {
     return { 
@@ -107,7 +94,7 @@ const getFormatSubtext = (task: Task, isOverdue: boolean, priorityColor: string 
       icon: 'time-outline' as const 
     };
   }
-  if (task.date && task.date > today) {
+  if (task.date && task.date > todayStr) {
     return { text: formatDateShort(task.date), color: colors.textTertiary, icon: 'calendar-outline' as const };
   }
   return null;
@@ -116,6 +103,7 @@ const getFormatSubtext = (task: Task, isOverdue: boolean, priorityColor: string 
 const PARTICLE_COLORS = ['#5eda9e', '#a599ff', '#ff9f4d', '#38bdf8', '#ff6961', '#facc15'];
 const PARTICLE_ANGLES = [0, 60, 120, 180, 240, 300];
 
+// Issue 13: ParticleDot only mounts and executes worklets during active completion burst
 const ParticleDot = React.memo(function ParticleDot({
   angle,
   color,
@@ -187,6 +175,15 @@ const SubtaskRowItem = React.memo(function SubtaskRowItem({
   styles,
 }: SubtaskRowItemProps) {
   const checkScale = useSharedValue(1);
+  const completeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (completeTimeoutRef.current) {
+        clearTimeout(completeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const animCheckStyle = useAnimatedStyle(() => ({
     transform: [{ scale: checkScale.value }],
@@ -196,7 +193,11 @@ const SubtaskRowItem = React.memo(function SubtaskRowItem({
     if (!onUpdateTask || !taskId) return;
     Haptics.selectionAsync();
 
-    // Apple iOS crisp tactile tap
+    if (completeTimeoutRef.current) {
+      clearTimeout(completeTimeoutRef.current);
+      completeTimeoutRef.current = null;
+    }
+
     checkScale.value = withSequence(
       withTiming(0.85, { duration: 60, easing: Easing.out(Easing.quad) }),
       withTiming(1.08, { duration: 80, easing: Easing.out(Easing.cubic) }),
@@ -209,15 +210,15 @@ const SubtaskRowItem = React.memo(function SubtaskRowItem({
     );
     const newCompletedCount = newSubtasks.filter(s => s.completed).length;
 
+    onUpdateTask(taskId, { subtasks: newSubtasks });
+
+    // Issue 23: Memory-safe cancellable timeout guard for parent task completion
     if (newCompletedCount === totalSubtasks && willBeCompleted) {
-      onUpdateTask(taskId, { subtasks: newSubtasks });
-      setTimeout(() => {
+      completeTimeoutRef.current = setTimeout(() => {
         onCompleteParent();
       }, 300);
-    } else {
-      onUpdateTask(taskId, { subtasks: newSubtasks });
     }
-  }, [onUpdateTask, taskId, allSubtasks, index, subtask, totalSubtasks, onCompleteParent, checkScale]);
+  }, [onUpdateTask, taskId, allSubtasks, index, subtask.completed, totalSubtasks, onCompleteParent, checkScale]);
 
   return (
     <TouchableOpacity
@@ -243,6 +244,71 @@ const SubtaskRowItem = React.memo(function SubtaskRowItem({
   );
 });
 
+// Issue 16: UI-thread Reanimated Swipe actions without JS bridge bottlenecks
+const LeftSwipeAction = React.memo(function LeftSwipeAction({
+  progress,
+  colors,
+  styles,
+}: {
+  progress: SharedValue<number>;
+  colors: any;
+  styles: any;
+}) {
+  const animatedStyle = useAnimatedStyle(() => {
+    const scale = interpolate(progress.value, [0, 0.6, 1], [0.7, 0.9, 1.2], Extrapolation.CLAMP);
+    return { transform: [{ scale }] };
+  });
+
+  return (
+    <View style={styles.actionLeftContainer}>
+      <Animated.View style={[styles.actionLeft, { backgroundColor: colors.accentGreen }, animatedStyle]}>
+        <Ionicons name="checkmark" size={22} color="#fff" />
+      </Animated.View>
+    </View>
+  );
+});
+
+const RightSwipeAction = React.memo(function RightSwipeAction({
+  progress,
+  styles,
+  onDelete,
+}: {
+  progress: SharedValue<number>;
+  styles: any;
+  onDelete: () => void;
+}) {
+  const animatedStyle = useAnimatedStyle(() => {
+    const scale = interpolate(progress.value, [0, 0.6, 1], [0.7, 0.9, 1.15], Extrapolation.CLAMP);
+    return { transform: [{ scale }] };
+  });
+
+  return (
+    <View style={styles.actionRightContainer}>
+      <TouchableOpacity
+        style={[styles.actionRight, { backgroundColor: '#FF453A', width: 76 }]}
+        onPress={onDelete}
+        activeOpacity={0.8}
+      >
+        <Animated.View style={[{ alignItems: 'center', justifyContent: 'center' }, animatedStyle]}>
+          <Ionicons name="trash-outline" size={22} color="#ffffff" />
+        </Animated.View>
+      </TouchableOpacity>
+    </View>
+  );
+});
+
+// Issue 19: Module-level cached stylesheets keyed by isDark
+let cachedStylesDark: any = null;
+let cachedStylesLight: any = null;
+const getCachedStyles = (colors: any, isDark: boolean) => {
+  if (isDark) {
+    if (!cachedStylesDark) cachedStylesDark = makeStyles(colors, true);
+    return cachedStylesDark;
+  }
+  if (!cachedStylesLight) cachedStylesLight = makeStyles(colors, false);
+  return cachedStylesLight;
+};
+
 const TaskRow = React.memo(function TaskRow({
   task,
   onComplete,
@@ -252,28 +318,29 @@ const TaskRow = React.memo(function TaskRow({
   onLongPress,
   onDelete,
   isOverdue,
-  isBulkEdit,
-  isSelected,
+  isBulkEdit = false,
+  isSelected = false,
   onToggleSelect,
   onUpdateTask,
   onAddSubtask,
+  todayDateStr,
+  currentMinuteTick,
 }: TaskRowProps) {
   const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const styles = getCachedStyles(colors, isDark);
+  const effectiveToday = todayDateStr || formatLocalDateStr(new Date());
 
-  const swipeableRef = useRef<Swipeable>(null);
+  const swipeableRef = useRef<any>(null);
   const checkScale = useSharedValue(1);
   const burstProgress = useSharedValue(0);
-  const rowTranslateX = useSharedValue(0);
-  const rowOpacity = useSharedValue(1);
-  const [isCompleting, setIsCompleting] = React.useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
   const isDone = task.status === 'completed' || isCompleting;
   const isRowSelected = Boolean(isBulkEdit && isSelected);
-  const [isExpanded, setIsExpanded] = React.useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Chevron 180° rotation worklet
   const chevronRotation = useSharedValue(isExpanded ? 180 : 0);
-  React.useEffect(() => {
+  useEffect(() => {
     chevronRotation.value = withTiming(isExpanded ? 180 : 0, { duration: 180, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
   }, [isExpanded]);
 
@@ -281,38 +348,54 @@ const TaskRow = React.memo(function TaskRow({
     transform: [{ rotate: `${chevronRotation.value}deg` }],
   }));
 
-  // Animated strikethrough, dissolve & card recession
-  const strikeProgress = useSharedValue(isDone ? 1 : 0);
-  const titleOpacity = useSharedValue(isDone ? 0.4 : 1);
-  const rowScale = useSharedValue(isDone ? 0.985 : 1);
+  // Issue 76: reset isCompleting when task.status flips back to 'pending' (e.g. un-complete from KanbanView)
+  useEffect(() => {
+    if (task.status !== 'completed') {
+      setIsCompleting(false);
+    }
+  }, [task.status]);
 
-  React.useEffect(() => {
-    strikeProgress.value = withTiming(isDone ? 1 : 0, { duration: 180, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
-    titleOpacity.value = withTiming(isDone ? 0.4 : 1, { duration: 180 });
-    rowScale.value = withTiming(isDone ? 0.985 : 1, { duration: 180 });
+  // Issue 14: Single consolidated completionProgress shared value interpolates scale, opacity, and strike
+  const completionProgress = useSharedValue(isDone ? 1 : 0);
+
+  useEffect(() => {
+    completionProgress.value = withTiming(isDone ? 1 : 0, { duration: 180, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
   }, [isDone]);
+
+  const animatedRowStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(completionProgress.value, [0, 1], [1, 0.985]) }],
+  }));
+
+  const animatedTitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(completionProgress.value, [0, 1], [1, 0.4]),
+  }));
+
+  // Issue 17: Static 100% width, transform scaleX on UI thread avoiding Yoga layout recalculation
+  const animatedStrikeStyle = useAnimatedStyle(() => ({
+    transform: [{ scaleX: completionProgress.value }],
+    opacity: completionProgress.value > 0.05 ? 1 : 0,
+  }));
 
   const totalSubtasks = task.subtasks?.length || 0;
   const completedSubtasks = task.subtasks?.filter(st => st.completed).length || 0;
   const hasSubtasks = totalSubtasks > 0;
 
-  // ── Priority Color: High -> #FF453A, Medium -> #FF9F0A, Low -> #30D158 ──
-  const priorityColor = React.useMemo(() => {
+  const priorityColor = useMemo(() => {
     if (task.priority === 'high' || task.priority === 'P1') return '#FF453A';
     if (task.priority === 'medium' || task.priority === 'P2') return '#FF9F0A';
     if (task.priority === 'low' || task.priority === 'P3') return '#30D158';
     return null;
   }, [task.priority]);
 
-  const subtextData = React.useMemo(
-    () => getFormatSubtext(task, isOverdue, priorityColor, colors),
-    [task.timeSlot, task.date, task.status, isOverdue, priorityColor, colors]
+  const subtextData = useMemo(
+    () => getFormatSubtext(task, isOverdue, priorityColor, colors, effectiveToday),
+    [task.timeSlot, task.date, task.status, isOverdue, priorityColor, colors, effectiveToday]
   );
   const taskTags = task.tags && task.tags.length > 0 ? task.tags : null;
 
-  // ── Dynamic "Live Now" Indicator & Countdown ──
-  const liveNowInfo = React.useMemo(() => {
-    if (!task.timeSlot || task.status === 'completed' || task.date !== today) return null;
+  // Issue 21: Reactive live countdown using currentMinuteTick
+  const liveNowInfo = useMemo(() => {
+    if (!task.timeSlot || task.status === 'completed' || task.date !== effectiveToday) return null;
     const now = new Date();
     const currentMin = now.getHours() * 60 + now.getMinutes();
     const parts = task.timeSlot.split(/[-–—•]| to /i);
@@ -337,7 +420,7 @@ const TaskRow = React.memo(function TaskRow({
       return { remainingMins };
     }
     return null;
-  }, [task.timeSlot, task.status, task.date, task.estimatedMinutes]);
+  }, [task.timeSlot, task.status, task.date, task.estimatedMinutes, effectiveToday, currentMinuteTick]);
 
   const isLiveNow = !!liveNowInfo;
   const hasMetadata = Boolean(
@@ -351,8 +434,7 @@ const TaskRow = React.memo(function TaskRow({
     task.isReminder
   );
 
-  // ── Relative Overdue Time Calculation ──
-  const overdueText = React.useMemo(() => {
+  const overdueText = useMemo(() => {
     if (!isOverdue || !task.date) return 'Overdue';
     const now = new Date();
     const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -364,9 +446,9 @@ const TaskRow = React.memo(function TaskRow({
     return 'Overdue';
   }, [isOverdue, task.date]);
 
-  // Ambient Soft Radar Pulse Animation
+  // Issue 15: Clean pulse animation cancellation on stop / unmount
   const pulseAnim = useSharedValue(1);
-  React.useEffect(() => {
+  useEffect(() => {
     if (isLiveNow || isOverdue) {
       pulseAnim.value = withRepeat(
         withSequence(
@@ -376,7 +458,13 @@ const TaskRow = React.memo(function TaskRow({
         -1,
         true
       );
+    } else {
+      cancelAnimation(pulseAnim);
+      pulseAnim.value = 1;
     }
+    return () => {
+      cancelAnimation(pulseAnim);
+    };
   }, [isLiveNow, isOverdue]);
 
   const animatedPulseStyle = useAnimatedStyle(() => ({
@@ -386,23 +474,6 @@ const TaskRow = React.memo(function TaskRow({
 
   const animatedCheckStyle = useAnimatedStyle(() => ({
     transform: [{ scale: checkScale.value }],
-  }));
-
-  const animatedRowStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: rowTranslateX.value },
-      { scale: rowScale.value },
-    ],
-    opacity: rowOpacity.value,
-  }));
-
-  const animatedTitleStyle = useAnimatedStyle(() => ({
-    opacity: titleOpacity.value,
-  }));
-
-  const animatedStrikeStyle = useAnimatedStyle(() => ({
-    width: `${strikeProgress.value * 100}%`,
-    opacity: strikeProgress.value > 0.05 ? 1 : 0,
   }));
 
   const handleComplete = useCallback(() => {
@@ -417,40 +488,26 @@ const TaskRow = React.memo(function TaskRow({
       checkScale.value = withSequence(
         withTiming(0.8, { duration: 85 }),
         withTiming(1.25, { duration: 140 }),
-        withTiming(1.0, { duration: 90 }, () => { runOnJS(onComplete)(); })
+        withTiming(1.0, { duration: 90 }, () => {
+          runOnJS(onComplete)(task);
+        })
       );
     } else {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setIsCompleting(false);
-      onComplete();
+      onComplete(task);
     }
-  }, [onComplete, onCompleteStart, isDone, checkScale, burstProgress]);
+  }, [onComplete, onCompleteStart, isDone, checkScale, burstProgress, task]);
 
   const handleLongPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    onLongPress();
-  }, [onLongPress]);
-
-  // Haptic Swipe-to-Complete with Threshold Pop: checkmark scales 0.7 -> 1.2
-  const renderLeftActions = useCallback((progress: any, dragX: any) => {
-    const scale = progress.interpolate({
-      inputRange: [0, 0.6, 1],
-      outputRange: [0.7, 0.9, 1.2],
-      extrapolate: 'clamp',
-    });
-    return (
-      <View style={styles.actionLeftContainer}>
-        <RNAnimated.View style={[styles.actionLeft, { backgroundColor: colors.accentGreen, transform: [{ scale }] }]}>
-          <Ionicons name="checkmark" size={22} color="#fff" />
-        </RNAnimated.View>
-      </View>
-    );
-  }, [colors, styles]);
+    if (onLongPress) onLongPress(task);
+  }, [onLongPress, task]);
 
   const handleEditPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     swipeableRef.current?.close();
-    (onPress as any)(task);
+    onPress(task);
   }, [onPress, task]);
 
   const handleDeletePress = useCallback(() => {
@@ -460,28 +517,6 @@ const TaskRow = React.memo(function TaskRow({
       onDelete(task);
     }
   }, [onDelete, task]);
-
-  const renderRightActions = useCallback((progress: any, _dragX: any) => {
-    const scale = progress.interpolate({
-      inputRange: [0, 0.6, 1],
-      outputRange: [0.7, 0.9, 1.15],
-      extrapolate: 'clamp',
-    });
-
-    return (
-      <View style={styles.actionRightContainer}>
-        <TouchableOpacity
-          style={[styles.actionRight, { backgroundColor: '#FF453A', width: 76 }]}
-          onPress={handleDeletePress}
-          activeOpacity={0.8}
-        >
-          <RNAnimated.View style={{ transform: [{ scale }], alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="trash-outline" size={22} color="#ffffff" />
-          </RNAnimated.View>
-        </TouchableOpacity>
-      </View>
-    );
-  }, [styles, handleDeletePress]);
 
   const handleSwipeOpen = useCallback((direction: string) => {
     if (direction === 'left') {
@@ -493,10 +528,10 @@ const TaskRow = React.memo(function TaskRow({
   }, [handleComplete, handleDeletePress]);
 
   return (
-    <Swipeable
+    <ReanimatedSwipeable
       ref={swipeableRef}
-      renderLeftActions={renderLeftActions}
-      renderRightActions={renderRightActions}
+      renderLeftActions={(progress) => <LeftSwipeAction progress={progress} colors={colors} styles={styles} />}
+      renderRightActions={(progress) => <RightSwipeAction progress={progress} styles={styles} onDelete={handleDeletePress} />}
       onSwipeableWillOpen={(direction) => {
         if (direction === 'left' || direction === 'right') {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -515,12 +550,12 @@ const TaskRow = React.memo(function TaskRow({
           {/* 1. Dedicated Circular Checkbox Touch Target */}
           <TouchableOpacity
             style={styles.checkArea}
-            onPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleComplete}
+            onPress={isBulkEdit && onToggleSelect ? () => onToggleSelect(task.id!) : handleComplete}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             activeOpacity={0.7}
           >
-            {/* WhatsApp-Style Celebration Micro-Burst */}
-            {PARTICLE_ANGLES.map((ang, idx) => (
+            {/* Issue 13: Particle bursts mounted ONLY during active 320ms completion */}
+            {isCompleting && PARTICLE_ANGLES.map((ang, idx) => (
               <ParticleDot
                 key={idx}
                 angle={ang}
@@ -543,15 +578,15 @@ const TaskRow = React.memo(function TaskRow({
             </Animated.View>
           </TouchableOpacity>
 
-          {/* 2. Unified Row Body (Tapping opens edit modal, holding opens context menu) */}
+          {/* 2. Unified Row Body */}
           <TouchableOpacity
             style={styles.rowBody}
-            onPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleEditPress}
-            onLongPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleLongPress}
+            onPress={isBulkEdit && onToggleSelect ? () => onToggleSelect(task.id!) : handleEditPress}
+            onLongPress={isBulkEdit && onToggleSelect ? () => onToggleSelect(task.id!) : handleLongPress}
             activeOpacity={0.75}
           >
             <View style={styles.content}>
-              {/* Title with Animated Strikethrough Line */}
+              {/* Title with GPU-accelerated Strikethrough Line */}
               <View style={styles.titleWrapper}>
                 <Animated.Text style={[styles.title, isDone && styles.titleDone, animatedTitleStyle]} numberOfLines={1}>
                   {task.title}
@@ -559,7 +594,7 @@ const TaskRow = React.memo(function TaskRow({
                 <Animated.View style={[styles.strikeLine, animatedStrikeStyle]} />
               </View>
 
-              {/* Apple Reminders Unified Metadata Line (Zero Ugly Pills) */}
+              {/* Apple Reminders Unified Metadata Line */}
               {!isDone && hasMetadata && (
                 <View style={styles.metaRow}>
                   {/* 1. Live Now Status */}
@@ -616,7 +651,7 @@ const TaskRow = React.memo(function TaskRow({
                     </>
                   )}
 
-                  {/* 4. Priority Indicator (when no timeslot/date) */}
+                  {/* 4. Priority Indicator */}
                   {!isLiveNow && !isOverdue && !subtextData && priorityColor && (
                     <View style={styles.metaItem}>
                       <Ionicons
@@ -631,7 +666,7 @@ const TaskRow = React.memo(function TaskRow({
                     </View>
                   )}
 
-                  {/* 4b. Alarm / Reminder Indicator (Option 1: Apple Reminders Style) */}
+                  {/* 4b. Alarm / Reminder Indicator */}
                   {task.isReminder && (
                     <>
                       {(subtextData || isLiveNow || isOverdue || (!subtextData && priorityColor)) && (
@@ -673,7 +708,7 @@ const TaskRow = React.memo(function TaskRow({
                     </>
                   )}
 
-                  {/* 6. Clean Tag Dots (NO UGLY PILLS!) */}
+                  {/* 6. Clean Tag Dots */}
                   {taskTags && taskTags.length > 0 && (
                     <>
                       {(subtextData || isOverdue || isLiveNow || task.isRecurring || (!subtextData && priorityColor) || task.isReminder) && (
@@ -726,7 +761,7 @@ const TaskRow = React.memo(function TaskRow({
               )}
             </View>
 
-            {/* Right Side: Clean Expand Chevron if task has subtasks */}
+            {/* Right Side: Clean Expand Chevron */}
             {hasSubtasks && !isDone && (
               <TouchableOpacity
                 style={styles.expandChevronBtn}
@@ -745,12 +780,11 @@ const TaskRow = React.memo(function TaskRow({
           </TouchableOpacity>
         </View>
 
-        {/* ── Subtask Smooth Accordion Fold ── */}
+        {/* ── Subtask Smooth Accordion Fold (Issue 77: LinearTransition removed — conflicts with FlashList cell recycler) ── */}
         {isExpanded && hasSubtasks && !isDone && (
           <Animated.View
             entering={FadeInDown.duration(180).easing(Easing.bezier(0.16, 1, 0.3, 1))}
             exiting={FadeOut.duration(120)}
-            layout={LinearTransition.duration(160).easing(Easing.bezier(0.25, 0.1, 0.25, 1))}
             style={styles.subtaskList}
           >
             {task.subtasks!.map((st, idx) => (
@@ -770,9 +804,10 @@ const TaskRow = React.memo(function TaskRow({
           </Animated.View>
         )}
       </Animated.View>
-    </Swipeable>
+    </ReanimatedSwipeable>
   );
 }, (prev, next) => {
+  // Issue 22: Fixed custom comparator checking isReminder, estimatedMinutes, todayDateStr, and tick
   return (
     prev.task.id === next.task.id &&
     prev.task.status === next.task.status &&
@@ -784,10 +819,19 @@ const TaskRow = React.memo(function TaskRow({
     prev.task.recurrenceRule?.type === next.task.recurrenceRule?.type &&
     prev.task.subtasks === next.task.subtasks &&
     prev.task.tags === next.task.tags &&
+    prev.task.isReminder === next.task.isReminder &&
+    prev.task.estimatedMinutes === next.task.estimatedMinutes &&
     prev.isOverdue === next.isOverdue &&
     prev.isBulkEdit === next.isBulkEdit &&
     prev.isSelected === next.isSelected &&
-    prev.onDelete === next.onDelete
+    prev.todayDateStr === next.todayDateStr &&
+    prev.currentMinuteTick === next.currentMinuteTick &&
+    prev.onComplete === next.onComplete &&
+    prev.onPress === next.onPress &&
+    prev.onLongPress === next.onLongPress &&
+    prev.onDelete === next.onDelete &&
+    prev.onReschedule === next.onReschedule &&
+    prev.onToggleSelect === next.onToggleSelect
   );
 });
 
@@ -824,11 +868,10 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     borderColor: isDark ? 'rgba(255, 255, 255, 0.28)' : 'rgba(0, 0, 0, 0.22)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: isDark ? 'transparent' : colors.surface2,
   },
   checkboxDone: {
-    backgroundColor: colors.accentPrimary,
-    borderColor: colors.accentPrimary,
+    backgroundColor: colors.accentGreen,
+    borderColor: colors.accentGreen,
   },
   checkboxSelected: {
     backgroundColor: colors.accentPrimary,
@@ -836,89 +879,81 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
   content: {
     flex: 1,
-    justifyContent: 'flex-start',
-    paddingRight: 6,
+    paddingRight: 8,
   },
   titleWrapper: {
     position: 'relative',
-    justifyContent: 'center',
     alignSelf: 'flex-start',
-    minHeight: 20,
     maxWidth: '100%',
   },
   title: {
     fontFamily: 'Inter_500Medium',
     fontSize: 15,
-    lineHeight: 20,
     color: colors.textPrimary,
     letterSpacing: -0.2,
   },
   titleDone: {
-    color: colors.textTertiary,
+    color: colors.textMuted,
   },
+  // Issue 17: static width: 100% with transform scaleX
   strikeLine: {
     position: 'absolute',
     left: 0,
-    top: '52%',
+    right: 0,
+    top: '50%',
     height: 1.5,
-    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.45)' : 'rgba(0, 0, 0, 0.35)',
-    borderRadius: 1,
-    zIndex: 1,
+    width: '100%',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.38)' : 'rgba(0, 0, 0, 0.38)',
   },
-  // Apple Reminders Unified Metadata Line
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    marginTop: 3,
-    rowGap: 2,
+    marginTop: 4,
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  metaText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 12,
+  metaDot: {
+    fontSize: 10,
     color: colors.textTertiary,
-    letterSpacing: -0.1,
+    marginHorizontal: 5,
+    opacity: 0.5,
   },
   metaTimeText: {
     fontFamily: 'Inter_400Regular',
-    fontSize: 12,
+    fontSize: 11.5,
     color: colors.textTertiary,
-    letterSpacing: -0.1,
   },
-  metaDot: {
-    fontSize: 11,
-    color: isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.25)',
-    marginHorizontal: 3.5,
+  metaText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11.5,
+    color: colors.textTertiary,
   },
   liveDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: colors.accentPrimary,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#30D158',
     marginRight: 4,
   },
   liveNowText: {
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
-    color: colors.accentPrimary,
-    letterSpacing: -0.1,
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11.5,
+    color: '#30D158',
   },
   overdueDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#FF453A',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.error,
     marginRight: 4,
   },
   overdueText: {
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
-    color: '#FF453A',
-    letterSpacing: -0.1,
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11.5,
+    color: colors.error,
   },
   tagItem: {
     flexDirection: 'row',
@@ -928,82 +963,81 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 2.5,
-    marginRight: 4,
+    marginRight: 3.5,
   },
   tagText: {
     fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-    letterSpacing: -0.1,
+    fontSize: 11,
   },
   subtaskInlineItem: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   subtaskInlineText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
     color: colors.textTertiary,
-    letterSpacing: -0.1,
   },
   expandChevronBtn: {
-    paddingTop: 2,
-    paddingHorizontal: 4,
+    padding: 4,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  actionLeftContainer: {
-    flexDirection: 'row',
-  },
-  actionLeft: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-  },
-  actionRightContainer: {
-    flexDirection: 'row',
-  },
-  actionRight: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 60,
   },
   subtaskList: {
-    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.02)' : colors.surface2,
-    paddingLeft: 44,
-    paddingRight: 16,
-    paddingVertical: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+    paddingLeft: 32,
+    paddingRight: 12,
+    paddingBottom: 8,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.02)' : 'rgba(0, 0, 0, 0.02)',
   },
   subtaskItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 7,
+    paddingVertical: 6,
   },
   subtaskCheckbox: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 15,
+    height: 15,
+    borderRadius: 4,
     borderWidth: 1.2,
-    borderColor: isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.25)',
-    marginRight: 10,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.28)' : 'rgba(0, 0, 0, 0.22)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
+    marginRight: 8,
   },
   subtaskCheckboxDone: {
-    backgroundColor: colors.accentPrimary,
-    borderColor: colors.accentPrimary,
+    backgroundColor: colors.accentGreen,
+    borderColor: colors.accentGreen,
   },
   subtaskTitle: {
     fontFamily: 'Inter_400Regular',
     fontSize: 13,
-    color: colors.textPrimary,
-    letterSpacing: -0.1,
+    color: colors.textSecondary,
+    flex: 1,
   },
   subtaskTitleDone: {
-    color: colors.textTertiary,
     textDecorationLine: 'line-through',
+    color: colors.textMuted,
+  },
+  actionLeftContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 64,
+  },
+  actionLeft: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionRightContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 76,
+  },
+  actionRight: {
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
-

@@ -37,12 +37,78 @@ const UniversalCalendarModal = React.lazy(() => import('../../components/Univers
 import { scheduleSingleTaskReminder } from '../../services/notifications';
 import { parseNLTask, ParsedTask, NLPToken, cleanTaskTitle } from '../../utils/dateUtils';
 import { isSilenceOrNoise } from '../../services/voiceEngine';
+import { formatLocalDateStr } from '../../utils/dateUtils';
 import { Task } from '../../contexts/MobileDataContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
+import * as Notifications from 'expo-notifications';
 import {
   TAG_STORAGE_KEY,
-  today, formatDisplayDate, formatTimeDisplay,
+  getToday, formatDisplayDate, formatTimeDisplay,
+  cachedTagLibrary, setCachedTagLibrary, EMPTY_PARSED_TASK,
+  getTagColor as getTagColorFromConstants, TIME_RANGE_REGEX,
 } from './taskConstants';
+
+interface SubtaskEditRowProps {
+  subtask: { id: string; title: string; completed: boolean };
+  onToggle: () => void;
+  onChangeTitle: (title: string) => void;
+  onRemove: () => void;
+  colors: any;
+  styles: any;
+}
+
+const SubtaskEditRow = React.memo(function SubtaskEditRow({
+  subtask,
+  onToggle,
+  onChangeTitle,
+  onRemove,
+  colors,
+  styles,
+}: SubtaskEditRowProps) {
+  const [localTitle, setLocalTitle] = useState(subtask.title);
+
+  useEffect(() => {
+    setLocalTitle(subtask.title);
+  }, [subtask.title]);
+
+  const commitTitle = () => {
+    if (localTitle !== subtask.title) {
+      onChangeTitle(localTitle);
+    }
+  };
+
+  return (
+    <View style={styles.subtaskItemRow}>
+      <TouchableOpacity
+        onPress={() => {
+          Haptics.selectionAsync();
+          onToggle();
+        }}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <View style={[styles.subtaskCheckbox, subtask.completed && styles.subtaskCheckboxDone]}>
+          {subtask.completed && <Ionicons name="checkmark" size={11} color="#ffffff" />}
+        </View>
+      </TouchableOpacity>
+      <TextInput
+        style={[styles.subtaskInputText, subtask.completed && styles.subtaskInputTextDone]}
+        value={localTitle}
+        onChangeText={setLocalTitle}
+        onBlur={commitTitle}
+        onSubmitEditing={commitTitle}
+      />
+      <TouchableOpacity
+        onPress={() => {
+          Haptics.selectionAsync();
+          onRemove();
+        }}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Ionicons name="close" size={16} color={colors.textTertiary} />
+      </TouchableOpacity>
+    </View>
+  );
+});
 
 interface Props {
   visible: boolean;
@@ -50,22 +116,9 @@ interface Props {
   task: Task | null;
 }
 
+// Issue 94: use centralized getTagColor from taskConstants instead of local duplicate
+const getTagColor = getTagColorFromConstants;
 const DEFAULT_TAGS = ['college', 'work', 'gym', 'placement', 'finance', 'errand', 'personal'];
-
-const getTagColor = (tag: string, colors: any) => {
-  const cleanTag = tag.toLowerCase().replace(/^#/, '').trim();
-  const map: Record<string, string> = {
-    high: colors.error,
-    work: colors.accentBlue,
-    personal: colors.accentGreen,
-    errand: colors.accentAmber,
-    gym: colors.accentPrimary,
-    college: '#a599ff',
-    finance: '#5eda9e',
-    placement: '#ff9f4d',
-  };
-  return map[cleanTag] || colors.accentPrimary;
-};
 
 function EditTaskModalComponent({ visible, onClose, task }: Props) {
   const { colors, isDark } = useTheme();
@@ -85,6 +138,8 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
 
   const requestClose = useCallback(() => {
     Keyboard.dismiss();
+    // Issue 86: clear pending NLP debounce on close
+    if (nlpDebounceRef.current) clearTimeout(nlpDebounceRef.current);
     setInternalVisible(false);
   }, []);
 
@@ -95,7 +150,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high' | null>('medium');
-  const [taskDate, setTaskDate] = useState(today);
+  const [taskDate, setTaskDate] = useState(() => getToday());
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [recurrenceRule, setRecurrenceRule] = useState<any>(null);
@@ -115,9 +170,14 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
   const [nlpDuration, setNlpDuration] = useState<number | null>(null);
   const nlpDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Issue 86: clear debounce on unmount
+  useEffect(() => {
+    return () => { if (nlpDebounceRef.current) clearTimeout(nlpDebounceRef.current); };
+  }, []);
+
   // Tags
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [tagLibrary, setTagLibrary] = useState<string[]>([]);
+  const [tagLibrary, setTagLibrary] = useState<string[]>(() => cachedTagLibrary || []);
   const [isAddingTag, setIsAddingTag] = useState(false);
   const [newTagInput, setNewTagInput] = useState('');
 
@@ -125,7 +185,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
   const tomorrowDate = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
+    return formatLocalDateStr(d);
   }, []);
 
   const weekendDate = useMemo(() => {
@@ -133,19 +193,36 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     const day = d.getDay();
     const diff = (6 - day + 7) % 7 || 7;
     d.setDate(d.getDate() + diff);
-    return d.toISOString().slice(0, 10);
+    return formatLocalDateStr(d);
   }, []);
 
+  // Issue 87: allAvailableTags is now rendered as quick-add chips when isAddingTag is true
   const allAvailableTags = useMemo(() => {
     return Array.from(new Set([...DEFAULT_TAGS, ...tagLibrary, ...selectedTags]));
   }, [tagLibrary, selectedTags]);
 
+  const tagSuggestions = useMemo(
+    () => allAvailableTags.filter(t => !selectedTags.includes(t)),
+    [allAvailableTags, selectedTags]
+  );
+
   useEffect(() => {
     if (!visible) return;
-    AsyncStorage.getItem(TAG_STORAGE_KEY).then(raw => {
-      if (raw) setTagLibrary(JSON.parse(raw));
-    });
+    if (cachedTagLibrary && cachedTagLibrary.length > 0) {
+      setTagLibrary(cachedTagLibrary);
+    } else {
+      AsyncStorage.getItem(TAG_STORAGE_KEY).then(raw => {
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setCachedTagLibrary(parsed);
+          setTagLibrary(parsed);
+        }
+      });
+    }
   }, [visible]);
+
+  // Issue 67: guard against double-submission of tags via onSubmitEditing + onBlur
+  const tagSubmittedRef = useRef(false);
 
   const addTag = useCallback((tag: string) => {
     const clean = tag.trim().toLowerCase().replace(/\s+/g, '-').replace(/^#/, '');
@@ -153,6 +230,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     setSelectedTags(prev => prev.includes(clean) ? prev : [...prev, clean]);
     setTagLibrary(prev => {
       const next = prev.includes(clean) ? prev : [clean, ...prev];
+      setCachedTagLibrary(next);
       AsyncStorage.setItem(TAG_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
@@ -172,7 +250,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
         : (currentTask.priority as any) === 'P3' ? 'low'
         : (currentTask.priority as 'low' | 'medium' | 'high') || 'medium'
     );
-    setTaskDate(currentTask.date || today);
+    setTaskDate(currentTask.date || getToday());
     setRecurrenceRule(currentTask.recurrenceRule || null);
     setSubtasks(currentTask.subtasks || []);
     setSelectedTags(currentTask.tags || []);
@@ -200,7 +278,8 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
         setStartTime('21:00');
         setEndTime('22:00');
       } else {
-        const parts = trimmed.split(/[-–—]/).map((s: string) => s.trim()).filter(Boolean);
+        // Issue 61: use TIME_RANGE_REGEX so spaces inside "7:30 PM" are not treated as delimiters
+        const parts = trimmed.split(TIME_RANGE_REGEX).map((s: string) => s.trim()).filter(Boolean);
         setStartTime(parts[0] || '');
         if (parts.length > 1 && parts[parts.length - 1] !== parts[0]) {
           setEndTime(parts[parts.length - 1]);
@@ -231,7 +310,8 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
         setTaskDate(parsed.date);
       }
       if (parsed.timeSlot && parsed.tokens.some(t => t.type === 'time')) {
-        const timeParts = parsed.timeSlot.split(/[-–—]/).map(s => s.trim()).filter(Boolean);
+        // Issue 61: use safe range regex
+        const timeParts = parsed.timeSlot.split(TIME_RANGE_REGEX).map(s => s.trim()).filter(Boolean);
         setStartTime(timeParts[0] || '');
         setEndTime(parsed.endTimeSlot || (timeParts.length > 1 ? timeParts[timeParts.length - 1] : ''));
         setIsReminder(true);
@@ -249,15 +329,16 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
         parsed.tags.forEach(tg => addTag(tg));
       }
       if (parsed.durationMinutes != null) setNlpDuration(parsed.durationMinutes);
-    }, 60);
+    }, 250);
   }, [addTag]);
 
   const handleDismissToken = useCallback((token: NLPToken) => {
     const { type, start, end, display } = token;
-    if (type === 'date')       { setTaskDate(task?.date || today); }
+    if (type === 'date')       { setTaskDate(task?.date || getToday()); }
     if (type === 'time')       {
       if (task?.timeSlot) {
-        const parts = task.timeSlot.split(/[-–—]/).map((s: string) => s.trim()).filter(Boolean);
+        // Issue 61: use safe range regex
+        const parts = task.timeSlot.split(TIME_RANGE_REGEX).map((s: string) => s.trim()).filter(Boolean);
         setStartTime(parts[0] || '');
         if (parts.length > 1 && parts[parts.length - 1] !== parts[0]) {
           setEndTime(parts[parts.length - 1]);
@@ -297,6 +378,31 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     if (diff < 0) diff += 24 * 60;
     return diff;
   };
+
+  // Issue 85: memoize DateTimePicker Date values — inline IIFEs create a new Date on every render,
+  // resetting the native picker wheel if a re-render occurs while the picker is open.
+  const startPickerDate = useMemo(() => {
+    const d = new Date();
+    if (startTime && startTime.includes(':')) {
+      const [h, m] = startTime.split(':');
+      const parsedH = parseInt(h, 10);
+      const parsedM = parseInt(m, 10);
+      if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM, 0, 0);
+    }
+    return d;
+  }, [startTime]);
+
+  const endPickerDate = useMemo(() => {
+    const d = new Date();
+    if (endTime && endTime.includes(':')) {
+      const [h, m] = endTime.split(':');
+      const parsedH = parseInt(h, 10);
+      const parsedM = parseInt(m, 10);
+      if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM, 0, 0);
+    }
+    return d;
+  }, [endTime]);
+
 
   const onStartChange = (event: any, d?: Date) => {
     if (Platform.OS === 'android') {
@@ -348,6 +454,8 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
       Alert.alert('Delete Recurring Task', 'Do you want to delete only this instance, or this and all future instances?', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'This instance only', style: 'destructive', onPress: () => {
+          // Issue 62: cancel scheduled notification on delete
+          Notifications.cancelScheduledNotificationAsync(`task_${currentTask.id}`).catch(() => {});
           requestClose();
           optimisticDeleteTask(currentTask.id);
           safeDelete(
@@ -357,18 +465,27 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
           );
         }},
         { text: 'All future instances', style: 'destructive', onPress: async () => {
+          Notifications.cancelScheduledNotificationAsync(`task_${currentTask.id}`).catch(() => {});
           requestClose();
           optimisticDeleteTask(currentTask.id);
           try {
-            const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', currentTask.userId));
+            const q = currentTask.recurringSourceId
+              ? query(
+                  collection(db, COLLECTION.TASKS),
+                  where('userId', '==', currentTask.userId),
+                  where('recurringSourceId', '==', currentTask.recurringSourceId)
+                )
+              : query(
+                  collection(db, COLLECTION.TASKS),
+                  where('userId', '==', currentTask.userId),
+                  where('title', '==', currentTask.title)
+                );
             const snap = await getDocs(q);
             const deleteBatch = writeBatch(db);
             snap.docs.forEach(d => {
               const data = d.data();
-              const inSameGroup = currentTask.recurringSourceId
-                ? data.recurringSourceId === currentTask.recurringSourceId
-                : (data.title === currentTask.title && data.isRecurring === true);
-              if (inSameGroup && data.date && currentTask.date && data.date >= currentTask.date) {
+              if (data.date && currentTask.date && data.date >= currentTask.date) {
+                Notifications.cancelScheduledNotificationAsync(`task_${d.id}`).catch(() => {});
                 optimisticDeleteTask(d.id);
                 deleteBatch.delete(d.ref);
               }
@@ -384,6 +501,8 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
+            // Issue 62: cancel scheduled notification on delete
+            Notifications.cancelScheduledNotificationAsync(`task_${currentTask.id}`).catch(() => {});
             requestClose();
             optimisticDeleteTask(currentTask.id);
             safeDelete(
@@ -451,67 +570,79 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
       isReminder: finalIsReminder || false,
     };
 
-    optimisticUpdateTask(currentTask.id, updatePayload);
-
-    scheduleSingleTaskReminder({
-      id: currentTask.id,
-      ...updatePayload,
-    } as any).catch(console.warn);
+    // Issue 63: cancel notification when reminder is turned off or time is cleared
+    if (!finalIsReminder || !ts) {
+      Notifications.cancelScheduledNotificationAsync(`task_${currentTask.id}`).catch(() => {});
+    } else {
+      scheduleSingleTaskReminder({
+        id: currentTask.id,
+        ...updatePayload,
+      } as any).catch(console.warn);
+    }
 
     if (currentTask.isRecurring || finalRecurrence) {
       Alert.alert('Edit Recurring Task', 'Apply changes to this instance only, or recreate all future instances?', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'This instance only', onPress: () => {
-          // Dismiss immediately — Firestore runs fire-and-forget in background
+          // Detach recurrence rule from this single instance
+          const singleInstancePayload = {
+            ...firestorePayload,
+            isRecurring: false,
+            recurrenceRule: null,
+          };
+          optimisticUpdateTask(currentTask.id, {
+            ...updatePayload,
+            isRecurring: false,
+            recurrenceRule: undefined,
+          });
           requestClose();
-          (async () => {
-            try { await updateDoc(doc(db, COLLECTION.TASKS, currentTask.id), firestorePayload); } catch (e) { console.error(e); }
-          })();
+          safeUpdate(
+            currentTask.id,
+            COLLECTION.TASKS,
+            singleInstancePayload,
+            () => updateDoc(doc(db, COLLECTION.TASKS, currentTask.id), singleInstancePayload)
+          );
         }},
-        { text: 'All future instances', onPress: () => {
-          // Dismiss immediately — all Firestore work runs fire-and-forget
+        { text: 'All future instances', onPress: async () => {
+          optimisticUpdateTask(currentTask.id, updatePayload);
           requestClose();
-          (async () => {
+          safeUpdate(
+            currentTask.id,
+            COLLECTION.TASKS,
+            firestorePayload,
+            () => updateDoc(doc(db, COLLECTION.TASKS, currentTask.id), firestorePayload)
+          );
+          if (currentTask.recurringSourceId) {
             try {
-              await updateDoc(doc(db, COLLECTION.TASKS, currentTask.id), firestorePayload);
-              const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', currentTask.userId));
+              const q = query(
+                collection(db, COLLECTION.TASKS),
+                where('userId', '==', currentTask.userId),
+                where('recurringSourceId', '==', currentTask.recurringSourceId)
+              );
               const snap = await getDocs(q);
-              const deleteBatch = writeBatch(db);
+              const b = writeBatch(db);
               snap.docs.forEach(d => {
                 const data = d.data();
-                if (data.title === currentTask.title && data.isRecurring === true && data.date && currentTask.date && data.date > currentTask.date) deleteBatch.delete(d.ref);
-              });
-              await deleteBatch.commit();
-              if (finalRecurrence) {
-                const createBatch = writeBatch(db);
-                let current = new Date(finalDate);
-                if (finalRecurrence.type === 'daily' || finalRecurrence.type === 'custom') { current.setDate(current.getDate() + (finalRecurrence.interval || 1)); }
-                else if (finalRecurrence.type === 'weekly') {
-                  if (finalRecurrence.daysOfWeek?.length > 0) { do { current.setDate(current.getDate() + 1); } while (!finalRecurrence.daysOfWeek.includes(current.getDay())); }
-                  else { current.setDate(current.getDate() + 7 * (finalRecurrence.interval || 1)); }
-                } else if (finalRecurrence.type === 'monthly') { current.setMonth(current.getMonth() + (finalRecurrence.interval || 1)); }
-                const end = finalRecurrence.endDate ? new Date(finalRecurrence.endDate) : new Date(new Date(finalDate).getTime() + 90 * 24 * 60 * 60 * 1000);
-                let count = 0;
-                const MAX_INSTANCES = 90;
-                const sourceId = currentTask.recurringSourceId || `rec_${Date.now()}`;
-                while (current <= end && count < MAX_INSTANCES) {
-                  const docRef = doc(collection(db, COLLECTION.TASKS));
-                  createBatch.set(docRef, { ...firestorePayload, userId: currentTask.userId, date: current.toISOString().slice(0, 10), recurringSourceId: sourceId, createdAt: serverTimestamp(), status: 'pending', order: currentTask.order || 0 });
-                  count++;
-                  if (finalRecurrence.type === 'daily' || finalRecurrence.type === 'custom') { current.setDate(current.getDate() + (finalRecurrence.interval || 1)); }
-                  else if (finalRecurrence.type === 'weekly') {
-                    if (finalRecurrence.daysOfWeek?.length > 0) { do { current.setDate(current.getDate() + 1); } while (!finalRecurrence.daysOfWeek.includes(current.getDay())); }
-                    else { current.setDate(current.getDate() + 7 * (finalRecurrence.interval || 1)); }
-                  } else if (finalRecurrence.type === 'monthly') { current.setMonth(current.getMonth() + (finalRecurrence.interval || 1)); }
-                  else break;
+                if (data.date && currentTask.date && data.date > currentTask.date) {
+                  b.update(d.ref, {
+                    title: finalTitle,
+                    notes: notes.trim() || null,
+                    priority: finalPriority,
+                    timeSlot: ts || null,
+                    estimatedMinutes: est,
+                    tags: selectedTags,
+                  });
                 }
-                await createBatch.commit();
-              }
-            } catch (e) { console.error(e); }
-          })();
+              });
+              await b.commit();
+            } catch (e) {
+              console.error('Error updating future recurring instances:', e);
+            }
+          }
         }},
       ]);
     } else {
+      optimisticUpdateTask(currentTask.id, updatePayload);
       requestClose();
       safeUpdate(
         currentTask.id,
@@ -560,18 +691,58 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.scrollContent}
         >
-          {/* ── GROUP 1: Title ── */}
+          {/* ── GROUP 1: Title + Notes + Duration ── */}
           <View style={styles.groupedCard}>
             <NLPTaskInput
               value={title}
               onChangeText={handleTitleChange}
-              parsed={nlpParsed ?? { title, date: null, timeSlot: null, priority: 'low', isRecurring: false, recurrenceRule: null, tokens: [] }}
+              parsed={nlpParsed ?? EMPTY_PARSED_TASK}
               onDismissToken={handleDismissToken}
               autoFocus={false}
               placeholder="Task Title"
               onSubmitEditing={() => Keyboard.dismiss()}
               hideMic={true}
             />
+
+            <View style={styles.divider} />
+
+            {/* Issue 65: Notes/Details field - was initialized as state but never rendered */}
+            <TextInput
+              style={styles.notesInput}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Notes..."
+              placeholderTextColor={colors.textTertiary}
+              multiline
+              numberOfLines={3}
+            />
+
+            <View style={styles.divider} />
+
+            {/* Issue 65: Duration chips - nlpDuration was state but never rendered */}
+            <View style={styles.rowItem}>
+              <Text style={styles.rowLabel}>Focus Duration</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {[15, 25, 45, 60].map(mins => (
+                  <TouchableOpacity
+                    key={mins}
+                    style={[
+                      styles.durationChip,
+                      nlpDuration === mins && styles.durationChipActive,
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setNlpDuration(nlpDuration === mins ? null : mins);
+                    }}
+                  >
+                    <Text style={[
+                      styles.durationChipText,
+                      nlpDuration === mins && styles.durationChipTextActive,
+                    ]}>{mins}m</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
           </View>
 
           {/* ── GROUP 2: Schedule & Timing ── */}
@@ -586,8 +757,8 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
                 <Text style={styles.rowLabel}>Date</Text>
               </View>
               <View style={styles.rowRight}>
-                <Text style={[styles.rowValue, taskDate !== today && { color: colors.accentPrimary, fontFamily: 'Inter_600SemiBold' }]}>
-                  {taskDate === today ? 'Today' : formatDisplayDate(taskDate)}
+                <Text style={[styles.rowValue, taskDate !== getToday() && { color: colors.accentPrimary, fontFamily: 'Inter_600SemiBold' }]}>
+                  {taskDate === getToday() ? 'Today' : formatDisplayDate(taskDate)}
                 </Text>
                 <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} style={{ marginLeft: 4 }} />
               </View>
@@ -596,10 +767,10 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
             {/* Quick Date Shortcuts (Today / Tomorrow / Weekend) */}
             <View style={styles.quickDateRow}>
               <TouchableOpacity
-                style={[styles.quickDateChip, taskDate === today && styles.quickDateChipActive]}
-                onPress={() => { Haptics.selectionAsync(); setTaskDate(today); }}
+                style={[styles.quickDateChip, taskDate === getToday() && styles.quickDateChipActive]}
+                onPress={() => { Haptics.selectionAsync(); setTaskDate(getToday()); }}
               >
-                <Text style={[styles.quickDateChipText, taskDate === today && styles.quickDateChipTextActive]}>Today</Text>
+                <Text style={[styles.quickDateChipText, taskDate === getToday() && styles.quickDateChipTextActive]}>Today</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.quickDateChip, taskDate === tomorrowDate && styles.quickDateChipActive]}
@@ -801,13 +972,16 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
                         placeholderTextColor={colors.textTertiary}
                         autoFocus
                         onSubmitEditing={() => {
-                          if (newTagInput.trim()) {
-                            addTag(newTagInput);
-                            setNewTagInput('');
-                            setIsAddingTag(false);
-                          }
+                          // Issue 67: guard prevents double-fire with onBlur
+                          if (tagSubmittedRef.current) return;
+                          tagSubmittedRef.current = true;
+                          if (newTagInput.trim()) addTag(newTagInput);
+                          setNewTagInput('');
+                          setIsAddingTag(false);
+                          setTimeout(() => { tagSubmittedRef.current = false; }, 100);
                         }}
                         onBlur={() => {
+                          if (tagSubmittedRef.current) return;
                           if (newTagInput.trim()) addTag(newTagInput);
                           setNewTagInput('');
                           setIsAddingTag(false);
@@ -887,35 +1061,20 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
             {subtasks.map((st, i) => (
               <React.Fragment key={st.id || i}>
                 {i > 0 && <View style={styles.divider} />}
-                <View style={styles.subtaskItemRow}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      setSubtasks(prev => prev.map((s, idx) => idx === i ? { ...s, completed: !s.completed } : s));
-                    }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <View style={[styles.subtaskCheckbox, st.completed && styles.subtaskCheckboxDone]}>
-                      {st.completed && <Ionicons name="checkmark" size={11} color="#ffffff" />}
-                    </View>
-                  </TouchableOpacity>
-                  <TextInput
-                    style={[styles.subtaskInputText, st.completed && styles.subtaskInputTextDone]}
-                    value={st.title}
-                    onChangeText={(newTitle) => {
-                      setSubtasks(prev => prev.map((s, idx) => idx === i ? { ...s, title: newTitle } : s));
-                    }}
-                  />
-                  <TouchableOpacity
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      setSubtasks(prev => prev.filter((_, idx) => idx !== i));
-                    }}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Ionicons name="close" size={16} color={colors.textTertiary} />
-                  </TouchableOpacity>
-                </View>
+                <SubtaskEditRow
+                  subtask={st}
+                  colors={colors}
+                  styles={styles}
+                  onToggle={() => {
+                    setSubtasks(prev => prev.map((s, idx) => idx === i ? { ...s, completed: !s.completed } : s));
+                  }}
+                  onChangeTitle={(newTitle) => {
+                    setSubtasks(prev => prev.map((s, idx) => idx === i ? { ...s, title: newTitle } : s));
+                  }}
+                  onRemove={() => {
+                    setSubtasks(prev => prev.filter((_, idx) => idx !== i));
+                  }}
+                />
               </React.Fragment>
             ))}
 
@@ -969,16 +1128,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
         {/* Date & Time Modals */}
         {showStartPicker && (
           <DateTimePicker
-            value={(() => {
-              const d = new Date();
-              if (startTime && startTime.includes(':')) {
-                const [h, m] = startTime.split(':');
-                const parsedH = parseInt(h, 10);
-                const parsedM = parseInt(m, 10);
-                if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
-              }
-              return d;
-            })()}
+            value={startPickerDate}
             mode="time"
             display="default"
             onChange={onStartChange}
@@ -986,16 +1136,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
         )}
         {showEndPicker && (
           <DateTimePicker
-            value={(() => {
-              const d = new Date();
-              if (endTime && endTime.includes(':')) {
-                const [h, m] = endTime.split(':');
-                const parsedH = parseInt(h, 10);
-                const parsedM = parseInt(m, 10);
-                if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
-              }
-              return d;
-            })()}
+            value={endPickerDate}
             mode="time"
             display="default"
             onChange={onEndChange}
@@ -1424,4 +1565,36 @@ const makeEditModalStyles = (colors: any, isDark: boolean = true) => StyleSheet.
     fontSize: 14,
     color: '#FF453A',
   },
+  // Issue 65: Notes field and duration chip styles
+  notesInput: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    color: isDark ? '#e0e0e0' : '#333333',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  durationChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+  },
+  durationChipActive: {
+    backgroundColor: isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.14)',
+    borderColor: isDark ? '#a599ff' : '#6c5ce7',
+  },
+  durationChipText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: isDark ? '#a0a0b0' : '#666',
+  },
+  durationChipTextActive: {
+    fontFamily: 'Inter_600SemiBold',
+    color: isDark ? '#a599ff' : '#6c5ce7',
+  },
 });
+

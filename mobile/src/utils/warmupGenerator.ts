@@ -16,8 +16,10 @@ export function generateWarmupLadder(workingWeight: number, barTare = 20): GymSe
 
   // If working weight is light (<= 25kg, e.g. lateral raises, bicep curls, light accessories)
   if (targetW <= 25) {
-    const w1 = Math.max(5, Math.round((targetW * 0.5) / 2.5) * 2.5);
-    const w2 = Math.min(targetW - 2.5, Math.max(w1 + 2.5, Math.round((targetW * 0.75) / 2.5) * 2.5));
+    const w1 = Math.max(2.5, Math.min(targetW - 2.5, Math.round((targetW * 0.5) / 2.5) * 2.5));
+    const rawW2 = Math.round((targetW * 0.75) / 2.5) * 2.5;
+    const w2 = Math.min(targetW - 2.5, Math.max(w1 + 2.5, rawW2));
+    const finalW2 = Math.min(targetW - 2.5, w2 > w1 ? w2 : w1 + 2.5);
 
     return [
       {
@@ -30,7 +32,7 @@ export function generateWarmupLadder(workingWeight: number, barTare = 20): GymSe
       },
       {
         setNumber: 2,
-        weight: w2 > w1 ? w2 : w1 + 2.5,
+        weight: finalW2,
         reps: 6,
         completed: false,
         isWarmup: true,

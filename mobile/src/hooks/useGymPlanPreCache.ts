@@ -67,5 +67,5 @@ export function useGymPlanPreCache() {
       task.cancel();
       if (timer) clearTimeout(timer);
     };
-  }, [userGymPlan]);
+  }, [userGymPlan?.updatedAt, userGymPlan?.templateId]);
 }

@@ -9,28 +9,13 @@ export interface BunkMathResult {
   count: number;
 }
 
-export function calculateBunkMath(attended: number, total: number, targetPct: number = 75): BunkMathResult {
+export function calculateBunkMath(attended: number, total: number, rawTargetPct: number = 75): BunkMathResult {
   if (total === 0) {
     return { status: 'safe', message: 'No classes yet.', count: 0 };
   }
 
-  // Fix #7: Guard impossible/degenerate targets
-  if (targetPct >= 100) {
-    if (attended >= total) {
-      return { status: 'warning', message: 'Perfect attendance required — you cannot miss any class.', count: 0 };
-    }
-    const deficit = total - attended;
-    return {
-      status: 'critical',
-      message: `100% target — you've already missed ${deficit} class${deficit === 1 ? '' : 'es'}. Recovery is impossible.`,
-      count: deficit,
-    };
-  }
-
-  if (targetPct <= 0) {
-    return { status: 'safe', message: 'Target is 0% — you can miss any class.', count: total };
-  }
-
+  // Clamp target percentage strictly between 1% and 99%
+  const targetPct = Math.min(99, Math.max(1, rawTargetPct));
   const currentPct = (attended / total) * 100;
 
   if (currentPct >= targetPct) {

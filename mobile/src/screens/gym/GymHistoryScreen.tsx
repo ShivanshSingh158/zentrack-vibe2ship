@@ -25,10 +25,10 @@ export default function GymHistoryScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeGymHistoryStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
-  const { gymLogs } = useWellnessData();
+  const { gymLogs, userGymPlan } = useWellnessData();
 
   // Streak
-  const streak = useMemo(() => calculateGymStreak(gymLogs), [gymLogs]);
+  const streak = useMemo(() => calculateGymStreak(gymLogs, userGymPlan), [gymLogs, userGymPlan]);
 
   // Entrance animation for streak card
   const streakScale = useSharedValue(0.7);
@@ -56,11 +56,11 @@ export default function GymHistoryScreen() {
     return computeOrGetHotCache(cacheKey, () => {
       const logMap = new Map<string, any>();
       gymLogs.forEach(log => {
-        const d = new Date(log.date);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const key = log.date.slice(0, 10);
 
         let totalSets = 0;
         log.exercises?.forEach(ex => {
+          if (ex.skipped) return;
           totalSets += ex.setsLog?.filter((s: any) => s.completed).length || 0;
         });
 

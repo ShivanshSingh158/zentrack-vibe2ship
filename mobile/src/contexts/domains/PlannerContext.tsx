@@ -7,6 +7,7 @@ import type { CustomEvent, Goal, WeeklyReview } from "../MobileDataContext";
 import { writePlannerCache } from "../../utils/domainCache";
 import { loadBootManifest, getBootManifestSync } from "../../utils/bootManifest";
 import { parseCustomEvent, parseGoal, areItemsEqual } from "../../utils/schemaGuards";
+import { applyPendingQueueOverlay } from "../../services/offlineSync";
 
 export interface PlannerContextType {
   customEvents: CustomEvent[];
@@ -18,6 +19,7 @@ export interface PlannerContextType {
   optimisticDeleteEvent: (eventId: string) => void;
   optimisticAddGoal: (goal: Goal) => void;
   optimisticUpdateGoal: (goalId: string, partial: Partial<Goal>) => void;
+  optimisticDeleteGoal: (goalId: string) => void;
 }
 
 const DEFAULT_PLANNER_DATA: PlannerContextType = {
@@ -30,6 +32,7 @@ const DEFAULT_PLANNER_DATA: PlannerContextType = {
   optimisticDeleteEvent: () => {},
   optimisticAddGoal: () => {},
   optimisticUpdateGoal: () => {},
+  optimisticDeleteGoal: () => {},
 };
 
 const PlannerContext = createContext<PlannerContextType | null>(null);
@@ -116,7 +119,7 @@ export function PlannerProvider({
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
-          const fresh = snap.docs.map(d => parseCustomEvent(d.data(), d.id));
+          const fresh = applyPendingQueueOverlay(COLLECTION.CALENDAR_EVENTS, snap.docs.map(d => parseCustomEvent(d.data(), d.id)));
           setCustomEvents(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           InteractionManager.runAfterInteractions(() => writePlannerCache({ customEvents: fresh }));
         });
@@ -129,7 +132,7 @@ export function PlannerProvider({
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
-          const fresh = snap.docs.map(d => parseGoal(d.data(), d.id));
+          const fresh = applyPendingQueueOverlay(COLLECTION.GOALS, snap.docs.map(d => parseGoal(d.data(), d.id)));
           setGoals(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           InteractionManager.runAfterInteractions(() => writePlannerCache({ goals: fresh }));
         });
@@ -142,7 +145,7 @@ export function PlannerProvider({
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
-          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview));
+          const fresh = applyPendingQueueOverlay(COLLECTION.WEEKLY_REVIEWS, snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview)));
           setWeeklyReviews(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           InteractionManager.runAfterInteractions(() => writePlannerCache({ weeklyReviews: fresh }));
         });
@@ -225,12 +228,22 @@ export function PlannerProvider({
     });
   }, []);
 
+  const optimisticDeleteGoal = useCallback((goalId: string) => {
+    setGoals(prev => {
+      const next = prev.filter(g => g.id !== goalId);
+      writePlannerCache({ goals: next }, true);
+      return next;
+    });
+  }, []);
+
   const value = useMemo(() => ({
     customEvents, goals, weeklyReviews, ensureSubscribed,
-    optimisticAddEvent, optimisticUpdateEvent, optimisticDeleteEvent, optimisticAddGoal, optimisticUpdateGoal
+    optimisticAddEvent, optimisticUpdateEvent, optimisticDeleteEvent,
+    optimisticAddGoal, optimisticUpdateGoal, optimisticDeleteGoal,
   }), [
     customEvents, goals, weeklyReviews, ensureSubscribed,
-    optimisticAddEvent, optimisticUpdateEvent, optimisticDeleteEvent, optimisticAddGoal, optimisticUpdateGoal
+    optimisticAddEvent, optimisticUpdateEvent, optimisticDeleteEvent,
+    optimisticAddGoal, optimisticUpdateGoal, optimisticDeleteGoal,
   ]);
 
   return (

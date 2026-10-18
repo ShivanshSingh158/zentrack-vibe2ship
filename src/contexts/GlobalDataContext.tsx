@@ -67,14 +67,16 @@ export const useGlobalData = () => {
 };
 
 // Safely attach an onSnapshot listener, returning its unsubscribe fn.
-// If attachment fails, returns a no-op unsub so one bad collection can't block others.
+// If missing composite index error (failed-precondition), falls back to fallbackQuery if provided.
 function safeSnapshot(
   q: Query<DocumentData>,
   setter: (docs: any[]) => void,
-  label: string
+  label: string,
+  fallbackQuery?: Query<DocumentData>
 ): () => void {
+  let activeUnsub: () => void = () => {};
   try {
-    return onSnapshot(
+    activeUnsub = onSnapshot(
       q,
       (snap) => {
         try {
@@ -83,8 +85,19 @@ function safeSnapshot(
           console.error(`[GlobalData] Error processing ${label}:`, e);
         }
       },
-      (err) => console.warn(`[GlobalData] ${label} listener error:`, err)
+      (err: any) => {
+        console.warn(`[GlobalData] ${label} listener error (${err?.code}):`, err?.message);
+        if (fallbackQuery && (err?.code === 'failed-precondition' || err?.message?.includes('index'))) {
+          console.info(`[GlobalData] Falling back to un-indexed query for ${label}`);
+          try {
+            activeUnsub = onSnapshot(fallbackQuery, (snap) => {
+              setter(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            });
+          } catch {}
+        }
+      }
     );
+    return () => activeUnsub();
   } catch (e) {
     console.error(`[GlobalData] Failed to attach ${label} listener:`, e);
     return () => {};
@@ -283,23 +296,6 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   };
 
-  // ── Calendar Poll (every 15 min while Google is connected) ─────────────────
-  // ✅ FIX: calendarEvents was always [] — agents always saw "0 events today"
-  // Now we poll Google Calendar and populate calendarEvents state
-  useEffect(() => {
-    if (!isGoogleConnected) return;
-    const doPoll = async () => {
-      try {
-        const events = await pollGoogleCalendarChanges();
-        if (events && events.length > 0) setCalendarEvents(events);
-      } catch (err) {
-        console.warn('[GlobalData] Calendar poll failed:', err);
-      }
-    };
-    doPoll(); // immediate poll on connect
-    const intervalId = setInterval(doPoll, 15 * 60 * 1000); // re-poll every 15 min
-    return () => clearInterval(intervalId);
-  }, [isGoogleConnected]);
 
 
   const disconnectGoogle = () => {
@@ -418,45 +414,105 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setHabitLogs(combined);
       };
 
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - 90);
+      const cutoffDateStr = cutoffDate.toISOString().slice(0, 10);
+
+      const onceFire = () => {
+        let fired = false;
+        return () => {
+          if (!fired) {
+            fired = true;
+            onFirstFire();
+          }
+        };
+      };
+
+      const fireHabits = onceFire();
+      const fireWater = onceFire();
+      const fireSleep = onceFire();
+      const fireUsers = onceFire();
+      const fireProfiles = onceFire();
+
       const unsubs: (() => void)[] = [
         safeSnapshot(query(collection(db, 'todos'), where('userId', '==', uid)), makeHandler(setTasks), 'todos'),
-        safeSnapshot(query(collection(db, 'habit_logs'), where('userId', '==', uid), limit(365)), (docs) => {
-          mobileHabits = docs;
-          handleHabitsMerge();
-          onFirstFire();
-        }, 'habit_logs'),
-        safeSnapshot(query(collection(db, 'habitLogs'), where('userId', '==', uid), limit(365)), (docs) => {
-          legacyHabits = docs;
-          handleHabitsMerge();
-        }, 'habitLogs'),
+        safeSnapshot(
+          query(collection(db, 'habit_logs'), where('userId', '==', uid), where('date', '>=', cutoffDateStr)),
+          (docs) => {
+            mobileHabits = docs;
+            handleHabitsMerge();
+            fireHabits();
+          },
+          'habit_logs',
+          query(collection(db, 'habit_logs'), where('userId', '==', uid))
+        ),
+        safeSnapshot(
+          query(collection(db, 'habitLogs'), where('userId', '==', uid), where('date', '>=', cutoffDateStr)),
+          (docs) => {
+            legacyHabits = docs;
+            handleHabitsMerge();
+          },
+          'habitLogs',
+          query(collection(db, 'habitLogs'), where('userId', '==', uid))
+        ),
         safeSnapshot(query(collection(db, 'habits'), where('userId', '==', uid)), makeHandler(setHabits), 'habits'),
         safeSnapshot(query(collection(db, 'job_applications'), where('userId', '==', uid)), makeHandler(setJobs), 'jobs'),
         safeSnapshot(query(collection(db, 'goals'), where('userId', '==', uid)), makeHandler(setGoals), 'goals'),
         safeSnapshot(query(collection(db, 'learning_topics'), where('userId', '==', uid)), makeHandler(setLearningTopics), 'learning_topics'),
-        // ✅ D2: limit(365) — one year of gym history sufficient for fitness analytics
-        safeSnapshot(query(collection(db, 'gymLogs'), where('userId', '==', uid), limit(365)), makeHandler(setGymLogs), 'gymLogs'),
+        // ✅ D2: limit to 90 days with index fallback
+        safeSnapshot(
+          query(collection(db, 'gymLogs'), where('userId', '==', uid), where('date', '>=', cutoffDateStr)),
+          makeHandler(setGymLogs),
+          'gymLogs',
+          query(collection(db, 'gymLogs'), where('userId', '==', uid))
+        ),
         // ✅ Real-time Firestore sync with mobile app water & sleep logs (both mobile snake_case and web formats)
-        safeSnapshot(query(collection(db, 'water_logs'), where('userId', '==', uid), limit(365)), (docs) => {
-          mobileWater = docs;
-          handleWaterMerge();
-          onFirstFire();
-        }, 'water_logs'),
-        safeSnapshot(query(collection(db, 'waterLogs'), where('userId', '==', uid), limit(365)), (docs) => {
-          legacyWater = docs;
-          handleWaterMerge();
-        }, 'waterLogs'),
-        safeSnapshot(query(collection(db, 'sleep_logs'), where('userId', '==', uid), limit(365)), (docs) => {
-          mobileSleep = docs;
-          handleSleepMerge();
-          onFirstFire();
-        }, 'sleep_logs'),
-        safeSnapshot(query(collection(db, 'sleepLogs'), where('userId', '==', uid), limit(365)), (docs) => {
-          legacySleep = docs;
-          handleSleepMerge();
-        }, 'sleepLogs'),
+        safeSnapshot(
+          query(collection(db, 'water_logs'), where('userId', '==', uid), where('date', '>=', cutoffDateStr)),
+          (docs) => {
+            mobileWater = docs;
+            handleWaterMerge();
+            fireWater();
+          },
+          'water_logs',
+          query(collection(db, 'water_logs'), where('userId', '==', uid))
+        ),
+        safeSnapshot(
+          query(collection(db, 'waterLogs'), where('userId', '==', uid), where('date', '>=', cutoffDateStr)),
+          (docs) => {
+            legacyWater = docs;
+            handleWaterMerge();
+          },
+          'waterLogs',
+          query(collection(db, 'waterLogs'), where('userId', '==', uid))
+        ),
+        safeSnapshot(
+          query(collection(db, 'sleep_logs'), where('userId', '==', uid), where('date', '>=', cutoffDateStr)),
+          (docs) => {
+            mobileSleep = docs;
+            handleSleepMerge();
+            fireSleep();
+          },
+          'sleep_logs',
+          query(collection(db, 'sleep_logs'), where('userId', '==', uid))
+        ),
+        safeSnapshot(
+          query(collection(db, 'sleepLogs'), where('userId', '==', uid), where('date', '>=', cutoffDateStr)),
+          (docs) => {
+            legacySleep = docs;
+            handleSleepMerge();
+          },
+          'sleepLogs',
+          query(collection(db, 'sleepLogs'), where('userId', '==', uid))
+        ),
         safeSnapshot(query(collection(db, 'notes'), where('userId', '==', uid)), makeHandler(setNotes), 'notes'),
         safeSnapshot(query(collection(db, 'attendance_subjects'), where('userId', '==', uid)), makeHandler(setAttendanceSubjects), 'attendance_subjects'),
-        safeSnapshot(query(collection(db, 'attendance_logs'), where('userId', '==', uid), limit(365)), makeHandler(setAttendanceLogs), 'attendance_logs'),
+        safeSnapshot(
+          query(collection(db, 'attendance_logs'), where('userId', '==', uid), where('date', '>=', cutoffDateStr)),
+          makeHandler(setAttendanceLogs),
+          'attendance_logs',
+          query(collection(db, 'attendance_logs'), where('userId', '==', uid))
+        ),
         safeSnapshot(query(collection(db, 'attendance_holidays'), where('userId', '==', uid)), (docs) => setAttendanceHolidays(docs.map((d: any) => d.date).filter(Boolean)), 'attendance_holidays'),
         safeSnapshot(query(collection(db, 'assignments'), where('userId', '==', uid)), makeHandler(setAssignments), 'assignments'),
         safeSnapshot(query(collection(db, 'pomodoro_sessions'), where('userId', '==', uid)), makeHandler(setPomodoroSessions), 'pomodoro_sessions'),
@@ -475,7 +531,7 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               }
             }
           }
-          onFirstFire();
+          fireUsers();
         }),
         // ✅ user_profiles doc listener — Real-time cross-platform XP & Water Target sync with mobile app
         onSnapshot(doc(db, 'user_profiles', uid), (snap) => {
@@ -492,7 +548,7 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               }
             }
           }
-          onFirstFire();
+          fireProfiles();
         })
       ];
 

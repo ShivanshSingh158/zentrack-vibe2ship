@@ -141,16 +141,25 @@ export default function AgentHistoryScreen() {
   const [history, setHistory] = useState<AgentAction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadHistory = useCallback(async () => {
-    setLoading(true);
-    const data = await getAgentHistory();
-    setHistory(data);
-    setLoading(false);
-  }, []);
-
-  useFocusEffect(useCallback(() => {
-    loadHistory();
-  }, [loadHistory]));
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+      setLoading(true);
+      getAgentHistory()
+        .then(data => {
+          if (isActive) {
+            setHistory(data);
+            setLoading(false);
+          }
+        })
+        .catch(() => {
+          if (isActive) setLoading(false);
+        });
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
 
   const handleClear = () => {
     Alert.alert(

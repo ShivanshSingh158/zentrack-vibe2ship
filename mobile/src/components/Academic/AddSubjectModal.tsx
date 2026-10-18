@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, Pressable, Dimensions, BackHandler, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, Pressable, Dimensions, BackHandler, Keyboard, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { BlurView } from 'expo-blur';
 import Reanimated, {
   LinearTransition,
   FadeIn,
@@ -24,6 +23,8 @@ import { useAcademicData } from '../../contexts/domains/AcademicContext';
 import type { AttendanceSubject } from '../../contexts/MobileDataContext';
 import { COLLECTION } from '../../config/constants';
 import { useTheme } from "../../contexts/ThemeContext";
+import { safeWrite, safeUpdate } from '../../utils/safeWrite';
+import { handleSyncError } from '../../utils/errorUtils';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SCHEMA_VERSION = 1;
@@ -140,19 +141,22 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
   const { user } = useCoreData();
   const { attendance, optimisticAddSubject, optimisticUpdateAttendance } = useAcademicData();
 
-  const [name, setName] = useState(() => getInitialSubjectState(existingSubject).name);
-  const [targetPercentage, setTargetPercentage] = useState(() => getInitialSubjectState(existingSubject).targetPercentage);
-  const [schedule, setSchedule] = useState<any>(() => getInitialSubjectState(existingSubject).schedule);
+  const initialState = useMemo(() => getInitialSubjectState(existingSubject), [existingSubject]);
+
+  const [name, setName] = useState(initialState.name);
+  const [targetPercentage, setTargetPercentage] = useState(initialState.targetPercentage);
+  const [schedule, setSchedule] = useState<any>(initialState.schedule);
   const [loading, setLoading] = useState(false);
   const [activePicker, setActivePicker] = useState<{ dayIdx: number, type: 'classes' | 'labs', idx: number } | null>(null);
 
   // ── Mid-Semester Calibration State ──
-  const [calibrationMode, setCalibrationMode] = useState<'fresh' | 'mid_semester'>(() => getInitialSubjectState(existingSubject).calibrationMode);
-  const [classesAttended, setClassesAttended] = useState(() => getInitialSubjectState(existingSubject).classesAttended);
-  const [classesTotal, setClassesTotal] = useState(() => getInitialSubjectState(existingSubject).classesTotal);
-  const [hasLabs, setHasLabs] = useState(() => getInitialSubjectState(existingSubject).hasLabs);
-  const [labsAttended, setLabsAttended] = useState(() => getInitialSubjectState(existingSubject).labsAttended);
-  const [labsTotal, setLabsTotal] = useState(() => getInitialSubjectState(existingSubject).labsTotal);
+  const [calibrationMode, setCalibrationMode] = useState<'fresh' | 'mid_semester'>(initialState.calibrationMode);
+  const [classesAttended, setClassesAttended] = useState(initialState.classesAttended);
+  const [classesTotal, setClassesTotal] = useState(initialState.classesTotal);
+  const [hasLabs, setHasLabs] = useState(initialState.hasLabs);
+  const [labsAttended, setLabsAttended] = useState(initialState.labsAttended);
+  const [labsTotal, setLabsTotal] = useState(initialState.labsTotal);
+  const [scheduleHydrated, setScheduleHydrated] = useState(false);
 
   // Synchronize state during render on open to avoid secondary re-render flash
   const [prevVisible, setPrevVisible] = useState(visible);
@@ -162,16 +166,15 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
     setPrevVisible(visible);
     setPrevSubjectId(existingSubject?.id);
     if (visible) {
-      const init = getInitialSubjectState(existingSubject);
-      setName(init.name);
-      setTargetPercentage(init.targetPercentage);
-      setCalibrationMode(init.calibrationMode);
-      setClassesAttended(init.classesAttended);
-      setClassesTotal(init.classesTotal);
-      setHasLabs(init.hasLabs);
-      setLabsAttended(init.labsAttended);
-      setLabsTotal(init.labsTotal);
-      setSchedule(init.schedule);
+      setName(initialState.name);
+      setTargetPercentage(initialState.targetPercentage);
+      setCalibrationMode(initialState.calibrationMode);
+      setClassesAttended(initialState.classesAttended);
+      setClassesTotal(initialState.classesTotal);
+      setHasLabs(initialState.hasLabs);
+      setLabsAttended(initialState.labsAttended);
+      setLabsTotal(initialState.labsTotal);
+      setSchedule(initialState.schedule);
     }
   }
 
@@ -211,7 +214,8 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
     if (!name.trim() || !user) return;
     setLoading(true);
     try {
-      const target = parseInt(targetPercentage) || 75;
+      const rawTarget = parseInt(targetPercentage, 10) || 75;
+      const target = Math.min(99, Math.max(1, rawTarget));
       let cAtt = 0;
       let cTot = 0;
       let lAtt = 0;
@@ -228,12 +232,11 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
         // SAFETY: in edit mode, only overwrite attendance counts if the user explicitly
         // chose mid_semester calibration. 'fresh' in edit context means:
         // "keep my existing counts, I'm only editing the name/target/schedule".
-        // Previously this would overwrite all counts with 0 when calibrationMode='fresh',
-        // silently destroying the entire semester's attendance record.
         const payload: any = {
           name: name.trim(),
           targetPercentage: target,
           schedule,
+          lastUpdated: Date.now(),
         };
         if (calibrationMode === 'mid_semester') {
           payload.classesAttended = cAtt;
@@ -242,7 +245,12 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
           payload.labsTotal       = lTot;
         }
         optimisticUpdateAttendance(existingSubject.id, payload);
-        updateDoc(doc(db, COLLECTION.ATTENDANCE, existingSubject.id), payload).catch(e => console.log('Subject update error:', e));
+        safeUpdate(
+          existingSubject.id,
+          COLLECTION.ATTENDANCE,
+          payload,
+          () => updateDoc(doc(db, COLLECTION.ATTENDANCE, existingSubject.id), payload)
+        ).catch(handleSyncError);
       } else {
         const subId = doc(collection(db, COLLECTION.ATTENDANCE)).id;
         const newSubject: AttendanceSubject = {
@@ -257,9 +265,17 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
           order: attendance.length + 1,
           schedule,
           schemaVersion: SCHEMA_VERSION,
+          createdAt: Date.now(),
+          lastUpdated: Date.now(),
         };
         optimisticAddSubject(newSubject);
-        setDoc(doc(db, COLLECTION.ATTENDANCE, subId), newSubject).catch(e => console.log('Subject add error:', e));
+        safeWrite(
+          () => setDoc(doc(db, COLLECTION.ATTENDANCE, subId), newSubject),
+          COLLECTION.ATTENDANCE,
+          'set',
+          newSubject,
+          subId
+        ).catch(handleSyncError);
       }
       handleRequestClose();
     } catch (e) {
@@ -298,22 +314,33 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
   }, [backdropOpacity, translateY, onClose]);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
     if (visible) {
       isClosingRef.current = false;
       setMounted(true);
+      setScheduleHydrated(false);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       translateY.value = SCREEN_HEIGHT;
-      translateY.value = withTiming(0, {
-        duration: 320,
-        easing: Easing.bezier(0.22, 1, 0.36, 1),
+      translateY.value = withSpring(0, {
+        damping: 26,
+        stiffness: 280,
+        mass: 0.8,
+        overshootClamping: true,
       });
       backdropOpacity.value = withTiming(1, {
         duration: 260,
         easing: Easing.out(Easing.quad),
       });
+      timer = setTimeout(() => {
+        setScheduleHydrated(true);
+      }, 60);
     } else if (mounted) {
+      setScheduleHydrated(false);
       handleRequestClose();
     }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [visible]);
 
   useEffect(() => {
@@ -377,11 +404,7 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
         <Reanimated.View
           style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(0,0,0,0.70)' : 'rgba(0,0,0,0.4)' }, backdropAnimatedStyle]}
         >
-          {Platform.OS === 'ios' ? (
-            <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill} />
-          ) : (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.45)' }]} />
-          )}
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.45)' }]} />
           <Pressable style={StyleSheet.absoluteFill} onPress={handleRequestClose} />
         </Reanimated.View>
 
@@ -402,7 +425,7 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 20 }}>
             {/* Subject Name */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Subject Name</Text>
@@ -564,86 +587,92 @@ export const AddSubjectModal = React.memo(function AddSubjectModal({ visible, on
             </View>
 
             <Text style={[styles.label, { marginBottom: SPACE.md }]}>Weekly Schedule (Classes / Labs)</Text>
-            {DAYS.map((dayName, i) => {
-              const dayIdx = DAY_MAP[i];
-              const sched = schedule[dayIdx.toString()] || { classes: [], labs: [] };
-              const classes = sched.classes || [];
-              const labs = sched.labs || [];
-              
-              return (
-                <View key={dayName} style={styles.dayCard}>
-                  <View style={styles.dayHeader}>
-                    <Text style={styles.dayText}>{dayName}</Text>
-                    <View style={styles.dayActions}>
-                      <SpringPressableBtn
-                        onPress={() => addSession(dayIdx, 'classes')}
-                        style={styles.addBtn}
-                        activeScale={0.88}
-                        haptic="light"
-                      >
-                        <Ionicons name="add" size={14} color={colors.accentPrimary} />
-                        <Text style={styles.addBtnText}>Class</Text>
-                      </SpringPressableBtn>
-                      <SpringPressableBtn
-                        onPress={() => addSession(dayIdx, 'labs')}
-                        style={styles.addBtn}
-                        activeScale={0.88}
-                        haptic="light"
-                      >
-                        <Ionicons name="add" size={14} color={colors.accentBlue} />
-                        <Text style={[styles.addBtnText, { color: colors.accentBlue }]}>Lab</Text>
-                      </SpringPressableBtn>
+            {scheduleHydrated ? (
+              DAYS.map((dayName, i) => {
+                const dayIdx = DAY_MAP[i];
+                const sched = schedule[dayIdx.toString()] || { classes: [], labs: [] };
+                const classes = sched.classes || [];
+                const labs = sched.labs || [];
+                
+                return (
+                  <View key={dayName} style={styles.dayCard}>
+                    <View style={styles.dayHeader}>
+                      <Text style={styles.dayText}>{dayName}</Text>
+                      <View style={styles.dayActions}>
+                        <SpringPressableBtn
+                          onPress={() => addSession(dayIdx, 'classes')}
+                          style={styles.addBtn}
+                          activeScale={0.88}
+                          haptic="light"
+                        >
+                          <Ionicons name="add" size={14} color={colors.accentPrimary} />
+                          <Text style={styles.addBtnText}>Class</Text>
+                        </SpringPressableBtn>
+                        <SpringPressableBtn
+                          onPress={() => addSession(dayIdx, 'labs')}
+                          style={styles.addBtn}
+                          activeScale={0.88}
+                          haptic="light"
+                        >
+                          <Ionicons name="add" size={14} color={colors.accentBlue} />
+                          <Text style={[styles.addBtnText, { color: colors.accentBlue }]}>Lab</Text>
+                        </SpringPressableBtn>
+                      </View>
                     </View>
+                    
+                    {classes.map((cls: any, idx: number) => (
+                      <Reanimated.View
+                        key={`class-${idx}`}
+                        layout={LinearTransition.duration(200).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+                        exiting={FadeOut.duration(140)}
+                        style={styles.sessionRow}
+                      >
+                        <Text style={styles.sessionType}>Class</Text>
+                        <TouchableOpacity
+                          style={[styles.sessionInput, { justifyContent: 'center' }]}
+                          onPress={() => setActivePicker({ dayIdx, type: 'classes', idx })}
+                        >
+                          <Text style={{ color: cls.time ? colors.textPrimary : colors.textMuted }}>
+                            {cls.time || "Time"}
+                          </Text>
+                        </TouchableOpacity>
+                        <TextInput style={styles.sessionInput} placeholder="Room" placeholderTextColor={colors.textMuted} value={cls.room} onChangeText={(t) => updateSession(dayIdx, 'classes', idx, 'room', t)} />
+                        <TouchableOpacity style={{ padding: 4 }} onPress={() => removeSession(dayIdx, 'classes', idx)}>
+                          <Ionicons name="trash-outline" size={16} color={colors.error} />
+                        </TouchableOpacity>
+                      </Reanimated.View>
+                    ))}
+                    
+                    {labs.map((lab: any, idx: number) => (
+                      <Reanimated.View
+                        key={`lab-${idx}`}
+                        layout={LinearTransition.duration(200).easing(Easing.bezier(0.16, 1, 0.3, 1))}
+                        exiting={FadeOut.duration(140)}
+                        style={styles.sessionRow}
+                      >
+                        <Text style={[styles.sessionType, { color: colors.accentBlue }]}>Lab</Text>
+                        <TouchableOpacity
+                          style={[styles.sessionInput, { justifyContent: 'center' }]}
+                          onPress={() => setActivePicker({ dayIdx, type: 'labs', idx })}
+                        >
+                          <Text style={{ color: lab.time ? colors.textPrimary : colors.textMuted }}>
+                            {lab.time || "Time"}
+                          </Text>
+                        </TouchableOpacity>
+                        <TextInput style={styles.sessionInput} placeholder="Room" placeholderTextColor={colors.textMuted} value={lab.room} onChangeText={(t) => updateSession(dayIdx, 'labs', idx, 'room', t)} />
+                        <TouchableOpacity style={{ padding: 4 }} onPress={() => removeSession(dayIdx, 'labs', idx)}>
+                          <Ionicons name="trash-outline" size={16} color={colors.error} />
+                        </TouchableOpacity>
+                      </Reanimated.View>
+                    ))}
                   </View>
-                  
-                  {classes.map((cls: any, idx: number) => (
-                    <Reanimated.View
-                      key={`class-${idx}`}
-                      layout={LinearTransition.duration(200).easing(Easing.bezier(0.16, 1, 0.3, 1))}
-                      exiting={FadeOut.duration(140)}
-                      style={styles.sessionRow}
-                    >
-                      <Text style={styles.sessionType}>Class</Text>
-                      <TouchableOpacity
-                        style={[styles.sessionInput, { justifyContent: 'center' }]}
-                        onPress={() => setActivePicker({ dayIdx, type: 'classes', idx })}
-                      >
-                        <Text style={{ color: cls.time ? colors.textPrimary : colors.textMuted }}>
-                          {cls.time || "Time"}
-                        </Text>
-                      </TouchableOpacity>
-                      <TextInput style={styles.sessionInput} placeholder="Room" placeholderTextColor={colors.textMuted} value={cls.room} onChangeText={(t) => updateSession(dayIdx, 'classes', idx, 'room', t)} />
-                      <TouchableOpacity style={{ padding: 4 }} onPress={() => removeSession(dayIdx, 'classes', idx)}>
-                        <Ionicons name="trash-outline" size={16} color={colors.error} />
-                      </TouchableOpacity>
-                    </Reanimated.View>
-                  ))}
-                  
-                  {labs.map((lab: any, idx: number) => (
-                    <Reanimated.View
-                      key={`lab-${idx}`}
-                      layout={LinearTransition.duration(200).easing(Easing.bezier(0.16, 1, 0.3, 1))}
-                      exiting={FadeOut.duration(140)}
-                      style={styles.sessionRow}
-                    >
-                      <Text style={[styles.sessionType, { color: colors.accentBlue }]}>Lab</Text>
-                      <TouchableOpacity
-                        style={[styles.sessionInput, { justifyContent: 'center' }]}
-                        onPress={() => setActivePicker({ dayIdx, type: 'labs', idx })}
-                      >
-                        <Text style={{ color: lab.time ? colors.textPrimary : colors.textMuted }}>
-                          {lab.time || "Time"}
-                        </Text>
-                      </TouchableOpacity>
-                      <TextInput style={styles.sessionInput} placeholder="Room" placeholderTextColor={colors.textMuted} value={lab.room} onChangeText={(t) => updateSession(dayIdx, 'labs', idx, 'room', t)} />
-                      <TouchableOpacity style={{ padding: 4 }} onPress={() => removeSession(dayIdx, 'labs', idx)}>
-                        <Ionicons name="trash-outline" size={16} color={colors.error} />
-                      </TouchableOpacity>
-                    </Reanimated.View>
-                  ))}
-                </View>
-              );
-            })}
+                );
+              })
+            ) : (
+              <View style={{ height: 160, alignItems: 'center', justifyContent: 'center' }}>
+                <ActivityIndicator size="small" color={colors.accentPrimary} />
+              </View>
+            )}
           </ScrollView>
 
           <SpringPressableBtn 

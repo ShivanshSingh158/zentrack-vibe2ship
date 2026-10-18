@@ -103,8 +103,8 @@ const ClassNotifSettingsModal = React.memo(function ClassNotifSettingsModal({ vi
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors, isDark, insets), [colors, isDark, insets]);
   const { tasks, habitLogs, allHabits } = useCoreData();
-  const { gymLogs, waterLogs, sleepLogs } = useWellnessData();
-  const { attendance, assignments } = useAcademicData();
+  const { gymLogs, waterLogs, sleepLogs, userGymPlan } = useWellnessData();
+  const { attendance, attendanceLogs, assignments, holidays } = useAcademicData();
   const { customEvents } = usePlannerData();
   const subjects: AttendanceSubject[] = attendance ?? [];
 
@@ -182,15 +182,18 @@ const ClassNotifSettingsModal = React.memo(function ClassNotifSettingsModal({ vi
 
       clearScheduleCache();
       await scheduleAllNotifications({
-        tasks:        tasks        ?? [],
-        customEvents: customEvents ?? [],
-        gymLogs:      gymLogs      ?? [],
-        attendance:   subjects     ?? [],
-        habitLogs:    habitLogs    ?? [],
-        allHabits:    allHabits    ?? [],
-        assignments:  assignments  ?? [],
-        waterLogs:    waterLogs    ?? [],
-        sleepLogs:    sleepLogs    ?? [],
+        tasks:          tasks          ?? [],
+        customEvents:   customEvents   ?? [],
+        gymLogs:        gymLogs        ?? [],
+        attendance:     subjects       ?? [],
+        attendanceLogs: attendanceLogs ?? [],
+        habitLogs:      habitLogs      ?? [],
+        allHabits:      allHabits      ?? [],
+        assignments:    assignments    ?? [],
+        waterLogs:      waterLogs      ?? [],
+        sleepLogs:      sleepLogs      ?? [],
+        userGymPlan:    userGymPlan    ?? null,
+        holidays:       holidays       ?? [],
       });
     } catch (e) {
       console.warn('[ClassNotifModal] Save failed:', e);

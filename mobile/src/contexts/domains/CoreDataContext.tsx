@@ -23,7 +23,9 @@ import { clearSyncMeta } from "../../utils/syncMeta";
 import { registerForPushNotificationsAsync, clearScheduleCache } from "../../services/notifications";
 import { handleSyncError } from '../../utils/errorUtils';
 import { parseTask, parseHabit, parseHabitLog, areItemsEqual } from "../../utils/schemaGuards";
-import { syncXPWithFirestore } from "../../services/xpSystem";
+import { formatLocalDateStr, offsetDateStr } from "../../utils/dateUtils";
+import { syncXPWithFirestore, clearXPMemory } from "../../services/xpSystem";
+import { applyPendingQueueOverlay } from "../../services/offlineSync";
 import { clearOrchestratorCache } from "../../agent/orchestrator";
 import { usePinnedModules } from "../PinnedModulesContext";
 import { cacheUserAvatar, initAvatarCacheOnBoot, clearAvatarCache } from "../../services/userAvatarService";
@@ -141,15 +143,21 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scheduleListenerRestart = useCallback((context: string) => (err: Error) => {
-    console.warn(`[CoreData] ${context} listener error — restarting in 5s`, err.message);
+    const isBuilding = err.message.includes('currently building');
+    if (isBuilding) {
+      console.info(`[CoreData] ${context} index is currently building in Cloud Firestore. Auto-retrying in 15s...`);
+    } else {
+      console.warn(`[CoreData] ${context} listener error — restarting in 5s`, err.message);
+    }
     if (retryTimerRef.current) return;
+    const delay = isBuilding ? 15000 : 5000;
     retryTimerRef.current = setTimeout(() => {
       retryTimerRef.current = null;
       subscribedRef.current = false;
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       setSubscriptionVersion(v => v + 1);
-    }, 5000);
+    }, delay);
   }, []);
 
   // ── Parallel Startup Hydration & Auth Resolution (Promise.all) ───────────
@@ -174,17 +182,13 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     Promise.all([
       loadBootManifest().catch(() => null),
       auth.authStateReady().catch(() => null),
-      AsyncStorage.getItem('@zentrack_optimistic_user').catch(() => null),
-      readCoreCacheMulti().catch(() => null),
-      AsyncStorage.getItem('@zentrack_pinned_modules').catch(() => null),
-    ]).then(([manifest, _, rawUser, coreCache, rawPinned]) => {
+    ]).then(([manifest]) => {
       if (cancelled) return;
 
       unstable_batchedUpdates(() => {
-        // 1. Hydrate manifest / core cache data if needed
-        const cachedTasks = (manifest?.tasks && manifest.tasks.length > 0) ? manifest.tasks : (coreCache?.tasks || []);
-        const cachedHabits = (manifest?.habits && manifest.habits.length > 0) ? manifest.habits : (coreCache?.habits || []);
-        const cachedLogs = (manifest?.habitLogs && manifest.habitLogs.length > 0) ? manifest.habitLogs : (coreCache?.habitLogs || []);
+        const cachedTasks = manifest?.tasks || [];
+        const cachedHabits = manifest?.habits || [];
+        const cachedLogs = manifest?.habitLogs || [];
 
         if (cachedTasks.length > 0) {
           setTasks(prev => prev.length === 0 ? cachedTasks : prev);
@@ -200,41 +204,23 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           setFirestoreReady(true);
         }
 
-        // 2. Hydrate pinned modules (ensures custom pins survive app close/kill)
-        let userPinned: string[] | null = null;
         if (manifest?.pinnedModules && Array.isArray(manifest.pinnedModules) && manifest.pinnedModules.length > 0) {
-          userPinned = manifest.pinnedModules;
-        } else if (rawPinned) {
-          try {
-            const parsed = JSON.parse(rawPinned);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              userPinned = parsed.slice(0, 4);
-            }
-          } catch {}
-        }
-        if (userPinned && userPinned.length > 0) {
-          setPinnedModules(userPinned);
+          setPinnedModules(manifest.pinnedModules.slice(0, 4));
         }
 
-        // 3. Resolve user from auth state or optimistic storage
         if (auth.currentUser) {
           setUser(prev => {
             if (auth.currentUser && prev?.uid === auth.currentUser.uid) return prev;
             return auth.currentUser;
           });
           firstAuthAtRef.current = Date.now();
-        } else if (rawUser) {
-          try {
-            const parsed = JSON.parse(rawUser);
-            if (parsed?.uid) {
-              setUser(prev => {
-                if (prev?.uid === parsed.uid) return prev;
-                firstAuthAtRef.current = Date.now();
-                return parsed as User;
-              });
-              if (!firstAuthAtRef.current) firstAuthAtRef.current = Date.now();
-            }
-          } catch {}
+        } else if (manifest?.optimisticUser?.uid) {
+          setUser(prev => {
+            if (prev?.uid === manifest.optimisticUser!.uid) return prev;
+            firstAuthAtRef.current = Date.now();
+            return manifest.optimisticUser;
+          });
+          if (!firstAuthAtRef.current) firstAuthAtRef.current = Date.now();
         }
       });
     }).catch((err) => {
@@ -323,7 +309,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         unstable_batchedUpdates(() => {
-          const fresh = snap.docs.map(d => parseTask(d.data(), d.id));
+          const fresh = applyPendingQueueOverlay(COLLECTION.TASKS, snap.docs.map(d => parseTask(d.data(), d.id)));
           setTasks(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           setFirestoreReady(true);
           hasCachedDataRef.current = true;
@@ -344,7 +330,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
         }
         if (isHabitLocked.current) return;
         unstable_batchedUpdates(() => {
-          const fresh = snap.docs.map(d => parseHabit(d.data(), d.id));
+          const fresh = applyPendingQueueOverlay(COLLECTION.HABITS, snap.docs.map(d => parseHabit(d.data(), d.id)));
           setHabits(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           setFirestoreReady(true);
           hasCachedDataRef.current = true;
@@ -355,9 +341,10 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       scheduleListenerRestart("habits")
     ));
 
-    // 3. Habit Logs Listener
+    // 3. Habit Logs Listener (Rolling 90-day window prevents dropping newest logs due to ASCII doc-ID ordering)
+    const habitCutoffDateStr = offsetDateStr(formatLocalDateStr(new Date()), -90);
     unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid), limit(300)),
+      query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid), where("date", ">=", habitCutoffDateStr)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) {
           setFirestoreReady(true);
@@ -365,7 +352,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
         }
         if (isHabitLogLocked.current) return;
         unstable_batchedUpdates(() => {
-          const fresh = snap.docs.map(d => parseHabitLog(d.data(), d.id));
+          const fresh = applyPendingQueueOverlay(COLLECTION.HABIT_LOGS, snap.docs.map(d => parseHabitLog(d.data(), d.id)));
           setHabitLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           setFirestoreReady(true);
           hasCachedDataRef.current = true;
@@ -591,6 +578,7 @@ export async function performSignOut() {
       'zentrack_onboarded_v2',
     ]);
     await auth.signOut();
+    clearXPMemory();
     await clearCoreCache();
     await clearAllDomainCaches();
     clearSyncMeta(currentUid);

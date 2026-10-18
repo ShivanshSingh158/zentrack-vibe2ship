@@ -8,6 +8,7 @@ import { writeCreativeCache } from "../../utils/domainCache";
 import { loadBootManifest, getBootManifestSync } from "../../utils/bootManifest";
 import { parseStorageNode, parseLearningTopic, areItemsEqual } from "../../utils/schemaGuards";
 import { formatLocalDateStr } from "../../utils/dateUtils";
+import { applyPendingQueueOverlay } from "../../services/offlineSync";
 
 export interface CreativeContextType {
   storageNodes: StorageNode[];
@@ -125,7 +126,7 @@ export function CreativeProvider({
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
-          const fresh = snap.docs.map(d => parseStorageNode(d.data(), d.id));
+          const fresh = applyPendingQueueOverlay(COLLECTION.STORAGE_NODES, snap.docs.map(d => parseStorageNode(d.data(), d.id)));
           setStorageNodes(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           InteractionManager.runAfterInteractions(() => writeCreativeCache({ storageNodes: fresh }));
         });
@@ -138,7 +139,7 @@ export function CreativeProvider({
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
-          const fresh = snap.docs.map(d => parseLearningTopic(d.data(), d.id));
+          const fresh = applyPendingQueueOverlay(COLLECTION.LEARNING_TOPICS, snap.docs.map(d => parseLearningTopic(d.data(), d.id)));
           setLearningTopics(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           InteractionManager.runAfterInteractions(() => writeCreativeCache({ learningTopics: fresh }));
         });
@@ -151,7 +152,7 @@ export function CreativeProvider({
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
-          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication));
+          const fresh = applyPendingQueueOverlay(COLLECTION.JOBS, snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication)));
           setJobs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           InteractionManager.runAfterInteractions(() => writeCreativeCache({ jobs: fresh }));
         });
@@ -164,7 +165,7 @@ export function CreativeProvider({
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
-          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentLog));
+          const fresh = applyPendingQueueOverlay(COLLECTION.CONTENT_LOGS, snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentLog)));
           setContentLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           InteractionManager.runAfterInteractions(() => writeCreativeCache({ contentLogs: fresh }));
         });
@@ -173,14 +174,17 @@ export function CreativeProvider({
     ));
   }, [scheduleListenerRestart]);
 
+  const demandRequestedRef = useRef(false);
+
   useEffect(() => {
-    if (user) {
+    if (user && demandRequestedRef.current) {
       subscribedRef.current = false;
       openSubscriptions(user.uid);
-    } else {
+    } else if (!user) {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
+      demandRequestedRef.current = false;
       hasCachedDataRef.current = false;
       unstable_batchedUpdates(() => {
         setStorageNodes([]);
@@ -203,6 +207,7 @@ export function CreativeProvider({
   }, []);
 
   const ensureSubscribed = useCallback(() => {
+    demandRequestedRef.current = true;
     if (user && !subscribedRef.current) {
       openSubscriptions(user.uid);
     }

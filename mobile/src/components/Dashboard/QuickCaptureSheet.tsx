@@ -32,8 +32,9 @@ import { db } from '../../services/firebase';
 import { queueWrite } from '../../services/offlineSync';
 import { safeWrite } from '../../utils/safeWrite';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
-import { Task } from '../../contexts/MobileDataContext';
-import { parseNLTask, cleanTaskTitle } from '../../utils/dateUtils';
+import { useCreativeData } from '../../contexts/domains/CreativeContext';
+import { Task, Habit, StorageNode } from '../../contexts/MobileDataContext';
+import { parseNLTask, cleanTaskTitle, formatLocalDateStr, offsetDateStr } from '../../utils/dateUtils';
 import { COLLECTION } from '../../config/constants';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { useTheme } from "../../contexts/ThemeContext";
@@ -65,8 +66,9 @@ const TABS: { key: CaptureType; label: string; icon: string }[] = [
 
 export default function QuickCaptureSheet({ visible, onClose }: Props) {
     const { colors, isDark } = useTheme();
-    const s = makeStyles(colors, isDark);
-  const { user, optimisticAddTask } = useCoreData();
+    const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const { user, optimisticAddTask, optimisticAddHabit } = useCoreData();
+  const { optimisticAddStorageNode } = useCreativeData();
   const insets = useSafeAreaInsets();
   const [type, setType] = useState<CaptureType>('task');
   const [text, setText] = useState('');
@@ -112,8 +114,8 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
-      transform: [{ translateY: translateY.value }],
-      paddingBottom: Math.max(insets.bottom + SPACE.lg, keyboard.height.value + SPACE.lg),
+      transform: [{ translateY: translateY.value - keyboard.height.value }],
+      paddingBottom: insets.bottom + SPACE.lg,
     };
   });
 
@@ -160,74 +162,103 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
     setSaving(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // Close immediately for instant UI feedback
     Keyboard.dismiss();
     onClose();
     setText('');
 
+    const todayLocal = formatLocalDateStr(new Date());
+
     try {
       if (type === 'task') {
-        const prompt = `Parse this task description into JSON: "${textToSave.trim()}"
-IMPORTANT: Extract ONLY the clean action-oriented task name for 'title', completely removing conversational commands (e.g. "create", "add", "make", "schedule", "remind me to") and any time, date, priority, or recurrence words (e.g., "create dsa study from 10 am to 12 30 am daily" -> "Study DSA", "add buy groceries at 6pm" -> "Buy groceries").
-The user might ask for multiple tasks (e.g., "for next 5 days", "every day this week").
+        const localParsed = parseNLTask(textToSave.trim());
+        let parsedData: any[] = [];
+
+        // Try AI enrichment online, but ALWAYS fall back to 0ms on-device parseNLTask when offline!
+        try {
+          const prompt = `Parse this task description into JSON: "${textToSave.trim()}"
+IMPORTANT: Extract ONLY the clean action-oriented task name for 'title', completely removing conversational commands (e.g. "create", "add", "make", "schedule", "remind me to") and any time, date, priority, or recurrence words.
 If it implies multiple tasks, return an array of tasks. If it's a single task, return an array of 1 task.
 Return ONLY a JSON array: [{"title": str, "date": "YYYY-MM-DD", "timeSlot": "HH:MM or null", "priority": "P1|P2|P3", "isRecurring": bool, "frequency": "daily|weekly|monthly or null"}]
-Today's date is ${new Date().toISOString().slice(0, 10)}.`;
-        
-        const response = await callProxy({
-          model: 'gemini-2.5-flash',
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json' }
-        });
-        
-        let parsedData: any[] = [];
-        try {
-          const parsed = parseProxyResponse(response);
-          parsedData = JSON.parse(parsed.text || '[]');
-        } catch(e) {
-          const cleanJson = (response.text || '').replace(/```json/g, '').replace(/```/g, '').trim();
-          parsedData = JSON.parse(cleanJson);
-        }
-        
-        if (!Array.isArray(parsedData)) {
-          parsedData = [parsedData];
+Today's date is ${todayLocal}.`;
+
+          const response = await callProxy({
+            model: 'gemini-2.5-flash',
+            timeoutMs: 6000,
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: 'application/json' },
+          });
+
+          const proxyParsed = parseProxyResponse(response);
+          const cleanJson = (proxyParsed.text || response.text || '[]')
+            .replace(/```json/g, '')
+            .replace(/```/g, '')
+            .trim();
+          const candidate = JSON.parse(cleanJson);
+          parsedData = Array.isArray(candidate) ? candidate : [candidate];
+        } catch {
+          // Offline or AI timeout -> use instant on-device NLP parser
+          if (localParsed.oneTimeDates && localParsed.oneTimeDates.length > 1) {
+            parsedData = localParsed.oneTimeDates.map(dStr => ({
+              title: localParsed.title,
+              date: dStr,
+              timeSlot: localParsed.timeSlot,
+              priority: localParsed.priority,
+              isRecurring: false,
+            }));
+          } else {
+            parsedData = [
+              {
+                title: localParsed.title,
+                date: localParsed.date || todayLocal,
+                timeSlot: localParsed.timeSlot,
+                priority: localParsed.priority,
+                isRecurring: localParsed.isRecurring,
+                recurrenceRule: localParsed.recurrenceRule,
+              },
+            ];
+          }
         }
 
-        // Bulletproof fix: if Gemini only returns 1 task but we know it's multiDays, manually unroll it
-        if (parsedData.length === 1 && parsed?.multiDays && parsed.multiDays > 1) {
+        if (parsedData.length === 1 && localParsed?.multiDays && localParsed.multiDays > 1) {
           const baseTask = parsedData[0];
-          const baseDate = new Date(baseTask.date || new Date().toISOString().slice(0, 10));
-          parsedData = Array.from({ length: parsed.multiDays }).map((_, i) => {
-            const d = new Date(baseDate);
-            d.setDate(d.getDate() + i);
-            return { ...baseTask, date: d.toISOString().slice(0, 10) };
-          });
+          const baseDateStr = (baseTask.date || localParsed.date || todayLocal).slice(0, 10);
+          parsedData = Array.from({ length: localParsed.multiDays }).map((_, i) => ({
+            ...baseTask,
+            date: offsetDateStr(baseDateStr, i),
+          }));
         }
 
         for (const t of parsedData) {
           const docRef = doc(collection(db, COLLECTION.TASKS));
           const taskId = docRef.id;
-          const taskDate = t.date || parsed?.date || new Date().toISOString().slice(0, 10);
-          const taskTime = t.timeSlot || parsed?.timeSlot || undefined;
-          const finalIsReminder = !!(t.isReminder || parsed?.isReminder || taskTime);
+          const taskDate = (t.date || localParsed?.date || todayLocal).slice(0, 10);
+          const taskTime = t.timeSlot || localParsed?.timeSlot || undefined;
+          const finalIsReminder = !!(t.isReminder || localParsed?.isReminder || taskTime);
+          const resolvedRecurrence = t.recurrenceRule || (t.frequency ? { type: t.frequency, interval: 1 } : (localParsed?.recurrenceRule || undefined));
+
+          const taskTitle = cleanTaskTitle(t.title || localParsed?.title || textToSave.trim());
           const taskObj: Task = {
             id: taskId,
             userId: user.uid,
-            title: cleanTaskTitle(t.title || parsed?.title || textToSave.trim()),
+            title: taskTitle,
+            text: taskTitle,
             status: 'pending',
-            priority: t.priority || parsed?.priority || 'P2',
+            priority: t.priority || localParsed?.priority || 'P2',
             date: taskDate,
             timeSlot: taskTime,
-            isRecurring: !!t.isRecurring || !!parsed?.isRecurring,
-            recurrenceRule: t.frequency ? { type: t.frequency, interval: 1 } : (parsed?.recurrenceRule || undefined),
+            isRecurring: Boolean(t.isRecurring || localParsed?.isRecurring),
+            recurrenceRule: resolvedRecurrence,
+            tags: localParsed?.tags?.length ? localParsed.tags : undefined,
             isReminder: finalIsReminder,
           };
+
           optimisticAddTask(taskObj);
           if (finalIsReminder || taskTime) {
             scheduleSingleTaskReminder(taskObj).catch(console.warn);
           }
 
           const firestorePayload = {
+            id: taskId,
             userId: user.uid,
             title: taskObj.title,
             text: taskObj.title,
@@ -236,9 +267,11 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
             date: taskDate,
             timeSlot: taskTime || null,
             isRecurring: taskObj.isRecurring || false,
-            frequency: t.frequency || null,
+            recurrenceRule: resolvedRecurrence || null,
+            tags: taskObj.tags || [],
             isReminder: finalIsReminder,
-            createdAt: serverTimestamp(),
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
           };
 
           await safeWrite(
@@ -250,23 +283,60 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
           );
         }
       } else if (type === 'note') {
-        await queueWrite(COLLECTION.STORAGE_NODES, 'add', {
+        const now = Date.now();
+        const noteRef = doc(collection(db, COLLECTION.STORAGE_NODES));
+        const noteId = noteRef.id;
+        const cleanContent = textToSave.trim();
+        const noteName = cleanContent.split('\n')[0].substring(0, 45) + (cleanContent.length > 45 ? '...' : '');
+
+        const newNoteNode: StorageNode = {
+          id: noteId,
+          userId: user.uid,
           type: 'note',
-          title: textToSave.trim().substring(0, 40) + (textToSave.length > 40 ? '...' : ''),
-          content: textToSave.trim(),
-          userId: user.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+          name: noteName || 'Quick Note',
+          parentId: null,
+          content: cleanContent,
+          size: cleanContent.length,
+          tags: [],
+          pinned: false,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        optimisticAddStorageNode(newNoteNode);
+        await safeWrite(
+          () => setDoc(noteRef, newNoteNode),
+          COLLECTION.STORAGE_NODES,
+          'set',
+          newNoteNode,
+          noteId,
+        );
       } else if (type === 'habit') {
-        await queueWrite(COLLECTION.HABITS, 'add', {
+        const now = Date.now();
+        const habitRef = doc(collection(db, COLLECTION.HABITS));
+        const habitId = habitRef.id;
+        const newHabit: Habit = {
+          id: habitId,
           userId: user.uid,
-          title: textToSave.trim(),
+          name: textToSave.trim(),
+          emoji: '⚡',
           frequency: 'daily',
-          createdAt: serverTimestamp(),
           streak: 0,
-          isActive: true
-        });
+          longestStreak: 0,
+          type: 'positive',
+          startDate: todayLocal,
+          archived: false,
+          createdAt: new Date(now).toISOString(),
+        };
+
+        optimisticAddHabit(newHabit);
+        await safeWrite(
+          () => setDoc(habitRef, { ...newHabit, updatedAt: now }),
+          COLLECTION.HABITS,
+          'set',
+          { ...newHabit, updatedAt: now },
+          habitId,
+        );
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
@@ -333,7 +403,7 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
                 parsed={parsed!}
                 onDismissToken={(_tok) => {}}
                 placeholder={placeholders.task}
-                autoFocus={true}
+                autoFocus={false}
                 onSubmitEditing={() => handleSave()}
                 onAutoSubmit={() => handleSave()}
                 hideMic={true}

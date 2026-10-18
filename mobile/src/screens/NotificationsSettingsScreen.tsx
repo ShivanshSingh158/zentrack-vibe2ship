@@ -195,7 +195,7 @@ export default function NotificationsSettingsScreen() {
 
   const { tasks, habitLogs, allHabits, user } = useCoreData();
   const { gymLogs, waterLogs, sleepLogs, userGymPlan } = useWellnessData();
-  const { attendance, assignments, attendanceLogs } = useAcademicData();
+  const { attendance, assignments, attendanceLogs, holidays } = useAcademicData();
   const { customEvents } = usePlannerData();
 
   // ── Core Module Toggles ──
@@ -344,6 +344,7 @@ export default function NotificationsSettingsScreen() {
       sleepLogs,
       userGymPlan,
       attendanceLogs,
+      holidays,
     }).catch(console.warn);
   }, [
     tasks,
@@ -357,6 +358,7 @@ export default function NotificationsSettingsScreen() {
     sleepLogs,
     userGymPlan,
     attendanceLogs,
+    holidays,
   ]);
 
   const toggle = useCallback(
@@ -426,6 +428,7 @@ export default function NotificationsSettingsScreen() {
         sleepLogs,
         userGymPlan,
         attendanceLogs,
+        holidays,
       });
 
       let scheduled = await Notifications.getAllScheduledNotificationsAsync();
@@ -471,6 +474,7 @@ export default function NotificationsSettingsScreen() {
         sleepLogs,
         userGymPlan,
         attendanceLogs,
+        holidays,
       }).catch(console.warn);
 
       const report = await runNotificationDiagnostic();
@@ -1440,7 +1444,12 @@ export default function NotificationsSettingsScreen() {
                       Cancel
                     </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setPickerVisible(false)}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setPickerVisible(false);
+                      handlePickerChange(null, pickerDate);
+                    }}
+                  >
                     <Text
                       style={{
                         color: colors.accentPrimary,
@@ -1456,11 +1465,8 @@ export default function NotificationsSettingsScreen() {
                   value={pickerDate}
                   mode="time"
                   display="spinner"
-                  onChange={(e, d) => {
-                    if (d) {
-                      setPickerDate(d);
-                      handlePickerChange(e, d);
-                    }
+                  onChange={(_, d) => {
+                    if (d) setPickerDate(d);
                   }}
                   style={{ height: 200 }}
                   textColor={isDark ? '#FFFFFF' : '#1C1C1E'}

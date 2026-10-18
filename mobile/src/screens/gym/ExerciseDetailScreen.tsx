@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, ScrollView,
   Switch, Alert, ActivityIndicator, AppState, Platform,
@@ -14,8 +14,8 @@ import { FONT_FAMILY } from '../../theme/tokens';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { useGymLog, planDayIndexForDate, getCustomPlanDay } from '../../hooks/useGymLog';
 import { GYM_PLAN } from '../../data/gymPlan';
-import { hexToRgba, MUSCLE_CANONICAL, resolveExerciseTargetMuscle } from '../../utils/gymUtils';
-import { GymExerciseLog, GymNavigationParamList } from '../../types/gym.types';
+import { hexToRgba, MUSCLE_CANONICAL, resolveExerciseTargetMuscle, computeOrGetHotCache, normalizeExerciseKey } from '../../utils/gymUtils';
+import { GymExerciseLog, GymNavigationParamList, GymSet } from '../../types/gym.types';
 import { hapticMedium, hapticLight, hapticSuccess } from '../../utils/haptics';
 import { useTheme } from '../../contexts/ThemeContext';
 import { autoResolveExerciseVideoId } from '../../services/exerciseVideoResolver';
@@ -57,6 +57,16 @@ export default function ExerciseDetailScreen() {
   const [saveGlobal, setSaveGlobal] = useState(false);
   const [isRefreshingVideo, setIsRefreshingVideo] = useState(false);
   const [appState, setAppState] = useState(AppState.currentState);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (blurTimerRef.current) {
+        clearTimeout(blurTimerRef.current);
+        blurTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', nextState => setAppState(nextState));
@@ -89,7 +99,7 @@ export default function ExerciseDetailScreen() {
       }
     } else {
       let fallbackDef: any = null;
-      Object.values(GYM_PLAN).forEach(day => {
+      GYM_PLAN.forEach(day => {
         const found = day.exercises.find(e => e.id === exerciseId);
         if (found) fallbackDef = found;
       });
@@ -107,36 +117,44 @@ export default function ExerciseDetailScreen() {
     }
   }, [currentExercise, exerciseId]);
 
-  // Auto-resolve video link if missing
+  // Auto-resolve video link if missing with 600ms debounce
   useEffect(() => {
     if (!name || videoLink) return;
     let isCancelled = false;
 
-    autoResolveExerciseVideoId(name).then(resolvedId => {
-      if (isCancelled || !resolvedId) return;
-      setVideoLink(`https://youtube.com/watch?v=${resolvedId}`);
-    });
+    const timer = setTimeout(() => {
+      autoResolveExerciseVideoId(name).then(resolvedId => {
+        if (isCancelled || !resolvedId) return;
+        setVideoLink(`https://youtube.com/watch?v=${resolvedId}`);
+      });
+    }, 600);
 
-    return () => { isCancelled = true; };
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
   }, [name, videoLink]);
 
   // Past 5 sessions history (anchored to currentExercise to eliminate typing latency on name change)
   const history = useMemo(() => {
-    const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const targetNameNorm = currentExercise?.name ? norm(currentExercise.name) : '';
+    if (!currentExercise?.name && !exerciseId) return [];
+    const targetKey = currentExercise?.name ? normalizeExerciseKey(currentExercise.name) : '';
+    const cacheKey = `ex_history_5_${exerciseId || ''}_${targetKey}_${gymLogs.length}_${gymLogs[0]?.updatedAt || 0}`;
 
-    return gymLogs
-      .map(l => ({
-        date: l.date,
-        ex: l.exercises?.find(e => {
-          if (exerciseId && (e.exerciseId === exerciseId || (e as any).id === exerciseId)) return true;
-          if (targetNameNorm && norm(e.name) === targetNameNorm) return true;
-          return false;
-        }) as GymExerciseLog | undefined
-      }))
-      .filter(item => item.ex && (item.ex.setsLog || []).some(s => s.completed || (s.weight != null && Number(s.weight) > 0)))
-      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-      .slice(0, 5);
+    return computeOrGetHotCache(cacheKey, () => {
+      return gymLogs
+        .map(l => ({
+          date: l.date,
+          ex: l.exercises?.find(e => {
+            if (exerciseId && (e.exerciseId === exerciseId || (e as any).id === exerciseId)) return true;
+            if (targetKey && normalizeExerciseKey(e.name) === targetKey) return true;
+            return false;
+          }) as GymExerciseLog | undefined
+        }))
+        .filter(item => item.ex && (item.ex.setsLog || []).some(s => s.completed || (s.weight != null && Number(s.weight) > 0)))
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+        .slice(0, 5);
+    });
   }, [gymLogs, exerciseId, currentExercise?.name]);
 
   const handleDelete = useCallback(() => {
@@ -202,6 +220,18 @@ export default function ExerciseDetailScreen() {
     const parsedTargetSets = parseInt(targetSets, 10) || 1;
     const resolvedMuscle = resolveExerciseTargetMuscle(name, muscle).targetMuscle;
 
+    const currentSets = currentExercise.setsLog || [];
+    let nextSets: GymSet[] = currentSets.map(s => ({ ...s }));
+
+    if (parsedTargetSets > nextSets.length) {
+      for (let i = nextSets.length; i < parsedTargetSets; i++) {
+        nextSets.push({ setNumber: i + 1, reps: null, weight: null, completed: false });
+      }
+    } else if (parsedTargetSets < nextSets.length) {
+      const completedCount = nextSets.filter(s => s.completed).length;
+      nextSets = nextSets.slice(0, Math.max(parsedTargetSets, completedCount));
+    }
+
     const updated: GymExerciseLog = {
       ...currentExercise,
       name: name || 'Custom Exercise',
@@ -209,14 +239,9 @@ export default function ExerciseDetailScreen() {
       targetSets: parsedTargetSets,
       targetReps: targetReps || '10',
       restTimeSecs: parseInt(restTimeSecs, 10) || 90,
-      videoId: extractVideoId(videoLink)
+      videoId: extractVideoId(videoLink),
+      setsLog: nextSets
     };
-
-    if (parsedTargetSets > updated.setsLog.length) {
-      for (let i = updated.setsLog.length; i < parsedTargetSets; i++) {
-        updated.setsLog.push({ setNumber: i + 1, reps: null, weight: null, completed: false });
-      }
-    }
 
     updateExercise(index, updated);
 
@@ -229,7 +254,15 @@ export default function ExerciseDetailScreen() {
         if (exists) {
           updatedExercises = updatedExercises.map(e =>
             e.id === exerciseId
-              ? { ...e, name: updated.name, muscle: updated.muscle, targetSets: updated.targetSets, targetReps: updated.targetReps, videoId: updated.videoId }
+              ? {
+                  ...e,
+                  name: updated.name,
+                  muscle: updated.muscle,
+                  targetSets: updated.targetSets,
+                  targetReps: updated.targetReps,
+                  restTimeSecs: updated.restTimeSecs,
+                  videoId: updated.videoId,
+                }
               : e
           );
         } else {
@@ -239,7 +272,8 @@ export default function ExerciseDetailScreen() {
             muscle: updated.muscle,
             targetSets: updated.targetSets,
             targetReps: updated.targetReps,
-            videoId: updated.videoId
+            restTimeSecs: updated.restTimeSecs,
+            videoId: updated.videoId,
           });
         }
         await updateMasterPlan(planIdx, { ...currentMasterDay, exercises: updatedExercises });
@@ -298,7 +332,10 @@ export default function ExerciseDetailScreen() {
                 value={muscle}
                 onChangeText={(t) => { setMuscle(t); setShowMuscleDropdown(true); }}
                 onFocus={() => setShowMuscleDropdown(true)}
-                onBlur={() => setTimeout(() => setShowMuscleDropdown(false), 200)}
+                onBlur={() => {
+                  if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+                  blurTimerRef.current = setTimeout(() => setShowMuscleDropdown(false), 200);
+                }}
                 placeholder="e.g. Quads"
                 placeholderTextColor={colors.textMuted}
               />

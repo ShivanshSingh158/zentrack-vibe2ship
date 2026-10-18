@@ -21,6 +21,7 @@ import type { Habit, HabitLog } from '../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { animateFadeInUp } from '../theme/animations';
 import * as Haptics from 'expo-haptics';
+import { feedback } from '../utils/haptics';
 import { awardXP } from '../services/xpSystem';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { COLLECTION } from '../config/constants';
@@ -81,7 +82,7 @@ function CreateHabitModal({ visible, userId, onClose }: {
     if (!name.trim()) return;
     
     // Optimistic UI update: instantly close modal and trigger haptic
-    import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+    feedback.commit();
     
     const todayStr = getTodayStr();
     const habitDocRef = doc(collection(db, COLLECTION.HABITS));
@@ -105,10 +106,14 @@ function CreateHabitModal({ visible, userId, onClose }: {
 
     // Fire-and-forget network request, deferred to prevent animation frame drops
     setTimeout(() => {
-      setDoc(habitDocRef, {
-        ...newHabitData,
-        createdAt: serverTimestamp(),
-      }).catch(handleSyncError);
+      const payload = { ...newHabitData, updatedAt: Date.now() };
+      safeWrite(
+        () => setDoc(habitDocRef, { ...payload, createdAt: serverTimestamp() }),
+        COLLECTION.HABITS,
+        'set',
+        payload,
+        habitDocRef.id
+      ).catch(handleSyncError);
     }, 150);
 
     setName('');
@@ -291,6 +296,7 @@ const HabitCard = React.memo(function HabitCard({
   onOpenDetail,
   onToggleHistoricalDate,
   cardViewMode = 'heatmap',
+  styles: propStyles,
 }: {
   habit: Habit;
   isCompleted: boolean;
@@ -304,9 +310,10 @@ const HabitCard = React.memo(function HabitCard({
   onOpenDetail?: (habit: Habit) => void;
   onToggleHistoricalDate?: (habit: Habit, dateStr: string) => void;
   cardViewMode?: 'heatmap' | 'strip';
+  styles?: any;
 }) {
   const { colors, isDark } = useTheme();
-  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const styles = propStyles || useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const checkScale = useSharedValue(1);
   const emojiScale = useSharedValue(1);
   const isNegative = habit.type === 'negative';
@@ -362,16 +369,19 @@ const HabitCard = React.memo(function HabitCard({
   let daysClean = 0;
   let moneySaved = 0;
   if (isNegative) {
-    if (habitLogs.length > 0) {
-      const mostRecentLog = habitLogs.reduce((latest, log) => log.date > latest.date ? log : latest, habitLogs[0]);
-      const msPerDay = 1000 * 60 * 60 * 24;
-      daysClean = Math.floor((new Date(today).getTime() - new Date(mostRecentLog.date).getTime()) / msPerDay);
-    } else if (habit.startDate) {
-      const msPerDay = 1000 * 60 * 60 * 24;
-      daysClean = Math.floor((new Date(today).getTime() - new Date(habit.startDate).getTime()) / msPerDay);
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const todayMs = new Date(today + 'T00:00:00').getTime();
+    const refDateStr = habitLogs.length > 0
+      ? habitLogs.reduce((latest, log) => (log.date > latest.date ? log : latest), habitLogs[0]).date
+      : habit.startDate;
+    if (refDateStr) {
+      const refMs = new Date(String(refDateStr).slice(0, 10) + 'T00:00:00').getTime();
+      const diff = Math.floor((todayMs - refMs) / msPerDay);
+      daysClean = !isNaN(diff) && diff > 0 ? diff : 0;
     }
-    if (daysClean < 0) daysClean = 0;
-    if (habit.costPerDay) moneySaved = daysClean * habit.costPerDay;
+    if (habit.costPerDay && daysClean > 0) {
+      moneySaved = daysClean * habit.costPerDay;
+    }
   }
 
   const animatedCheckStyle = useAnimatedStyle(() => ({
@@ -398,7 +408,7 @@ const HabitCard = React.memo(function HabitCard({
               style: "destructive",
               onPress: () => {
                 onToggle(habit, pageX, pageY);
-                import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));
+                feedback.warning();
               }
             }
           ]
@@ -408,7 +418,7 @@ const HabitCard = React.memo(function HabitCard({
     }
 
     onToggle(habit, pageX, pageY);
-    import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+    feedback.commit();
     checkScale.value = withSequence(
       withTiming(1.18, { duration: 90, easing: Easing.out(Easing.quad) }),
       withSpring(1, { damping: 16, stiffness: 320, mass: 0.5 })
@@ -420,7 +430,7 @@ const HabitCard = React.memo(function HabitCard({
   }, [isNegative, isCompleted, onToggle, habit, checkScale, emojiScale]);
 
   const handleLongPress = useCallback(() => {
-    import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+    feedback.commit();
     Alert.alert(
       "Manage Habit",
       habit.name,
@@ -714,7 +724,7 @@ export default function HabitsScreen() {
   }, []);
 
   const handleToggleCardViewMode = useCallback((mode: 'heatmap' | 'strip') => {
-    import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Light));
+    feedback.tap();
     setCardViewMode(mode);
     AsyncStorage.setItem('@zentrack_habit_view_mode', mode).catch(() => {});
   }, []);
@@ -729,7 +739,7 @@ export default function HabitsScreen() {
     if (!user || loading || evaluatorRan.current) return;
     evaluatorRan.current = true;
 
-    InteractionManager.runAfterInteractions(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
       (async () => {
         try {
           const storedFreezes = await AsyncStorage.getItem('zentrack_habit_freezes');
@@ -737,21 +747,25 @@ export default function HabitsScreen() {
           let currentFreezes = storedFreezes ? parseInt(storedFreezes, 10) : 1;
 
           const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-          const nowMs = new Date().getTime();
+          const nowMs = Date.now();
           const grantMs = lastGrant ? new Date(lastGrant).getTime() : 0;
           let didGrant = false;
-          
+
           if (nowMs - grantMs > msPerWeek) {
             currentFreezes += 1;
             didGrant = true;
-            await AsyncStorage.setItem('zentrack_last_freeze_grant', new Date().toISOString());
+            await AsyncStorage.setItem('zentrack_last_freeze_grant', new Date(nowMs).toISOString());
           }
 
           let updatedFreezes = currentFreezes;
-          const yesterdayDate = new Date(nowMs - 24 * 60 * 60 * 1000);
-          const yesterday = yesterdayDate.toISOString().split('T')[0];
+          const yesterdayDate = new Date(nowMs);
+          yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+          const yesterday = formatLocalDateStr(yesterdayDate);
           const isYesterdaySunday = yesterdayDate.getDay() === 0;
-          const saturdayDate = new Date(nowMs - 48 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+          const saturdayDateObj = new Date(nowMs);
+          saturdayDateObj.setDate(saturdayDateObj.getDate() - 2);
+          const saturdayDate = formatLocalDateStr(saturdayDateObj);
 
           // O(N) pre-indexing of latest log per habit for O(1) evaluation
           const latestLogByHabit = new Map<string, HabitLog>();
@@ -765,10 +779,10 @@ export default function HabitsScreen() {
           // Evaluate misses for active daily positive habits
           for (const habit of allHabits) {
             if (habit.type === 'negative' || habit.archived || habit.frequency !== 'daily') continue;
-            
+
             const latestLog = latestLogByHabit.get(habit.id);
             if (!latestLog) continue;
-            
+
             // 🏖️ SUNDAY RELAXATION: If yesterday was Sunday, Sunday is an approved rest day.
             // We only evaluate a streak break if Saturday was ALSO missed.
             const targetMissDate = isYesterdaySunday ? saturdayDate : yesterday;
@@ -777,14 +791,34 @@ export default function HabitsScreen() {
               if (updatedFreezes > 0) {
                 updatedFreezes -= 1;
                 const freezeDocId = `${habit.id}_${targetMissDate}`;
-                await setDoc(doc(db, COLLECTION.HABIT_LOGS, freezeDocId), {
-                  habitId: habit.id, userId: user.uid,
-                  date: targetMissDate, isFreeze: true, count: 1,
-                  timestamp: serverTimestamp(),
-                });
-                // Streak is protected!
+                const freezeData: HabitLog = {
+                  id: freezeDocId,
+                  habitId: habit.id,
+                  userId: user.uid,
+                  date: targetMissDate,
+                  isFreeze: true,
+                  count: 1,
+                };
+                optimisticAddHabitLog(freezeData);
+                await safeWrite(
+                  () => setDoc(doc(db, COLLECTION.HABIT_LOGS, freezeDocId), {
+                    ...freezeData,
+                    timestamp: serverTimestamp(),
+                  }),
+                  COLLECTION.HABIT_LOGS,
+                  'set',
+                  freezeData,
+                  freezeDocId
+                );
               } else if ((habit.streak || 0) > 0) {
-                await updateDoc(doc(db, COLLECTION.HABITS, habit.id), { streak: 0 });
+                optimisticUpdateHabit(habit.id, { streak: 0 });
+                await safeWrite(
+                  () => updateDoc(doc(db, COLLECTION.HABITS, habit.id), { streak: 0 }),
+                  COLLECTION.HABITS,
+                  'update',
+                  { streak: 0 },
+                  habit.id
+                );
               }
             }
           }
@@ -794,11 +828,13 @@ export default function HabitsScreen() {
           }
           setFreezes(updatedFreezes);
         } catch (e) {
-          console.error("[HabitsScreen] Evaluator error", e);
+          console.error('[HabitsScreen] Evaluator error', e);
         }
       })();
     });
-  }, [user, loading, allHabits, habitLogs]);
+
+    return () => handle.cancel();
+  }, [user, loading, allHabits, habitLogs, optimisticAddHabitLog, optimisticUpdateHabit]);
 
   useEffect(() => {
     animateFadeInUp(headerFade, headerSlide, 0).start();
@@ -858,8 +894,10 @@ export default function HabitsScreen() {
   }, [todayLogs, habitMap]);
   
   const handleQuantitativeUndo = useCallback((habit: Habit, existingLog: HabitLog) => {
+    if (!user) return;
     const newCount = (existingLog.count || 1) - 1;
     const wasComplete = (existingLog.count || 1) >= habit.targetCount!;
+    const logDocId = `${habit.id}_${today}`;
 
     // Optimistic UI update
     if (newCount <= 0) {
@@ -873,61 +911,43 @@ export default function HabitsScreen() {
 
     (async () => {
       try {
-        // Use deterministic doc ID: no stale-ID race conditions ever
-        const logDocId = `${habit.id}_${today}`;
         if (newCount <= 0) {
-          await deleteDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId));
+          await safeWrite(
+            () => deleteDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId)),
+            COLLECTION.HABIT_LOGS,
+            'delete',
+            null,
+            logDocId
+          );
         } else {
-          await setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), {
-            habitId: habit.id, userId: user!.uid,
-            date: today, count: newCount,
-            timestamp: serverTimestamp(),
-          });
+          const logData = { habitId: habit.id, userId: user.uid, date: today, count: newCount };
+          await safeWrite(
+            () => setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), {
+              ...logData,
+              timestamp: serverTimestamp(),
+            }),
+            COLLECTION.HABIT_LOGS,
+            'set',
+            logData,
+            logDocId
+          );
         }
         if (wasComplete && newCount < habit.targetCount!) {
-          await updateDoc(doc(db, COLLECTION.HABITS, habit.id), {
-            streak: Math.max(0, (habit.streak || 1) - 1)
-          });
+          const newStreak = Math.max(0, (habit.streak || 1) - 1);
+          await safeWrite(
+            () => updateDoc(doc(db, COLLECTION.HABITS, habit.id), { streak: newStreak }),
+            COLLECTION.HABITS,
+            'update',
+            { streak: newStreak },
+            habit.id
+          );
         }
-      } catch (e) { console.error('[Habits] Undo quantitative error', e); }
+      } catch (e) {
+        console.error('[Habits] Undo quantitative error', e);
+      }
     })();
   }, [today, user, optimisticRemoveHabitLog, optimisticUpdateHabitLog, optimisticUpdateHabit]);
 
-  const handleToggleHistoricalDate = useCallback((habit: Habit, dateStr: string) => {
-    if (!user) return;
-    const logDocId = `${habit.id}_${dateStr}`;
-    const habitLogsList = logsByHabitId.get(habit.id) || [];
-    const existingLog = habitLogsList.find(l => l.date === dateStr);
-
-    if (existingLog) {
-      import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Light));
-      optimisticRemoveHabitLog(habit.id, dateStr);
-      (async () => {
-        try {
-          await safeWrite(
-            () => deleteDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId)),
-            COLLECTION.HABIT_LOGS, 'delete', null, logDocId
-          );
-        } catch (e) {
-          console.error('[HabitsScreen] Error removing historical habit log', e);
-        }
-      })();
-    } else {
-      import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
-      const logData = { habitId: habit.id, userId: user.uid, date: dateStr, count: habit.targetCount || 1 };
-      optimisticAddHabitLog({ id: logDocId, ...logData });
-      (async () => {
-        try {
-          await safeWrite(
-            () => setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), { ...logData, timestamp: serverTimestamp() }),
-            COLLECTION.HABIT_LOGS, 'set', logData, logDocId
-          );
-        } catch (e) {
-          console.error('[HabitsScreen] Error adding historical habit log', e);
-        }
-      })();
-    }
-  }, [user, logsByHabitId, optimisticRemoveHabitLog, optimisticAddHabitLog]);
 
   const toggleHabit = useCallback((habit: Habit, x?: number, y?: number) => {
     if (!user) return;
@@ -943,6 +963,41 @@ export default function HabitsScreen() {
     inFlightHabitLocks.current.set(habit.id, now);
 
     const existingLog = todayLogsByHabitId.get(habit.id);
+    const logDocId = `${habit.id}_${today}`;
+    const isNegative = habit.type === 'negative';
+
+    // Negative ("Avoiding") habit: logging means a relapse occurred today (resets streak to 0, no XP)
+    if (isNegative) {
+      if (existingLog) {
+        optimisticRemoveHabitLog(habit.id, today);
+        safeWrite(
+          () => deleteDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId)),
+          COLLECTION.HABIT_LOGS,
+          'delete',
+          null,
+          logDocId
+        ).catch(handleSyncError);
+      } else {
+        const relapseLog = { habitId: habit.id, userId: user.uid, date: today, count: 1 };
+        optimisticAddHabitLog({ id: logDocId, ...relapseLog });
+        optimisticUpdateHabit(habit.id, { streak: 0 });
+        safeWrite(
+          () => setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), { ...relapseLog, timestamp: serverTimestamp() }),
+          COLLECTION.HABIT_LOGS,
+          'set',
+          relapseLog,
+          logDocId
+        ).catch(handleSyncError);
+        safeWrite(
+          () => updateDoc(doc(db, COLLECTION.HABITS, habit.id), { streak: 0 }),
+          COLLECTION.HABITS,
+          'update',
+          { streak: 0 },
+          habit.id
+        ).catch(handleSyncError);
+      }
+      return;
+    }
 
     if (isQuantitative) {
        const currentCount = existingLog ? (existingLog.count || 1) : 0;
@@ -959,9 +1014,9 @@ export default function HabitsScreen() {
        const isNowComplete = newCount >= habit.targetCount!;
        
        if (isNowComplete) {
-         import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+         feedback.success();
        } else {
-         import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
+         feedback.tap();
        }
 
        const logDocId = `${habit.id}_${today}`;
@@ -1019,7 +1074,7 @@ export default function HabitsScreen() {
                if (allDone && posHabits.length > 0) {
                  await AsyncStorage.setItem(perfectDayKey, '1');
                  await awardXP('PERFECT_DAY');
-                 import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
+                 feedback.success();
                  DeviceEventEmitter.emit('zentrack_perfect_day', { date: today });
                }
              }
@@ -1033,13 +1088,12 @@ export default function HabitsScreen() {
     }
     
     // 1. Optimistic Update (Instant UI) for binary habits
-    const logDocId = `${habit.id}_${today}`;
     if (existingLog) {
-      import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
+      feedback.tap();
       optimisticRemoveHabitLog(habit.id, today);
       optimisticUpdateHabit(habit.id, { streak: Math.max(0, (habit.streak || 1) - 1) });
     } else {
-      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+      feedback.success();
       optimisticAddHabitLog({ id: logDocId, habitId: habit.id, userId: user.uid, date: today, count: 1 });
       const newStreak = (habit.streak || 0) + 1;
       optimisticUpdateHabit(habit.id, { 
@@ -1101,7 +1155,7 @@ export default function HabitsScreen() {
             if (allDone && posHabits.length > 0) {
               await AsyncStorage.setItem(perfectDayKey, '1');
               await awardXP('PERFECT_DAY');
-              import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
+              feedback.success();
               DeviceEventEmitter.emit('zentrack_perfect_day', { date: today });
             }
           }
@@ -1112,24 +1166,56 @@ export default function HabitsScreen() {
     })();
   }, [user, today, todayLogs, todayLogsByHabitId, handleQuantitativeUndo, optimisticUpdateHabitLog, optimisticAddHabitLog, optimisticUpdateHabit, optimisticRemoveHabitLog, allHabits]);
 
-  const handleArchive = useCallback(async (habitId: string) => {
-    import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Medium));
-    optimisticUpdateHabit(habitId, { archived: true });
-    try {
-      await updateDoc(doc(db, COLLECTION.HABITS, habitId), { archived: true });
-    } catch (e) {
-      console.error('Error archiving habit', e);
+  const handleToggleHistoricalDate = useCallback((habit: Habit, dateStr: string) => {
+    if (!user) return;
+    if (dateStr === today) {
+      toggleHabit(habit);
+      return;
     }
+    const logDocId = `${habit.id}_${dateStr}`;
+    const habitLogsList = logsByHabitId.get(habit.id) || [];
+    const existingLog = habitLogsList.find(l => l.date === dateStr);
+
+    if (existingLog) {
+      feedback.tap();
+      optimisticRemoveHabitLog(habit.id, dateStr);
+      safeWrite(
+        () => deleteDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId)),
+        COLLECTION.HABIT_LOGS, 'delete', null, logDocId
+      ).catch(handleSyncError);
+    } else {
+      feedback.success();
+      const logData = { habitId: habit.id, userId: user.uid, date: dateStr, count: habit.targetCount || 1 };
+      optimisticAddHabitLog({ id: logDocId, ...logData });
+      safeWrite(
+        () => setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), { ...logData, timestamp: serverTimestamp() }),
+        COLLECTION.HABIT_LOGS, 'set', logData, logDocId
+      ).catch(handleSyncError);
+    }
+  }, [user, today, toggleHabit, logsByHabitId, optimisticRemoveHabitLog, optimisticAddHabitLog]);
+
+  const handleArchive = useCallback(async (habitId: string) => {
+    feedback.commit();
+    optimisticUpdateHabit(habitId, { archived: true });
+    await safeWrite(
+      () => updateDoc(doc(db, COLLECTION.HABITS, habitId), { archived: true }),
+      COLLECTION.HABITS,
+      'update',
+      { archived: true },
+      habitId
+    ).catch(handleSyncError);
   }, [optimisticUpdateHabit]);
 
   const handleDelete = useCallback(async (habitId: string) => {
-    import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Medium));
+    feedback.commit();
     optimisticDeleteHabit(habitId);
-    try {
-      await deleteDoc(doc(db, COLLECTION.HABITS, habitId));
-    } catch (e) {
-      console.error('Error deleting habit', e);
-    }
+    await safeWrite(
+      () => deleteDoc(doc(db, COLLECTION.HABITS, habitId)),
+      COLLECTION.HABITS,
+      'delete',
+      null,
+      habitId
+    ).catch(handleSyncError);
   }, [optimisticDeleteHabit]);
 
   const handleFireConfetti = useCallback((x: number, y: number, color: string) => {
@@ -1177,9 +1263,10 @@ export default function HabitsScreen() {
         onOpenDetail={setDetailHabit}
         onToggleHistoricalDate={handleToggleHistoricalDate}
         cardViewMode={cardViewMode}
+        styles={styles}
       />
     );
-  }, [positiveHabits.length, negativeHabits.length, styles.sectionHeader, todayLogsByHabitId, logsByHabitId, toggleHabit, handleArchive, handleDelete, handleFireConfetti, freezes, handleToggleHistoricalDate, cardViewMode]);
+  }, [positiveHabits.length, negativeHabits.length, styles, todayLogsByHabitId, logsByHabitId, toggleHabit, handleArchive, handleDelete, handleFireConfetti, freezes, handleToggleHistoricalDate, cardViewMode]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -1307,23 +1394,26 @@ export default function HabitsScreen() {
         />
       )}
 
-      {detailHabit && (
-        <HabitDetailModal
-          visible={!!detailHabit}
-          habit={detailHabit}
-          habitLogs={logsByHabitId.get(detailHabit.id) || []}
-          onClose={() => setDetailHabit(null)}
-          onToggleDate={(dateStr) => handleToggleHistoricalDate(detailHabit, dateStr)}
-          onArchive={(hid) => {
-            handleArchive(hid);
-            setDetailHabit(null);
-          }}
-          onDelete={(hid) => {
-            handleDelete(hid);
-            setDetailHabit(null);
-          }}
-        />
-      )}
+      {detailHabit && (() => {
+        const liveHabit = habitMap.get(detailHabit.id) || detailHabit;
+        return (
+          <HabitDetailModal
+            visible={!!detailHabit}
+            habit={liveHabit}
+            habitLogs={logsByHabitId.get(liveHabit.id) || []}
+            onClose={() => setDetailHabit(null)}
+            onToggleDate={(dateStr) => handleToggleHistoricalDate(liveHabit, dateStr)}
+            onArchive={(hid) => {
+              handleArchive(hid);
+              setDetailHabit(null);
+            }}
+            onDelete={(hid) => {
+              handleDelete(hid);
+              setDetailHabit(null);
+            }}
+          />
+        );
+      })()}
 
       {confettiOpts && (
         <ConfettiCannon

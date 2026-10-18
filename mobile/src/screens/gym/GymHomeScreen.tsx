@@ -20,7 +20,7 @@ import { makeStyles } from './gymHomeStyles';
 import { ZenGymAiFab } from '../../components/Gym/ZenGymAiFab';
 import { getOverloadSuggestion } from '../../services/progressiveOverload';
 import { setTabBarVisible } from '../../utils/tabBarScroll';
-import { resolveExerciseTargetMuscle } from '../../utils/gymUtils';
+import { resolveExerciseTargetMuscle, calculateGymStreak } from '../../utils/gymUtils';
 import { GymExerciseOptionsSheet } from '../../components/Gym/GymExerciseOptionsSheet';
 import { useGymAiPlanManager } from '../../hooks/useGymAiPlanManager';
 import GymExerciseDraggableRow from '../../components/Gym/GymExerciseDraggableRow';
@@ -106,8 +106,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   // Streak calculation (deferred after frame 0)
   const [currentStreak, setCurrentStreak] = useState(0);
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(async () => {
-      const { calculateGymStreak } = await import('../../utils/gymUtils');
+    const handle = InteractionManager.runAfterInteractions(() => {
       setCurrentStreak(calculateGymStreak(gymLogs, userGymPlan));
     });
     return () => handle.cancel();
@@ -176,7 +175,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   } | null>(null);
   const overloadToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const scrollY = useRef(new Animated.Value(0)).current;
   const lastScrollY = useRef(0);
 
   const updatePillVisibility = useCallback((offsetY: number) => {
@@ -203,27 +201,24 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     lastScrollY.current = offsetY;
   }, [pillAnim]);
 
-  const headerFade = scrollY.interpolate({
-    inputRange: [0, 50],
-    outputRange: [1, 0.6],
-    extrapolate: 'clamp',
-  });
-
-  const animWeek = useRef(new Animated.Value(1)).current;
   const animBanner = useRef(new Animated.Value(1)).current;
   const animList = useRef(new Animated.Value(1)).current;
 
   // Sub-5-min Abandoned Micro-Log Auto-Purge
+  const lastPurgedDateRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!log) return;
-    const handle = InteractionManager.runAfterInteractions(() => {
-      const isToday = selectedDate === todayStr();
-      if (!isToday) return;
+    const isToday = selectedDate === todayStr();
+    if (!isToday || lastPurgedDateRef.current === selectedDate) return;
 
+    const handle = InteractionManager.runAfterInteractions(() => {
       const completedSetsCount = (log.exercises || []).reduce(
         (sum, ex) => sum + (ex.setsLog || []).filter((s: any) => s.completed).length,
         0
       );
+      const hasCompletedCardio = (log.cardio || []).some((c: any) => c.completed);
+      if (hasCompletedCardio) return;
 
       const isAbandonedQuickStart =
         !(log as any).completed &&
@@ -239,6 +234,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         Date.now() - log.workoutStartTime > 4 * 60 * 60 * 1000;
 
       if (isAbandonedQuickStart || isStaleZeroSession) {
+        lastPurgedDateRef.current = selectedDate;
         const fixed = {
           ...log,
           completed: false,
@@ -270,17 +266,41 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
 
   // Progressive Overload Toast Trigger
   const prevExercisesDoneRef = useRef<Set<string>>(new Set());
+  const isHydratedOverloadRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    return () => {
+      if (overloadToastTimer.current) {
+        clearTimeout(overloadToastTimer.current);
+        overloadToastTimer.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!log?.exercises || !gymLogs) return;
+
+    // Silent initial hydration seed: don't trigger toast for exercises already finished
+    if (!isHydratedOverloadRef.current) {
+      isHydratedOverloadRef.current = true;
+      (log.exercises || []).forEach(ex => {
+        if (ex.skipped) return;
+        const allDone = ex.setsLog && ex.setsLog.length > 0 && ex.setsLog.every((s: any) => s.completed);
+        if (allDone) {
+          prevExercisesDoneRef.current.add(ex.exerciseId);
+        }
+      });
+      return;
+    }
+
     const handle = InteractionManager.runAfterInteractions(() => {
       (log.exercises || []).forEach(ex => {
         if (ex.skipped) return;
-        const allDone = ex.setsLog.length > 0 && ex.setsLog.every((s: any) => s.completed);
+        const allDone = ex.setsLog && ex.setsLog.length > 0 && ex.setsLog.every((s: any) => s.completed);
         if (!allDone || prevExercisesDoneRef.current.has(ex.exerciseId)) return;
 
         prevExercisesDoneRef.current.add(ex.exerciseId);
-        const lastCompletedWeight = Math.max(...(ex.setsLog || []).map((s: any) => s.weight || 0));
+        const lastCompletedWeight = Math.max(0, ...(ex.setsLog || []).map((s: any) => Number(s.weight) || 0));
         if (lastCompletedWeight <= 0) return;
 
         const suggestion = getOverloadSuggestion(
@@ -308,6 +328,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
 
   useEffect(() => {
     prevExercisesDoneRef.current = new Set();
+    isHydratedOverloadRef.current = false;
     setOverloadToast(null);
   }, [log?.id]);
 
@@ -344,12 +365,30 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     navigation.navigate('ActiveLogging', { date: selectedDate, initialIndex: typeof index === 'number' ? index : 0 });
   }, [log?.exercises, log?.workoutStartTime, resumeWorkout, navigation, selectedDate]);
 
+  // If user generated or added exercises on a rest day, allow active workout viewing
+  const isEffectiveRest = Boolean(planDay?.isRest && (!log?.exercises || log.exercises.length === 0));
+
   const activeExercisesData = useMemo(() => {
-    if (planDay?.isRest || !log?.exercises) return [];
-    return log.exercises
+    if (isEffectiveRest || !log?.exercises) return [];
+    const unskipped = log.exercises
       .map((ex, originalIndex) => ({ ...ex, originalIndex }))
       .filter(ex => !ex.skipped);
-  }, [log?.exercises, planDay?.isRest]);
+
+    return unskipped.map((ex, idx) => {
+      let isPartnerWithPrevious = false;
+      if (ex.supersetGroup && idx > 0) {
+        const prev = unskipped[idx - 1];
+        if (prev && prev.supersetGroup === ex.supersetGroup) {
+          isPartnerWithPrevious = true;
+        }
+      }
+      return { ...ex, isPartnerWithPrevious };
+    });
+  }, [log?.exercises, isEffectiveRest]);
+
+  const musclesSignature = useMemo(() => {
+    return activeExercisesData.map(e => `${e.name}:${e.muscle || ''}`).join('|');
+  }, [activeExercisesData]);
 
   const sortedMuscles = useMemo(() => {
     if (!activeExercisesData || activeExercisesData.length === 0) return [];
@@ -366,13 +405,12 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
       if (wA !== wB) return wA - wB;
       return b[1] - a[1];
     });
-  }, [activeExercisesData]);
+  }, [musclesSignature]);
 
   // Stable derivations from log — passed as individual props to GymExerciseDraggableRow
   // so React.memo can bail out when only unrelated log fields change (notes, timer, etc.)
   const logCompleted = log?.completed ?? false;
   const logWorkoutStartTime = log?.workoutStartTime ?? null;
-  const logExercises = log?.exercises;
 
   // Item Renderer
   const renderExerciseItem = useCallback((itemParams: RenderItemParams<any>) => (
@@ -380,7 +418,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
       itemParams={itemParams}
       logCompleted={logCompleted}
       logWorkoutStartTime={logWorkoutStartTime}
-      logExercises={logExercises}
       s={s}
       selectedDate={selectedDate}
       navigation={navigation}
@@ -388,7 +425,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
       onShowHistory={setHistoryFor}
       onShowMenu={setExerciseMenuFor}
     />
-  ), [logCompleted, logWorkoutStartTime, logExercises, s, selectedDate, navigation, handleResumeWorkout]);
+  ), [logCompleted, logWorkoutStartTime, s, selectedDate, navigation, handleResumeWorkout]);
 
   // Header Renderer
   const renderHeader = useCallback(() => (
@@ -424,7 +461,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {planDay?.isRest ? (
+      {isEffectiveRest ? (
         weeklyReportReady ? (
           // ── FIX 1 + FIX 3: WeeklyGymReport is now lazy-loaded AND deferred.
           // Suspense fallback shows if the lazy chunk hasn't downloaded yet (first open).
@@ -483,7 +520,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </>
       )}
     </>
-  ), [s, weekDates, selectedDate, planDay?.isRest, gymLogs, userGymPlan, sleepLogs, triggerDeload, log, currentStreak, animBanner, navigation, handleStartWorkout, handleResumeWorkout, endWorkout, resumeWorkout, activeExercisesData.length]);
+  ), [s, weekDates, selectedDate, planDay?.isRest, weeklyReportReady, gymLogs, userGymPlan, sleepLogs, triggerDeload, log, currentStreak, animBanner, navigation, handleStartWorkout, handleResumeWorkout, endWorkout, resumeWorkout, revertWorkout, activeExercisesData.length]);
 
   // Cardio Renderer
   // Stable Animated interpolation node — hoisted out of renderCardio so it isn't
@@ -557,7 +594,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   // Footer Renderer
   const renderFooter = useCallback(() => (
     <View style={{ paddingBottom: 0 }}>
-      {!planDay?.isRest && (
+      {!isEffectiveRest && (
         <View style={{ marginTop: 16 }}>
           {renderCardio()}
         </View>
@@ -583,7 +620,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </View>
       )}
     </View>
-  ), [planDay?.isRest, renderCardio, sortedMuscles]);
+  ), [isEffectiveRest, renderCardio, sortedMuscles]);
 
   return (
     <View style={s.root}>
@@ -591,11 +628,24 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         {/* Sticky Header */}
         <View style={[s.topHeaderWrapper, { top: insets.top }]} pointerEvents="box-none">
           <View style={s.headerInner}>
+            <Animated.View
+              style={[{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: isDark ? 'rgba(20,20,24,0.92)' : 'rgba(255,255,255,0.92)',
+                borderRadius: 22,
+                borderWidth: 1,
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+              }, { opacity: pillAnim }]}
+              pointerEvents="none"
+            />
             <Text style={s.headerTitle}>Gym</Text>
             <View style={s.headerActions}>
               <TouchableOpacity onPress={() => { hapticMedium(); setShowSwapRoutineModal(true); }} style={s.morphBtn} activeOpacity={0.7}>
                 <View style={s.morphBtnIconWrap}>
-                  <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
                   <Ionicons name="swap-horizontal-outline" size={16} color={COLORS.textMuted} />
                 </View>
                 <Text style={s.headerBtnText}>Swap</Text>
@@ -603,7 +653,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
 
               <TouchableOpacity onPress={() => { hapticMedium(); setShowWeeklyRecap(true); }} style={s.morphBtn} activeOpacity={0.7}>
                 <View style={s.morphBtnIconWrap}>
-                  <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
                   <Ionicons name="bar-chart-outline" size={16} color={COLORS.textMuted} />
                 </View>
                 <Text style={s.headerBtnText}>Recap</Text>
@@ -611,7 +660,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
 
               <TouchableOpacity onPress={() => { hapticMedium(); setShowScheduleSettingsModal(true); }} style={s.morphBtn} activeOpacity={0.7}>
                 <View style={s.morphBtnIconWrap}>
-                  <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
                   <Ionicons name="calendar-outline" size={16} color={COLORS.textMuted} />
                 </View>
                 <Text style={s.headerBtnText}>Schedule</Text>
@@ -622,7 +670,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
                 setShowTemplateModal(true);
               }} style={s.morphBtn} activeOpacity={0.7}>
                 <View style={s.morphBtnIconWrap}>
-                  <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
                   <Ionicons name="document-text-outline" size={16} color={COLORS.textMuted} />
                 </View>
                 <Text style={s.headerBtnText}>Plan</Text>
@@ -630,7 +677,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
 
               <TouchableOpacity onPress={() => { hapticMedium(); setShowBodyMetrics(true); }} style={s.morphBtn} activeOpacity={0.7}>
                 <View style={s.morphBtnIconWrap}>
-                  <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
                   <Ionicons name="body-outline" size={16} color={COLORS.textMuted} />
                 </View>
                 <Text style={s.headerBtnText}>Body</Text>
@@ -638,7 +684,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
 
               <TouchableOpacity onPress={() => { hapticMedium(); navigation.navigate('GymProgress'); }} style={s.morphBtn} activeOpacity={0.7}>
                 <View style={s.morphBtnIconWrap}>
-                  <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
                   <Ionicons name="bar-chart-outline" size={16} color={COLORS.textMuted} />
                 </View>
                 <Text style={s.headerBtnText}>Stats</Text>
@@ -646,7 +691,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
 
               <TouchableOpacity onPress={() => { hapticMedium(); setShowAddModal(true); }} style={s.morphBtn} activeOpacity={0.7}>
                 <View style={s.morphBtnIconWrap}>
-                  <Animated.View style={[s.morphBtnPill, s.morphBtnPillAccent, { opacity: pillAnim }]} />
                   <Ionicons name="add" size={18} color="#a599ff" />
                 </View>
                 <Text style={[s.headerBtnText, { color: '#a599ff' }]}>Add</Text>
@@ -663,7 +707,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
           ) : (
             <DraggableFlatList
               data={activeExercisesData}
-              keyExtractor={(item, index) => (item.exerciseId || item.id || item.name || 'ex') + '-' + index}
+              keyExtractor={(item) => item.exerciseId || item.id || item.name || 'ex'}
               renderItem={renderExerciseItem}
               ListHeaderComponent={renderHeader}
               ListFooterComponent={renderFooter}
@@ -679,6 +723,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
                 } else {
                   const draggedItem = { ...data[activeIdx] } as any;
                   delete draggedItem.originalIndex;
+                  delete draggedItem.isPartnerWithPrevious;
                   newFullList.push(draggedItem);
                   activeIdx++;
                 }
@@ -688,10 +733,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
             contentContainerStyle={[s.scrollContent, { paddingTop: insets.top + 58 }]}
             showsVerticalScrollIndicator={false}
             onScrollOffsetChange={updatePillVisibility}
-            onScroll={(e: any) => {
-              const y = e?.nativeEvent?.contentOffset?.y ?? 0;
-              updatePillVisibility(y);
-            }}
             onScrollEndDrag={(e: any) => {
               const y = e?.nativeEvent?.contentOffset?.y ?? 0;
               if (y <= 30) setTabBarVisible(true);
@@ -771,7 +812,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
                 onSaveOverride={(start, end) => {
                   saveLog({
                     ...(log || {
-                      id: `gym_${selectedDate}`,
+                      id: user?.uid ? `${user.uid}_${selectedDate}` : undefined,
                       userId: user?.uid || 'temp',
                       dayPlanIndex: planDayIndexForDate(selectedDate),
                       date: selectedDate,
@@ -815,7 +856,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
                   const newCustomDays = await applyMasterTemplate(templateId, schedulePattern);
                   if (!log?.workoutStartTime && newCustomDays) {
                     forceOverrideTodayPlan(newCustomDays);
-                    setWeekOffset(prev => prev);
                   }
                 }}
               />

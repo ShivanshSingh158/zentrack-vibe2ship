@@ -1,8 +1,16 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const PRIORITY = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4 } as const;
 export const ALARM_CAP = Platform.OS === 'ios' ? 64 : 450;
+
+export function getSoundChannelId(baseChannel: 'reminders' | 'task_alarm', soundPref?: string | null): string {
+  if (Platform.OS !== 'android') return baseChannel;
+  if (!soundPref || soundPref === 'default') return baseChannel;
+  const cleanKey = soundPref.replace('.wav', '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return `${baseChannel}_v2_${cleanKey}`;
+}
 
 // ── Notification handler ──────────────────────────────────────────────────────
 
@@ -119,10 +127,38 @@ export async function ensureNotificationChannels(): Promise<void> {
       },
       enableLights: true,
       enableVibrate: true,
-      showBadge: true,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       bypassDnd: true,
     });
+
+    const savedSound = await AsyncStorage.getItem('zentrack_notif_notifs_sound').catch(() => 'default');
+    if (savedSound && savedSound !== 'default') {
+      const dynamicRemindersId = getSoundChannelId('reminders', savedSound);
+      const dynamicTaskAlarmId = getSoundChannelId('task_alarm', savedSound);
+
+      await Notifications.setNotificationChannelAsync(dynamicRemindersId, {
+        name: `Task Reminders (${savedSound.replace('.wav', '')})`,
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 500, 250, 500],
+        lightColor: '#a599ff',
+        sound: savedSound,
+        enableLights: true,
+        enableVibrate: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+
+      await Notifications.setNotificationChannelAsync(dynamicTaskAlarmId, {
+        name: `Task Alarms (${savedSound.replace('.wav', '')})`,
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 400, 200, 400, 100, 400, 100, 800],
+        lightColor: '#a599ff',
+        sound: savedSound,
+        enableLights: true,
+        enableVibrate: true,
+        showBadge: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false,
+      });
+    }
   } catch (e) {
     console.warn('[NotificationChannels] Channel creation warning:', e);
   }

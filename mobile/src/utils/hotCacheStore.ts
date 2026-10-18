@@ -33,15 +33,25 @@ const _HOT_CACHE = new Map<string, CacheEntry<any>>();
  */
 export function generateDatasetFingerprint(items: Array<any> | null | undefined, extraTag: string = ''): string {
   if (!items || items.length === 0) return `empty_${extraTag}`;
-  // Extract stable keys and sort so fingerprint is independent of Firestore delivery order
-  const keys = items
-    .map(i => i?.id || i?.date || i?.completedAt || '')
-    .filter(Boolean)
-    .sort();
-  const first = keys[0] ?? '0';
-  const mid   = keys[Math.floor(keys.length / 2)] ?? '0';
-  const last  = keys[keys.length - 1] ?? '0';
-  return `${items.length}_${first}_${mid}_${last}_${extraTag}`;
+  // Order-independent XOR + sum hash over every item's ID + mutable version/state fields (O(N) FNV-1a)
+  let xorHash = 0;
+  let sumHash = 0;
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (!item) continue;
+    const exLen = Array.isArray(item.exercises) ? item.exercises.length : 0;
+    const sig = `${item.id || ''}:${item.date || ''}:${item.status || ''}:${item.action || ''}:${item.completed ? 1 : 0}:${item.count ?? ''}:${item.updatedAt || item.lastUpdated || item.timestamp || 0}:${item.completedAt || ''}:${exLen}`;
+    let h = 2166136261;
+    for (let j = 0; j < sig.length; j++) {
+      h ^= sig.charCodeAt(j);
+      h = Math.imul(h, 16777619);
+    }
+    xorHash ^= h;
+    sumHash = (sumHash + (h >>> 0)) >>> 0;
+  }
+
+  return `${items.length}_${xorHash >>> 0}_${sumHash}_${extraTag}`;
 }
 
 /**

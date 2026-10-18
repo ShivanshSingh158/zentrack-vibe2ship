@@ -11,7 +11,7 @@ export interface GymExerciseDraggableRowProps {
   // can bail out when unrelated log data (notes, timer, water) changes.
   logCompleted: boolean;
   logWorkoutStartTime: number | null;
-  logExercises: any[] | undefined;
+  logExercises?: any[];
   s: any;
   selectedDate: string;
   navigation: any;
@@ -46,8 +46,8 @@ export const GymExerciseDraggableRow: React.FC<GymExerciseDraggableRowProps> = R
     subText = `${totalSets} sets, ${ex.targetReps || '0'} reps`;
   }
 
-  let isPartnerWithPrevious = false;
-  if (ex.supersetGroup && logExercises) {
+  let isPartnerWithPrevious = ex.isPartnerWithPrevious ?? false;
+  if (!isPartnerWithPrevious && ex.supersetGroup && logExercises) {
     for (let i = ex.originalIndex - 1; i >= 0; i--) {
       const prev = logExercises[i];
       if (prev && !prev.skipped) {

@@ -171,13 +171,11 @@ const CalendarAgendaView = React.memo(function CalendarAgendaView({
         activeOpacity={0.7}
         onPress={() => {
           if (item.type === 'gym') {
-            const log = gymLogs?.find(g => g.id === item.id);
-            if (log) {
-              setSelectedGymLog(log);
-              setGymStartTimeInput(item.startTime || '10:00');
-              setGymEndTimeInput(item.endTime || '11:00');
-              setShowGymModal(true);
-            }
+            const log = gymLogs?.find(g => g.id === item.id || g.date === item.date) || { id: item.id || `gym_${item.date}`, date: item.date };
+            setSelectedGymLog(log);
+            setGymStartTimeInput(item.startTime || '10:00');
+            setGymEndTimeInput(item.endTime || '11:00');
+            setShowGymModal(true);
           } else {
             setSelectedEvent(item);
             setShowEventModal(true);

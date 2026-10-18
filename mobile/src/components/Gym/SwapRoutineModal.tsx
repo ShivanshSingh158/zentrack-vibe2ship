@@ -39,7 +39,7 @@ export function SwapRoutineModal({
     return Array.from({ length: 7 }, (_, i) => i + 1).map(idx => {
       const custom = getCustomPlanDay(userGymPlan?.customDays, idx);
       const fallback = GYM_PLAN.find(p => p.dayIndex === idx);
-      return custom || fallback || { dayIndex: idx, name: `Day ${idx}`, subtitle: '', exercises: [], isRest: false };
+      return custom || fallback || { dayIndex: idx, name: `Day ${idx}`, subtitle: '', focus: '', exercises: [], isRest: false };
     });
   }, [userGymPlan]);
 

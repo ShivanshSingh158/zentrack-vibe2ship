@@ -55,12 +55,13 @@ export default function CalendarScreen() {
     timedDayEvents, unscheduledDayEvents, dayEvents, processedEvents, weekEvents,
     minHour, maxHour, DYNAMIC_HOURS,
     handleSaveGymTime,
-    tasks, attendance, customEvents, gymLogs, userGymPlan,
+    tasks, attendance, customEvents, gymLogs, userGymPlan, holidays,
     scrollToCurrentTime,
   } = data;
 
   const todayStr = useMemo(() => formatLocalDateStr(currentTime), [currentTime]);
   const isToday = selectedDate === todayStr;
+  const [editingEvent, setEditingEvent] = useState<any | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -115,8 +116,16 @@ export default function CalendarScreen() {
     return hasClasses;
   }, [attendance]);
 
-  // Pre-computed class date strings for the visible month (recalculates ONLY when month or timetable changes)
+  // Pre-computed class date strings for the visible month (recalculates ONLY when month, timetable or holidays change)
   const currentYearMonth = selectedDate.slice(0, 7); // "YYYY-MM"
+  const holidaySet = useMemo(() => {
+    return new Set(
+      (holidays || []).map((h: any) =>
+        typeof h === 'string' ? h.trim().slice(0, 10) : (h?.date?.trim()?.slice(0, 10) || '')
+      ).filter(Boolean)
+    );
+  }, [holidays]);
+
   const monthClassDates = useMemo(() => {
     if (!daysWithClasses.some(Boolean)) return [];
     const [yStr, mStr] = currentYearMonth.split('-');
@@ -131,11 +140,14 @@ export default function CalendarScreen() {
       const dayOfWeek = (firstDayOfWeek + d - 1) % 7;
       if (daysWithClasses[dayOfWeek]) {
         const dd = d < 10 ? `0${d}` : `${d}`;
-        dates.push(`${currentYearMonth}-${dd}`);
+        const dateStr = `${currentYearMonth}-${dd}`;
+        if (!holidaySet.has(dateStr)) {
+          dates.push(dateStr);
+        }
       }
     }
     return dates;
-  }, [currentYearMonth, daysWithClasses]);
+  }, [currentYearMonth, daysWithClasses, holidaySet]);
 
   // Static base event dots map — stable across date selections to eliminate re-renders
   const baseMarkedDots = useMemo(() => {
@@ -161,7 +173,8 @@ export default function CalendarScreen() {
     if (gymLogs) {
       for (let i = 0; i < gymLogs.length; i++) {
         const g = gymLogs[i];
-        if (g.date) addDot(g.date, isDark ? '#10b981' : '#059669', g.id);
+        const isValid = g && (g.completed || (Array.isArray(g.exercises) && g.exercises.length > 0 && g.exercises.some((ex: any) => (ex.setsLog || []).some((s: any) => s.completed))));
+        if (g.date && isValid) addDot(g.date, isDark ? '#10b981' : '#059669', g.id);
       }
     }
     for (let i = 0; i < monthClassDates.length; i++) {
@@ -202,8 +215,10 @@ export default function CalendarScreen() {
     }
     if (gymLogs) {
       for (let i = 0; i < gymLogs.length; i++) {
-        const d = gymLogs[i]?.date;
-        if (d) bump(d);
+        const g = gymLogs[i];
+        const isValid = g && (g.completed || (Array.isArray(g.exercises) && g.exercises.length > 0 && g.exercises.some((ex: any) => (ex.setsLog || []).some((s: any) => s.completed))));
+        const d = g?.date;
+        if (d && isValid) bump(d);
       }
     }
     for (let i = 0; i < monthClassDates.length; i++) {
@@ -542,21 +557,27 @@ export default function CalendarScreen() {
             onEdit={() => {
               setShowEventModal(false);
               if (selectedEvent) {
-                navigation.navigate('AddEvent', { event: selectedEvent });
+                setEditingEvent(selectedEvent);
+                setInitialTime(selectedEvent.startTime || '');
+                setTimeout(() => setShowAddModal(true), 220);
               }
             }}
           />
         </Suspense>
       )}
 
-      {/* Add Event Modal */}
+      {/* Add / Edit Event Modal */}
       {showAddModal && (
         <Suspense fallback={null}>
           <AddEventModal
             visible={showAddModal}
-            onClose={() => setShowAddModal(false)}
-            selectedDate={selectedDate}
+            onClose={() => {
+              setShowAddModal(false);
+              setEditingEvent(null);
+            }}
+            selectedDate={editingEvent?.date || selectedDate}
             initialStartTime={initialTime}
+            existingEvent={editingEvent}
           />
         </Suspense>
       )}
@@ -598,6 +619,7 @@ export default function CalendarScreen() {
         }}
         onPress={() => {
           setInitialTime('');
+          setEditingEvent(null);
           setShowAddModal(true);
         }}
       >

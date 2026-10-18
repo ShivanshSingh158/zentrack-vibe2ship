@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { db } from '../../services/firebase';
-import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { collection, updateDoc, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import type { CustomEvent } from '../../contexts/MobileDataContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { usePlannerData } from '../../contexts/domains/PlannerContext';
@@ -12,6 +12,8 @@ import { useAcademicData } from '../../contexts/domains/AcademicContext';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { COLLECTION } from '../../config/constants';
 import { useTheme } from "../../contexts/ThemeContext";
+import { safeWrite, safeUpdate, safeDelete } from '../../utils/safeWrite';
+import { handleSyncError } from '../../utils/errorUtils';
 
 import { parseNLEvent, ParsedEvent } from '../../utils/dateUtils';
 
@@ -52,7 +54,7 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
   const { colors, isDark } = useTheme();
   const styles = makeStyles(colors, isDark);
   const { user } = useCoreData();
-  const { customEvents } = usePlannerData();
+  const { customEvents, optimisticAddEvent, optimisticUpdateEvent, optimisticDeleteEvent } = usePlannerData();
   const { attendance } = useAcademicData();
   const { gymLogs } = useWellnessData();
   const [title, setTitle] = useState('');
@@ -202,6 +204,27 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
     setType(preset.type);
   };
 
+  const handleDelete = () => {
+    if (!existingEvent?.id) return;
+    Alert.alert('Delete Event', `Are you sure you want to delete "${existingEvent.title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          optimisticDeleteEvent(existingEvent.id);
+          safeDelete(
+            existingEvent.id,
+            COLLECTION.CALENDAR_EVENTS,
+            () => deleteDoc(doc(db, COLLECTION.CALENDAR_EVENTS, existingEvent.id))
+          ).catch(handleSyncError);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          onClose();
+        },
+      },
+    ]);
+  };
+
   const handleSave = async () => {
     if (!title.trim() || !user) return;
     setLoading(true);
@@ -221,10 +244,29 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
       if (recurrenceRule && recurrenceRule !== 'none') payload.recurrenceRule = recurrenceRule;
 
       if (existingEvent) {
-        await updateDoc(doc(db, COLLECTION.CALENDAR_EVENTS, existingEvent.id), payload);
+        optimisticUpdateEvent(existingEvent.id, payload);
+        safeUpdate(
+          existingEvent.id,
+          COLLECTION.CALENDAR_EVENTS,
+          payload,
+          () => updateDoc(doc(db, COLLECTION.CALENDAR_EVENTS, existingEvent.id), payload)
+        ).catch(handleSyncError);
       } else {
-        payload.createdAt = Date.now();
-        await addDoc(collection(db, COLLECTION.CALENDAR_EVENTS), payload);
+        const newRef = doc(collection(db, COLLECTION.CALENDAR_EVENTS));
+        const eventId = newRef.id;
+        const newEventObj: CustomEvent = {
+          ...payload,
+          id: eventId,
+          createdAt: Date.now(),
+        };
+        optimisticAddEvent(newEventObj);
+        safeWrite(
+          () => setDoc(newRef, newEventObj),
+          COLLECTION.CALENDAR_EVENTS,
+          'set',
+          newEventObj,
+          eventId
+        ).catch(handleSyncError);
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onClose();
@@ -241,9 +283,16 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
         <View style={styles.modalSheet}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{existingEvent ? 'Edit Event' : 'Add New Event'}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={22} color={colors.textPrimary} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              {existingEvent && (
+                <TouchableOpacity onPress={handleDelete} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+                <Ionicons name="close" size={22} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Academic Quick-Event Presets */}

@@ -35,8 +35,25 @@ export const getToday = (): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-// Backward-compatible alias for existing imports
+// Dynamic getter to prevent stale date across midnight when held in RAM
 export const today = getToday();
+
+// In-memory tag library cache shared between NewTaskModal and EditTaskModal (0ms lookup)
+export let cachedTagLibrary: string[] | null = null;
+export const setCachedTagLibrary = (tags: string[]) => {
+  cachedTagLibrary = tags;
+};
+
+// Stable module-level fallback object to prevent prop instability in NLPTaskInput
+export const EMPTY_PARSED_TASK = Object.freeze({
+  title: '',
+  date: null,
+  timeSlot: null,
+  priority: 'low' as const,
+  isRecurring: false,
+  recurrenceRule: null,
+  tokens: [],
+});
 
 export const formatDisplayDate = (d: string): string => {
   if (!d || d.length !== 10) return d;
@@ -81,6 +98,12 @@ export const formatTimeDisplay = (t: string): string => {
   return trimmed;
 };
 
+// Centralized tag color getter (Issue 94)
+export const getTagColor = (tag: string, colors?: any): string => {
+  if (!tag) return colors?.accentPrimary ?? TAG_PALETTE[0];
+  return tagColorFor(tag);
+};
+
 export const parseTimeFloat = (timeStr?: string | null): number => {
   if (!timeStr) return Infinity;
   const t = timeStr.trim().toUpperCase();
@@ -96,4 +119,22 @@ export const parseTimeFloat = (timeStr?: string | null): number => {
     if (isAM && h === 12) h = 0;
   }
   return h + m / 60;
+};
+
+// Centralized time string parser to minutes (Issue 95)
+export const parseTimeToMinutes = (timeStr?: string | null): number => {
+  if (!timeStr) return -1;
+  const tf = parseTimeFloat(timeStr);
+  if (tf === Infinity || isNaN(tf)) return -1;
+  return Math.round(tf * 60);
+};
+
+// Centralized 12-hour format parser using safe non-space range regex (Issue 61, 95)
+export const TIME_RANGE_REGEX = /\s*[-–—]\s*|\s+to\s+/i;
+
+export const formatTime12 = (slot?: string | null): string => {
+  if (!slot) return '';
+  const parts = slot.split(TIME_RANGE_REGEX);
+  if (parts.length === 1) return formatTimeDisplay(parts[0]);
+  return `${formatTimeDisplay(parts[0])} - ${formatTimeDisplay(parts[1])}`;
 };

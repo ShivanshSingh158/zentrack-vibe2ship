@@ -18,6 +18,7 @@ import Animated, {
   withRepeat,
   withTiming,
   Easing,
+  cancelAnimation,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -46,8 +47,11 @@ export default function PomodoroFloatingPill() {
         true
       );
     } else {
+      cancelAnimation(pulseAnim);
       pulseAnim.value = withTiming(1, { duration: 250 });
     }
+    // Issue 82: cancel infinite withRepeat when status changes or component unmounts
+    return () => cancelAnimation(pulseAnim);
   }, [status, pulseAnim]);
 
   const pulseStyle = useAnimatedStyle(() => ({

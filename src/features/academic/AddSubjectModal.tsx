@@ -178,28 +178,46 @@ export const AddSubjectModal: React.FC<AddSubjectModalProps> = ({
     setLoading(true);
 
     try {
-      const target = parseInt(targetPercentage, 10) || 75;
-      let cAtt = 0;
-      let cTot = 0;
-      let lAtt = 0;
-      let lTot = 0;
+      const rawTarget = parseInt(targetPercentage, 10) || 75;
+      const target = Math.min(99, Math.max(1, rawTarget));
 
-      if (calibrationMode === 'mid_semester') {
-        cAtt = Math.max(0, parseInt(classesAttended, 10) || 0);
-        cTot = Math.max(cAtt, parseInt(classesTotal, 10) || 0);
-        lAtt = hasLabs ? Math.max(0, parseInt(labsAttended, 10) || 0) : 0;
-        lTot = hasLabs ? Math.max(lAtt, parseInt(labsTotal, 10) || 0) : 0;
-      }
-
-      await onSave({
+      const payload: any = {
         name: name.trim(),
         targetPercentage: target,
-        classesAttended: cAtt,
-        classesTotal: cTot,
-        labsAttended: lAtt,
-        labsTotal: lTot,
         schedule,
-      });
+        lastUpdated: Date.now(),
+      };
+
+      if (!existingSubject) {
+        payload.createdAt = Date.now();
+        if (calibrationMode === 'mid_semester') {
+          payload.classesAttended = Math.max(0, parseInt(classesAttended, 10) || 0);
+          payload.classesTotal = Math.max(payload.classesAttended, parseInt(classesTotal, 10) || 0);
+          payload.labsAttended = hasLabs ? Math.max(0, parseInt(labsAttended, 10) || 0) : 0;
+          payload.labsTotal = hasLabs ? Math.max(payload.labsAttended, parseInt(labsTotal, 10) || 0) : 0;
+        } else {
+          payload.classesAttended = 0;
+          payload.classesTotal = 0;
+          payload.labsAttended = 0;
+          payload.labsTotal = 0;
+        }
+      } else {
+        // Editing existing subject
+        if (calibrationMode === 'mid_semester') {
+          payload.classesAttended = Math.max(0, parseInt(classesAttended, 10) || 0);
+          payload.classesTotal = Math.max(payload.classesAttended, parseInt(classesTotal, 10) || 0);
+          payload.labsAttended = hasLabs ? Math.max(0, parseInt(labsAttended, 10) || 0) : 0;
+          payload.labsTotal = hasLabs ? Math.max(payload.labsAttended, parseInt(labsTotal, 10) || 0) : 0;
+        } else {
+          // 'fresh' mode in edit preserves existing counts!
+          payload.classesAttended = existingSubject.classesAttended || 0;
+          payload.classesTotal = existingSubject.classesTotal || 0;
+          payload.labsAttended = existingSubject.labsAttended || 0;
+          payload.labsTotal = existingSubject.labsTotal || 0;
+        }
+      }
+
+      await onSave(payload);
       onClose();
     } catch (err) {
       console.error(err);

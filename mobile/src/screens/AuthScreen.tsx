@@ -7,7 +7,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { GoogleAuthProvider, signInWithCredential, signInAnonymously } from 'firebase/auth';
+import { GoogleAuthProvider, OAuthProvider, signInWithCredential, signInAnonymously } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../services/firebase';
 import * as Haptics from 'expo-haptics';
@@ -331,16 +331,30 @@ export default function AuthScreen() {
               cornerRadius={22}
               style={styles.appleBtn}
               onPress={async () => {
+                setError('');
+                setLoading(true);
                 try {
-                  const credential = await AppleAuthentication.signInAsync({
+                  const appleCredential = await AppleAuthentication.signInAsync({
                     requestedScopes: [
                       AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
                       AppleAuthentication.AppleAuthenticationScope.EMAIL,
                     ],
                   });
-                  console.log('Apple Sign In success', credential.user);
+                  if (!appleCredential.identityToken) {
+                    setError('Apple Sign-In did not return an identity token.');
+                    setLoading(false);
+                    return;
+                  }
+                  const provider = new OAuthProvider('apple.com');
+                  const oauthCredential = provider.credential({
+                    idToken: appleCredential.identityToken,
+                  });
+                  await signInWithCredential(auth, oauthCredential);
                 } catch (e: any) {
-                  if (e.code !== 'ERR_REQUEST_CANCELED') setError('Apple sign-in failed.');
+                  if (e?.code !== 'ERR_REQUEST_CANCELED') {
+                    setError('Apple sign-in failed. Please try again.');
+                  }
+                  setLoading(false);
                 }
               }}
             />

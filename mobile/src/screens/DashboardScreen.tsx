@@ -10,7 +10,12 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { LEVEL_THRESHOLDS } from '../services/xpSystem';
+import { LEVEL_THRESHOLDS, awardXP } from '../services/xpSystem';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../services/firebase';
+import { COLLECTION } from '../config/constants';
+import { formatLocalDateStr } from '../utils/dateUtils';
+import { safeUpdate } from '../utils/safeWrite';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -115,7 +120,7 @@ export default function DashboardScreen() {
     }
   }, [data.user?.uid, refreshFlashcards]);
 
-  const { todayTasksCount, doneTasksCount, habitsCompleted, waterCompleted } = useMemo(() => {
+  const { todayTasksCount, doneTasksCount, habitsCompleted, positiveHabitsCount, waterCompleted } = useMemo(() => {
     let todayCount = 0;
     let doneCount = 0;
     for (const t of data.tasks) {
@@ -127,29 +132,107 @@ export default function DashboardScreen() {
 
     const todayHabitLogMap = new Map<string, number>();
     for (const l of data.habitLogs) {
-      if (l.date === data.todayStr) {
-        todayHabitLogMap.set(l.habitId, l.count ?? 0);
+      if ((l.date || '').slice(0, 10) === data.todayStr && !l.isFreeze) {
+        todayHabitLogMap.set(l.habitId, l.count ?? 1);
       }
     }
 
     let completedHabits = 0;
+    let activePositiveTotal = 0;
     for (const h of data.allHabits) {
+      if (h.archived || h.type === 'negative') continue;
+      activePositiveTotal++;
       const count = todayHabitLogMap.get(h.id) ?? 0;
       if (count >= (h.targetCount || 1)) completedHabits++;
     }
 
     let waterSum = 0;
     for (const w of data.waterLogs || []) {
-      if (w.date === data.todayStr) waterSum += w.amountMl;
+      if ((w.date || '').slice(0, 10) === data.todayStr) waterSum += w.amountMl;
     }
 
     return {
       todayTasksCount: todayCount,
       doneTasksCount: doneCount,
       habitsCompleted: completedHabits,
+      positiveHabitsCount: activePositiveTotal,
       waterCompleted: waterSum,
     };
   }, [data.tasks, data.allHabits, data.habitLogs, data.waterLogs, data.todayStr]);
+
+  const urgentAssignments = useMemo(() => {
+    // 1. Gather all completed assignment IDs from linked tasks
+    const completedLinkedTaskAsgIds = new Set(
+      (data.tasks || [])
+        .filter(t => t.status === 'completed' && t.id?.startsWith('task_asg_'))
+        .map(t => t.id!.replace('task_', ''))
+    );
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    const items = (data.assignments || [])
+      .filter((a: any) => {
+        if (!a || !a.id) return false;
+        // Checked off: submitted, graded, completed, done, or completed boolean
+        if (a.status === 'submitted' || a.status === 'graded' || a.status === 'completed' || a.status === 'done') {
+          return false;
+        }
+        if (a.completed === true) return false;
+        if (completedLinkedTaskAsgIds.has(a.id)) return false;
+        return true;
+      })
+      .map((a: any) => {
+        const rawDate = a.dueDate || '';
+        let diffDays = 0;
+        let formattedDate = '';
+
+        if (rawDate) {
+          const parts = rawDate.split('T')[0].split('-').map(Number);
+          if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+            const due = new Date(parts[0], parts[1] - 1, parts[2]);
+            diffDays = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            const dayStr = String(parts[2]).padStart(2, '0');
+            const monthName = MONTHS[parts[1] - 1] || '';
+            formattedDate = `${dayStr} ${monthName}`;
+          } else {
+            formattedDate = rawDate;
+          }
+        } else {
+          formattedDate = 'No date';
+        }
+
+        let urgency: 'overdue' | 'due_soon' | 'due_later' = 'due_later';
+        let urgencyLabel = 'Due later';
+
+        if (diffDays < 0) {
+          urgency = 'overdue';
+          urgencyLabel = 'Overdue';
+        } else if (diffDays <= 3) {
+          urgency = 'due_soon';
+          urgencyLabel = 'Due soon';
+        } else {
+          urgency = 'due_later';
+          urgencyLabel = 'Due later';
+        }
+
+        return {
+          id: a.id as string,
+          title: a.title || 'Assignment',
+          dueDate: rawDate,
+          formattedDate,
+          diffDays,
+          urgency,
+          urgencyLabel,
+        };
+      });
+
+    // Sort: Overdue first (most overdue first), then due soon, then due later
+    items.sort((a, b) => a.diffDays - b.diffDays);
+
+    return items;
+  }, [data.assignments, data.tasks]);
 
   const { showXPSection, showCapture } = useMemo(() => {
     let xpVisible = true;
@@ -178,7 +261,6 @@ export default function DashboardScreen() {
     navigation.navigate('Attendance');
   }, [navigation]);
 
-
   const handlePressXP = useCallback(() => {
     navigation.navigate('MoreStack', { screen: 'XPConstellation' });
   }, [navigation]);
@@ -191,29 +273,64 @@ export default function DashboardScreen() {
     data.setCaptureVisible(true);
   }, [data.setCaptureVisible]);
 
+  const handlePressAssignments = useCallback(() => {
+    navigation.navigate('Assignments' as any);
+  }, [navigation]);
+
+  const handleToggleAssignment = useCallback((assignmentId: string) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    awardXP('TASK_COMPLETE').catch(() => {});
+
+    // 1. Mark assignment as submitted
+    data.optimisticUpdateAssignment?.(assignmentId, { status: 'submitted', updatedAt: Date.now() });
+    safeUpdate(
+      assignmentId,
+      COLLECTION.ASSIGNMENTS,
+      { status: 'submitted', updatedAt: Date.now() },
+      () => updateDoc(doc(db, COLLECTION.ASSIGNMENTS, assignmentId), { status: 'submitted', updatedAt: Date.now() })
+    ).catch(console.warn);
+
+    // 2. Cross-sync: Mark linked task as completed if it exists
+    const linkedTaskId = `task_${assignmentId}`;
+    data.optimisticUpdateTask?.(linkedTaskId, { status: 'completed', completedAt: formatLocalDateStr(new Date()) });
+    safeUpdate(
+      linkedTaskId,
+      COLLECTION.TASKS,
+      { status: 'completed', completedAt: formatLocalDateStr(new Date()) },
+      () => updateDoc(doc(db, COLLECTION.TASKS, linkedTaskId), { status: 'completed', completedAt: formatLocalDateStr(new Date()) })
+    ).catch(console.warn);
+  }, [data.optimisticUpdateAssignment, data.optimisticUpdateTask]);
+
   const handleToggleTask = useCallback((taskId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
-    const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
+    const completedAt = newStatus === 'completed' ? formatLocalDateStr(new Date()) : null;
     data.optimisticUpdateTask(taskId, { status: newStatus, completedAt });
     if (newStatus === 'completed') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      import('../services/xpSystem').then(m => m.awardXP('TASK_COMPLETE')).catch(() => {});
+      awardXP('TASK_COMPLETE').catch(() => {});
     } else {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    import('../utils/safeWrite').then(({ safeUpdate }) => {
+    safeUpdate(
+      taskId,
+      COLLECTION.TASKS,
+      { status: newStatus, completedAt },
+      () => updateDoc(doc(db, COLLECTION.TASKS, taskId), { status: newStatus, completedAt })
+    ).catch(console.warn);
+
+    // Cross-sync: If this task is linked to an assignment, update the assignment status
+    if (taskId.startsWith('task_asg_')) {
+      const asgId = taskId.replace('task_', '');
+      const asgStatus = newStatus === 'completed' ? 'submitted' : 'not_started';
+      data.optimisticUpdateAssignment?.(asgId, { status: asgStatus, updatedAt: Date.now() });
       safeUpdate(
-        taskId,
-        'tasks',
-        { status: newStatus, completedAt },
-        async () => {
-          const { doc, updateDoc } = await import('firebase/firestore');
-          const { db } = await import('../services/firebase');
-          return updateDoc(doc(db, 'tasks', taskId), { status: newStatus, completedAt });
-        }
+        asgId,
+        COLLECTION.ASSIGNMENTS,
+        { status: asgStatus, updatedAt: Date.now() },
+        () => updateDoc(doc(db, COLLECTION.ASSIGNMENTS, asgId), { status: asgStatus, updatedAt: Date.now() })
       ).catch(console.warn);
-    });
-  }, [data.optimisticUpdateTask]);
+    }
+  }, [data.optimisticUpdateTask, data.optimisticUpdateAssignment]);
 
   // ── Quick Profile BottomSheet State (Apple iOS 18 Grouped style) ──────────
   const [quickProfileVisible, setQuickProfileVisible] = useState(false);
@@ -366,7 +483,7 @@ export default function DashboardScreen() {
                     agendaCompleted={doneTasksCount}
                     agendaTotal={todayTasksCount}
                     habitsCompleted={habitsCompleted}
-                    habitsTotal={data.allHabits.length}
+                    habitsTotal={positiveHabitsCount}
                     waterCompleted={waterCompleted}
                     waterTotal={data.waterTotal}
                     classesAttendedToday={data.classesAttendedToday}
@@ -379,7 +496,7 @@ export default function DashboardScreen() {
                     levelProgress={levelInfo.progress}
                     showXPSection={showXPSection}
                     showCapture={showCapture}
-                    urgentAssignments={[]}
+                    urgentAssignments={urgentAssignments}
                     nextClass={data.nextClass}
                     onPressStreak={handlePressStreak}
                     onPressHabits={handlePressHabits}
@@ -388,6 +505,8 @@ export default function DashboardScreen() {
                     onPressXP={handlePressXP}
                     onPressRing={handlePressRing}
                     onCapture={handleCapture}
+                    onPressAssignments={handlePressAssignments}
+                    onToggleAssignment={handleToggleAssignment}
                   />
                 </Animated.View>
               );

@@ -25,7 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { addDoc, collection, doc, updateDoc } from 'firebase/firestore';
+import { collection, doc, updateDoc, setDoc } from 'firebase/firestore';
 
 import { db } from '../../services/firebase';
 import type { StorageNode } from '../../contexts/MobileDataContext';
@@ -33,7 +33,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useCreativeData } from '../../contexts/domains/CreativeContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { callGeminiProxy } from '../../services/geminiProxy';
-import { safeAdd, safeUpdate } from '../../utils/safeWrite';
+import { safeWrite, safeUpdate } from '../../utils/safeWrite';
 import { handleSyncError } from '../../utils/errorUtils';
 import { feedback } from '../../utils/haptics';
 
@@ -105,9 +105,10 @@ export const NoteEditorModal = React.memo(function NoteEditorModal({
     const now = Date.now();
 
     if (isNew) {
-      const tempId = `note_temp_${now}`;
+      const newDocRef = doc(collection(db, 'storage_nodes'));
+      const noteId = newDocRef.id;
       const noteData: StorageNode = {
-        id: tempId,
+        id: noteId,
         userId,
         tags: [],
         type: 'note',
@@ -121,21 +122,12 @@ export const NoteEditorModal = React.memo(function NoteEditorModal({
       // 0ms Optimistic UI update
       optimisticAddStorageNode(noteData);
 
-      const firestorePayload = {
-        userId,
-        tags: [],
-        type: 'note',
-        name: title.trim(),
-        content: content.trim(),
-        parentId,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      safeAdd(
+      safeWrite(
+        () => setDoc(newDocRef, noteData),
         'storage_nodes',
-        firestorePayload,
-        () => addDoc(collection(db, 'storage_nodes'), firestorePayload)
+        'set',
+        noteData,
+        noteId
       ).catch(handleSyncError);
     } else {
       // 0ms Optimistic update

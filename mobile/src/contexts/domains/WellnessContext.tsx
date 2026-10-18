@@ -20,8 +20,9 @@ import { GYM_PLAN_ARNOLD, GYM_PLAN_PPL } from "../../data/gymPlan";
 import { writeWellnessCache } from "../../utils/domainCache";
 import { loadBootManifest, getBootManifestSync } from "../../utils/bootManifest";
 import { parseGymLog, areItemsEqual } from "../../utils/schemaGuards";
-import { formatLocalDateStr } from "../../utils/dateUtils";
-import { checkAndTriggerWaterMilestones } from "../../services/notifications";
+import { formatLocalDateStr, offsetDateStr } from "../../utils/dateUtils";
+import { checkAndTriggerWaterMilestones, clearScheduleCache } from "../../services/notifications";
+import { applyPendingQueueOverlay } from "../../services/offlineSync";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface WellnessContextType {
@@ -103,15 +104,21 @@ export function WellnessProvider({
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scheduleListenerRestart = useCallback((context: string) => (err: Error) => {
-    console.warn(`[Wellness] ${context} listener error — restarting in 5s`, err.message);
-    if (retryTimerRef.current) return; // already scheduled
+    const isBuilding = err.message.includes('currently building');
+    if (isBuilding) {
+      console.info(`[Wellness] ${context} index is currently building in Cloud Firestore. Auto-retrying in 15s...`);
+    } else {
+      console.warn(`[Wellness] ${context} listener error — restarting in 5s`, err.message);
+    }
+    if (retryTimerRef.current) return;
+    const delay = isBuilding ? 15000 : 5000;
     retryTimerRef.current = setTimeout(() => {
       retryTimerRef.current = null;
-      subscribedRef.current = false;  // allow openSubscriptions to re-enter
+      subscribedRef.current = false;
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       setSubscriptionVersion(v => v + 1);
-    }, 5000);
+    }, delay);
   }, []);
 
   // ── Foreground reconnect: restart listeners after long background ─────────
@@ -172,13 +179,16 @@ export function WellnessProvider({
     if (subscribedRef.current) return;
     subscribedRef.current = true;
 
+    // Rolling 90-day window prevents dropping newest logs due to ASCII doc-ID ordering
+    const wellnessCutoffDateStr = offsetDateStr(formatLocalDateStr(new Date()), -90);
+
     unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.GYM_LOGS), where("userId", "==", uid), limit(150)),
+      query(collection(db, COLLECTION.GYM_LOGS), where("userId", "==", uid), where("date", ">=", wellnessCutoffDateStr)),
       snap => {
         if (snap.metadata.hasPendingWrites) return;
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
-          const fresh = snap.docs.map(d => parseGymLog(d.data(), d.id));
+          const fresh = applyPendingQueueOverlay(COLLECTION.GYM_LOGS, snap.docs.map(d => parseGymLog(d.data(), d.id)));
           setGymLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           setGymLogsSnapshotFired(true);
           InteractionManager.runAfterInteractions(() => writeWellnessCache({ gymLogs: fresh }));
@@ -201,11 +211,12 @@ export function WellnessProvider({
     ));
 
     unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.WATER_LOGS), where("userId", "==", uid), limit(150)),
+      query(collection(db, COLLECTION.WATER_LOGS), where("userId", "==", uid), where("date", ">=", wellnessCutoffDateStr)),
       snap => {
+        if (snap.metadata.hasPendingWrites) return;
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
-          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WaterLog));
+          const fresh = applyPendingQueueOverlay(COLLECTION.WATER_LOGS, snap.docs.map(d => ({ id: d.id, ...d.data() } as WaterLog)));
           setWaterLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           InteractionManager.runAfterInteractions(() => writeWellnessCache({ waterLogs: fresh }));
         });
@@ -217,11 +228,12 @@ export function WellnessProvider({
     deferredInteractionRef.current = InteractionManager.runAfterInteractions(() => {
       if (!subscribedRef.current) return;
       unsubsRef.current.push(onSnapshot(
-        query(collection(db, COLLECTION.SLEEP_LOGS), where("userId", "==", uid), limit(150)),
+        query(collection(db, COLLECTION.SLEEP_LOGS), where("userId", "==", uid), where("date", ">=", wellnessCutoffDateStr)),
         snap => {
+          if (snap.metadata.hasPendingWrites) return;
           if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
           unstable_batchedUpdates(() => {
-            const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as SleepLog));
+            const fresh = applyPendingQueueOverlay(COLLECTION.SLEEP_LOGS, snap.docs.map(d => ({ id: d.id, ...d.data() } as SleepLog)));
             setSleepLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
             InteractionManager.runAfterInteractions(() => writeWellnessCache({ sleepLogs: fresh }));
           });
@@ -230,11 +242,12 @@ export function WellnessProvider({
       ));
 
       unsubsRef.current.push(onSnapshot(
-        query(collection(db, 'weight_logs'), where("userId", "==", uid), limit(150)),
+        query(collection(db, 'weight_logs'), where("userId", "==", uid), where("date", ">=", wellnessCutoffDateStr)),
         snap => {
+          if (snap.metadata.hasPendingWrites) return;
           if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
           unstable_batchedUpdates(() => {
-            const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeightLog));
+            const fresh = applyPendingQueueOverlay('weight_logs', snap.docs.map(d => ({ id: d.id, ...d.data() } as WeightLog)));
             setWeightLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
             InteractionManager.runAfterInteractions(() => writeWellnessCache({ weightLogs: fresh }));
           });
@@ -439,31 +452,40 @@ export function WellnessProvider({
     });
   }, []);
 
+  const waterLogsRef = useRef<WaterLog[]>(waterLogs);
+  useEffect(() => {
+    waterLogsRef.current = waterLogs;
+  }, [waterLogs]);
+
   const optimisticAddWaterLog = useCallback((log: WaterLog) => {
-    setWaterLogs(prev => {
-      const todayStr = formatLocalDateStr(new Date());
-      const previousToday = prev
-        .filter(w => (w.date || '').slice(0, 10) === todayStr)
-        .reduce((sum, w) => sum + (w.amountMl || 0), 0);
-      const newToday = previousToday + (log.amountMl || 0);
-      AsyncStorage.getItem('zentrack_water_goal_ml')
-        .then(savedGoal => {
-          const goal = savedGoal ? parseInt(savedGoal, 10) : 3800;
-          checkAndTriggerWaterMilestones(previousToday, newToday, goal).catch(() => {});
-        })
-        .catch(() => {});
-      const next = [log, ...prev];
-      writeWellnessCache({ waterLogs: next }, true);
-      return next;
-    });
+    const todayStr = formatLocalDateStr(new Date());
+    const prev = waterLogsRef.current || [];
+    const previousToday = prev
+      .filter(w => (w.date || '').slice(0, 10) === todayStr)
+      .reduce((sum, w) => sum + (w.amountMl || 0), 0);
+    const newToday = previousToday + (log.amountMl || 0);
+
+    const next = [log, ...prev.filter(w => w.id !== log.id)];
+    waterLogsRef.current = next;
+    setWaterLogs(next);
+    writeWellnessCache({ waterLogs: next }, true);
+    clearScheduleCache();
+
+    AsyncStorage.getItem('zentrack_water_goal_ml')
+      .then(savedGoal => {
+        const goal = savedGoal ? parseInt(savedGoal, 10) : 3800;
+        return checkAndTriggerWaterMilestones(previousToday, newToday, goal);
+      })
+      .catch(() => {});
   }, []);
 
   const optimisticDeleteWaterLog = useCallback((logId: string) => {
-    setWaterLogs(prev => {
-      const next = prev.filter(l => l.id !== logId);
-      writeWellnessCache({ waterLogs: next }, true);
-      return next;
-    });
+    const prev = waterLogsRef.current || [];
+    const next = prev.filter(l => l.id !== logId);
+    waterLogsRef.current = next;
+    setWaterLogs(next);
+    writeWellnessCache({ waterLogs: next }, true);
+    clearScheduleCache();
   }, []);
 
   const gymLogsReady = gymLogsSnapshotFired || hasCachedDataRef.current;

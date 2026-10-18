@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -36,6 +36,12 @@ export default function CardioLogScreen() {
     speed: '',
     incline: '',
     calories: '',
+    floors: '',
+    level: '',
+    laps: '',
+    rounds: '',
+    spm: '',
+    pace: '',
   });
 
   const updateField = (field: keyof typeof form, val: string) => {
@@ -45,11 +51,17 @@ export default function CardioLogScreen() {
   useEffect(() => {
     if (cardioItem) {
       setForm({
-        duration: cardioItem.durationMinutes ? String(cardioItem.durationMinutes) : '',
-        distance: cardioItem.distanceKm ? String(cardioItem.distanceKm) : '',
-        speed: cardioItem.speedKmh ? String(cardioItem.speedKmh) : '',
-        incline: cardioItem.incline ? String(cardioItem.incline) : '',
-        calories: cardioItem.calories ? String(cardioItem.calories) : '',
+        duration: cardioItem.durationMinutes != null ? String(cardioItem.durationMinutes) : '',
+        distance: cardioItem.distanceKm != null ? String(cardioItem.distanceKm) : '',
+        speed: cardioItem.speedKmh != null ? String(cardioItem.speedKmh) : '',
+        incline: cardioItem.incline != null ? String(cardioItem.incline) : '',
+        calories: cardioItem.calories != null ? String(cardioItem.calories) : '',
+        floors: cardioItem.floors != null ? String(cardioItem.floors) : '',
+        level: cardioItem.level != null ? String(cardioItem.level) : '',
+        laps: cardioItem.laps != null ? String(cardioItem.laps) : '',
+        rounds: cardioItem.rounds != null ? String(cardioItem.rounds) : '',
+        spm: cardioItem.spm != null ? String(cardioItem.spm) : '',
+        pace: cardioItem.pace != null ? String(cardioItem.pace) : '',
       });
     }
   }, [cardioItem]);
@@ -66,6 +78,12 @@ export default function CardioLogScreen() {
       speedKmh: parseNum(form.speed, true),
       incline: parseNum(form.incline, true),
       calories: parseNum(form.calories),
+      floors: parseNum(form.floors),
+      level: parseNum(form.level),
+      laps: parseNum(form.laps),
+      rounds: parseNum(form.rounds),
+      spm: parseNum(form.spm),
+      pace: parseNum(form.pace, true),
       completed: true,
     };
 
@@ -73,7 +91,14 @@ export default function CardioLogScreen() {
     navigation.goBack();
   }, [cardioItem, log, cardioId, form, updateCardio, navigation]);
 
-  if (!cardioItem) return null;
+  const typeLower = (cardioItem?.type || '').toLowerCase();
+  const isStairmaster = typeLower.includes('stair');
+  const isElliptical = typeLower.includes('elliptical');
+  const isSwim = typeLower.includes('swim');
+  const isJumpRope = typeLower.includes('jump') || typeLower.includes('rope');
+  const isRowing = typeLower.includes('row');
+  const isRunning = typeLower.includes('run') || typeLower.includes('jog');
+  const isTreadmill = typeLower.includes('treadmill') || (!isStairmaster && !isSwim && !isJumpRope && !isRowing && !isElliptical);
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
@@ -86,6 +111,12 @@ export default function CardioLogScreen() {
           <Text style={styles.headerTitle}>Log Cardio</Text>
           <View style={{ width: 40 }} />
         </View>
+
+        {!cardioItem ? (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="small" color={colors.accentPrimary || '#FF6B6B'} />
+          </View>
+        ) : (
 
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.iconContainer}>
@@ -140,17 +171,116 @@ export default function CardioLogScreen() {
               </View>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Incline (%)</Text>
-              <TextInput
-                style={styles.input}
-                value={form.incline}
-                onChangeText={v => updateField('incline', v)}
-                keyboardType="numeric"
-                placeholder="e.g. 2.0"
-                placeholderTextColor={colors.textMuted}
-              />
-            </View>
+            {isTreadmill && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Incline (%)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={form.incline}
+                  onChangeText={v => updateField('incline', v)}
+                  keyboardType="numeric"
+                  placeholder="e.g. 2.0"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            )}
+
+            {isStairmaster && (
+              <View style={styles.row}>
+                <View style={[styles.inputGroup, { flex: 1 }]}>
+                  <Text style={styles.label}>Floors Climbed</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={form.floors}
+                    onChangeText={v => updateField('floors', v)}
+                    keyboardType="numeric"
+                    placeholder="e.g. 50"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+                <View style={[styles.inputGroup, { flex: 1 }]}>
+                  <Text style={styles.label}>Machine Level</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={form.level}
+                    onChangeText={v => updateField('level', v)}
+                    keyboardType="numeric"
+                    placeholder="e.g. 8"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+              </View>
+            )}
+
+            {isElliptical && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Resistance Level</Text>
+                <TextInput
+                  style={styles.input}
+                  value={form.level}
+                  onChangeText={v => updateField('level', v)}
+                  keyboardType="numeric"
+                  placeholder="e.g. 10"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            )}
+
+            {isSwim && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Pool Laps</Text>
+                <TextInput
+                  style={styles.input}
+                  value={form.laps}
+                  onChangeText={v => updateField('laps', v)}
+                  keyboardType="numeric"
+                  placeholder="e.g. 20"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            )}
+
+            {isJumpRope && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Rounds / Sets</Text>
+                <TextInput
+                  style={styles.input}
+                  value={form.rounds}
+                  onChangeText={v => updateField('rounds', v)}
+                  keyboardType="numeric"
+                  placeholder="e.g. 5"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            )}
+
+            {isRowing && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Strokes / Min (SPM)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={form.spm}
+                  onChangeText={v => updateField('spm', v)}
+                  keyboardType="numeric"
+                  placeholder="e.g. 24"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            )}
+
+            {isRunning && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Pace (min/km)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={form.pace}
+                  onChangeText={v => updateField('pace', v)}
+                  keyboardType="numeric"
+                  placeholder="e.g. 5.3"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            )}
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Calories Burned (kcal)</Text>
@@ -180,6 +310,7 @@ export default function CardioLogScreen() {
             </TouchableOpacity>
           </View>
         </ScrollView>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

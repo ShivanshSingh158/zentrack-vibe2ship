@@ -25,7 +25,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
-import { scheduleAllNotifications } from '../services/notifications';
+import { scheduleAllNotifications, clearScheduleCache } from '../services/notifications';
+import { ensureNotificationChannels } from '../services/notificationChannels';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
@@ -78,9 +79,32 @@ export default function NotificationPreferencesComponent() {
     const s = makeStyles(colors);
   const navigation = useNavigation<any>();
   const { tasks, habitLogs, allHabits } = useCoreData();
-  const { gymLogs } = useWellnessData();
-  const { attendance, assignments } = useAcademicData();
+  const { gymLogs, waterLogs, sleepLogs, userGymPlan } = useWellnessData();
+  const { attendance, attendanceLogs, assignments, holidays } = useAcademicData();
   const { customEvents } = usePlannerData();
+
+  const rescheduleWithFullContext = useCallback(() => {
+    clearScheduleCache();
+    InteractionManager.runAfterInteractions(() => {
+      scheduleAllNotifications({
+        tasks,
+        customEvents,
+        gymLogs,
+        attendance,
+        attendanceLogs,
+        habitLogs,
+        allHabits,
+        assignments,
+        waterLogs,
+        sleepLogs,
+        userGymPlan,
+        holidays,
+      }).catch(console.warn);
+    });
+  }, [
+    tasks, customEvents, gymLogs, attendance, attendanceLogs,
+    habitLogs, allHabits, assignments, waterLogs, sleepLogs, userGymPlan, holidays,
+  ]);
 
   // Module toggles
   const [modTasks,      setModTasks]      = useState(true);
@@ -155,7 +179,9 @@ export default function NotificationPreferencesComponent() {
         setInactivityDays(    await loadString('inactivity_days', '3'));
         setHabitStreakTime(   await loadString('habit_streak_time', '20:00'));
 
-        setSaraToneStrict(    await loadBool('sara_tone', false));
+        const saraStrict = (await AsyncStorage.getItem('zentrack_notif_sara_escalation'))
+          ?? (await AsyncStorage.getItem('zentrack_notif_sara_tone'));
+        setSaraToneStrict(saraStrict === 'true');
         setLocationNotifs(    await loadBool('location_notifs', false));
         setActionableNotifs(  await loadBool('actionable_notifs', true));
         setHabitStackNotifs(  await loadBool('habit_stack_notifs', true));
@@ -164,17 +190,27 @@ export default function NotificationPreferencesComponent() {
     })();
   }, []);
 
+  const activeSoundRef = React.useRef<Audio.Sound | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (activeSoundRef.current) {
+        activeSoundRef.current.unloadAsync().catch(() => {});
+      }
+    };
+  }, []);
+
   // Toggle helper • saves + reschedules (deferred to avoid blocking toggle animation)
   const toggle = useCallback(async (key: string, val: boolean, setter: (v: boolean) => void) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setter(val);
     await saveBool(key, val);
-    InteractionManager.runAfterInteractions(() => {
-      scheduleAllNotifications({
-        tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments,
-      }).catch(console.warn);
-    });
-  }, [tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments]);
+    if (key === 'sara_tone' || key === 'sara_escalation') {
+      await saveBool('sara_tone', val);
+      await saveBool('sara_escalation', val);
+    }
+    rescheduleWithFullContext();
+  }, [rescheduleWithFullContext]);
 
   // Time picker helpers
   const openPicker = (target: TimePickerTarget, current: string) => {
@@ -183,37 +219,59 @@ export default function NotificationPreferencesComponent() {
     setPickerVisible(true);
   };
 
-  const handlePickerChange = async (_: any, selected?: Date) => {
-    if (Platform.OS === 'android') setPickerVisible(false);
-    if (!selected) return;
+  const commitPickedTime = async (selected: Date) => {
     const hm = toHM(selected);
     switch (pickerTarget) {
-      case 'morningBriefTime':   setMorningBriefTime(hm);  await saveString('morning_brief_time', hm);  break;
-      case 'quietStart':         setQuietStart(hm);         await saveString('quiet_start', hm);          break;
-      case 'quietEnd':           setQuietEnd(hm);           await saveString('quiet_end', hm);            break;
-      case 'overdueNudgeTime':   setOverdueNudgeTime(hm);  await saveString('overdue_nudge_time', hm);   break;
+      case 'morningBriefTime': setMorningBriefTime(hm); await saveString('morning_brief_time', hm); break;
+      case 'quietStart':       setQuietStart(hm);       await saveString('quiet_start', hm);        break;
+      case 'quietEnd':         setQuietEnd(hm);         await saveString('quiet_end', hm);          break;
+      case 'overdueNudgeTime': setOverdueNudgeTime(hm); await saveString('overdue_nudge_time', hm); break;
     }
-    InteractionManager.runAfterInteractions(() => {
-      scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments }).catch(console.warn);
-    });
+    rescheduleWithFullContext();
+  };
+
+  const handlePickerChange = async (_: any, selected?: Date) => {
+    if (Platform.OS === 'android') {
+      setPickerVisible(false);
+      if (selected) await commitPickedTime(selected);
+    } else if (selected) {
+      // On iOS spinner, only update local state while spinning; commit on "Done"
+      setPickerDate(selected);
+    }
   };
 
   const closePicker = () => setPickerVisible(false);
+  const confirmIosPicker = async () => {
+    setPickerVisible(false);
+    await commitPickedTime(pickerDate);
+  };
 
   const handleSelectSound = async (soundName: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setNotifSound(soundName);
     await saveString('notifs_sound', soundName);
-    
+    await ensureNotificationChannels();
+    rescheduleWithFullContext();
+
     try {
-      if (soundName === 'chime.wav') {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/sounds/chime.wav'));
-        await sound.playAsync();
-      } else if (soundName === 'alert.wav') {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/sounds/alert.wav'));
-        await sound.playAsync();
-      } else if (soundName === 'heavy.wav') {
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/sounds/heavy.wav'));
+      if (activeSoundRef.current) {
+        await activeSoundRef.current.unloadAsync().catch(() => {});
+        activeSoundRef.current = null;
+      }
+      const soundMap: Record<string, any> = {
+        'chime.wav': require('../../assets/sounds/chime.wav'),
+        'alert.wav': require('../../assets/sounds/alert.wav'),
+        'heavy.wav': require('../../assets/sounds/heavy.wav'),
+      };
+      if (soundMap[soundName]) {
+        const { sound } = await Audio.Sound.createAsync(soundMap[soundName]);
+        activeSoundRef.current = sound;
+        sound.setOnPlaybackStatusUpdate(status => {
+          if (status.isLoaded && status.didJustFinish) {
+            sound.unloadAsync().catch(() => {});
+            if (activeSoundRef.current === sound) activeSoundRef.current = null;
+          }
+        });
         await sound.playAsync();
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -415,7 +473,7 @@ export default function NotificationPreferencesComponent() {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setTaskBuffer(o.val);
                   await saveString('task_buffer', o.val);
-                  scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments }).catch(console.warn);
+                  rescheduleWithFullContext();
                 }}
               >
                 <Text style={[s.chipText, taskBuffer === o.val && s.chipTextActive]}>{o.label}</Text>
@@ -465,6 +523,7 @@ export default function NotificationPreferencesComponent() {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setInactivityDays(o.val);
                   await saveString('inactivity_days', o.val);
+                  rescheduleWithFullContext();
                 }}
               >
                 <Text style={[s.chipText, inactivityDays === o.val && s.chipTextActive]}>{o.label}</Text>
@@ -569,7 +628,7 @@ export default function NotificationPreferencesComponent() {
                   <TouchableOpacity onPress={closePicker}>
                     <Text style={{ color: colors.accentPrimary, fontSize: 15 }}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={closePicker}>
+                  <TouchableOpacity onPress={confirmIosPicker}>
                     <Text style={{ color: colors.accentPrimary, fontSize: 15, fontWeight: '600' }}>Done</Text>
                   </TouchableOpacity>
                 </View>
@@ -577,7 +636,7 @@ export default function NotificationPreferencesComponent() {
                   value={pickerDate}
                   mode="time"
                   display="spinner"
-                  onChange={(e, d) => { if (d) { setPickerDate(d); handlePickerChange(e, d); } }}
+                  onChange={handlePickerChange}
                   style={{ height: 200 }}
                   textColor="#ffffff"
                 />

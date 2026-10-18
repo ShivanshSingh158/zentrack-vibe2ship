@@ -562,8 +562,11 @@ export default function NotesScreen() {
           }
 
           const now = Date.now();
+          const newFileRef = doc(collection(db, 'storage_nodes'));
+          const fileId = newFileRef.id;
+
           const docPayload: StorageNode = {
-            id: `file_temp_${now}_${i}`,
+            id: fileId,
             userId: user.uid,
             type: 'file',
             fileType: ftype,
@@ -575,25 +578,17 @@ export default function NotesScreen() {
             updatedAt: now,
           };
 
-          // 0ms Optimistic UI update immediately as each file finishes
+          // 0ms Optimistic UI update with identical deterministic Firestore ID
           optimisticAddStorageNode(docPayload);
           feedback.tap();
           successCount++;
 
-          const firestorePayload = {
-            userId: user.uid,
-            type: 'file' as const,
-            fileType: ftype,
-            name: file.name || 'Uploaded Document',
-            url: uploadRes.url,
-            size: uploadRes.size || file.size || 0,
-            parentId: currentFolderId,
-            createdAt: now,
-            updatedAt: now,
-          };
-
-          await safeAdd('storage_nodes', firestorePayload, () =>
-            addDoc(collection(db, 'storage_nodes'), firestorePayload)
+          await safeWrite(
+            () => setDoc(newFileRef, docPayload),
+            'storage_nodes',
+            'set',
+            docPayload,
+            fileId
           );
         } catch (fileErr: any) {
           console.error(`[NotesScreen] Upload error for ${file.name}:`, fileErr);
@@ -653,24 +648,48 @@ export default function NotesScreen() {
     ).catch(handleSyncError);
   }, [optimisticUpdateStorageNode]);
 
+  const collectDescendantIds = useCallback((rootIds: string[]): string[] => {
+    const toDelete = new Set<string>(rootIds);
+    let added = true;
+    while (added) {
+      added = false;
+      for (let i = 0; i < storageNodes.length; i++) {
+        const node = storageNodes[i];
+        if (node.id && node.parentId && toDelete.has(node.parentId) && !toDelete.has(node.id)) {
+          toDelete.add(node.id);
+          added = true;
+        }
+      }
+    }
+    return Array.from(toDelete);
+  }, [storageNodes]);
+
   const handleDelete = useCallback((item: StorageNode) => {
-    Alert.alert('Delete', `Are you sure you want to delete "${item.name}"?`, [
+    const isFolder = item.type === 'folder';
+    const allIdsToDelete = item.id ? collectDescendantIds([item.id]) : [];
+    const childCount = Math.max(0, allIdsToDelete.length - 1);
+    const message = isFolder && childCount > 0
+      ? `Are you sure you want to delete "${item.name}" and all ${childCount} item${childCount > 1 ? 's' : ''} inside it?`
+      : `Are you sure you want to delete "${item.name}"?`;
+
+    Alert.alert('Delete', message, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
-          // 0ms Optimistic UI delete
-          optimisticDeleteStorageNode(item.id!);
-          safeDelete(
-            item.id!,
-            'storage_nodes',
-            () => deleteDoc(doc(db, 'storage_nodes', item.id!))
-          ).catch(handleSyncError);
+          optimisticBatchDeleteStorageNodes(allIdsToDelete);
+          for (const id of allIdsToDelete) {
+            safeDelete(
+              id,
+              'storage_nodes',
+              () => deleteDoc(doc(db, 'storage_nodes', id))
+            ).catch(handleSyncError);
+          }
         },
       },
     ]);
-  }, [optimisticDeleteStorageNode]);
+  }, [collectDescendantIds, optimisticBatchDeleteStorageNodes]);
 
   const handleSaveRename = useCallback((node: StorageNode, newName: string) => {
     // 0ms Optimistic rename
@@ -730,23 +749,23 @@ export default function NotesScreen() {
     const count = selectedIds.size;
     if (count === 0) return;
 
+    const allIdsToDelete = collectDescendantIds(Array.from(selectedIds));
+
     Alert.alert(
       'Delete Selected',
-      `Are you sure you want to delete ${count} item${count > 1 ? 's' : ''}?`,
+      `Are you sure you want to delete ${allIdsToDelete.length} item${allIdsToDelete.length > 1 ? 's' : ''}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            const idsToDelete = Array.from(selectedIds);
-            // 0ms Optimistic batch delete
-            optimisticBatchDeleteStorageNodes(idsToDelete);
+            optimisticBatchDeleteStorageNodes(allIdsToDelete);
             setSelectionMode(false);
             setSelectedIds(new Set());
             feedback.success();
 
-            for (const id of idsToDelete) {
+            for (const id of allIdsToDelete) {
               safeDelete(
                 id,
                 'storage_nodes',
@@ -757,7 +776,7 @@ export default function NotesScreen() {
         },
       ]
     );
-  }, [selectedIds, optimisticBatchDeleteStorageNodes]);
+  }, [selectedIds, collectDescendantIds, optimisticBatchDeleteStorageNodes]);
 
   const handleBatchMoveOpen = useCallback(() => {
     if (selectedIds.size === 0) return;

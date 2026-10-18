@@ -20,8 +20,7 @@
  */
 
 import NetInfo from '@react-native-community/netinfo';
-import { queueWrite } from '../services/offlineSync';
-import { touchServerSyncMeta } from './syncMeta';
+import { queueWrite, removeQueuedFallback } from '../services/offlineSync';
 import { deepSanitize } from './firebaseUtils';
 
 export type FirestoreOperation = 'add' | 'update' | 'delete' | 'set';
@@ -53,14 +52,38 @@ export async function safeWrite(
     const isOnline = state.isConnected === true && state.isInternetReachable !== false;
 
     if (isOnline) {
+      let timedOut = false;
+      let timer: ReturnType<typeof setTimeout>;
+
+      const onlinePromise = Promise.resolve(firestoreFn(payload));
+
+      // If it times out at 3.5s, we queue a fallback.
+      // If onlinePromise later succeeds in the background, we cancel/remove the queued fallback!
+      onlinePromise
+        .then(async () => {
+          if (timedOut) {
+            await removeQueuedFallback(collectionName, operation, docId);
+          }
+        })
+        .catch(() => {});
+
       try {
-        await firestoreFn(payload);
-        touchServerSyncMeta();
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            reject(new Error('Firestore write timed out (3500ms)'));
+          }, 3500);
+        });
+
+        await Promise.race([
+          onlinePromise.finally(() => clearTimeout(timer)),
+          timeoutPromise,
+        ]);
         return true;
       } catch (onlineErr: any) {
-        // Transient network blip even though NetInfo said online — queue as safety net
+        // Transient network blip or socket hang even though NetInfo said online — queue as safety net
         console.warn(
-          `[safeWrite] Online write failed for ${collectionName}/${docId ?? 'new'}, queueing fallback:`,
+          `[safeWrite] Online write failed or timed out for ${collectionName}/${docId ?? 'new'}, queueing fallback:`,
           onlineErr?.message,
         );
       }

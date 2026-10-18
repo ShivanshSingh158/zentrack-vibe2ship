@@ -8,11 +8,11 @@ import React, { useRef, useCallback, useMemo } from 'react';
 import { Alert, InteractionManager } from 'react-native';
 import {
   collection, query, where, addDoc, updateDoc, doc,
-  writeBatch, getDocs,
+  writeBatch, getDocs, increment,
 } from 'firebase/firestore';
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
-import { db } from '../../services/firebase';
+import { db, auth } from '../../services/firebase';
 import { AttendanceSubject } from '../../contexts/MobileDataContext';
 import { COLLECTION } from '../../config/constants';
 import { handleSyncError } from '../../utils/errorUtils';
@@ -43,8 +43,6 @@ interface FirestoreActionsParams {
   logs: any[];
   selectedDate: string;
   logsBySubjectId: Record<string, any[]>;
-  overrideCounts: { classesAttended: number; classesTotal: number; labsAttended: number; labsTotal: number };
-  setOverrideOpen: (id: string | null) => void;
   setConfirmConfig: (config: any) => void;
   optimisticUpdateAttendance: (subjectId: string, partial: Partial<AttendanceSubject>) => void;
   optimisticAddAttendanceLog: (log: any) => void;
@@ -52,14 +50,15 @@ interface FirestoreActionsParams {
   optimisticRemoveAttendanceLog: (logId: string) => void;
   optimisticDeleteSubject?: (subjectId: string) => void;
   optimisticToggleHoliday?: (dateStr: string, isHoliday: boolean) => void;
+  optimisticClearAttendanceLogs?: (subjectId?: string) => void;
 }
 
 export function useAttendanceFirestore({
   user, subjects, logs, selectedDate,
-  logsBySubjectId, overrideCounts,
-  setOverrideOpen, setConfirmConfig,
+  logsBySubjectId,
+  setConfirmConfig,
   optimisticUpdateAttendance, optimisticAddAttendanceLog, optimisticUpdateAttendanceLog, optimisticRemoveAttendanceLog,
-  optimisticDeleteSubject, optimisticToggleHoliday,
+  optimisticDeleteSubject, optimisticToggleHoliday, optimisticClearAttendanceLogs,
 }: FirestoreActionsParams) {
 
   // Mutable refs to keep callback references permanently stable across renders
@@ -73,8 +72,6 @@ export function useAttendanceFirestore({
   selectedDateRef.current = selectedDate;
   const logsBySubjectIdRef = useRef(logsBySubjectId);
   logsBySubjectIdRef.current = logsBySubjectId;
-  const overrideCountsRef = useRef(overrideCounts);
-  overrideCountsRef.current = overrideCounts;
 
   // ── Core log action ────────────────────────────────────────────────────────
   const handleLog = useCallback(async (
@@ -90,10 +87,14 @@ export function useAttendanceFirestore({
     const currentSubjects = subjectsRef.current;
     const currentLogs = logsRef.current;
     const currentSelectedDate = selectedDateRef.current;
+    const uid = currentUser?.uid || user?.uid || auth.currentUser?.uid;
 
-    if (!currentUser || (!subjectInput.id && !subjectInput.name)) return;
+    if (!uid || (!subjectInput.id && !subjectInput.name)) return;
     // Always get the freshest subject state from the domain context
     const subject = currentSubjects.find(s => (subjectInput.id && s.id === subjectInput.id) || s.name === subjectInput.name) || subjectInput;
+    const subjectId = subject.id || subjectInput.id;
+    if (!subjectId) return;
+
     const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
     const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
     const cleanLogDate = (logDate || currentSelectedDate || '').slice(0, 10);
@@ -101,12 +102,12 @@ export function useAttendanceFirestore({
     // Guard: never log attendance for future dates.
     // Students can navigate to future dates to view their timetable, but
     // tapping Present/Absent on a future date silently aborts here.
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = formatLocalDateStr(new Date());
     if (cleanLogDate > todayStr) return;
 
     // Deterministic unique ID for scheduled non-extra sessions
-    const deterministicId = !isExtra && subject.id && currentUser?.uid
-      ? getScheduledAttendanceLogDocId(currentUser.uid, subject.id, cleanLogDate, type, sessionIdx)
+    const deterministicId = !isExtra && subjectId && uid
+      ? getScheduledAttendanceLogDocId(uid, subjectId, cleanLogDate, type, sessionIdx)
       : undefined;
 
     // Check if we are updating an existing log — first try explicit ID, then deterministic ID, then memory match.
@@ -164,6 +165,8 @@ export function useAttendanceFirestore({
 
     let newAttended: number;
     let newTotal: number;
+    let attDelta = 0;
+    let totDelta = 0;
 
     if (existingLog) {
       if (existingLog.action === action && duplicateLogsToDelete.length === 0) return;
@@ -171,27 +174,40 @@ export function useAttendanceFirestore({
       const oldAction = existingLog.action;
       const oldAttContribution = oldAction === 'attended' ? 1 : 0;
       const newAttContribution = action === 'attended' ? 1 : 0;
-      const attDelta = newAttContribution - oldAttContribution;
+      attDelta = newAttContribution - oldAttContribution;
 
       const oldTotContribution = oldAction === 'cancelled' ? 0 : 1;
       const newTotContribution = action === 'cancelled' ? 0 : 1;
-      const totDelta = newTotContribution - oldTotContribution;
+      totDelta = newTotContribution - oldTotContribution;
 
       newAttended = Math.max(0, (subject[attendedKey as keyof AttendanceSubject] as number || 0) + attDelta);
       newTotal    = Math.max(0, (subject[totalKey    as keyof AttendanceSubject] as number || 0) + totDelta);
     } else {
-      newAttended = (subject[attendedKey as keyof AttendanceSubject] as number || 0) + (action === 'attended' ? 1 : 0);
-      newTotal    = (subject[totalKey    as keyof AttendanceSubject] as number || 0) + (action === 'cancelled' ? 0 : 1);
+      attDelta = action === 'attended' ? 1 : 0;
+      totDelta = action === 'cancelled' ? 0 : 1;
+      newAttended = (subject[attendedKey as keyof AttendanceSubject] as number || 0) + attDelta;
+      newTotal    = (subject[totalKey    as keyof AttendanceSubject] as number || 0) + totDelta;
     }
 
     const subjectUpdates = { [attendedKey]: newAttended, [totalKey]: newTotal, lastUpdated: Date.now() };
+
+    const atomicOnlineSubjectUpdates: Record<string, any> = { lastUpdated: Date.now() };
+    const atomicOfflineSubjectUpdates: Record<string, any> = { lastUpdated: Date.now() };
+    if (attDelta !== 0) {
+      atomicOnlineSubjectUpdates[attendedKey] = increment(attDelta);
+      atomicOfflineSubjectUpdates[attendedKey] = { __zentrackIncrement: attDelta };
+    }
+    if (totDelta !== 0) {
+      atomicOnlineSubjectUpdates[totalKey] = increment(totDelta);
+      atomicOfflineSubjectUpdates[totalKey] = { __zentrackIncrement: totDelta };
+    }
 
     try {
       const targetDocId = existingLog?.id || deterministicId || doc(collection(db, COLLECTION.ATTENDANCE_LOGS)).id;
       const targetLog = {
         id: targetDocId,
-        userId: user.uid,
-        subjectId: subject.id,
+        userId: uid,
+        subjectId,
         subjectName: subject.name,
         type,
         action,
@@ -203,7 +219,7 @@ export function useAttendanceFirestore({
 
       if (existingLog) {
         // Optimistically update UI
-        optimisticUpdateAttendance(subject.id, subjectUpdates);
+        optimisticUpdateAttendance(subjectId, subjectUpdates);
         if (optimisticUpdateAttendanceLog) {
           optimisticUpdateAttendanceLog(existingLog.id, { action, timestamp: Date.now() });
         }
@@ -213,11 +229,11 @@ export function useAttendanceFirestore({
           awardXP('ATTENDANCE_LOG').catch(() => {});
         }
 
-        // WhatsApp Pattern: direct online write + offline queue fallback
+        // WhatsApp Pattern: direct online write with atomic increment + offline queue fallback
         safeWrite(
           async () => {
             const batch = writeBatch(db);
-            batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), subjectUpdates);
+            batch.set(doc(db, COLLECTION.ATTENDANCE, subjectId), atomicOnlineSubjectUpdates, { merge: true });
             batch.set(doc(db, COLLECTION.ATTENDANCE_LOGS, existingLog.id), { action, timestamp: Date.now() }, { merge: true });
             duplicateLogsToDelete.forEach(dup => {
               batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, dup.id));
@@ -226,8 +242,8 @@ export function useAttendanceFirestore({
           },
           COLLECTION.ATTENDANCE,
           'update',
-          subjectUpdates,
-          subject.id
+          atomicOfflineSubjectUpdates,
+          subjectId
         ).then(async (online) => {
           if (!online) {
             await queueWrite(COLLECTION.ATTENDANCE_LOGS, 'update', { action, timestamp: Date.now() }, existingLog.id);
@@ -235,7 +251,7 @@ export function useAttendanceFirestore({
         }).catch(handleSyncError);
       } else {
         // Optimistically update UI
-        optimisticUpdateAttendance(subject.id, subjectUpdates);
+        optimisticUpdateAttendance(subjectId, subjectUpdates);
         optimisticAddAttendanceLog(targetLog);
         duplicateLogsToDelete.forEach(dup => optimisticRemoveAttendanceLog(dup.id));
 
@@ -243,11 +259,11 @@ export function useAttendanceFirestore({
           awardXP('ATTENDANCE_LOG').catch(() => {});
         }
 
-        // WhatsApp Pattern: direct online write + offline queue fallback
+        // WhatsApp Pattern: direct online write with atomic increment + offline queue fallback
         safeWrite(
           async () => {
             const batch = writeBatch(db);
-            batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), subjectUpdates);
+            batch.set(doc(db, COLLECTION.ATTENDANCE, subjectId), atomicOnlineSubjectUpdates, { merge: true });
             batch.set(doc(db, COLLECTION.ATTENDANCE_LOGS, targetDocId), targetLog, { merge: true });
             duplicateLogsToDelete.forEach(dup => {
               batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, dup.id));
@@ -256,8 +272,8 @@ export function useAttendanceFirestore({
           },
           COLLECTION.ATTENDANCE,
           'update',
-          subjectUpdates,
-          subject.id
+          atomicOfflineSubjectUpdates,
+          subjectId
         ).then(async (online) => {
           if (!online) {
             await queueWrite(COLLECTION.ATTENDANCE_LOGS, 'set', targetLog, targetDocId);
@@ -272,7 +288,7 @@ export function useAttendanceFirestore({
       // notifications. The BackgroundNotificationWatcher will pick up the attendanceLogs change
       // (via Firestore snapshot ~1-2s later) and run a full reschedule that properly skips
       // all marked sessions via the sessionLog guard in Section 10.
-      cancelClassNotificationsImmediately(subject.id!, subject.name, cleanLogDate, sessionIdx).catch(() => {});
+      cancelClassNotificationsImmediately(subjectId, subject.name, cleanLogDate, sessionIdx).catch(() => {});
 
       // Sync to Android widget immediately if logging today's session
       const nowStr = formatLocalDateStr(new Date());
@@ -322,16 +338,19 @@ export function useAttendanceFirestore({
 
       const targetPct = subject.targetPercentage || 75;
       if (oldPct >= targetPct && newPct < targetPct) {
-        await Notifications.scheduleNotificationAsync({
+        Notifications.scheduleNotificationAsync({
           content: {
             title: 'Attendance Alert! ⚠️',
             body: `${subject.name} has dropped to ${newPct.toFixed(1)}% (below your ${targetPct}% target).`,
             sound: true,
           },
           trigger: null,
-        });
+        }).catch(() => {});
       }
-    } catch (err) { Alert.alert('Error', 'Failed to log attendance'); }
+    } catch (err) {
+      console.error('[handleLog Error]:', err);
+      Alert.alert('Error', 'Failed to log attendance');
+    }
   }, [optimisticUpdateAttendance, optimisticAddAttendanceLog, optimisticUpdateAttendanceLog, optimisticRemoveAttendanceLog]);
 
   // ── Undo last log ──────────────────────────────────────────────────────────
@@ -339,12 +358,15 @@ export function useAttendanceFirestore({
     const currentUser = userRef.current;
     const currentLogs = logsRef.current;
     const currentSubjects = subjectsRef.current;
+    const uid = currentUser?.uid || user?.uid || auth.currentUser?.uid;
 
-    if (!currentUser) return;
+    if (!uid) return;
     const logToUndo = currentLogs.find(l => l.id === logId);
     if (!logToUndo) return;
     const subject = currentSubjects.find(s => s.id === logToUndo.subjectId || s.name === logToUndo.subjectName || s.name === logToUndo.subjectId);
     if (!subject) { Alert.alert('Error', 'Subject deleted.'); return; }
+    const subjectId = subject.id || logToUndo.subjectId;
+    if (!subjectId) return;
 
     const type        = logToUndo.type || 'class';
     const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
@@ -363,22 +385,33 @@ export function useAttendanceFirestore({
     const newTotal    = Math.max(0, (subject[totalKey    as keyof AttendanceSubject] as number || 0) + totDelta);
     const subjectUpdates = { [attendedKey]: newAttended, [totalKey]: newTotal, lastUpdated: Date.now() };
 
+    const atomicOnlineSubjectUpdates: Record<string, any> = { lastUpdated: Date.now() };
+    const atomicOfflineSubjectUpdates: Record<string, any> = { lastUpdated: Date.now() };
+    if (attDelta !== 0) {
+      atomicOnlineSubjectUpdates[attendedKey] = increment(attDelta);
+      atomicOfflineSubjectUpdates[attendedKey] = { __zentrackIncrement: attDelta };
+    }
+    if (totDelta !== 0) {
+      atomicOnlineSubjectUpdates[totalKey] = increment(totDelta);
+      atomicOfflineSubjectUpdates[totalKey] = { __zentrackIncrement: totDelta };
+    }
+
     try {
       // Optimistically update UI
-      optimisticUpdateAttendance(subject.id, subjectUpdates);
+      optimisticUpdateAttendance(subjectId, subjectUpdates);
       optimisticRemoveAttendanceLog(logId);
 
       safeWrite(
         async () => {
           const batch = writeBatch(db);
-          batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), subjectUpdates);
+          batch.set(doc(db, COLLECTION.ATTENDANCE, subjectId), atomicOnlineSubjectUpdates, { merge: true });
           batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, logId));
           await batch.commit();
         },
         COLLECTION.ATTENDANCE,
         'update',
-        subjectUpdates,
-        subject.id
+        atomicOfflineSubjectUpdates,
+        subjectId
       ).then(async (online) => {
         if (!online) {
           await queueWrite(COLLECTION.ATTENDANCE_LOGS, 'delete', null, logId);
@@ -388,7 +421,10 @@ export function useAttendanceFirestore({
       // NOTE: We do NOT call clearScheduleCache() here — the Firestore snapshot that removes
       // the log will update attendanceLogs, change the fingerprint, and trigger a proper
       // reschedule automatically via BackgroundNotificationWatcher.
-    } catch (err) { Alert.alert('Error', 'Failed to undo attendance log'); }
+    } catch (err) {
+      console.error('[handleUndo Error]:', err);
+      Alert.alert('Error', 'Failed to undo attendance log');
+    }
   }, [optimisticUpdateAttendance, optimisticRemoveAttendanceLog]);
 
   // ── Holiday toggle ─────────────────────────────────────────────────────────
@@ -400,80 +436,168 @@ export function useAttendanceFirestore({
     const currentLogs = logsRef.current;
 
     if (!currentUser) return;
+    const cleanDate = (currentSelectedDate || '').trim().slice(0, 10);
+    const deterministicHolidayId = `${currentUser.uid}_${cleanDate}`;
+
     try {
-      optimisticToggleHoliday?.(currentSelectedDate, !isSelectedHoliday);
+      optimisticToggleHoliday?.(cleanDate, !isSelectedHoliday);
 
       if (isSelectedHoliday) {
-        // Turning OFF holiday — delete the holiday doc AND any ghost cancelled logs
-        // that were created when the holiday was toggled ON.
-        const q = query(
-          collection(db, COLLECTION.ATTENDANCE_HOLIDAYS),
-          where('userId', '==', currentUser.uid),
-          where('date', '==', currentSelectedDate),
-        );
-        const snap  = await getDocs(q);
-        const batch = writeBatch(db);
-        snap.docs.forEach(d => batch.delete(d.ref));
+        // 1. Delete deterministic holiday doc + any legacy random-ID holiday docs for this date
+        await safeWrite(
+          async () => {
+            const batch = writeBatch(db);
+            batch.delete(doc(db, COLLECTION.ATTENDANCE_HOLIDAYS, deterministicHolidayId));
+            const q = query(
+              collection(db, COLLECTION.ATTENDANCE_HOLIDAYS),
+              where('userId', '==', currentUser.uid),
+              where('date', '==', cleanDate),
+            );
+            const snap = await getDocs(q).catch(() => null);
+            snap?.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+          },
+          COLLECTION.ATTENDANCE_HOLIDAYS,
+          'delete',
+          null,
+          deterministicHolidayId
+        ).catch(handleSyncError);
 
-        // Fix #4: Also delete cancelled logs created by the holiday toggle.
-        // Without this, turning holiday OFF left ghost cancelled logs behind,
-        // permanently marking classes as cancelled even though the holiday was removed.
+        // 2. Remove auto-cancelled logs for this date both optimistically and via safeWrite
         const cancelledLogsForDate = currentLogs.filter(l =>
           l.action === 'cancelled' &&
           !l.isExtra &&
-          (l.date || '').slice(0, 10) === currentSelectedDate
+          (l.date || '').slice(0, 10) === cleanDate
         );
-        cancelledLogsForDate.forEach(l => {
-          batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, l.id));
+        for (const l of cancelledLogsForDate) {
+          if (!l.id) continue;
           optimisticRemoveAttendanceLog(l.id);
-        });
+          safeWrite(
+            async () => {
+              const b = writeBatch(db);
+              b.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, l.id));
+              await b.commit();
+            },
+            COLLECTION.ATTENDANCE_LOGS,
+            'delete',
+            null,
+            l.id
+          ).catch(handleSyncError);
+        }
 
-        await batch.commit();
         clearScheduleCache();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
-        // Immediately cancel any pending scheduled OS notifications (60m, 30m, checkpoint, post-log)
-        // for all classes/labs on this date so they do not fire on a holiday!
-        cancelAllClassNotificationsForDate(currentSelectedDate).catch(() => {});
+        cancelAllClassNotificationsForDate(cleanDate).catch(() => {});
         clearScheduleCache();
 
-        const batch = writeBatch(db);
-        const holidayDocRef = doc(collection(db, COLLECTION.ATTENDANCE_HOLIDAYS));
-        batch.set(holidayDocRef, { userId: currentUser.uid, date: currentSelectedDate });
+        const holidayPayload = { id: deterministicHolidayId, userId: currentUser.uid, date: cleanDate };
+        await safeWrite(
+          async () => {
+            const b = writeBatch(db);
+            b.set(doc(db, COLLECTION.ATTENDANCE_HOLIDAYS, deterministicHolidayId), holidayPayload, { merge: true });
+            await b.commit();
+          },
+          COLLECTION.ATTENDANCE_HOLIDAYS,
+          'set',
+          holidayPayload,
+          deterministicHolidayId
+        ).catch(handleSyncError);
 
-        const dayKey = new Date(currentSelectedDate + 'T00:00:00').getDay().toString();
+        const dayOfWeekNum = new Date(cleanDate + 'T00:00:00').getDay();
+        const dayKey = dayOfWeekNum.toString();
+
+        // Revert counters for pre-existing attended/missed logs for this date
+        const existingLogsForDate = currentLogs.filter(l => (l.date || '').slice(0, 10) === cleanDate && !l.isExtra);
+        const subjectDeltas: Record<string, { classesAttended: number; classesTotal: number; labsAttended: number; labsTotal: number }> = {};
+
+        for (const l of existingLogsForDate) {
+          if (!l.subjectId || l.action === 'cancelled') continue;
+          if (!subjectDeltas[l.subjectId]) {
+            subjectDeltas[l.subjectId] = { classesAttended: 0, classesTotal: 0, labsAttended: 0, labsTotal: 0 };
+          }
+          const isLab = l.type === 'lab';
+          if (l.action === 'attended') {
+            if (isLab) {
+              subjectDeltas[l.subjectId].labsAttended -= 1;
+              subjectDeltas[l.subjectId].labsTotal -= 1;
+            } else {
+              subjectDeltas[l.subjectId].classesAttended -= 1;
+              subjectDeltas[l.subjectId].classesTotal -= 1;
+            }
+          } else if (l.action === 'missed') {
+            if (isLab) {
+              subjectDeltas[l.subjectId].labsTotal -= 1;
+            } else {
+              subjectDeltas[l.subjectId].classesTotal -= 1;
+            }
+          }
+        }
+
+        for (const [subId, deltas] of Object.entries(subjectDeltas)) {
+          const sub = currentSubjects.find(s => s.id === subId);
+          if (!sub) continue;
+          const updatedSubject = {
+            classesAttended: Math.max(0, (sub.classesAttended || 0) + deltas.classesAttended),
+            classesTotal: Math.max(0, (sub.classesTotal || 0) + deltas.classesTotal),
+            labsAttended: Math.max(0, (sub.labsAttended || 0) + deltas.labsAttended),
+            labsTotal: Math.max(0, (sub.labsTotal || 0) + deltas.labsTotal),
+            lastUpdated: Date.now(),
+          };
+          optimisticUpdateAttendance(subId, updatedSubject);
+          safeWrite(
+            async () => {
+              const b = writeBatch(db);
+              b.set(doc(db, COLLECTION.ATTENDANCE, subId), updatedSubject, { merge: true });
+              await b.commit();
+            },
+            COLLECTION.ATTENDANCE,
+            'update',
+            updatedSubject,
+            subId
+          ).catch(handleSyncError);
+        }
 
         currentSubjects.forEach(subject => {
           const sch =
             subject.schedule?.[dayKey] ||
-            subject.schedule?.[Number(dayKey) as any] ||
-            subject.schedule?.[DAY_NAMES[new Date(currentSelectedDate + 'T00:00:00').getDay()]] ||
-            subject.schedule?.[DAY_NAMES[new Date(currentSelectedDate + 'T00:00:00').getDay()].toLowerCase()];
+            subject.schedule?.[dayOfWeekNum as any] ||
+            subject.schedule?.[DAY_NAMES[dayOfWeekNum]] ||
+            subject.schedule?.[DAY_NAMES[dayOfWeekNum].toLowerCase()];
           if (!sch) return;
 
-          const subLogs  = (currentLogsBySubjectId[subject.id!] || []).filter((l: any) => l.date === currentSelectedDate && !l.isExtra);
+          const subLogs   = (currentLogsBySubjectId[subject.id!] || []).filter((l: any) => (l.date || '').slice(0, 10) === cleanDate && !l.isExtra);
           const classLogs = subLogs.filter((l: any) => l.type === 'class' || !l.type);
           const labLogs   = subLogs.filter((l: any) => l.type === 'lab');
           const classCount = sch.classes?.length || sch.classCount || 0;
           const labCount   = sch.labs?.length   || sch.labCount   || 0;
 
           const createCancelLog = (type: 'class' | 'lab', idx: number) => {
-            const logId = getScheduledAttendanceLogDocId(currentUser.uid, subject.id!, currentSelectedDate, type, idx);
-            const logRef = doc(db, COLLECTION.ATTENDANCE_LOGS, logId);
+            const logId = getScheduledAttendanceLogDocId(currentUser.uid, subject.id!, cleanDate, type, idx);
             const newLog = {
               id: logId,
               userId: currentUser.uid,
               subjectId: subject.id,
               subjectName: subject.name,
               type,
-              action: 'cancelled',
-              date: currentSelectedDate,
+              action: 'cancelled' as const,
+              date: cleanDate,
               isExtra: false,
               timestamp: Date.now(),
               idx,
             };
             optimisticAddAttendanceLog(newLog);
-            batch.set(logRef, newLog, { merge: true });
+            safeWrite(
+              async () => {
+                const b = writeBatch(db);
+                b.set(doc(db, COLLECTION.ATTENDANCE_LOGS, logId), newLog, { merge: true });
+                await b.commit();
+              },
+              COLLECTION.ATTENDANCE_LOGS,
+              'set',
+              newLog,
+              logId
+            ).catch(handleSyncError);
           };
 
           for (let i = 0; i < classCount; i++) {
@@ -488,15 +612,12 @@ export function useAttendanceFirestore({
           }
         });
 
-        await batch.commit();
         clearScheduleCache();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
-      // Sync to Android widget immediately if toggling today's holiday
       const nowStr = formatLocalDateStr(new Date());
-      const cleanSelected = (currentSelectedDate || '').trim().slice(0, 10);
-      if (cleanSelected === nowStr) {
+      if (cleanDate === nowStr) {
         InteractionManager.runAfterInteractions(async () => {
           try {
             const academicCache = await readAcademicCache();
@@ -504,8 +625,8 @@ export function useAttendanceFirestore({
             const cachedWidget = await getCachedWidgetData();
             const existingHolidays = (academicCache.holidays || []).map(h => typeof h === 'string' ? h.trim().slice(0, 10) : (h as any)?.date?.trim()?.slice(0, 10)).filter(Boolean);
             const updatedHolidays = !isSelectedHoliday
-              ? [...new Set([...existingHolidays, cleanSelected])]
-              : existingHolidays.filter(h => h !== cleanSelected);
+              ? [...new Set([...existingHolidays, cleanDate])]
+              : existingHolidays.filter(h => h !== cleanDate);
 
             const widgetData = buildTodayAgendaData({
               tasks: coreCache.tasks || [],
@@ -519,8 +640,10 @@ export function useAttendanceFirestore({
           } catch {}
         });
       }
-    } catch (err) { console.error(err); }
-  }, [optimisticToggleHoliday, optimisticAddAttendanceLog]);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [optimisticToggleHoliday, optimisticAddAttendanceLog, optimisticRemoveAttendanceLog]);
 
   // ── Delete subject ─────────────────────────────────────────────────────────
   const handleDeleteSubject = useCallback((id: string, name: string) => {
@@ -536,32 +659,42 @@ export function useAttendanceFirestore({
       danger: true,
       onConfirm: async () => {
         optimisticDeleteSubject?.(id);
-        const subjectLogs = currentLogs.filter(l => l.subjectId === id);
-        const batch       = writeBatch(db);
-        subjectLogs.forEach(l => batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, l.id)));
-        batch.delete(doc(db, COLLECTION.ATTENDANCE, id));
-        batch.commit().catch(e => console.log('Delete issue:', e));
+        optimisticClearAttendanceLogs?.(id);
+
+        safeWrite(
+          async () => {
+            const b = writeBatch(db);
+            b.delete(doc(db, COLLECTION.ATTENDANCE, id));
+            await b.commit();
+          },
+          COLLECTION.ATTENDANCE,
+          'delete',
+          null,
+          id
+        ).catch(handleSyncError);
+
+        const subjectLogs = currentLogs.filter(l => l.subjectId === id || l.subjectName === name);
+        for (let i = 0; i < subjectLogs.length; i += 400) {
+          const chunk = subjectLogs.slice(i, i + 400);
+          safeWrite(
+            async () => {
+              const b = writeBatch(db);
+              chunk.forEach(l => {
+                if (l.id) b.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, l.id));
+              });
+              await b.commit();
+            },
+            COLLECTION.ATTENDANCE_LOGS,
+            'delete',
+            null,
+            chunk[0]?.id || id
+          ).catch(handleSyncError);
+        }
+
         setConfirmConfig((p: any) => ({ ...p, visible: false }));
       },
     });
-  }, [optimisticDeleteSubject, setConfirmConfig]);
-
-  const handleApplyOverride = useCallback(async (subId: string) => {
-    const currentCounts = overrideCountsRef.current;
-    // Fix #3: Immediately sync React state so the UI reflects the override.
-    // Without this, the override only goes to Firestore but the AcademicContext
-    // snapshot merger (localSum > freshSum guard) rejects the update if the
-    // new counts are lower than the current optimistic state.
-    optimisticUpdateAttendance(subId, currentCounts);
-    await safeWrite(
-      () => updateDoc(doc(db, COLLECTION.ATTENDANCE, subId), currentCounts),
-      COLLECTION.ATTENDANCE,
-      'update',
-      currentCounts,
-      subId
-    );
-    setOverrideOpen(null);
-  }, [setOverrideOpen, optimisticUpdateAttendance]);
+  }, [optimisticDeleteSubject, optimisticClearAttendanceLogs, setConfirmConfig]);
 
   // ── Reset semester ─────────────────────────────────────────────────────────
   const handleResetSemester = useCallback(() => {
@@ -577,39 +710,67 @@ export function useAttendanceFirestore({
       danger: true,
       onConfirm: async () => {
         try {
-          // Optimistically clear UI IMMEDIATELY — don't wait for Firestore batch.
-          // Without this the user sees stale non-zero counters for 1-5 seconds after reset.
-          const zeroUpdate = { classesAttended: 0, classesTotal: 0, labsAttended: 0, labsTotal: 0 };
+          const zeroUpdate = {
+            classesAttended: 0,
+            classesTotal: 0,
+            labsAttended: 0,
+            labsTotal: 0,
+            lastUpdated: Date.now(),
+          };
+          optimisticClearAttendanceLogs?.();
           currentSubjects.forEach(s => {
-            optimisticUpdateAttendance(s.id!, zeroUpdate);
-          });
-          const currentLogs = logsRef.current;
-          currentLogs.forEach(l => {
-            if (l.id) optimisticRemoveAttendanceLog(l.id);
+            if (!s.id) return;
+            optimisticUpdateAttendance(s.id, zeroUpdate);
           });
 
-          const batch    = writeBatch(db);
-          const logsSnap = await getDocs(query(
-            collection(db, COLLECTION.ATTENDANCE_LOGS),
-            where('userId', '==', currentUser.uid),
-          ));
-          logsSnap.docs.forEach(d => batch.delete(d.ref));
-          currentSubjects.forEach(s => {
-            batch.update(doc(db, COLLECTION.ATTENDANCE, s.id!), zeroUpdate);
-          });
-          batch.commit().catch(handleSyncError);
+          for (let i = 0; i < currentSubjects.length; i += 400) {
+            const chunk = currentSubjects.slice(i, i + 400);
+            safeWrite(
+              async () => {
+                const b = writeBatch(db);
+                chunk.forEach(s => {
+                  if (s.id) b.set(doc(db, COLLECTION.ATTENDANCE, s.id), zeroUpdate, { merge: true });
+                });
+                await b.commit();
+              },
+              COLLECTION.ATTENDANCE,
+              'update',
+              zeroUpdate,
+              chunk[0]?.id || 'reset_subjects'
+            ).catch(handleSyncError);
+          }
+
+          const currentLogs = logsRef.current;
+          for (let i = 0; i < currentLogs.length; i += 400) {
+            const chunk = currentLogs.slice(i, i + 400);
+            safeWrite(
+              async () => {
+                const b = writeBatch(db);
+                chunk.forEach(l => {
+                  if (l.id) b.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, l.id));
+                });
+                await b.commit();
+              },
+              COLLECTION.ATTENDANCE_LOGS,
+              'delete',
+              null,
+              chunk[0]?.id || 'reset_logs'
+            ).catch(handleSyncError);
+          }
+
           setConfirmConfig((p: any) => ({ ...p, visible: false }));
-        } catch (err) { console.error(err); }
+        } catch (err) {
+          console.error(err);
+        }
       },
     });
-  }, [setConfirmConfig, optimisticUpdateAttendance, optimisticRemoveAttendanceLog]);
+  }, [setConfirmConfig, optimisticUpdateAttendance, optimisticClearAttendanceLogs]);
 
   return useMemo(() => ({
     handleLog,
     handleUndo,
     handleToggleHoliday,
     handleDeleteSubject,
-    handleApplyOverride,
     handleResetSemester,
-  }), [handleLog, handleUndo, handleToggleHoliday, handleDeleteSubject, handleApplyOverride, handleResetSemester]);
+  }), [handleLog, handleUndo, handleToggleHoliday, handleDeleteSubject, handleResetSemester]);
 }

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { View, Text } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -70,6 +70,32 @@ function DraggableTaskBlock({
 
   const maxTop = (END_HOUR - startHour) * HOUR_HEIGHT - height;
 
+  const handleEndDrag = useCallback((snappedTop: number) => {
+    const hasCollision = checkCollision(taskId, snappedTop, height);
+
+    if (hasCollision) {
+      // Red flash + bounce back
+      borderGlow.value = withSequence(
+        withTiming(2, { duration: 80 }),
+        withTiming(2, { duration: 200 }),
+        withTiming(0, { duration: 200 })
+      );
+      translateY.value = withSpring(0, { damping: 12, stiffness: 200 });
+      scale.value = withSpring(1, { damping: 15, stiffness: 300 });
+    } else {
+      // Snap to new position
+      translateY.value = withSpring(snappedTop - initialTop, { damping: 20, stiffness: 300 }, () => {
+        borderGlow.value = withTiming(0, { duration: 200 });
+        scale.value = withSpring(1, { damping: 15, stiffness: 300 });
+      });
+      
+      const newSlot = topToTimeSlot(snappedTop, startHour, durationFloat);
+      if (newSlot !== timeSlot) {
+        onReschedule(taskId, newSlot);
+      }
+    }
+  }, [checkCollision, taskId, height, initialTop, startHour, durationFloat, timeSlot, onReschedule, borderGlow, translateY, scale]);
+
   const panGesture = Gesture.Pan()
     .activateAfterLongPress(200)
     .onStart(() => {
@@ -90,34 +116,53 @@ function DraggableTaskBlock({
       const rawTop = initialTop + event.translationY;
       const clampedTop = Math.max(0, Math.min(maxTop, rawTop));
       const snappedTop = snapTopToGrid(clampedTop);
-      const hasCollision = checkCollision(taskId, snappedTop, height);
-
-      if (hasCollision) {
-        // Red flash + bounce back
-        borderGlow.value = withSequence(
-          withTiming(2, { duration: 80 }),
-          withTiming(2, { duration: 200 }),
-          withTiming(0, { duration: 200 })
-        );
-        translateY.value = withSpring(0, { damping: 12, stiffness: 200 });
-        scale.value = withSpring(1, { damping: 15, stiffness: 300 });
-      } else {
-        // Snap to new position
-        translateY.value = withSpring(snappedTop - initialTop, { damping: 20, stiffness: 300 }, () => {
-          borderGlow.value = withTiming(0, { duration: 200 });
-          scale.value = withSpring(1, { damping: 15, stiffness: 300 });
-        });
-        
-        const newSlot = topToTimeSlot(snappedTop, startHour, durationFloat);
-        if (newSlot !== timeSlot) {
-          runOnJS(onReschedule)(taskId, newSlot);
-        }
-      }
+      runOnJS(handleEndDrag)(snappedTop);
     });
 
   const taskColors = useMemo(() => {
     return getTaskBlockColors(priority, isDone, isMissed, isDark);
   }, [priority, isDone, isMissed, isDark]);
+
+  // Issue 79: when React re-renders with a new initialTop (after reschedule), translateY must reset
+  // to 0, otherwise the block jumps by the same offset a second time.
+  React.useLayoutEffect(() => {
+    translateY.value = 0;
+  }, [initialTop]);
+
+  // Issue 80: Memoize all gestures to avoid tearing down and re-attaching native recognizers on every render
+  const combinedGesture = useMemo(() => {
+    const tapGesture = Gesture.Tap()
+      .maxDuration(200)
+      .onEnd(() => {
+        'worklet';
+        runOnJS(onPress)();
+      });
+
+    const panGesture = Gesture.Pan()
+      .activateAfterLongPress(200)
+      .onStart(() => {
+        'worklet';
+        runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
+        scale.value = withSpring(1.04, { damping: 15, stiffness: 300 });
+        borderGlow.value = withTiming(1, { duration: 150 });
+      })
+      .onUpdate((event) => {
+        'worklet';
+        const rawTop = initialTop + event.translationY;
+        const clampedTop = Math.max(0, Math.min(maxTop, rawTop));
+        const snapped = snapTopToGrid(clampedTop);
+        translateY.value = snapped - initialTop;
+      })
+      .onEnd((event) => {
+        'worklet';
+        const rawTop = initialTop + event.translationY;
+        const clampedTop = Math.max(0, Math.min(maxTop, rawTop));
+        const snappedTop = snapTopToGrid(clampedTop);
+        runOnJS(handleEndDrag)(snappedTop);
+      });
+
+    return Gesture.Simultaneous(tapGesture, panGesture);
+  }, [initialTop, maxTop, height, startHour, durationFloat, taskId, timeSlot, onReschedule, onPress, checkCollision, handleEndDrag, scale, borderGlow, translateY]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
@@ -130,24 +175,8 @@ function DraggableTaskBlock({
       : borderGlow.value === 1
       ? (isDark ? 'rgba(165, 153, 255, 0.9)' : '#6C5CE7') // dragging = purple glow
       : taskColors.borderNormal,
-    shadowColor: borderGlow.value > 0
-      ? borderGlow.value === 2 ? '#ff5050' : (isDark ? '#a599ff' : '#6C5CE7')
-      : 'transparent',
-    shadowOpacity: borderGlow.value > 0 ? 0.6 : 0,
-    shadowRadius: borderGlow.value > 0 ? 8 : 0,
-    elevation: borderGlow.value > 0 ? 8 : 2,
     zIndex: borderGlow.value > 0 ? 99 : 1,
   }));
-
-  // Separate tap from pan: short press = edit modal, long drag = reschedule
-  const tapGesture = Gesture.Tap()
-    .maxDuration(200)
-    .onEnd(() => {
-      'worklet';
-      runOnJS(onPress)();
-    });
-
-  const combinedGesture = Gesture.Simultaneous(tapGesture, panGesture);
 
   return (
     <GestureDetector gesture={combinedGesture}>
@@ -226,7 +255,7 @@ function DraggableTaskBlock({
 
         {/* Hatch overlay for completed/missed tasks */}
         {(isDone || isMissed) && (
-          <HatchOverlay width={500} height={height} color={taskColors.hatchColor} id={`task-${taskId}`} />
+          <HatchOverlay width={widthPercent < 100 ? 180 : 340} height={height} color={taskColors.hatchColor} id={`task-${taskId}`} />
         )}
       </Animated.View>
     </GestureDetector>

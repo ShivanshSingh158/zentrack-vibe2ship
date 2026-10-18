@@ -16,10 +16,11 @@ import { usePlannerData } from '../../contexts/domains/PlannerContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
-import { safeUpdate } from '../../utils/safeWrite';
+import { safeWrite, safeUpdate } from '../../utils/safeWrite';
+import { handleSyncError } from '../../utils/errorUtils';
 import { GYM_PLAN } from '../../data/gymPlan';
 import { getCustomPlanDay, planDayIndexForDate } from '../../hooks/useGymLog';
 import { parseTimeTo24h, parseTaskTimeSlot, HOUR_HEIGHT } from './calendarUtils';
@@ -33,7 +34,7 @@ export function useCalendarData() {
   const { customEvents, ensureSubscribed } = usePlannerData();
   const { tasks, user, googleAccessToken } = useCoreData();
   const { attendance, attendanceLogs, holidays } = useAcademicData();
-  const { gymLogs, userGymPlan } = useWellnessData();
+  const { gymLogs, userGymPlan, optimisticUpdateGymLog } = useWellnessData();
 
   useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
@@ -69,15 +70,21 @@ export function useCalendarData() {
 
   const handleSaveGymTime = useCallback(async () => {
     if (!selectedGymLog || !user) return;
-    const updates = { startTime: gymStartTimeInput, endTime: gymEndTimeInput };
-    await safeUpdate(
-      selectedGymLog.id,
-      COLLECTION.GYM_LOGS,
-      updates,
-      () => updateDoc(doc(db, COLLECTION.GYM_LOGS, selectedGymLog.id), updates)
-    );
+    const targetDate = selectedGymLog.date || selectedDate;
+    const docId = selectedGymLog.id || `${user.uid}_${targetDate}`;
+    const updates = { startTime: gymStartTimeInput, endTime: gymEndTimeInput, updatedAt: Date.now() };
+
+    optimisticUpdateGymLog?.(docId, updates);
     setShowGymModal(false);
-  }, [selectedGymLog, user, gymStartTimeInput, gymEndTimeInput]);
+
+    await safeWrite(
+      () => setDoc(doc(db, COLLECTION.GYM_LOGS, docId), updates, { merge: true }),
+      COLLECTION.GYM_LOGS,
+      'set',
+      updates,
+      docId
+    ).catch(handleSyncError);
+  }, [selectedGymLog, user, selectedDate, gymStartTimeInput, gymEndTimeInput, optimisticUpdateGymLog]);
 
   // Google Calendar Integration (only fetches if access token present)
   useEffect(() => {

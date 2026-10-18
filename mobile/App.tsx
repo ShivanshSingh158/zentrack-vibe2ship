@@ -34,7 +34,7 @@ import { registerWeeklyReviewTask } from './src/services/backgroundTasks';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { MobileDataProvider } from './src/contexts/MobileDataContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
-import { navigationRef } from './src/navigation/AppNavigator';
+import { navigationRef } from './src/navigation/navigationRef';
 import { db, auth } from './src/services/firebase';
 import { doc, updateDoc, increment, addDoc, setDoc, collection, getDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import { formatLocalDateStr } from './src/utils/dateUtils';
@@ -171,6 +171,18 @@ export default function App() {
     };
   }, []);
 
+  // Record delivery timestamp of water reminders to prevent back-to-back re-scheduling
+  useEffect(() => {
+    const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
+      const id = notification.request.identifier || '';
+      const data = notification.request.content.data as any;
+      if (id.startsWith('water_') || data?.type === 'water_reminder') {
+        AsyncStorage.setItem('@zentrack_last_water_notif_ts', String(Date.now())).catch(() => {});
+      }
+    });
+    return () => receivedSub.remove();
+  }, []);
+
   // ─── Notification Response Handler ─────────────────────────────────────────
   // Central listener for ALL actionable notification taps.
   // Handles all 13 notification types → correct module navigation + Firestore writes.
@@ -182,12 +194,29 @@ export default function App() {
       const categoryId = notification.request.content.categoryIdentifier;
       const identifier = notification.request.identifier || '';
 
+      // Safely extract IDs even when taskId / habitId / subjectId contains underscores
+      // Formats created by notifications.ts:
+      //   task_${taskId}_${unixSec}  OR  task_${taskId}_snooze  OR  task_${taskId}
+      //   habit_${habitId}_${unixSec}
+      //   class_${subjectId}_${sessionIdx}_${unixSec}
+      const parseEntityIdFromIdentifier = (idStr: string, prefix: string, trailingSegments = 1): string | undefined => {
+        if (!idStr.startsWith(prefix)) return undefined;
+        const rest = idStr.slice(prefix.length);
+        const parts = rest.split('_');
+        if (parts.length <= trailingSegments) return rest || undefined;
+        const lastPart = parts[parts.length - 1];
+        const isTimestampOrSnooze = /^\d{9,}$/.test(lastPart) || lastPart === 'snooze';
+        if (!isTimestampOrSnooze) return rest;
+        return parts.slice(0, parts.length - trailingSegments).join('_') || undefined;
+      };
+
       const parsedTaskId = (data?.taskId as string | undefined) ||
-        (identifier.startsWith('task_') ? identifier.split('_')[1] : undefined);
+        parseEntityIdFromIdentifier(identifier, 'task_', 1);
       const parsedHabitId = (data?.habitId as string | undefined) ||
-        (identifier.startsWith('habit_') ? identifier.split('_')[1] : undefined);
+        parseEntityIdFromIdentifier(identifier, 'habit_', 1);
       const parsedSubjectId = (data?.subjectId as string | undefined) ||
-        (identifier.startsWith('class_') ? identifier.split('_')[1] : identifier.startsWith('lab_') ? identifier.split('_')[1] : undefined);
+        parseEntityIdFromIdentifier(identifier, 'class_', 2) ||
+        parseEntityIdFromIdentifier(identifier, 'lab_', 2);
 
       const notifType = (data?.type as string | undefined) ||
         (identifier.startsWith('water_') ? 'water_reminder' :
@@ -198,9 +227,26 @@ export default function App() {
          identifier.startsWith('class_') ? 'class_reminder' :
          categoryId);
 
-      // Helper: navigate imperatively, works before React tree mounts
-      const nav = (screen: string, params?: object) => {
-        if (!navigationRef.isReady()) return;
+      const resolveNotificationUid = async (): Promise<string | undefined> => {
+        if (auth.currentUser?.uid) return auth.currentUser.uid;
+        try {
+          const raw = await AsyncStorage.getItem('@zentrack_optimistic_user');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.uid) return parsed.uid;
+          }
+        } catch {}
+        return auth.currentUser?.uid;
+      };
+
+      // Helper: navigate imperatively, works before React tree mounts with cold-start retry
+      const nav = (screen: string, params?: object, attempt = 0) => {
+        if (!navigationRef.isReady()) {
+          if (attempt < 20) {
+            setTimeout(() => nav(screen, params, attempt + 1), 150);
+          }
+          return;
+        }
         // All screens registered in MainTabNavigator (both pinned + hidden ones).
         // React Navigation can navigate to any Tab.Screen even if display:none in the bar.
         const tabScreens = [
@@ -371,7 +417,7 @@ export default function App() {
           try {
             const todayDate = formatLocalDateStr();
 
-            const uid = auth.currentUser?.uid;
+            const uid = await resolveNotificationUid();
             const deterministicLogId = `${uid ?? 'anon'}_${habitId}_${todayDate}`;
             const habitLogRef = doc(db, COLLECTION.HABIT_LOGS, deterministicLogId);
 
@@ -484,11 +530,12 @@ export default function App() {
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
         const logDate     = (data?.date || formatLocalDateStr()) as string;
+        const idParts     = identifier.split('_');
         const rawIdx      = typeof data?.sessionIdx === 'number'
           ? data.sessionIdx
-          : (identifier.startsWith('class_') && identifier.split('_')[2] ? parseInt(identifier.split('_')[2], 10) : 0);
+          : (idParts.length >= 4 ? parseInt(idParts[idParts.length - 2], 10) : 0);
         const safeSessionIdx = isNaN(rawIdx) ? 0 : rawIdx;
-        const uid         = auth.currentUser?.uid;
+        const uid         = await resolveNotificationUid();
         let success = false;
         if (subjectId && uid) {
           try {
@@ -520,9 +567,16 @@ export default function App() {
                 [attendedKey]: increment(1),
                 lastUpdated: Date.now(),
               };
-              if (totDelta !== 0) updates[totalKey] = increment(totDelta);
+              const offlineUpdates: Record<string, any> = {
+                [attendedKey]: { __zentrackIncrement: 1 },
+                lastUpdated: Date.now(),
+              };
+              if (totDelta !== 0) {
+                updates[totalKey] = increment(totDelta);
+                offlineUpdates[totalKey] = { __zentrackIncrement: totDelta };
+              }
               await Promise.all([
-                safeWrite(() => updateDoc(subjRef, updates), COLLECTION.ATTENDANCE, 'update', { lastUpdated: Date.now() }, subjectId),
+                safeWrite(() => updateDoc(subjRef, updates), COLLECTION.ATTENDANCE, 'update', offlineUpdates, subjectId),
                 safeWrite((p) => setDoc(logRef, p, { merge: true }), COLLECTION.ATTENDANCE_LOGS, 'set', { action: 'attended', timestamp: Date.now() }, logDocId),
               ]);
             } else {
@@ -537,7 +591,7 @@ export default function App() {
                   () => updateDoc(subjRef, { [attendedKey]: increment(1), [totalKey]: increment(1), lastUpdated: Date.now() }),
                   COLLECTION.ATTENDANCE,
                   'update',
-                  { lastUpdated: Date.now() },
+                  { [attendedKey]: { __zentrackIncrement: 1 }, [totalKey]: { __zentrackIncrement: 1 }, lastUpdated: Date.now() },
                   subjectId,
                 ),
                 safeWrite((p) => setDoc(logRef, p), COLLECTION.ATTENDANCE_LOGS, 'set', logPayload, logDocId),
@@ -570,11 +624,12 @@ export default function App() {
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
         const logDate     = (data?.date || formatLocalDateStr()) as string;
+        const idParts     = identifier.split('_');
         const rawIdx      = typeof data?.sessionIdx === 'number'
           ? data.sessionIdx
-          : (identifier.startsWith('class_') && identifier.split('_')[2] ? parseInt(identifier.split('_')[2], 10) : 0);
+          : (idParts.length >= 4 ? parseInt(idParts[idParts.length - 2], 10) : 0);
         const safeSessionIdx = isNaN(rawIdx) ? 0 : rawIdx;
-        const uid         = auth.currentUser?.uid;
+        const uid         = await resolveNotificationUid();
         let success = false;
         if (subjectId && uid) {
           try {
@@ -604,10 +659,17 @@ export default function App() {
               const attDelta = oldAction === 'attended' ? -1 : 0;
               const totDelta = oldAction === 'cancelled' ? 1 : 0;
               const updates: Record<string, any> = { lastUpdated: Date.now() };
-              if (attDelta !== 0) updates[attendedKey] = increment(attDelta);
-              if (totDelta !== 0) updates[totalKey]    = increment(totDelta);
+              const offlineUpdates: Record<string, any> = { lastUpdated: Date.now() };
+              if (attDelta !== 0) {
+                updates[attendedKey] = increment(attDelta);
+                offlineUpdates[attendedKey] = { __zentrackIncrement: attDelta };
+              }
+              if (totDelta !== 0) {
+                updates[totalKey]    = increment(totDelta);
+                offlineUpdates[totalKey] = { __zentrackIncrement: totDelta };
+              }
               await Promise.all([
-                safeWrite(() => updateDoc(subjRef, updates), COLLECTION.ATTENDANCE, 'update', { lastUpdated: Date.now() }, subjectId),
+                safeWrite(() => updateDoc(subjRef, updates), COLLECTION.ATTENDANCE, 'update', offlineUpdates, subjectId),
                 safeWrite((p) => setDoc(logRef, p, { merge: true }), COLLECTION.ATTENDANCE_LOGS, 'set', { action: 'missed', timestamp: Date.now() }, logDocId),
               ]);
             } else {
@@ -622,7 +684,7 @@ export default function App() {
                   () => updateDoc(subjRef, { [totalKey]: increment(1), lastUpdated: Date.now() }),
                   COLLECTION.ATTENDANCE,
                   'update',
-                  { lastUpdated: Date.now() },
+                  { [totalKey]: { __zentrackIncrement: 1 }, lastUpdated: Date.now() },
                   subjectId,
                 ),
                 safeWrite((p) => setDoc(logRef, p), COLLECTION.ATTENDANCE_LOGS, 'set', logPayload, logDocId),
@@ -656,11 +718,12 @@ export default function App() {
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
         const logDate     = (data?.date || formatLocalDateStr()) as string;
+        const idParts     = identifier.split('_');
         const rawIdx      = typeof data?.sessionIdx === 'number'
           ? data.sessionIdx
-          : (identifier.startsWith('class_') && identifier.split('_')[2] ? parseInt(identifier.split('_')[2], 10) : 0);
+          : (idParts.length >= 4 ? parseInt(idParts[idParts.length - 2], 10) : 0);
         const safeSessionIdx = isNaN(rawIdx) ? 0 : rawIdx;
-        const uid         = auth.currentUser?.uid;
+        const uid         = await resolveNotificationUid();
         let success = false;
         if (subjectId && uid) {
           try {
@@ -682,10 +745,17 @@ export default function App() {
               const attDelta = oldAction === 'attended' ? -1 : 0;
               const totDelta = (oldAction === 'attended' || oldAction === 'missed') ? -1 : 0;
               const updates: Record<string, any> = { lastUpdated: Date.now() };
-              if (attDelta !== 0) updates[attendedKey] = increment(attDelta);
-              if (totDelta !== 0) updates[totalKey]    = increment(totDelta);
+              const offlineUpdates: Record<string, any> = { lastUpdated: Date.now() };
+              if (attDelta !== 0) {
+                updates[attendedKey] = increment(attDelta);
+                offlineUpdates[attendedKey] = { __zentrackIncrement: attDelta };
+              }
+              if (totDelta !== 0) {
+                updates[totalKey]    = increment(totDelta);
+                offlineUpdates[totalKey] = { __zentrackIncrement: totDelta };
+              }
               await Promise.all([
-                safeWrite(() => updateDoc(subjRef, updates), COLLECTION.ATTENDANCE, 'update', { lastUpdated: Date.now() }, subjectId),
+                safeWrite(() => updateDoc(subjRef, updates), COLLECTION.ATTENDANCE, 'update', offlineUpdates, subjectId),
                 safeWrite((p) => setDoc(logRef, p, { merge: true }), COLLECTION.ATTENDANCE_LOGS, 'set', { action: 'cancelled', timestamp: Date.now() }, logDocId),
               ]);
             } else {

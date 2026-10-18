@@ -52,14 +52,24 @@ export function useWidgetSync({
       .join('|');
     const isHoliday = (holidays || []).some(h => (typeof h === 'string' ? h.trim().slice(0, 10) : (h as any)?.date?.trim()?.slice(0, 10)) === dateStr);
 
-    const todayGym = (gymLogs || []).find((l: any) => l.date === dateStr);
+    const todayGym = (gymLogs || []).find((g: any) => (g.date || '').slice(0, 10) === dateStr);
+    const planFingerprint = userGymPlan ? `${userGymPlan.splitName || ''}_${userGymPlan.updatedAt || 0}` : 'no_plan';
+
+    const completedSetsCount = todayGym
+      ? (todayGym.exercises || []).reduce(
+          (sum: number, ex: any) => sum + ((ex.setsLog || []).filter((s: any) => s.completed).length),
+          0
+        )
+      : 0;
     const gymFingerprint = todayGym
-      ? `${todayGym.completed ? '1' : '0'}_${todayGym.workoutStartTime || 0}_${todayGym.workoutDurationMinutes || 0}_${(todayGym.exercises || []).length}`
+      ? `${todayGym.completed ? '1' : '0'}_${todayGym.workoutStartTime || 0}_${todayGym.workoutDurationMinutes || 0}_${(todayGym.exercises || []).length}_${completedSetsCount}_${todayGym.updatedAt || 0}`
       : 'no_gym';
-    const planFingerprint = userGymPlan?.updatedAt || 'no_plan';
+    const taskFp = tasks
+      .map(t => `${t.id}:${t.status}:${t.date || ''}:${t.timeSlot || ''}:${t.title || ''}`)
+      .join(',');
 
     // Fast O(1) shallow fingerprint tracking task states, today's log actions, holiday state, zenScore, streak, and gym state
-    const currentFingerprint = `${tasks.length}_${tasks.map(t => `${t.id}:${t.status}`).join(',')}_${subjects.length}_${todayLogs}_${isHoliday ? '1' : '0'}_${Math.round(zenScore)}_${Math.round(streak)}_${gymFingerprint}_${planFingerprint}`;
+    const currentFingerprint = `${tasks.length}_${taskFp}_${subjects.length}_${todayLogs}_${isHoliday ? '1' : '0'}_${Math.round(zenScore)}_${Math.round(streak)}_${gymFingerprint}_${planFingerprint}`;
     if (currentFingerprint === lastFingerprintRef.current) {
       return; // Data has not changed; skip 100% of background work
     }

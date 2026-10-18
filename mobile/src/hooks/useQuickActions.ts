@@ -6,7 +6,7 @@
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import * as QuickActions from 'expo-quick-actions';
-import { navigationRef } from '../navigation/AppNavigator';
+import { navigationRef } from '../navigation/navigationRef';
 
 export const QUICK_ACTIONS_CONFIG: QuickActions.Action[] = [
   {

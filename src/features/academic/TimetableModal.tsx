@@ -98,7 +98,7 @@ export const TimetableModal: React.FC<TimetableModalProps> = ({
 
               // Build schedule items
               const scheduleItems: React.ReactNode[] = [];
-              ['1', '2', '3', '4', '5', '6'].forEach(dKey => {
+              ['1', '2', '3', '4', '5', '6', '0'].forEach(dKey => {
                 const dayIdx = Number(dKey);
                 const dSched = s.schedule?.[dKey] || s.schedule?.[dayIdx];
                 const classes = Array.isArray(dSched?.classes) ? dSched.classes : [];

@@ -41,6 +41,13 @@ function playWebBeep(freq: number, durationMs: number) {
     osc.frequency.value = freq;
     osc.type = 'sine';
 
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        gain.disconnect();
+      } catch (_) {}
+    };
+
     const t0 = ctx.currentTime;
     const durSec = durationMs / 1000;
     gain.gain.setValueAtTime(0.001, t0);
@@ -90,14 +97,17 @@ function generatePcmWavDataUri(freq: number, durationMs: number, sampleRate = 80
 
   for (let i = 0; i < numSamples; i++) {
     const t = i / sampleRate;
+    const attack = Math.min(1, t / 0.005); // 5ms linear attack envelope to prevent click/pop
     const decay = Math.exp(-t * (3500 / durationMs));
-    const sample = Math.sin(2 * Math.PI * freq * t) * decay;
+    const sample = Math.sin(2 * Math.PI * freq * t) * attack * decay;
     bytes[44 + i] = Math.floor((sample + 1) * 127.5);
   }
 
-  // Pure JS Base64 encoder
+  // Pre-allocated Pure JS Base64 encoder (avoids string concatenation heap fragmentation)
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  let base64 = '';
+  const outLen = Math.ceil(bytes.length / 3) * 4;
+  const out = new Array(outLen);
+  let outIdx = 0;
   let i = 0;
   while (i < bytes.length) {
     const b1 = bytes[i++];
@@ -116,33 +126,81 @@ function generatePcmWavDataUri(freq: number, durationMs: number, sampleRate = 80
       enc4 = 64;
     }
 
-    base64 += chars.charAt(enc1) + chars.charAt(enc2) + (enc3 === 64 ? '=' : chars.charAt(enc3)) + (enc4 === 64 ? '=' : chars.charAt(enc4));
+    out[outIdx++] = chars.charAt(enc1);
+    out[outIdx++] = chars.charAt(enc2);
+    out[outIdx++] = enc3 === 64 ? '=' : chars.charAt(enc3);
+    out[outIdx++] = enc4 === 64 ? '=' : chars.charAt(enc4);
   }
 
-  return `data:audio/wav;base64,${base64}`;
+  return `data:audio/wav;base64,${out.join('')}`;
 }
 
-// Pre-synthesized Base64 sound data URIs
-const TICK_URI = generatePcmWavDataUri(880, 85);
-const CHIME_URI = generatePcmWavDataUri(1320, 240);
-const COMPLETE_URI = generatePcmWavDataUri(660, 110);
+// Lazy-synthesized Base64 sound data URIs — avoids blocking main JS thread during cold boot
+let TICK_URI: string | null = null;
+let CHIME_URI: string | null = null;
+let COMPLETE_URI: string | null = null;
+
+function getTickUri(): string {
+  if (!TICK_URI) TICK_URI = generatePcmWavDataUri(880, 85);
+  return TICK_URI;
+}
+function getChimeUri(): string {
+  if (!CHIME_URI) CHIME_URI = generatePcmWavDataUri(1320, 240);
+  return CHIME_URI;
+}
+function getCompleteUri(): string {
+  if (!COMPLETE_URI) COMPLETE_URI = generatePcmWavDataUri(660, 110);
+  return COMPLETE_URI;
+}
 
 let nativeSoundCache: Record<string, any> = {};
+let nativeSoundPromiseCache: Record<string, Promise<any>> = {};
+let isAudioModeConfigured = false;
+
+async function ensureAudioMode() {
+  if (isAudioModeConfigured || Platform.OS === 'web') return;
+  try {
+    const { Audio, InterruptionModeAndroid, InterruptionModeIOS } = require('expo-av');
+    await Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+      shouldDuckAndroid: true,
+      interruptionModeAndroid: InterruptionModeAndroid ? InterruptionModeAndroid.DuckOthers : 2,
+      interruptionModeIOS: InterruptionModeIOS ? InterruptionModeIOS.DuckOthers : 2,
+      playThroughEarpieceAndroid: false,
+    });
+    isAudioModeConfigured = true;
+  } catch (e) {
+    // Non-fatal if audio mode fails to configure
+  }
+}
 
 async function playNativeSound(uri: string) {
   try {
+    await ensureAudioMode();
     const { Audio } = require('expo-av');
     if (!nativeSoundCache[uri]) {
-      const { sound } = await Audio.Sound.createAsync(
-        { uri },
-        { shouldPlay: true, volume: 1.0 }
-      );
+      if (!nativeSoundPromiseCache[uri]) {
+        nativeSoundPromiseCache[uri] = Audio.Sound.createAsync(
+          { uri },
+          { shouldPlay: true, volume: 1.0 }
+        ).then((res: any) => res.sound);
+      }
+      const sound = await nativeSoundPromiseCache[uri];
       nativeSoundCache[uri] = sound;
+      delete nativeSoundPromiseCache[uri];
     } else {
       await nativeSoundCache[uri].replayAsync();
     }
   } catch (e) {
-    // Graceful fallback if audio is muted or busy
+    delete nativeSoundPromiseCache[uri];
+    // Graceful fallback: clean up broken sound instance if audio focus was lost
+    if (nativeSoundCache[uri]) {
+      try {
+        await nativeSoundCache[uri].unloadAsync();
+      } catch {}
+      delete nativeSoundCache[uri];
+    }
   }
 }
 
@@ -157,7 +215,7 @@ export function playCountdownTick() {
   if (Platform.OS === 'web') {
     playWebBeep(880, 85);
   } else {
-    playNativeSound(TICK_URI);
+    playNativeSound(getTickUri());
   }
 }
 
@@ -172,7 +230,7 @@ export function playTimerFinishChime() {
   if (Platform.OS === 'web') {
     playWebBeep(1320, 240);
   } else {
-    playNativeSound(CHIME_URI);
+    playNativeSound(getChimeUri());
   }
 }
 
@@ -187,6 +245,6 @@ export function playSetCompleteTone() {
   if (Platform.OS === 'web') {
     playWebBeep(660, 110);
   } else {
-    playNativeSound(COMPLETE_URI);
+    playNativeSound(getCompleteUri());
   }
 }

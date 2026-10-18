@@ -215,8 +215,8 @@ export default function AssignmentsScreen() {
     optimisticUpdateAssignment,
     optimisticDeleteAssignment,
   } = useAcademicData();
-  const { user, optimisticAddTask } = useCoreData();
-  const { optimisticAddEvent } = usePlannerData();
+  const { user, optimisticAddTask, optimisticUpdateTask, optimisticDeleteTask } = useCoreData();
+  const { optimisticAddEvent, optimisticDeleteEvent } = usePlannerData();
 
   useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
@@ -322,6 +322,8 @@ export default function AssignmentsScreen() {
     const parsedObtained = obtainedMarks.trim() ? Number(obtainedMarks.trim()) : undefined;
     const parsedGrade = grade.trim() ? grade.trim().toUpperCase() : undefined;
 
+    const existingAssignment = editingId ? (assignments || []).find(a => a.id === editingId) : undefined;
+
     const assignmentData: Assignment = {
       userId: user.uid,
       title: finalTitle,
@@ -334,7 +336,7 @@ export default function AssignmentsScreen() {
       obtainedMarks: !isNaN(parsedObtained as number) ? parsedObtained : undefined,
       grade: parsedGrade,
       updatedAt: now,
-      createdAt: now,
+      createdAt: existingAssignment?.createdAt || now,
     };
 
     if (editingId) {
@@ -352,7 +354,11 @@ export default function AssignmentsScreen() {
         editingId
       ).catch(handleSyncError);
 
-      if (status === 'submitted' || status === 'graded') {
+      if (
+        (status === 'submitted' || status === 'graded') &&
+        existingAssignment?.status !== 'submitted' &&
+        existingAssignment?.status !== 'graded'
+      ) {
         awardXP('TASK_COMPLETE').catch(() => {});
       }
     } else {
@@ -396,10 +402,12 @@ export default function AssignmentsScreen() {
 
         // B. High-Priority Task
         const taskId = `task_${newId}`;
+        const taskTitle = `Complete: ${finalTitle}`;
         const taskData: Task = {
           id: taskId,
           userId: user.uid,
-          title: `Complete: ${finalTitle}`,
+          title: taskTitle,
+          text: taskTitle,
           priority: 'high',
           status: 'pending',
           date: dueDateStr,
@@ -416,41 +424,17 @@ export default function AssignmentsScreen() {
           taskId
         ).catch(handleSyncError);
 
-        // C. Schedule 24h & 2h Push Notifications
-        try {
-          const dueDateTime = parseLocalDateStr(dueDateStr);
-          dueDateTime.setHours(23, 59, 0, 0);
-          const nowMs = Date.now();
-
-          // 24 Hours Alert
-          const t24 = dueDateTime.getTime() - 24 * 60 * 60 * 1000;
-          if (t24 > nowMs) {
-            Notifications.scheduleNotificationAsync({
-              content: {
-                title: `Kal Deadline Hai: ${finalTitle}! 🚨`,
-                body: `Don't forget to submit your ${finalSubject} assignment on time.`,
-                data: { type: 'assignment_24h', assignmentId: newId },
-              },
-              trigger: { type: 'date', date: new Date(t24) } as any,
-            }).catch(() => {});
-          }
-
-          // 2 Hours Alert
-          const t2 = dueDateTime.getTime() - 2 * 60 * 60 * 1000;
-          if (t2 > nowMs) {
-            Notifications.scheduleNotificationAsync({
-              content: {
-                title: `Final 2 Hours: ${finalTitle} Due Soon! ⏰`,
-                body: `Submit your ${finalSubject} assignment before the portal closes.`,
-                data: { type: 'assignment_2h', assignmentId: newId },
-              },
-              trigger: { type: 'date', date: new Date(t2) } as any,
-            }).catch(() => {});
-          }
-        } catch {}
+        // NOTE: Assignment deadline notifications (24h & 2h before due) are scheduled
+        // automatically by scheduleAllNotifications() (Section 7 in notifications.ts)
+        // whenever the assignments array changes. Scheduling them here again with a
+        // different identifier caused every assignment to fire twice. Removed to fix the
+        // double-notification bug. The cancel calls in the delete handler below are
+        // preserved to clean up any legacy alarms from previous builds.
       }
 
-      awardXP('TASK_COMPLETE').catch(() => {});
+      if (status === 'submitted' || status === 'graded') {
+        awardXP('TASK_COMPLETE').catch(() => {});
+      }
     }
   }, [
     title,
@@ -463,6 +447,7 @@ export default function AssignmentsScreen() {
     status,
     notes,
     editingId,
+    assignments,
     syncToCalendarAndTasks,
     optimisticUpdateAssignment,
     optimisticAddAssignment,
@@ -491,10 +476,17 @@ export default function AssignmentsScreen() {
       assignment.id
     ).catch(handleSyncError);
 
-    if (nextStatus === 'submitted' || nextStatus === 'graded') {
+    // Sync linked task_${id} if present
+    const linkedTaskId = `task_${assignment.id}`;
+    const isNowDone = nextStatus === 'submitted' || nextStatus === 'graded';
+    const completedAt = isNowDone ? toISODateStr(new Date()) : null;
+    optimisticUpdateTask?.(linkedTaskId, { status: isNowDone ? 'completed' : 'pending', completedAt });
+
+    // Only award XP once when transitioning from not_started/in_progress -> submitted
+    if (nextStatus === 'submitted' && assignment.status !== 'submitted' && assignment.status !== 'graded') {
       awardXP('TASK_COMPLETE').catch(() => {});
     }
-  }, [user, optimisticUpdateAssignment]);
+  }, [user, optimisticUpdateAssignment, optimisticUpdateTask]);
 
   const confirmDelete = useCallback((id: string, titleStr: string) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -506,10 +498,20 @@ export default function AssignmentsScreen() {
         onPress: () => {
           optimisticDeleteAssignment(id);
           safeDelete(id, COLLECTION.ASSIGNMENTS, () => deleteDoc(doc(db, COLLECTION.ASSIGNMENTS, id))).catch(handleSyncError);
+
+          // Clean up any 1-Tap synced Calendar Event, Task, and scheduled alarms
+          const linkedEventId = `ev_${id}`;
+          const linkedTaskId = `task_${id}`;
+          optimisticDeleteEvent(linkedEventId);
+          optimisticDeleteTask(linkedTaskId);
+          safeDelete(linkedEventId, COLLECTION.CALENDAR_EVENTS, () => deleteDoc(doc(db, COLLECTION.CALENDAR_EVENTS, linkedEventId))).catch(() => {});
+          safeDelete(linkedTaskId, COLLECTION.TASKS, () => deleteDoc(doc(db, COLLECTION.TASKS, linkedTaskId))).catch(() => {});
+          Notifications.cancelScheduledNotificationAsync(`assignment_24h_${id}`).catch(() => {});
+          Notifications.cancelScheduledNotificationAsync(`assignment_2h_${id}`).catch(() => {});
         },
       },
     ]);
-  }, [optimisticDeleteAssignment]);
+  }, [optimisticDeleteAssignment, optimisticDeleteEvent, optimisticDeleteTask]);
 
   // Filter, Radar & Search Aggregation
   const { filteredList, counts, radarStats } = useMemo(() => {

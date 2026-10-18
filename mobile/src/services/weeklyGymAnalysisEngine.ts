@@ -13,7 +13,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { callProxy, parseProxyResponse } from './geminiProxy';
-import { canonicalizeMuscle, isValidWorkoutSession } from '../utils/gymUtils';
+import { canonicalizeMuscle, isValidWorkoutSession, normalizeExerciseKey } from '../utils/gymUtils';
 import { formatLocalDateStr } from '../utils/dateUtils';
 
 
@@ -90,16 +90,45 @@ function extractJson(text: string): string {
   // 4. Auto-repair truncated JSON (e.g. cut off mid-string or missing closing braces)
   if (firstBrace !== -1) {
     let candidate = cleaned.slice(firstBrace);
-    // If ending inside an unclosed string, close the string
-    const quoteCount = (candidate.match(/(?<!\\)"/g) || []).length;
-    if (quoteCount % 2 !== 0) candidate += '"';
-    // Count open vs close braces and brackets
-    const openBraces = (candidate.match(/\{/g) || []).length;
-    const closeBraces = (candidate.match(/\}/g) || []).length;
-    const openBrackets = (candidate.match(/\[/g) || []).length;
-    const closeBrackets = (candidate.match(/\]/g) || []).length;
-    for (let i = 0; i < openBrackets - closeBrackets; i++) candidate += ']';
-    for (let i = 0; i < openBraces - closeBraces; i++) candidate += '}';
+    let inString = false;
+    let isEscaped = false;
+    const stack: string[] = [];
+
+    for (let i = 0; i < candidate.length; i++) {
+      const ch = candidate[i];
+      if (inString) {
+        if (isEscaped) {
+          isEscaped = false;
+        } else if (ch === '\\') {
+          isEscaped = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+      } else {
+        if (ch === '"') {
+          inString = true;
+        } else if (ch === '{') {
+          stack.push('}');
+        } else if (ch === '[') {
+          stack.push(']');
+        } else if (ch === '}') {
+          if (stack.length > 0 && stack[stack.length - 1] === '}') {
+            stack.pop();
+          }
+        } else if (ch === ']') {
+          if (stack.length > 0 && stack[stack.length - 1] === ']') {
+            stack.pop();
+          }
+        }
+      }
+    }
+
+    if (inString) {
+      candidate += '"';
+    }
+    while (stack.length > 0) {
+      candidate += stack.pop();
+    }
     try { JSON.parse(candidate); return candidate; } catch (_) {}
   }
 
@@ -154,8 +183,11 @@ export function getWeekMondayStr(anchorDate: string): string {
 export async function getCachedWeeklyGymAnalysis(weekAnchorDate: string): Promise<WeeklyGymAnalysis | null> {
   try {
     const mondayStr = getWeekMondayStr(weekAnchorDate);
-    const key = `@zentrack_weekly_ai_report_${mondayStr}`;
-    const raw = await AsyncStorage.getItem(key);
+    const key = `${CACHE_PREFIX}${mondayStr}`;
+    let raw = await AsyncStorage.getItem(key);
+    if (!raw) {
+      raw = await AsyncStorage.getItem(`@zentrack_weekly_ai_report_${mondayStr}`);
+    }
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return (parsed.analysis || parsed) as WeeklyGymAnalysis;
@@ -214,16 +246,20 @@ export async function getOrGenerateWeeklyGymAnalysis(
   }
 
   const mondayStr = getWeekMondayStr(weekAnchorDate);
-  const cacheKey  = `@zentrack_weekly_ai_report_${mondayStr}`;
+  const cacheKey  = `${CACHE_PREFIX}${mondayStr}`;
+  const currentFingerprint = computeWeeklyDataFingerprint(weekAnchorDate, weekLogs, thirtyDayLogs);
 
-  // ── Permanent Week Cache Check ────────────────────────────────────────────
+  // ── Cache Check: Freshness & Data Fingerprint ────────────────────────────
   if (!forceRefresh) {
     try {
       const raw = await AsyncStorage.getItem(cacheKey);
       if (raw) {
         const cached = JSON.parse(raw);
         const analysis = (cached.analysis || cached) as WeeklyGymAnalysis;
-        if (analysis && analysis.headline && analysis.verdict) {
+        const timestamp = cached.timestamp || cached.analysis?.generatedAt || 0;
+        const isFresh = (Date.now() - timestamp) < CACHE_MAX_AGE_MS;
+        const matchesFingerprint = cached.fingerprint && cached.fingerprint === currentFingerprint;
+        if (analysis && analysis.headline && analysis.verdict && isFresh && matchesFingerprint) {
           return { analysis, fromCache: true };
         }
       }
@@ -239,14 +275,17 @@ export async function getOrGenerateWeeklyGymAnalysis(
       .map((ex: any) => {
         const completedSets = (ex.setsLog || []).filter((s: any) => s.completed);
         const maxWeight     = Math.max(0, ...completedSets.map((s: any) => Number(s.weight) || 0));
-        const maxRepsAtMax  = completedSets.find((s: any) => Number(s.weight) === maxWeight)?.reps || 0;
+        const setsAtMax     = completedSets.filter((s: any) => Number(s.weight) === maxWeight);
+        const maxRepsAtMax  = Math.max(0, ...setsAtMax.map((s: any) => Number(s.reps) || 0));
+        const allOneRMs     = completedSets.map((s: any) => epley1RM(Number(s.weight) || 0, Number(s.reps) || 0));
+        const peak1RM       = allOneRMs.length > 0 ? Math.max(0, ...allOneRMs) : (maxWeight > 0 ? epley1RM(maxWeight, maxRepsAtMax) : null);
         return {
           name: ex.name,
           muscle: canonicalizeMuscle(ex.muscle),
           targetSets: ex.targetSets || 3,
           completedSets: completedSets.length,
           maxWeightKg: maxWeight > 0 ? maxWeight : null,
-          est1RM: maxWeight > 0 ? epley1RM(maxWeight, maxRepsAtMax) : null,
+          est1RM: peak1RM && peak1RM > 0 ? peak1RM : null,
           setsDetail: completedSets.map((s: any) => ({
             weight: Number(s.weight) || 0,
             reps:   Number(s.reps)   || 0,
@@ -260,26 +299,38 @@ export async function getOrGenerateWeeklyGymAnalysis(
     })),
   });
 
-  const thisWeekData = weekLogs.filter(isValidWorkoutSession).map(formatSession);
-  const prevWeekData = prevLogs.filter(isValidWorkoutSession).map(formatSession);
+  const hasCompletedSetsOrCardio = (log: any) => {
+    const hasSets = (log.exercises || []).some((ex: any) => !ex.skipped && (ex.setsLog || []).some((s: any) => s.completed));
+    const hasCardio = (log.cardio || []).some((c: any) => c.completed);
+    return hasSets || hasCardio;
+  };
+
+  const thisWeekData = weekLogs.filter(hasCompletedSetsOrCardio).map(formatSession);
+  const prevWeekData = prevLogs.filter(hasCompletedSetsOrCardio).map(formatSession);
 
   // ── 30-day progression per exercise ──────────────────────────────────────
-  const thirtyDayProgression: Record<string, { dates: string[]; maxWeights: number[]; est1RMs: number[]; volumes: number[] }> = {};
+  const thirtyDayProgression: Record<string, { displayName: string; dates: string[]; maxWeights: number[]; est1RMs: number[]; volumes: number[] }> = {};
   for (const log of thirtyDayLogs) {
     for (const ex of log.exercises || []) {
       if (ex.skipped) continue;
       const completed = (ex.setsLog || []).filter((s: any) => s.completed);
       if (!completed.length) continue;
       const maxW    = Math.max(0, ...completed.map((s: any) => Number(s.weight) || 0));
-      const maxReps = completed.find((s: any) => Number(s.weight) === maxW)?.reps || 0;
+      const setsAtMax = completed.filter((s: any) => Number(s.weight) === maxW);
+      const maxReps = Math.max(0, ...setsAtMax.map((s: any) => Number(s.reps) || 0));
       const vol     = completed.reduce((sum: number, s: any) => sum + (Number(s.weight) || 0) * (Number(s.reps) || 0), 0);
-      if (!thirtyDayProgression[ex.name]) {
-        thirtyDayProgression[ex.name] = { dates: [], maxWeights: [], est1RMs: [], volumes: [] };
+      const allRMs  = completed.map((s: any) => epley1RM(Number(s.weight) || 0, Number(s.reps) || 0));
+      const peak1RM = Math.max(0, ...allRMs, epley1RM(maxW, maxReps));
+      const key     = normalizeExerciseKey(ex.name);
+
+      if (!thirtyDayProgression[key]) {
+        thirtyDayProgression[key] = { displayName: ex.name, dates: [], maxWeights: [], est1RMs: [], volumes: [] };
       }
-      thirtyDayProgression[ex.name].dates.push(log.date);
-      thirtyDayProgression[ex.name].maxWeights.push(maxW);
-      thirtyDayProgression[ex.name].est1RMs.push(epley1RM(maxW, maxReps));
-      thirtyDayProgression[ex.name].volumes.push(vol);
+      thirtyDayProgression[key].displayName = ex.name;
+      thirtyDayProgression[key].dates.push(log.date);
+      thirtyDayProgression[key].maxWeights.push(maxW);
+      thirtyDayProgression[key].est1RMs.push(peak1RM);
+      thirtyDayProgression[key].volumes.push(vol);
     }
   }
 
@@ -310,8 +361,12 @@ ${rmLines}
 `;
   }
 
+  const athleteWeight = gymProfile?.weightKg ?? gymProfile?.bodyweightKg;
+  const athleteGoal = gymProfile?.goal ?? gymProfile?.primaryGoal;
+  const athleteExp = gymProfile?.experience ?? (gymProfile?.trainingExperienceMonths ? `${gymProfile.trainingExperienceMonths} months` : undefined);
+
   const athleteCtx = gymProfile
-    ? `ATHLETE: ${gymProfile.weightKg || 'N/A'}kg bodyweight, Goal: ${gymProfile.goal || 'Hypertrophy/Strength'}, Level: ${gymProfile.experience || 'Intermediate'}`
+    ? `ATHLETE: ${athleteWeight ? `${athleteWeight}kg` : 'N/A'} bodyweight, Goal: ${athleteGoal || 'Hypertrophy/Strength'}, Level: ${athleteExp || 'Intermediate'}`
     : 'ATHLETE: Hypertrophy / Strength focus, Intermediate level';
 
   const prompt = `You are GAINS / S.A.R.A — an elite sports scientist and direct biomechanics coach. No generic advice. Quote real weights, real exercises, real numbers.
@@ -391,7 +446,12 @@ HARD RULES: Only use numbers from the pre-computed stats block. No markdown aste
 
       await AsyncStorage.setItem(
         cacheKey,
-        JSON.stringify({ analysis: parsed, timestamp: Date.now(), weekMonday: mondayStr }),
+        JSON.stringify({
+          analysis: parsed,
+          timestamp: Date.now(),
+          weekMonday: mondayStr,
+          fingerprint: currentFingerprint
+        }),
       );
 
       return { analysis: parsed, fromCache: false };

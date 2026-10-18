@@ -52,19 +52,26 @@ interface RepairResult {
   errors: string[];
 }
 
+let isRepairRunning = false;
+let lastRepairRunMs = 0;
+
 export async function repairDuplicateAttendanceLogs(
-  uid: string
+  uid: string,
+  force = false
 ): Promise<RepairResult> {
   const result: RepairResult = { fixed: 0, deleted: 0, errors: [] };
   if (!uid) return result;
 
-  const flagKey = `${REPAIR_FLAG_PREFIX}${uid}`;
+  const now = Date.now();
+  // Cooldown: prevent spamming repair loops more than once every 60s unless forced
+  if (isRepairRunning || (!force && now - lastRepairRunMs < 60000)) {
+    return result;
+  }
+
+  isRepairRunning = true;
+  lastRepairRunMs = now;
 
   try {
-    // Idempotency: skip if already done for this user
-    const flag = await AsyncStorage.getItem(flagKey).catch(() => null);
-    if (flag === 'done') return result;
-
     // ── 1. Load all non-extra scheduled logs for this user ─────────────────
     const logsSnap = await getDocs(query(
       collection(db, COLLECTION.ATTENDANCE_LOGS),
@@ -73,7 +80,6 @@ export async function repairDuplicateAttendanceLogs(
     ));
 
     if (logsSnap.empty) {
-      await AsyncStorage.setItem(flagKey, 'done').catch(() => {});
       return result;
     }
 
@@ -93,10 +99,12 @@ export async function repairDuplicateAttendanceLogs(
       groups.get(key)!.push({ id: d.id, data });
     });
 
-    // ── 3. Identify extras and compute counter deltas ──────────────────────
+    // ── 3. Identify extras and compute separate class & lab deltas ──────────
     const subjectDeltas = new Map<string, {
-      attendedDelta: number; totalDelta: number;
-      attendedKey: string;   totalKey: string;
+      classAttDelta: number;
+      classTotDelta: number;
+      labAttDelta: number;
+      labTotDelta: number;
     }>();
     const docsToDelete: string[] = [];
     const docsToMigrate: { id: string; data: Record<string, any> }[] = [];
@@ -142,26 +150,30 @@ export async function repairDuplicateAttendanceLogs(
       extras.forEach(extra => {
         const subjectId = String(extra.data.subjectId || '').trim();
         if (!subjectId) return;
-        const et      = extra.data.type === 'lab' ? 'lab' : 'class';
-        const attKey  = et === 'lab' ? 'labsAttended'  : 'classesAttended';
-        const totKey  = et === 'lab' ? 'labsTotal'     : 'classesTotal';
-        const action  = String(extra.data.action || '');
-        const attContrib = action === 'attended'  ? 1 : 0;
+        const isLab = extra.data.type === 'lab';
+        const action = String(extra.data.action || '');
+        const attContrib = action === 'attended' ? 1 : 0;
         const totContrib = action === 'cancelled' ? 0 : 1;
 
-        const existing = subjectDeltas.get(subjectId) ??
-          { attendedDelta: 0, totalDelta: 0, attendedKey: attKey, totalKey: totKey };
-        existing.attendedDelta -= attContrib;
-        existing.totalDelta    -= totContrib;
-        existing.attendedKey    = attKey;
-        existing.totalKey       = totKey;
+        const existing = subjectDeltas.get(subjectId) ?? {
+          classAttDelta: 0,
+          classTotDelta: 0,
+          labAttDelta: 0,
+          labTotDelta: 0,
+        };
+        if (isLab) {
+          existing.labAttDelta -= attContrib;
+          existing.labTotDelta -= totContrib;
+        } else {
+          existing.classAttDelta -= attContrib;
+          existing.classTotDelta -= totContrib;
+        }
         subjectDeltas.set(subjectId, existing);
         docsToDelete.push(extra.id);
       });
     }
 
     if (docsToDelete.length === 0 && docsToMigrate.length === 0) {
-      await AsyncStorage.setItem(flagKey, 'done').catch(() => {});
       return result;
     }
 
@@ -184,35 +196,43 @@ export async function repairDuplicateAttendanceLogs(
       await batch.commit();
     }
 
-    // ── 4b. Correct inflated subject counters ───────────────────────────────
-    // Must read current values first to clamp at 0 (increment(-N) can go negative).
+    // ── 4b. Correct inflated subject counters (separate class vs lab) ────────
     for (const [subjectId, delta] of subjectDeltas) {
-      if (delta.attendedDelta === 0 && delta.totalDelta === 0) continue;
+      if (
+        delta.classAttDelta === 0 &&
+        delta.classTotDelta === 0 &&
+        delta.labAttDelta === 0 &&
+        delta.labTotDelta === 0
+      ) continue;
+
       try {
         const snap = await getDoc(doc(db, COLLECTION.ATTENDANCE, subjectId));
         if (!snap.exists()) continue;
         const current = snap.data() as Record<string, any>;
-        const newAtt  = Math.max(0, (Number(current[delta.attendedKey]) || 0) + delta.attendedDelta);
-        const newTot  = Math.max(0, (Number(current[delta.totalKey])   || 0) + delta.totalDelta);
+        const newClassAtt = Math.max(0, (Number(current.classesAttended) || 0) + delta.classAttDelta);
+        const newClassTot = Math.max(0, (Number(current.classesTotal) || 0) + delta.classTotDelta);
+        const newLabAtt   = Math.max(0, (Number(current.labsAttended) || 0) + delta.labAttDelta);
+        const newLabTot   = Math.max(0, (Number(current.labsTotal) || 0) + delta.labTotDelta);
         await updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), {
-          [delta.attendedKey]: newAtt,
-          [delta.totalKey]:    newTot,
-          lastUpdated: Date.now(),
+          classesAttended: newClassAtt,
+          classesTotal:    Math.max(newClassAtt, newClassTot),
+          labsAttended:    newLabAtt,
+          labsTotal:       Math.max(newLabAtt, newLabTot),
+          lastUpdated:     Date.now(),
         });
       } catch (e: any) {
         result.errors.push(`Subject ${subjectId}: ${e?.message ?? 'unknown'}`);
       }
     }
 
-    // ── 5. Mark done ────────────────────────────────────────────────────────
-    await AsyncStorage.setItem(flagKey, 'done').catch(() => {});
     console.log(
       `[AttendanceRepair] Done. Fixed ${result.fixed} groups, deleted ${result.deleted} extra logs.`
     );
   } catch (e: any) {
     result.errors.push(`Repair aborted: ${e?.message ?? 'unknown'}`);
     console.warn('[AttendanceRepair] Failed:', e);
-    // Do NOT mark done — let it retry next session
+  } finally {
+    isRepairRunning = false;
   }
 
   return result;

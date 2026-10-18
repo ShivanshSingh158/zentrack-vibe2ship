@@ -6,10 +6,14 @@
     "paths": {
       "@/*": ["src/*"],
       "@core/*": ["src/core/*"],
+      "@core": ["src/core/index"],
       "@domains/*": ["src/domains/*"],
       "@agent/*": ["src/agent/*"],
       "@services/*": ["src/services/*"],
       "@state/*": ["src/state/*"],
+      "@state": ["src/state/index"],
+      "@features/*": ["src/features/*"],
+      "@features": ["src/features/index"],
       "@navigation/*": ["src/navigation/*"]
     }
   }

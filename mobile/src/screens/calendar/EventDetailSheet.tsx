@@ -14,11 +14,13 @@ import * as Haptics from 'expo-haptics';
 import { FONT_FAMILY, RADIUS, SPACE } from '../../theme/tokens';
 import { CustomEvent } from '../../contexts/MobileDataContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
+import { usePlannerData } from '../../contexts/domains/PlannerContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
-import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
-import { safeAdd, safeUpdate } from '../../utils/safeWrite';
+import { safeAdd, safeUpdate, safeDelete } from '../../utils/safeWrite';
+import { handleSyncError } from '../../utils/errorUtils';
 
 interface EventDetailSheetProps {
   visible: boolean;
@@ -35,7 +37,29 @@ export function EventDetailSheet({
   visible, selectedEvent, selectedDate, styles, colors, isDark = true, onClose, onEdit
 }: EventDetailSheetProps) {
   const { attendance, attendanceLogs, optimisticUpdateAttendance, optimisticAddAttendanceLog } = useAcademicData();
+  const { optimisticDeleteEvent } = usePlannerData();
   const { user } = useCoreData();
+
+  const handleDeleteEvent = () => {
+    if (!selectedEvent?.id) return;
+    Alert.alert('Delete Event', `Are you sure you want to delete "${selectedEvent.title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          optimisticDeleteEvent(selectedEvent.id);
+          safeDelete(
+            selectedEvent.id,
+            COLLECTION.CALENDAR_EVENTS,
+            () => deleteDoc(doc(db, COLLECTION.CALENDAR_EVENTS, selectedEvent.id))
+          ).catch(handleSyncError);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          onClose();
+        },
+      },
+    ]);
+  };
 
   const isClassOrLab = selectedEvent?.type === 'class' || selectedEvent?.type === 'lab' || selectedEvent?.sessionType === 'class' || selectedEvent?.sessionType === 'lab';
 
@@ -139,11 +163,16 @@ export function EventDetailSheet({
             <TouchableOpacity onPress={onClose}>
               <Ionicons name="close" size={24} color={colors.textPrimary} />
             </TouchableOpacity>
-            <View style={{ flexDirection: 'row', gap: SPACE.md }}>
+            <View style={{ flexDirection: 'row', gap: SPACE.md, alignItems: 'center' }}>
               {!isClassOrLab && (
-                <TouchableOpacity onPress={onEdit}>
-                  <Ionicons name="pencil" size={20} color={colors.textPrimary} />
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity onPress={onEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="pencil" size={20} color={colors.textPrimary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleDeleteEvent} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                  </TouchableOpacity>
+                </>
               )}
             </View>
           </View>

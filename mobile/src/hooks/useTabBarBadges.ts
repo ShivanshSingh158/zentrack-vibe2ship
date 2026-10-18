@@ -1,5 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
+import { formatLocalDateStr } from '../utils/dateUtils';
 
 /**
  * useTabBarBadges — Stable badge counts for the bottom tab bar.
@@ -18,8 +19,7 @@ export function useTabBarBadges() {
 
   return useMemo(() => {
     // Create a local today string safely (YYYY-MM-DD)
-    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
-    const localISOTime = (new Date(Date.now() - tzOffset)).toISOString().slice(0, 10);
+    const localISOTime = formatLocalDateStr(new Date());
 
     const newBadges: Record<string, number> = {};
 

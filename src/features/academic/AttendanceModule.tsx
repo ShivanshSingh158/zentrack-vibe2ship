@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   collection, query, where, onSnapshot, addDoc, updateDoc,
-  doc, writeBatch, deleteDoc, getDocs
+  doc, writeBatch, deleteDoc, getDocs, setDoc
 } from 'firebase/firestore';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -52,7 +52,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export function parseTimeToMinutes(timeStr: string | undefined): number {
-  if (!timeStr) return 999;
+  if (!timeStr) return 9999;
   const upper = timeStr.trim().toUpperCase();
   const isPM = upper.includes('PM');
   const isAM = upper.includes('AM');
@@ -339,8 +339,28 @@ export const AttendanceModule = () => {
       }
     }
 
+    // Append extra classes logged for selectedDate
+    const extraLogsForDate = logs.filter(
+      l => l.isExtra && (l.date || '').slice(0, 10) === selectedDate
+    );
+    extraLogsForDate.forEach((el, elIdx) => {
+      const sub = subjects.find(s => s.id === el.subjectId || s.name === el.subjectName);
+      if (sub) {
+        sessions.push({
+          id: el.id,
+          subject: sub,
+          type: el.type === 'lab' ? 'lab' : 'class',
+          idx: typeof el.idx === 'number' ? el.idx : elIdx,
+          timeMins: 9999,
+          timeStr: `Extra ${el.type === 'lab' ? 'Lab' : 'Class'}`,
+          isExtra: true,
+          existingExtraLogId: el.id,
+        } as any);
+      }
+    });
+
     return sessions.sort((a, b) => a.timeMins - b.timeMins);
-  }, [subjects, selectedDate, isSelectedHoliday]);
+  }, [subjects, selectedDate, isSelectedHoliday, logs]);
 
   // At-Risk Warning Subjects
   const warningSubjects = useMemo(() => {
@@ -353,29 +373,44 @@ export const AttendanceModule = () => {
     });
   }, [subjects, dismissedWarnings]);
 
+  const dateInputRef = useRef<HTMLInputElement>(null);
+
   // ── Handlers ──
   const handleLogSession = async (
     subject: AttendanceSubject,
     type: 'class' | 'lab',
     action: 'attended' | 'missed' | 'cancelled',
+    sessionIdx = 0,
     date = selectedDate,
     isExtra = false
   ) => {
     if (!user || !subject.id) return;
     try {
+      const cleanDate = (date || selectedDate || '').slice(0, 10);
+      const todayStr = getLocalDateString(new Date());
+      if (cleanDate > todayStr) {
+        toast.error('Cannot log attendance for future dates');
+        return;
+      }
+
       playPopSound();
       const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
       const totalKey = type === 'class' ? 'classesTotal' : 'labsTotal';
       const subRef = doc(db, 'attendance_subjects', subject.id);
+      const detLogId = `${user.uid}_${subject.id}_${cleanDate}_${type}_${sessionIdx}`;
 
-      // Check if a log already exists for this subject, type, and date
-      const cleanDate = (date || selectedDate || '').slice(0, 10);
+      // Check if a log already exists for this subject, type, date, and idx
       const existingLog = logs.find(
-        l => (l.subjectId === subject.id || l.subjectId === subject.name || l.subjectName === subject.name) &&
-             (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)) &&
-             (l.date || '').slice(0, 10) === cleanDate &&
-             (!isExtra ? !l.isExtra : l.isExtra)
+        l => l.id === detLogId || (
+          (l.subjectId === subject.id || l.subjectId === subject.name || l.subjectName === subject.name) &&
+          (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)) &&
+          (l.date || '').slice(0, 10) === cleanDate &&
+          (!isExtra ? !l.isExtra : l.isExtra) &&
+          (l.idx === sessionIdx || (sessionIdx === 0 && l.idx === undefined))
+        )
       );
+
+      const batch = writeBatch(db);
 
       if (existingLog) {
         if (existingLog.action === action) return;
@@ -392,15 +427,27 @@ export const AttendanceModule = () => {
         const currentAtt = (subject[attendedKey] as number) || 0;
         const currentTot = (subject[totalKey] as number) || 0;
 
-        await updateDoc(subRef, {
+        batch.update(subRef, {
           [attendedKey]: Math.max(0, currentAtt + attDelta),
           [totalKey]: Math.max(0, currentTot + totDelta),
+          lastUpdated: Date.now(),
         });
 
-        await updateDoc(doc(db, 'attendance_logs', existingLog.id), {
+        if (existingLog.id !== detLogId) {
+          batch.delete(doc(db, 'attendance_logs', existingLog.id));
+        }
+
+        batch.set(doc(db, 'attendance_logs', detLogId), {
+          userId: user.uid,
+          subjectId: subject.id,
+          subjectName: subject.name,
+          type,
           action,
+          date: cleanDate,
+          idx: sessionIdx,
+          isExtra,
           timestamp: Date.now(),
-        });
+        }, { merge: true });
       } else {
         // First-time log for this session
         const newAtt = action === 'attended' ? 1 : 0;
@@ -410,23 +457,27 @@ export const AttendanceModule = () => {
         const currentTot = (subject[totalKey] as number) || 0;
 
         if (newTot > 0 || newAtt > 0) {
-          await updateDoc(subRef, {
+          batch.update(subRef, {
             [attendedKey]: currentAtt + newAtt,
             [totalKey]: currentTot + newTot,
+            lastUpdated: Date.now(),
           });
         }
 
-        await addDoc(collection(db, 'attendance_logs'), {
+        batch.set(doc(db, 'attendance_logs', detLogId), {
           userId: user.uid,
           subjectId: subject.id,
           subjectName: subject.name,
           type,
           action,
-          date,
+          date: cleanDate,
+          idx: sessionIdx,
           isExtra,
           timestamp: Date.now(),
-        });
+        }, { merge: true });
       }
+
+      await batch.commit();
 
       if (action === 'attended') {
         awardXP('ATTENDANCE_LOG').then((res) => {
@@ -451,24 +502,29 @@ export const AttendanceModule = () => {
       if (!targetLog) return;
 
       const subject = subjects.find(s => s.id === targetLog.subjectId);
+      const batch = writeBatch(db);
+
       if (subject && targetLog.action !== 'cancelled') {
         const subRef = doc(db, 'attendance_subjects', subject.id!);
         const isAtt = targetLog.action === 'attended';
 
         if (targetLog.type === 'lab') {
-          await updateDoc(subRef, {
+          batch.update(subRef, {
             labsTotal: Math.max(0, (subject.labsTotal || 0) - 1),
             labsAttended: Math.max(0, (subject.labsAttended || 0) - (isAtt ? 1 : 0)),
+            lastUpdated: Date.now(),
           });
         } else {
-          await updateDoc(subRef, {
+          batch.update(subRef, {
             classesTotal: Math.max(0, (subject.classesTotal || 0) - 1),
             classesAttended: Math.max(0, (subject.classesAttended || 0) - (isAtt ? 1 : 0)),
+            lastUpdated: Date.now(),
           });
         }
       }
 
-      await deleteDoc(doc(db, 'attendance_logs', logId));
+      batch.delete(doc(db, 'attendance_logs', logId));
+      await batch.commit();
       toast.success('Undid attendance record');
     } catch (err) {
       console.error(err);
@@ -479,19 +535,24 @@ export const AttendanceModule = () => {
   const handleToggleHoliday = async () => {
     if (!user) return;
     try {
+      const holidayId = `${user.uid}_${selectedDate}`;
       if (isSelectedHoliday) {
+        await deleteDoc(doc(db, 'attendance_holidays', holidayId));
+        // Clean up legacy random IDs if any exist
         const q = query(collection(db, 'attendance_holidays'), where('userId', '==', user.uid), where('date', '==', selectedDate));
         const snap = await getDocs(q);
-        const batch = writeBatch(db);
-        snap.forEach(d => batch.delete(d.ref));
-        await batch.commit();
+        if (!snap.empty) {
+          const batch = writeBatch(db);
+          snap.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
         toast.success(`Removed holiday for ${formatDisplayDate(selectedDate)}`);
       } else {
-        await addDoc(collection(db, 'attendance_holidays'), {
+        await setDoc(doc(db, 'attendance_holidays', holidayId), {
           userId: user.uid,
           date: selectedDate,
           createdAt: Date.now(),
-        });
+        }, { merge: true });
         toast.success(`Marked ${formatDisplayDate(selectedDate)} as Holiday 🌴`);
       }
     } catch (err) {
@@ -504,7 +565,10 @@ export const AttendanceModule = () => {
     if (!user) return;
     try {
       if (addEditModal.subject?.id) {
-        await updateDoc(doc(db, 'attendance_subjects', addEditModal.subject.id), subjectData);
+        await updateDoc(doc(db, 'attendance_subjects', addEditModal.subject.id), {
+          ...subjectData,
+          lastUpdated: Date.now(),
+        });
         toast.success(`Updated ${subjectData.name || 'subject'}`);
       } else {
         await addDoc(collection(db, 'attendance_subjects'), {
@@ -512,6 +576,8 @@ export const AttendanceModule = () => {
           userId: user.uid,
           order: subjects.length,
           schemaVersion: 1,
+          createdAt: Date.now(),
+          lastUpdated: Date.now(),
         });
         toast.success(`Added ${subjectData.name}`);
       }
@@ -533,6 +599,7 @@ export const AttendanceModule = () => {
             classesTotal: 0,
             labsAttended: 0,
             labsTotal: 0,
+            lastUpdated: Date.now(),
           });
         }
       });
@@ -549,7 +616,6 @@ export const AttendanceModule = () => {
     }
   };
 
-
   const handleApplyOverride = async () => {
     if (!overrideSubject?.id) return;
     try {
@@ -558,6 +624,7 @@ export const AttendanceModule = () => {
         classesTotal: Number(overrideCounts.classesTotal) || 0,
         labsAttended: Number(overrideCounts.labsAttended) || 0,
         labsTotal: Number(overrideCounts.labsTotal) || 0,
+        lastUpdated: Date.now(),
       });
       toast.success(`Updated counts for ${overrideSubject.name}`);
       setOverrideSubject(null);
@@ -568,19 +635,23 @@ export const AttendanceModule = () => {
   };
 
   const handleExportCSV = () => {
+    const escapeCsv = (str: any) => `"${String(str ?? '').replace(/"/g, '""')}"`;
     let csv = 'Subject,Class Attended,Class Total,Lab Attended,Lab Total,Overall %\n';
     for (const s of subjects) {
       const att = (s.classesAttended || 0) + (s.labsAttended || 0);
       const tot = (s.classesTotal || 0) + (s.labsTotal || 0);
       const pct = tot > 0 ? Math.round((att / tot) * 100) : 100;
-      csv += `"${s.name}",${s.classesAttended || 0},${s.classesTotal || 0},${s.labsAttended || 0},${s.labsTotal || 0},${pct}%\n`;
+      csv += `${escapeCsv(s.name)},${s.classesAttended || 0},${s.classesTotal || 0},${s.labsAttended || 0},${s.labsTotal || 0},${pct}%\n`;
     }
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `attendance_report_${getLocalDateString(new Date())}.csv`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     toast.success('Exported attendance CSV report');
   };
 
@@ -596,11 +667,31 @@ export const AttendanceModule = () => {
         </div>
 
         <div className="att-header-actions">
+          {/* Hidden Date Picker Input */}
+          <input
+            type="date"
+            ref={dateInputRef}
+            max={todayStr}
+            value={selectedDate}
+            onChange={e => {
+              if (e.target.value) setSelectedDate(e.target.value);
+            }}
+            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+          />
+
           {/* Date Picker Button */}
           <button
             type="button"
             className="att-action-pill-btn"
-            onClick={() => setSelectedDate(todayStr)}
+            onClick={() => {
+              if (dateInputRef.current) {
+                if ('showPicker' in dateInputRef.current) {
+                  (dateInputRef.current as any).showPicker();
+                } else {
+                  dateInputRef.current.click();
+                }
+              }
+            }}
           >
             <Calendar size={14} />
             <span>{selectedDate === todayStr ? 'Today' : formatDisplayDate(selectedDate)}</span>
@@ -613,7 +704,7 @@ export const AttendanceModule = () => {
             onClick={handleToggleHoliday}
           >
             <span>🌴</span>
-            <span>{isSelectedHoliday ? 'Holiday' : 'Holiday'}</span>
+            <span>{isSelectedHoliday ? 'Remove Holiday' : 'Holiday'}</span>
           </button>
 
           {/* Timetable Setup */}
@@ -825,17 +916,18 @@ export const AttendanceModule = () => {
             {todaySessions.map(session => {
               const { subject, type, idx } = session;
               const subLogs = (subject.id ? logsBySubjectId[subject.id] : null) || logsBySubjectId[subject.name] || [];
+              const isExtraSession = !!(session as any).isExtra;
               let matchingLog = null;
-              let matchIdx = 0;
 
-              for (const l of subLogs) {
-                if (l.date === selectedDate && !l.isExtra && (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type))) {
-                  if (matchIdx === idx) {
-                    matchingLog = l;
-                    break;
-                  }
-                  matchIdx++;
-                }
+              if ((session as any).existingExtraLogId) {
+                matchingLog = logs.find(l => l.id === (session as any).existingExtraLogId) || null;
+              } else {
+                matchingLog = subLogs.find(
+                  l => (l.date || '').slice(0, 10) === selectedDate &&
+                       (!isExtraSession ? !l.isExtra : l.isExtra) &&
+                       (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)) &&
+                       (l.idx === idx || (idx === 0 && l.idx === undefined))
+                ) || null;
               }
 
               return (
@@ -874,7 +966,7 @@ export const AttendanceModule = () => {
                         <button
                           type="button"
                           className="att-log-pill present"
-                          onClick={() => handleLogSession(subject, type, 'attended')}
+                          onClick={() => handleLogSession(subject, type, 'attended', idx, selectedDate, isExtraSession)}
                         >
                           <Check size={13} strokeWidth={2.5} />
                           <span>Present</span>
@@ -883,7 +975,7 @@ export const AttendanceModule = () => {
                         <button
                           type="button"
                           className="att-log-pill absent"
-                          onClick={() => handleLogSession(subject, type, 'missed')}
+                          onClick={() => handleLogSession(subject, type, 'missed', idx, selectedDate, isExtraSession)}
                         >
                           <X size={13} strokeWidth={2.5} />
                           <span>Absent</span>
@@ -892,7 +984,7 @@ export const AttendanceModule = () => {
                         <button
                           type="button"
                           className="att-cancel-circle-btn"
-                          onClick={() => handleLogSession(subject, type, 'cancelled')}
+                          onClick={() => handleLogSession(subject, type, 'cancelled', idx, selectedDate, isExtraSession)}
                           title="Mark Class Cancelled"
                         >
                           <X size={14} />
@@ -1205,7 +1297,12 @@ export const AttendanceModule = () => {
                         className="att-log-pill present"
                         onClick={() => {
                           const targetSub = subjects.find(s => s.id === extraSubjectId);
-                          if (targetSub) handleLogSession(targetSub, 'class', 'attended', selectedDate, true);
+                          if (targetSub) {
+                            const extraIdx = logs.filter(
+                              l => l.subjectId === extraSubjectId && (l.date || '').slice(0, 10) === selectedDate && l.isExtra && (l.type === 'class' || !l.type)
+                            ).length;
+                            handleLogSession(targetSub, 'class', 'attended', extraIdx, selectedDate, true);
+                          }
                           setIsExtraOpen(false);
                         }}
                       >
@@ -1216,7 +1313,12 @@ export const AttendanceModule = () => {
                         className="att-log-pill absent"
                         onClick={() => {
                           const targetSub = subjects.find(s => s.id === extraSubjectId);
-                          if (targetSub) handleLogSession(targetSub, 'class', 'missed', selectedDate, true);
+                          if (targetSub) {
+                            const extraIdx = logs.filter(
+                              l => l.subjectId === extraSubjectId && (l.date || '').slice(0, 10) === selectedDate && l.isExtra && (l.type === 'class' || !l.type)
+                            ).length;
+                            handleLogSession(targetSub, 'class', 'missed', extraIdx, selectedDate, true);
+                          }
                           setIsExtraOpen(false);
                         }}
                       >
@@ -1233,7 +1335,12 @@ export const AttendanceModule = () => {
                         className="att-log-pill present"
                         onClick={() => {
                           const targetSub = subjects.find(s => s.id === extraSubjectId);
-                          if (targetSub) handleLogSession(targetSub, 'lab', 'attended', selectedDate, true);
+                          if (targetSub) {
+                            const extraLabIdx = logs.filter(
+                              l => l.subjectId === extraSubjectId && (l.date || '').slice(0, 10) === selectedDate && l.isExtra && l.type === 'lab'
+                            ).length;
+                            handleLogSession(targetSub, 'lab', 'attended', extraLabIdx, selectedDate, true);
+                          }
                           setIsExtraOpen(false);
                         }}
                       >
@@ -1244,7 +1351,12 @@ export const AttendanceModule = () => {
                         className="att-log-pill absent"
                         onClick={() => {
                           const targetSub = subjects.find(s => s.id === extraSubjectId);
-                          if (targetSub) handleLogSession(targetSub, 'lab', 'missed', selectedDate, true);
+                          if (targetSub) {
+                            const extraLabIdx = logs.filter(
+                              l => l.subjectId === extraSubjectId && (l.date || '').slice(0, 10) === selectedDate && l.isExtra && l.type === 'lab'
+                            ).length;
+                            handleLogSession(targetSub, 'lab', 'missed', extraLabIdx, selectedDate, true);
+                          }
                           setIsExtraOpen(false);
                         }}
                       >
@@ -1358,7 +1470,13 @@ export const AttendanceModule = () => {
         danger
         onConfirm={async () => {
           if (deleteConfirmId) {
-            await deleteDoc(doc(db, 'attendance_subjects', deleteConfirmId));
+            const batch = writeBatch(db);
+            batch.delete(doc(db, 'attendance_subjects', deleteConfirmId));
+            const subLogs = logs.filter(l => l.subjectId === deleteConfirmId);
+            subLogs.forEach(l => {
+              if (l.id) batch.delete(doc(db, 'attendance_logs', l.id));
+            });
+            await batch.commit();
             toast.success('Subject deleted');
             setDeleteConfirmId(null);
           }

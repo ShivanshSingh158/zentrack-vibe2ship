@@ -38,6 +38,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import AnalyticsSkeleton from '../components/Analytics/AnalyticsSkeleton';
 import { computeOrGetHotCache, generateDatasetFingerprint } from '../utils/hotCacheStore';
 import { formatLocalDateStr, formatDateShort, formatDateWithDay } from '../utils/dateUtils';
+import { isValidWorkoutSession } from '../utils/gymUtils';
+import { calculateAppStreak, calculateLongestAppStreak } from '../utils/streakUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_MARGIN = 16;
@@ -207,6 +209,12 @@ export default function AnalyticsScreen() {
   const [selectedHabitIdx, setSelectedHabitIdx] = useState<number | null>(null);
   const [selectedHeatDate, setSelectedHeatDate] = useState<string | null>(null);
 
+  const handlePeriodChange = React.useCallback((nextPeriod: Period) => {
+    setSelectedTaskIdx(null);
+    setSelectedHabitIdx(null);
+    setPeriod(nextPeriod);
+  }, []);
+
   const days = PERIOD_DAYS[period];
   const curStart = daysAgoStr(days - 1);
   const prevStart = daysAgoStr(days * 2 - 1);
@@ -214,7 +222,7 @@ export default function AnalyticsScreen() {
 
   // ─── Computed Statistics (Hot-Cached) ────────────────────────────────────────
   const stats = useMemo(() => {
-    const cacheKey = `analytics_v3_${period}_${generateDatasetFingerprint(tasks)}_${generateDatasetFingerprint(habitLogs)}_${generateDatasetFingerprint(gymLogs)}_${generateDatasetFingerprint(attendanceLogs)}`;
+    const cacheKey = `analytics_v4_${period}_${curStart}_${isDark ? 'dark' : 'light'}_${generateDatasetFingerprint(tasks)}_${generateDatasetFingerprint(habitLogs)}_${generateDatasetFingerprint(gymLogs)}_${generateDatasetFingerprint(attendanceLogs)}`;
     return computeOrGetHotCache(cacheKey, () => {
       let curTasks = 0;
       let prevTasks = 0;
@@ -246,10 +254,12 @@ export default function AnalyticsScreen() {
       let prevGymVolume = 0;
 
       for (const g of gymLogs || []) {
+        if (!isValidWorkoutSession(g)) continue;
         let vol = 0;
         for (const ex of g.exercises || []) {
+          if (ex.skipped) continue;
           for (const s of ex.setsLog || ex.sets || []) {
-            if (s.completed) vol += (s.weight || 0) * (s.reps || 0);
+            if (s.completed && !s.isWarmup) vol += (Number(s.weight) || 0) * (Number(s.reps) || 0);
           }
         }
         if (g.date >= curStart) {
@@ -331,27 +341,8 @@ export default function AnalyticsScreen() {
       }
       const prevZen = Math.max(0, Math.min(100, Math.round(prevTaskScore + prevGymScore + prevFocusScore + prevHabitScore + prevAttMod)));
 
-      // Streaks
-      const activeDates = new Set<string>();
-      for (const t of tasks || []) {
-        if (t.status === 'completed' && t.completedAt) activeDates.add(t.completedAt.slice(0, 10));
-      }
-      for (const g of gymLogs || []) { if (g.date) activeDates.add(g.date); }
-      for (const l of habitLogs || []) { if (l.date) activeDates.add(l.date); }
-
-      let bestStreak = 0;
-      let currentStreak = 0;
-      let run = 0;
-      for (let i = 0; i < 90; i++) {
-        const d = daysAgoStr(i);
-        if (activeDates.has(d)) {
-          run++;
-          bestStreak = Math.max(bestStreak, run);
-          if (i === currentStreak) currentStreak = run;
-        } else {
-          run = 0;
-        }
-      }
+      const currentStreak = calculateAppStreak(tasks, gymLogs, habitLogs);
+      const bestStreak = Math.max(currentStreak, calculateLongestAppStreak(tasks, gymLogs, habitLogs));
 
       // Tier badge classification
       let tierTitle = 'Zen Master';
@@ -388,7 +379,7 @@ export default function AnalyticsScreen() {
         zenScore,
         prevZen,
         bestStreak,
-        currentStreak: Math.max(currentStreak, activeDates.has(daysAgoStr(0)) ? 1 : 0),
+        currentStreak,
         tierTitle,
         tierColor,
         // Pillar breakdown percentages
@@ -521,7 +512,7 @@ export default function AnalyticsScreen() {
       }
     }
 
-    const gymDates = new Set((gymLogs || []).map((g) => g.date));
+    const gymDates = new Set((gymLogs || []).filter(isValidWorkoutSession).map((g) => g.date));
     const habitDates = new Map<string, number>();
     for (const l of habitLogs || []) {
       if (l.date) habitDates.set(l.date, (habitDates.get(l.date) || 0) + 1);
@@ -620,7 +611,7 @@ export default function AnalyticsScreen() {
             <Text style={dynamicStyles.screenTitle}>Analytics</Text>
             <Text style={dynamicStyles.screenSubtitle}>Telemetry & Performance</Text>
           </View>
-          <PeriodSelector value={period} onChange={setPeriod} />
+          <PeriodSelector value={period} onChange={handlePeriodChange} />
         </View>
 
         {isInitialLoading ? (
@@ -834,7 +825,7 @@ export default function AnalyticsScreen() {
                   <Text style={dynamicStyles.chartTitle}>Task Velocity</Text>
                   <Text style={dynamicStyles.chartSub}>Daily completions • Avg {avgTasks}/day</Text>
                 </View>
-                {selectedTaskIdx !== null ? (
+                {selectedTaskIdx !== null && taskChartData[selectedTaskIdx] ? (
                   <View style={dynamicStyles.tooltipPill}>
                     <Text style={dynamicStyles.tooltipText}>
                       {taskChartData[selectedTaskIdx].fullDate}: {taskChartData[selectedTaskIdx].count} tasks
@@ -943,7 +934,7 @@ export default function AnalyticsScreen() {
                   <Text style={dynamicStyles.chartTitle}>Habit Momentum</Text>
                   <Text style={dynamicStyles.chartSub}>Daily check-in consistency • {avgHabitPct}% Avg</Text>
                 </View>
-                {selectedHabitIdx !== null ? (
+                {selectedHabitIdx !== null && habitWaveData[selectedHabitIdx] ? (
                   <View style={[dynamicStyles.tooltipPill, { backgroundColor: isDark ? 'rgba(94,218,158,0.16)' : 'rgba(5,150,105,0.10)' }]}>
                     <Text style={[dynamicStyles.tooltipText, { color: isDark ? '#5EDA9E' : '#059669' }]}>
                       {habitWaveData[selectedHabitIdx].fullDate}: {habitWaveData[selectedHabitIdx].pct}%
