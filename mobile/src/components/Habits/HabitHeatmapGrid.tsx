@@ -256,6 +256,17 @@ export const HabitHeatmapGrid = React.memo(function HabitHeatmapGrid({
         };
       }
 
+      // Quantitative partial progress
+      if (!isNegative && targetCount && tile.ratio > 0 && tile.ratio < 1) {
+        const opacity = Math.max(0.28, tile.ratio);
+        return {
+          backgroundColor: habitColor,
+          opacity,
+          borderWidth: 1,
+          borderColor: habitColor,
+        };
+      }
+
       // Missed / pending day
       if (tile.isToday) {
         return {

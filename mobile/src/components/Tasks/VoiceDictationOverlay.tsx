@@ -240,6 +240,8 @@ export default function VoiceDictationOverlay({
   const nlpDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Guard: prevents handleParsedSpokenText from firing more than once per recording
   const hasProcessedRef = useRef(false);
+  const rawTranscriptRef = useRef('');
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const glowScale = useSharedValue(1);
   const glowOpacity = useSharedValue(0.4);
@@ -454,23 +456,27 @@ export default function VoiceDictationOverlay({
     cancelVoiceRecording().catch(() => {});
     setState('idle');
     setErrorMsg('');
+    rawTranscriptRef.current = '';
     setRawTranscript('');
     setTasks([]);
     setActiveTaskIdx(0);
     setOfflineNLPMode(false);
     if (nlpDebounceRef.current) clearTimeout(nlpDebounceRef.current);
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     closeAllModals();
   };
 
   const resetState = () => {
     setState('idle');
     setErrorMsg('');
+    rawTranscriptRef.current = '';
     setRawTranscript('');
     setTasks([]);
     setActiveTaskIdx(0);
     setOfflineNLPMode(false);
     hasProcessedRef.current = false; // reset guard for new recording
     if (nlpDebounceRef.current) clearTimeout(nlpDebounceRef.current);
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     closeAllModals();
   };
 
@@ -658,6 +664,7 @@ export default function VoiceDictationOverlay({
             }
             setState('processing');
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            rawTranscriptRef.current = text.trim();
             setRawTranscript(text.trim());
             handleParsedSpokenText(text.trim());
           },
@@ -680,22 +687,20 @@ export default function VoiceDictationOverlay({
           if (newState === 'listening') {
             setState('recording');
           } else if (newState === 'idle') {
-            // Check if we captured spoken words: if so, auto-parse instead of dropping back to idle!
-            setRawTranscript((currentTranscript) => {
-              if (currentTranscript && currentTranscript.trim().length > 1 && !hasProcessedRef.current) {
-                hasProcessedRef.current = true;
-                setState('processing');
-                handleParsedSpokenText(currentTranscript.trim());
-              } else {
-                setState((prev) => (prev === 'processing' || prev === 'preview' || prev === 'saving' || prev === 'success' ? prev : 'idle'));
-              }
-              return currentTranscript;
-            });
+            const currentTranscript = rawTranscriptRef.current;
+            if (currentTranscript && currentTranscript.trim().length > 1 && !hasProcessedRef.current) {
+              hasProcessedRef.current = true;
+              setState('processing');
+              handleParsedSpokenText(currentTranscript.trim());
+            } else {
+              setState((prev) => (prev === 'processing' || prev === 'preview' || prev === 'saving' || prev === 'success' ? prev : 'idle'));
+            }
           }
         },
         onResult: (text, isFinal) => {
           if (!text || !text.trim()) return;
           // Show interim and final text live as user speaks!
+          rawTranscriptRef.current = text;
           setRawTranscript(text);
           if (isFinal && !hasProcessedRef.current) {
             if (isSilenceOrNoise(text)) {
@@ -710,17 +715,14 @@ export default function VoiceDictationOverlay({
           }
         },
         onError: (err) => {
-          // If we already have captured speech, don't show error, just process!
-          setRawTranscript((currentTranscript) => {
-            if (currentTranscript && currentTranscript.trim().length > 1) {
-              setState('processing');
-              handleParsedSpokenText(currentTranscript.trim());
-            } else {
-              setErrorMsg(err);
-              setState('idle');
-            }
-            return currentTranscript;
-          });
+          const currentTranscript = rawTranscriptRef.current;
+          if (currentTranscript && currentTranscript.trim().length > 1) {
+            setState('processing');
+            handleParsedSpokenText(currentTranscript.trim());
+          } else {
+            setErrorMsg(err);
+            setState('idle');
+          }
         },
       },
     );
@@ -1034,7 +1036,7 @@ export default function VoiceDictationOverlay({
         handleStartRecording();
       } else {
         setState('success');
-        setTimeout(() => {
+        saveTimeoutRef.current = setTimeout(() => {
           onClose();
         }, 400);
       }
@@ -1208,17 +1210,18 @@ export default function VoiceDictationOverlay({
                     contentContainerStyle={styles.chipsScrollContent}
                   >
                     {/* Due Date Chip */}
-                    <TouchableOpacity
-                      style={[styles.attrChip, styles.attrChipActive]}
-                      onPress={() => setShowCalendar(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="calendar-outline" size={13} color="#60A5FA" />
-                      <Text style={styles.attrChipText}>{activeDateLabel}</Text>
+                    <View style={[styles.attrChip, styles.attrChipActive]}>
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        onPress={() => setShowCalendar(true)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="calendar-outline" size={13} color="#60A5FA" />
+                        <Text style={styles.attrChipText}>{activeDateLabel}</Text>
+                      </TouchableOpacity>
                       {currentTask?.date !== today && (
                         <TouchableOpacity
-                          onPress={(e) => {
-                            e.stopPropagation();
+                          onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                             updateActiveTask({ date: today });
                           }}
@@ -1227,26 +1230,27 @@ export default function VoiceDictationOverlay({
                           <Ionicons name="close-circle" size={12} color="#60A5FA" style={{ marginLeft: 2 }} />
                         </TouchableOpacity>
                       )}
-                    </TouchableOpacity>
+                    </View>
 
                     {/* Start Time Chip */}
-                    <TouchableOpacity
-                      style={[styles.attrChip, currentTask?.timeSlot ? styles.attrChipActive : styles.attrChipEmpty]}
-                      onPress={() => setShowStartTimePicker(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name="time-outline"
-                        size={13}
-                        color={currentTask?.timeSlot ? '#34D399' : 'rgba(255,255,255,0.45)'}
-                      />
-                      <Text style={[styles.attrChipText, !currentTask?.timeSlot && styles.attrChipTextEmpty]}>
-                        {currentTask?.timeSlot ? formatTimeDisplay(currentTask.timeSlot) : 'Time'}
-                      </Text>
+                    <View style={[styles.attrChip, currentTask?.timeSlot ? styles.attrChipActive : styles.attrChipEmpty]}>
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        onPress={() => setShowStartTimePicker(true)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons
+                          name="time-outline"
+                          size={13}
+                          color={currentTask?.timeSlot ? '#34D399' : 'rgba(255,255,255,0.45)'}
+                        />
+                        <Text style={[styles.attrChipText, !currentTask?.timeSlot && styles.attrChipTextEmpty]}>
+                          {currentTask?.timeSlot ? formatTimeDisplay(currentTask.timeSlot) : 'Time'}
+                        </Text>
+                      </TouchableOpacity>
                       {!!currentTask?.timeSlot && (
                         <TouchableOpacity
-                          onPress={(e) => {
-                            e.stopPropagation();
+                          onPress={() => {
                             updateActiveTask({ timeSlot: null });
                           }}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1254,26 +1258,27 @@ export default function VoiceDictationOverlay({
                           <Ionicons name="close-circle" size={12} color="#34D399" style={{ marginLeft: 2 }} />
                         </TouchableOpacity>
                       )}
-                    </TouchableOpacity>
+                    </View>
 
                     {/* End Time Chip */}
-                    <TouchableOpacity
-                      style={[styles.attrChip, currentTask?.endTimeSlot ? styles.attrChipActive : styles.attrChipEmpty]}
-                      onPress={() => setShowEndTimePicker(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name="arrow-forward-outline"
-                        size={13}
-                        color={currentTask?.endTimeSlot ? '#34D399' : 'rgba(255,255,255,0.45)'}
-                      />
-                      <Text style={[styles.attrChipText, !currentTask?.endTimeSlot && styles.attrChipTextEmpty]}>
-                        {currentTask?.endTimeSlot ? formatTimeDisplay(currentTask.endTimeSlot) : 'End Time'}
-                      </Text>
+                    <View style={[styles.attrChip, currentTask?.endTimeSlot ? styles.attrChipActive : styles.attrChipEmpty]}>
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        onPress={() => setShowEndTimePicker(true)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons
+                          name="arrow-forward-outline"
+                          size={13}
+                          color={currentTask?.endTimeSlot ? '#34D399' : 'rgba(255,255,255,0.45)'}
+                        />
+                        <Text style={[styles.attrChipText, !currentTask?.endTimeSlot && styles.attrChipTextEmpty]}>
+                          {currentTask?.endTimeSlot ? formatTimeDisplay(currentTask.endTimeSlot) : 'End Time'}
+                        </Text>
+                      </TouchableOpacity>
                       {!!currentTask?.endTimeSlot && (
                         <TouchableOpacity
-                          onPress={(e) => {
-                            e.stopPropagation();
+                          onPress={() => {
                             updateActiveTask({ endTimeSlot: null });
                           }}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1281,7 +1286,7 @@ export default function VoiceDictationOverlay({
                           <Ionicons name="close-circle" size={12} color="#34D399" style={{ marginLeft: 2 }} />
                         </TouchableOpacity>
                       )}
-                    </TouchableOpacity>
+                    </View>
 
                     {/* Duration Chip */}
                     <TouchableOpacity
@@ -1312,23 +1317,24 @@ export default function VoiceDictationOverlay({
                     </TouchableOpacity>
 
                     {/* Recurrence Chip */}
-                    <TouchableOpacity
-                      style={[styles.attrChip, currentTask?.isRecurring ? styles.attrChipActive : styles.attrChipEmpty]}
-                      onPress={() => setShowRecurrenceModal(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name="repeat-outline"
-                        size={13}
-                        color={currentTask?.isRecurring ? '#C084FC' : 'rgba(255,255,255,0.45)'}
-                      />
-                      <Text style={[styles.attrChipText, !currentTask?.isRecurring && styles.attrChipTextEmpty]}>
-                        {activeRecurrenceLabel || 'Repeat'}
-                      </Text>
+                    <View style={[styles.attrChip, currentTask?.isRecurring ? styles.attrChipActive : styles.attrChipEmpty]}>
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        onPress={() => setShowRecurrenceModal(true)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons
+                          name="repeat-outline"
+                          size={13}
+                          color={currentTask?.isRecurring ? '#C084FC' : 'rgba(255,255,255,0.45)'}
+                        />
+                        <Text style={[styles.attrChipText, !currentTask?.isRecurring && styles.attrChipTextEmpty]}>
+                          {activeRecurrenceLabel || 'Repeat'}
+                        </Text>
+                      </TouchableOpacity>
                       {currentTask?.isRecurring && (
                         <TouchableOpacity
-                          onPress={(e) => {
-                            e.stopPropagation();
+                          onPress={() => {
                             updateActiveTask({ isRecurring: false, recurrenceRule: null });
                           }}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1336,7 +1342,7 @@ export default function VoiceDictationOverlay({
                           <Ionicons name="close-circle" size={12} color="#C084FC" style={{ marginLeft: 2 }} />
                         </TouchableOpacity>
                       )}
-                    </TouchableOpacity>
+                    </View>
 
                     {/* Reminder / Alarm Chip */}
                     <TouchableOpacity
@@ -1672,21 +1678,56 @@ export default function VoiceDictationOverlay({
 
           {/* Start Time Picker */}
           {showStartTimePicker && (
-            <DateTimePicker
-              value={(() => {
-                const d = new Date();
-                if (currentTask?.timeSlot && currentTask.timeSlot.includes(':')) {
-                  const [h, m] = currentTask.timeSlot.split(':');
-                  const parsedH = parseInt(h, 10);
-                  const parsedM = parseInt(m, 10);
-                  if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
-                }
-                return d;
-              })()}
-              mode="time"
-              display="default"
-              onChange={(event, d) => {
-                if (Platform.OS === 'android') {
+            Platform.OS === 'ios' ? (
+              <Modal transparent animationType="fade" visible={showStartTimePicker} onRequestClose={() => setShowStartTimePicker(false)}>
+                <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                  <View style={{ backgroundColor: '#1E202B', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
+                      <TouchableOpacity onPress={() => setShowStartTimePicker(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                        <Text style={{ color: '#A599FF', fontFamily: FONT_FAMILY.bold, fontSize: 16 }}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <DateTimePicker
+                      value={(() => {
+                        const d = new Date();
+                        if (currentTask?.timeSlot && currentTask.timeSlot.includes(':')) {
+                          const [h, m] = currentTask.timeSlot.split(':');
+                          const parsedH = parseInt(h, 10);
+                          const parsedM = parseInt(m, 10);
+                          if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
+                        }
+                        return d;
+                      })()}
+                      mode="time"
+                      display="spinner"
+                      textColor="#FFFFFF"
+                      onChange={(_, d) => {
+                        if (d) {
+                          updateActiveTask({
+                            timeSlot: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
+                            isReminder: true,
+                          });
+                        }
+                      }}
+                    />
+                  </View>
+                </View>
+              </Modal>
+            ) : (
+              <DateTimePicker
+                value={(() => {
+                  const d = new Date();
+                  if (currentTask?.timeSlot && currentTask.timeSlot.includes(':')) {
+                    const [h, m] = currentTask.timeSlot.split(':');
+                    const parsedH = parseInt(h, 10);
+                    const parsedM = parseInt(m, 10);
+                    if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
+                  }
+                  return d;
+                })()}
+                mode="time"
+                display="default"
+                onChange={(event, d) => {
                   setShowStartTimePicker(false);
                   if (event.type === 'set' && d) {
                     updateActiveTask({
@@ -1694,50 +1735,71 @@ export default function VoiceDictationOverlay({
                       isReminder: true,
                     });
                   }
-                } else {
-                  if (d) {
-                    updateActiveTask({
-                      timeSlot: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
-                      isReminder: true,
-                    });
-                  }
-                }
-              }}
-            />
+                }}
+              />
+            )
           )}
 
           {/* End Time Picker */}
           {showEndTimePicker && (
-            <DateTimePicker
-              value={(() => {
-                const d = new Date();
-                if (currentTask?.endTimeSlot && currentTask.endTimeSlot.includes(':')) {
-                  const [h, m] = currentTask.endTimeSlot.split(':');
-                  const parsedH = parseInt(h, 10);
-                  const parsedM = parseInt(m, 10);
-                  if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
-                }
-                return d;
-              })()}
-              mode="time"
-              display="default"
-              onChange={(event, d) => {
-                if (Platform.OS === 'android') {
+            Platform.OS === 'ios' ? (
+              <Modal transparent animationType="fade" visible={showEndTimePicker} onRequestClose={() => setShowEndTimePicker(false)}>
+                <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                  <View style={{ backgroundColor: '#1E202B', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
+                      <TouchableOpacity onPress={() => setShowEndTimePicker(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                        <Text style={{ color: '#A599FF', fontFamily: FONT_FAMILY.bold, fontSize: 16 }}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <DateTimePicker
+                      value={(() => {
+                        const d = new Date();
+                        if (currentTask?.endTimeSlot && currentTask.endTimeSlot.includes(':')) {
+                          const [h, m] = currentTask.endTimeSlot.split(':');
+                          const parsedH = parseInt(h, 10);
+                          const parsedM = parseInt(m, 10);
+                          if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
+                        }
+                        return d;
+                      })()}
+                      mode="time"
+                      display="spinner"
+                      textColor="#FFFFFF"
+                      onChange={(_, d) => {
+                        if (d) {
+                          updateActiveTask({
+                            endTimeSlot: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
+                          });
+                        }
+                      }}
+                    />
+                  </View>
+                </View>
+              </Modal>
+            ) : (
+              <DateTimePicker
+                value={(() => {
+                  const d = new Date();
+                  if (currentTask?.endTimeSlot && currentTask.endTimeSlot.includes(':')) {
+                    const [h, m] = currentTask.endTimeSlot.split(':');
+                    const parsedH = parseInt(h, 10);
+                    const parsedM = parseInt(m, 10);
+                    if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
+                  }
+                  return d;
+                })()}
+                mode="time"
+                display="default"
+                onChange={(event, d) => {
                   setShowEndTimePicker(false);
                   if (event.type === 'set' && d) {
                     updateActiveTask({
                       endTimeSlot: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
                     });
                   }
-                } else {
-                  if (d) {
-                    updateActiveTask({
-                      endTimeSlot: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
-                    });
-                  }
-                }
-              }}
-            />
+                }}
+              />
+            )
           )}
 
           {/* Recurrence Rule Modal */}

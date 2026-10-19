@@ -32,7 +32,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useShareIntentContext } from 'expo-share-intent';
 
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useCreativeData } from '../../contexts/domains/CreativeContext';
@@ -127,11 +127,14 @@ export function ShareToVaultModal() {
       subfolderCount: number;
     }> = [];
 
+    const visited = new Set<string>();
     const traverse = (node: StorageNode, depth: number, parentPath: string) => {
+      if (!node.id || visited.has(node.id)) return;
+      visited.add(node.id);
       const currentPath = `${parentPath} > ${node.name}`;
-      const children = childrenMap.get(node.id!) || [];
+      const children = childrenMap.get(node.id) || [];
       result.push({
-        id: node.id!,
+        id: node.id,
         name: node.name,
         depth,
         path: currentPath,
@@ -197,7 +200,8 @@ export function ShareToVaultModal() {
 
     try {
       feedback.commit();
-      const folderId = `folder_${Date.now()}`;
+      const docRef = doc(collection(db, 'storage_nodes'));
+      const folderId = docRef.id;
       const now = Date.now();
 
       const newFolder: StorageNode = {
@@ -212,7 +216,7 @@ export function ShareToVaultModal() {
 
       optimisticAddStorageNode(newFolder);
       await safeAdd('storage_nodes', newFolder, () =>
-        addDoc(collection(db, 'storage_nodes'), newFolder)
+        setDoc(docRef, newFolder)
       );
 
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -267,7 +271,8 @@ export function ShareToVaultModal() {
         }
 
         const now = Date.now();
-        const docId = `share_${now}_${i}`;
+        const docRef = doc(collection(db, 'storage_nodes'));
+        const docId = docRef.id;
         const docPayload: StorageNode = {
           id: docId,
           userId: user.uid,
@@ -283,7 +288,7 @@ export function ShareToVaultModal() {
 
         optimisticAddStorageNode(docPayload);
         await safeAdd('storage_nodes', docPayload, () =>
-          addDoc(collection(db, 'storage_nodes'), docPayload)
+          setDoc(docRef, docPayload)
         );
         uploadedCount++;
       }

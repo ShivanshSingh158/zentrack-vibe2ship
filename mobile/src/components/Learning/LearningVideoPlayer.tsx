@@ -12,9 +12,10 @@ import * as Haptics from 'expo-haptics';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { uploadFileToCloudinary } from '../../services/cloudinary';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, doc, setDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
+import { safeAdd } from '../../utils/safeWrite';
 import { FONT_FAMILY } from '../../theme/tokens';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
@@ -91,8 +92,10 @@ export default function LearningVideoPlayer({
   const [autoScrollTranscript, setAutoScrollTranscript] = useState(true);
   const transcriptScrollRef = useRef<ScrollView>(null);
   const { user } = useCoreData();
-  const { learningTopics } = useCreativeData();
+  const { learningTopics, optimisticAddStorageNode } = useCreativeData();
   const videoId = extractVideoId(activeVideoSub.url);
+  const activeCueIndexRef = useRef(activeCueIndex);
+  activeCueIndexRef.current = activeCueIndex;
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', () => {});
@@ -137,7 +140,7 @@ export default function LearningVideoPlayer({
             const nextStart = transcriptCues[i + 1]?.start ?? (c.start + c.duration + 5);
             return currentSec >= c.start && currentSec < nextStart;
           });
-          if (matchIdx !== -1 && matchIdx !== activeCueIndex) {
+          if (matchIdx !== -1 && matchIdx !== activeCueIndexRef.current) {
             setActiveCueIndex(matchIdx);
             if (autoScrollTranscript && transcriptScrollRef.current) {
               transcriptScrollRef.current.scrollTo({ y: Math.max(0, matchIdx * 64 - 100), animated: true });
@@ -147,7 +150,7 @@ export default function LearningVideoPlayer({
       } catch (e) {}
     }, 500);
     return () => clearInterval(timer);
-  }, [playing, transcriptVisible, transcriptCues, activeCueIndex, autoScrollTranscript]);
+  }, [playing, transcriptVisible, transcriptCues, autoScrollTranscript]);
 
   const transcriptPlainText = useMemo(
     () => transcriptCues.map(c => `[${c.formattedTime}] ${c.text}`).join('\n'),
@@ -212,11 +215,22 @@ export default function LearningVideoPlayer({
         const uploadRes = await uploadFileToCloudinary(uri, 'application/pdf', pdfFileName);
         if (uploadRes?.url) { pdfUrl = uploadRes.url; pdfSize = uploadRes.size || 50000; }
       } catch (_) {}
-      await addDoc(collection(db, COLLECTION.STORAGE_NODES), {
-        userId: user.uid, name: pdfFileName, type: 'file', fileType: 'pdf',
-        url: pdfUrl, size: pdfSize, parentId: null, tags: [],
-        createdAt: Date.now(), updatedAt: Date.now(),
-      });
+      const newPdfDocRef = doc(collection(db, COLLECTION.STORAGE_NODES));
+      const pdfNodeData = {
+        id: newPdfDocRef.id,
+        userId: user.uid,
+        name: pdfFileName,
+        type: 'file' as const,
+        fileType: 'pdf' as const,
+        url: pdfUrl,
+        size: pdfSize,
+        parentId: null,
+        tags: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await safeAdd(COLLECTION.STORAGE_NODES, pdfNodeData, () => setDoc(newPdfDocRef, pdfNodeData), newPdfDocRef.id);
+      optimisticAddStorageNode(pdfNodeData);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('🎉 PDF Exported!', `"${pdfFileName}" saved to ZenNotes.`, [
         { text: 'Awesome!', style: 'cancel' },
@@ -263,12 +277,22 @@ export default function LearningVideoPlayer({
             if (!user) { Alert.alert('Sign In Required'); return; }
             try {
               const topic = learningTopics?.find(t => t.subTasks?.some(s => s.id === activeVideoSub.id));
-              await addDoc(collection(db, COLLECTION.STORAGE_NODES), {
-                userId: user.uid, name: `ZEN-GPT: ${activeVideoSub.title || 'Lecture Note'}${timeTag}`,
+              const newNoteDocRef = doc(collection(db, COLLECTION.STORAGE_NODES));
+              const noteData = {
+                id: newNoteDocRef.id,
+                userId: user.uid,
+                name: `ZEN-GPT: ${activeVideoSub.title || 'Lecture Note'}${timeTag}`,
                 content: `# 🤖 ZEN-GPT${timeTag}\n\n**Lecture:** ${activeVideoSub.title}\n**Topic:** ${topic?.title || 'Learning'}\n\n---\n\n${responseText.trim()}`,
-                type: 'note', parentId: null, tags: [], pinned: false, color: '#00c16e',
-                createdAt: Date.now(), updatedAt: Date.now(),
-              });
+                type: 'note' as const,
+                parentId: null,
+                tags: [],
+                pinned: false,
+                color: '#00c16e',
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              };
+              await safeAdd(COLLECTION.STORAGE_NODES, noteData, () => setDoc(newNoteDocRef, noteData), newNoteDocRef.id);
+              optimisticAddStorageNode(noteData);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               Alert.alert('☁️ Saved to ZenNotes');
             } catch (err: any) { Alert.alert('Save Error', err?.message); }

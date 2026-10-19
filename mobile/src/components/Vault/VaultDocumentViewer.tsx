@@ -15,7 +15,7 @@
  * - Truthful status pills: green "Offline" ONLY appears when genuinely loaded from device storage.
  */
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -56,6 +56,7 @@ export default function VaultDocumentViewer({ node, onClose }: VaultDocumentView
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isDeviceOnline, setIsDeviceOnline] = useState(true);
   const [webViewKey, setWebViewKey] = useState(0);
+  const activeNodeIdRef = useRef<string | null>(null);
 
   const isImage = node?.fileType === 'image' || (!!node?.name && /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(node.name));
   const isPdf   = node?.fileType === 'pdf'   || (!!node?.name && /\.pdf$/i.test(node.name));
@@ -74,6 +75,8 @@ export default function VaultDocumentViewer({ node, onClose }: VaultDocumentView
 
   // ── File resolution: checks disk cache FIRST before touching network ──────
   const resolveFile = useCallback(async (targetNode: StorageNode) => {
+    const targetKey = targetNode.id || targetNode.url || '';
+    activeNodeIdRef.current = targetKey;
     const url = targetNode.url || '';
     if (!url) {
       setErrorMsg('No URL available for this file.');
@@ -88,6 +91,7 @@ export default function VaultDocumentViewer({ node, onClose }: VaultDocumentView
     try {
       // 1. Immediate local disk cache lookup (<15ms)
       const cached = await getCachedFilePath(url, targetNode.name);
+      if (activeNodeIdRef.current !== targetKey) return;
       if (cached) {
         setLocalUri(cached);
         setIsCached(true);
@@ -102,6 +106,7 @@ export default function VaultDocumentViewer({ node, onClose }: VaultDocumentView
 
       // Check network connectivity before initiating download
       const net = await NetInfo.fetch();
+      if (activeNodeIdRef.current !== targetKey) return;
       const online = !!net.isConnected && net.isInternetReachable !== false;
       if (!online) {
         setErrorMsg('Device is offline and this file is not cached locally yet.');
@@ -111,17 +116,23 @@ export default function VaultDocumentViewer({ node, onClose }: VaultDocumentView
       // 3. Download and cache permanently to local disk in background
       setDownloading(true);
       const result = await downloadAndCacheFile(url, targetNode.name, (p) => {
-        setDownloadProgress(p);
+        if (activeNodeIdRef.current === targetKey) {
+          setDownloadProgress(p);
+        }
       });
 
+      if (activeNodeIdRef.current !== targetKey) return;
       setLocalUri(result.localUri);
       setIsCached(true);
       setDownloading(false);
       feedback.success();
     } catch (err: any) {
       console.warn('[VaultDocumentViewer] Resolution warning:', err);
-      setIsCheckingCache(false);
-      setDownloading(false);
+      if (activeNodeIdRef.current === targetKey) {
+        setErrorMsg(err?.message || 'Failed to download and open file.');
+        setIsCheckingCache(false);
+        setDownloading(false);
+      }
     }
   }, []);
 
@@ -157,8 +168,10 @@ export default function VaultDocumentViewer({ node, onClose }: VaultDocumentView
 
   // Open file in device native reader (Google Drive, Adobe, Samsung Notes, Apple Books)
   const handleOpenInSystemReader = async () => {
-    const uriToOpen = localUri || remoteUrl;
-    if (!uriToOpen) return;
+    if (!localUri) {
+      Alert.alert('Downloading File', 'Please wait a moment for the file to finish caching to your device first.');
+      return;
+    }
 
     try {
       feedback.tap();
@@ -167,7 +180,7 @@ export default function VaultDocumentViewer({ node, onClose }: VaultDocumentView
         Alert.alert('Not Supported', 'Opening files externally is not supported on this device.');
         return;
       }
-      await Sharing.shareAsync(uriToOpen, {
+      await Sharing.shareAsync(localUri, {
         dialogTitle: `Open ${node?.name || 'Document'}`,
         mimeType: isPdf ? 'application/pdf' : isImage ? 'image/*' : undefined,
         UTI: isPdf ? 'com.adobe.pdf' : undefined,
@@ -179,8 +192,10 @@ export default function VaultDocumentViewer({ node, onClose }: VaultDocumentView
   };
 
   const handleShare = async () => {
-    const uriToShare = localUri || remoteUrl;
-    if (!uriToShare) return;
+    if (!localUri) {
+      Alert.alert('Downloading File', 'Please wait a moment for the file to finish caching to your device first.');
+      return;
+    }
     try {
       feedback.tap();
       const isAvailable = await Sharing.isAvailableAsync();
@@ -188,7 +203,7 @@ export default function VaultDocumentViewer({ node, onClose }: VaultDocumentView
         Alert.alert('Sharing not available', 'Native sharing is not supported on this device.');
         return;
       }
-      await Sharing.shareAsync(uriToShare, {
+      await Sharing.shareAsync(localUri, {
         dialogTitle: `Share ${node?.name || 'File'}`,
         mimeType: isPdf ? 'application/pdf' : isImage ? 'image/*' : undefined,
         UTI: isPdf ? 'com.adobe.pdf' : undefined,

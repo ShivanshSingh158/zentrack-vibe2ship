@@ -55,6 +55,10 @@ export default function AiChatPanel({
   const mdStylesModel = useMemo(() => makeMdStylesModel(colors, isDark), [colors, isDark]);
   const chatScrollRef = useRef<ScrollView>(null);
 
+  useEffect(() => {
+    chatScrollRef.current?.scrollToEnd({ animated: true });
+  }, [aiHistory.length]);
+
   const markdownRules = useMemo(() => ({
     fence: (node: any) => {
       const language = (node.sourceInfo || 'code').trim();
@@ -165,7 +169,7 @@ export default function AiChatPanel({
             {onToggleModel && (
               <TouchableOpacity onPress={onToggleModel} style={{ marginLeft: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}>
                 <Text style={{ fontSize: 10, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
-                  {'⚡ 2.5'}
+                  {selectedModel?.toLowerCase().includes('pro') ? '💎 2.5 Pro' : selectedModel?.toLowerCase().includes('lite') ? '⚡ Lite' : '⚡ 2.5'}
                 </Text>
               </TouchableOpacity>
             )}
@@ -181,7 +185,6 @@ export default function AiChatPanel({
 
       <ScrollView
         ref={chatScrollRef}
-        onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: isChatFullScreen ? Math.max(insets.top, 20) + 60 : 12, paddingBottom: Math.max(140, insets.bottom + 120), gap: 20 }}
       >
         {aiHistory.map((item, i) => (

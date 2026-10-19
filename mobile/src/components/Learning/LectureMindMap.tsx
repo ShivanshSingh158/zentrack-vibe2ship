@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
+import { safeAdd } from '../../utils/safeWrite';
 import { uploadFileToCloudinary } from '../../services/cloudinary';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
@@ -62,22 +63,22 @@ function ConnectorLine({
   const dy = y2 - y1;
   const length = Math.sqrt(dx * dx + dy * dy);
   const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const h = isDashed ? 1.5 : 2;
 
   return (
     <View
       style={{
         position: 'absolute',
-        left: x1,
-        top: y1,
+        left: (x1 + x2) / 2 - length / 2,
+        top: (y1 + y2) / 2 - h / 2,
         width: length,
-        height: isDashed ? 1.5 : 2,
+        height: h,
         backgroundColor: isDashed ? 'transparent' : color,
         borderTopWidth: isDashed ? 1.5 : 0,
         borderColor: color,
         borderStyle: isDashed ? 'dashed' : 'solid',
         opacity,
         transform: [{ rotate: `${angle}deg` }],
-        transformOrigin: '0 50%',
       } as any}
       pointerEvents="none"
     />
@@ -189,10 +190,10 @@ export default function LectureMindMap({
             pdfUrl = uploadRes.url;
             pdfSize = uploadRes.size || 80000;
           }
-          await addDoc(collection(db, COLLECTION.STORAGE_NODES), {
+          const nodeData = {
             userId: user.uid,
             name: pdfFileName,
-            type: 'file',
+            type: 'file' as const,
             fileType: 'pdf',
             url: pdfUrl,
             size: pdfSize,
@@ -200,7 +201,12 @@ export default function LectureMindMap({
             tags: [],
             createdAt: Date.now(),
             updatedAt: Date.now(),
-          });
+          };
+          await safeAdd(
+            COLLECTION.STORAGE_NODES,
+            nodeData,
+            () => addDoc(collection(db, COLLECTION.STORAGE_NODES), nodeData)
+          );
         } catch (uploadErr) {
           console.warn('[LectureMindMap] Cloudinary PDF upload fallback:', uploadErr);
         }
@@ -214,6 +220,10 @@ export default function LectureMindMap({
       setExportingPdf(false);
     }
   }, [mapData, lectureTitle, user]);
+
+  useEffect(() => {
+    setMapData(null);
+  }, [lectureTitle]);
 
   const getInitialPosition = useCallback((targetScale = 0.75) => {
     return {
@@ -384,7 +394,10 @@ export default function LectureMindMap({
               y: (pan.y as any)._value || panOffset.current.y,
             };
           }
-          pan.setValue({ x: gs.dx, y: gs.dy });
+          pan.setValue({
+            x: panOffset.current.x + gs.dx,
+            y: panOffset.current.y + gs.dy,
+          });
         }
       },
       onPanResponderRelease: (evt, gs) => {

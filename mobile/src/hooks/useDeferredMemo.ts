@@ -45,7 +45,7 @@ export function useDeferredMemo<T>(
   useEffect(() => {
     // After first mount, if deps change, run synchronously (instant update)
     if (mountedRef.current) {
-      setValue(factory());
+      setValue(() => factory());
       depsRef.current = deps;
       return;
     }
@@ -53,7 +53,7 @@ export function useDeferredMemo<T>(
     // First mount: defer behind interactions so first paint is unblocked
     mountedRef.current = true;
     const task = InteractionManager.runAfterInteractions(() => {
-      setValue(factory());
+      setValue(() => factory());
     });
 
     return () => task.cancel();

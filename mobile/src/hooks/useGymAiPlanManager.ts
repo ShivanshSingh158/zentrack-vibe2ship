@@ -81,9 +81,14 @@ export function useGymAiPlanManager({
       };
     });
 
+    const completedExisting = (log.exercises || []).filter((ex: any) =>
+      ex.setsLog?.some((s: any) => s.completed)
+    );
+    const combinedExercises = [...completedExisting, ...newExercises];
+
     saveLog({
       ...log,
-      exercises: newExercises,
+      exercises: combinedExercises,
       updatedAt: Date.now(),
     });
   }, [log, saveLog]);
@@ -135,7 +140,7 @@ export function useGymAiPlanManager({
     const prescription = getBiomechanicalPrescription(exercise.name, resolvedMuscle);
 
     const newExercise = {
-      id: `ai_single_${dayIndex}_${Date.now()}`,
+      id: `ai_single_${dayIndex}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: exercise.name,
       targetSets: exercise.targetSets || prescription.targetSets || 3,
       targetReps: exercise.targetReps || prescription.targetReps || '8-12',

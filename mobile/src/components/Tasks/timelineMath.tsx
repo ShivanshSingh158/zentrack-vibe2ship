@@ -27,17 +27,18 @@ export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'
 
 /** SVG diagonal stripes drawn over completed/attended blocks */
 export function HatchOverlay({
-  width,
+  width = '100%',
   height,
   color = 'rgba(255,255,255,0.12)',
   id = 'hatch'
 }: {
-  width: number;
-  height: number;
+  width?: number | string;
+  height: number | string;
   color?: string;
   id?: string;
 }) {
-  const patternId = `hatch-${id.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const cleanId = id.replace(/[^a-zA-Z0-9]/g, '');
+  const patternId = `hatch-${cleanId}-${Math.abs(cleanId.split('').reduce((acc, c) => ((acc << 5) - acc) + c.charCodeAt(0), 0))}`;
   return (
     <Svg width={width} height={height} style={StyleSheet.absoluteFillObject} pointerEvents="none">
       <Defs>
@@ -68,7 +69,7 @@ export function parseTime(timeStr: string | undefined): number | null {
 }
 
 export function floatToTimeString(floatHour: number): string {
-  const totalMinutes = Math.round(floatHour * 60);
+  const totalMinutes = Math.round(floatHour * 60) % (24 * 60);
   const h24 = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
   const ampm = h24 >= 12 ? 'PM' : 'AM';

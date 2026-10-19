@@ -49,7 +49,7 @@ function parseTimeStrMinutes(str?: string): number | null {
 function getPlannedMinutes(task: Task): number | null {
   if (task.estimatedMinutes) return task.estimatedMinutes;
   if (task.timeSlot) {
-    const parts = task.timeSlot.split(/[-–]/).map(s => s.trim());
+    const parts = task.timeSlot.split(/[-–—•]| to /i).map(s => s.trim());
     const startMin = parseTimeStrMinutes(parts[0]);
     const endMin = parts.length > 1 ? parseTimeStrMinutes(parts[1]) : null;
     if (startMin !== null && endMin !== null) {
@@ -96,7 +96,7 @@ function DualBar({ planned, actual, colors }: {
           <View style={[barStyles.track, { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
             <Animated.View
               entering={FadeInRight.delay(100).duration(500)}
-              style={[barStyles.fill, { flex: plannedFrac, backgroundColor: 'rgba(165,153,255,0.4)' }]}
+              style={[barStyles.fill, { width: `${Math.round(plannedFrac * 100)}%`, backgroundColor: 'rgba(165,153,255,0.4)' }]}
             />
           </View>
           <Text style={[barStyles.value, { color: '#a599ff' }]}>{formatMinutes(planned)}</Text>
@@ -110,7 +110,7 @@ function DualBar({ planned, actual, colors }: {
           <View style={[barStyles.track, { backgroundColor: 'rgba(255,255,255,0.05)' }]}>
             <Animated.View
               entering={FadeInRight.delay(200).duration(500)}
-              style={[barStyles.fill, { flex: actualFrac, backgroundColor: isOver ? '#ff6961' : '#5eda9e' }]}
+              style={[barStyles.fill, { width: `${Math.round(actualFrac * 100)}%`, backgroundColor: isOver ? '#ff6961' : '#5eda9e' }]}
             />
           </View>
           <Text style={[barStyles.value, { color: isOver ? '#ff6961' : '#5eda9e' }]}>{formatMinutes(actual)}</Text>
@@ -263,7 +263,7 @@ export default function TimeSpentSheet({ visible, onClose, tasks, selectedDate }
     return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   }, [selectedDate]);
 
-  const isOver = totalActual > totalPlanned;
+  const isOver = totalPlanned > 0 && totalActual > totalPlanned;
 
   return (
     <BottomSheet visible={visible} onClose={onClose}>

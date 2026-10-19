@@ -65,9 +65,15 @@ export function UpdateBanner() {
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const glowLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const pulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
     checkForUpdate();
+    return () => {
+      glowLoopRef.current?.stop();
+      pulseLoopRef.current?.stop();
+    };
   }, []);
 
   const checkForUpdate = async () => {
@@ -120,23 +126,27 @@ export function UpdateBanner() {
     ]).start();
 
     // Glow pulse on the icon
-    Animated.loop(
+    glowLoopRef.current = Animated.loop(
       Animated.sequence([
         Animated.timing(glowAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
         Animated.timing(glowAnim, { toValue: 0, duration: 1500, useNativeDriver: true }),
       ])
-    ).start();
+    );
+    glowLoopRef.current.start();
 
     // Button pulse
-    Animated.loop(
+    pulseLoopRef.current = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.04, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ])
-    ).start();
+    );
+    pulseLoopRef.current.start();
   };
 
   const dismiss = () => {
+    glowLoopRef.current?.stop();
+    pulseLoopRef.current?.stop();
     Animated.parallel([
       Animated.timing(opacityAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 80, duration: 250, useNativeDriver: true }),
@@ -211,7 +221,7 @@ export function UpdateBanner() {
               activeOpacity={0.85}
             >
               {isReloading
-                ? <Text style={styles.updateBtnText}>RestartingGǪ</Text>
+                ? <Text style={styles.updateBtnText}>Restarting…</Text>
                 : <>
                     <Ionicons name="refresh-circle" size={20} color="#fff" />
                     <Text style={styles.updateBtnText}>Update Now</Text>

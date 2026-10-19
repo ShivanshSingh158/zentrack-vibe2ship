@@ -259,8 +259,7 @@ export function getCustomPlanDay(customDays: any, planIdx: number): GymPlanDay |
 
 export function resolvePlanDay(userGymPlan: any, planIdx: number): GymPlanDay {
   const rawCustom = getCustomPlanDay(userGymPlan?.customDays, planIdx);
-  const customHasExercises = rawCustom && Array.isArray(rawCustom.exercises) && rawCustom.exercises.length > 0;
-  if (rawCustom && (rawCustom.isRest || customHasExercises)) {
+  if (rawCustom && (rawCustom.isRest || Array.isArray(rawCustom.exercises))) {
     return rawCustom;
   }
   const basePlan = userGymPlan?.templateId === 'arnold' ? GYM_PLAN_ARNOLD : GYM_PLAN;

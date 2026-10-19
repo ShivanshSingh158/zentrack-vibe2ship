@@ -464,60 +464,82 @@ export const PERSONALITY_QUOTES: Record<QuotePersonality, Quote[]> = {
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-/**
- * Get a deterministic rotating quote based on user's BFE personality.
- * Shuffles all quotes using Fisher-Yates and pops from the bag on every call,
- * strictly guaranteeing ZERO repeats until every single quote in the collection has been shown.
- */
+let inFlightQuotePromise: Promise<Quote> | null = null;
+
 export async function getDailyQuote(personality: QuotePersonality = 'consistent'): Promise<Quote> {
-  const rawQuotes = [...BRUTAL_QUOTES, ...(PERSONALITY_QUOTES[personality] || PERSONALITY_QUOTES['consistent'])];
-  
-  // Deduplicate quotes strictly by text so every item in the pool is unique
-  const seen = new Set<string>();
-  const quotes: Quote[] = [];
-  for (const q of rawQuotes) {
-    if (!seen.has(q.text)) {
-      seen.add(q.text);
-      quotes.push(q);
-    }
-  }
+  if (inFlightQuotePromise) return inFlightQuotePromise;
 
-  try {
-    const bagKey = `@zentrack_quote_bag_${personality}`;
-    const poolSizeKey = `@zentrack_quote_pool_size_${personality}`;
-
-    const [bagStr, storedSizeStr] = await Promise.all([
-      AsyncStorage.getItem(bagKey),
-      AsyncStorage.getItem(poolSizeKey),
-    ]);
-
-    let bag: number[] = bagStr ? JSON.parse(bagStr) : [];
-    const storedSize = storedSizeStr ? parseInt(storedSizeStr, 10) : 0;
+  inFlightQuotePromise = (async () => {
+    const rawQuotes = [...BRUTAL_QUOTES, ...(PERSONALITY_QUOTES[personality] || PERSONALITY_QUOTES['consistent'])];
     
-    // Regenerate and reshuffle full bag if empty, corrupted, or if the quotes collection size changed
-    if (!Array.isArray(bag) || bag.length === 0 || storedSize !== quotes.length || bag.some(i => i >= quotes.length || typeof i !== 'number')) {
-      bag = Array.from({ length: quotes.length }, (_, i) => i);
-      // Modern Fisher-Yates unbiased shuffle
-      for (let i = bag.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [bag[i], bag[j]] = [bag[j], bag[i]];
+    // Deduplicate quotes strictly by text so every item in the pool is unique
+    const seen = new Set<string>();
+    const quotes: Quote[] = [];
+    for (const q of rawQuotes) {
+      if (!seen.has(q.text)) {
+        seen.add(q.text);
+        quotes.push(q);
       }
-      await AsyncStorage.setItem(poolSizeKey, String(quotes.length));
     }
-    
-    // Pop the next guaranteed unique index
-    const currentIndex = bag.pop();
-    
-    // Save the remaining bag for next time
-    await AsyncStorage.setItem(bagKey, JSON.stringify(bag));
-    
-    if (typeof currentIndex === 'number' && quotes[currentIndex]) {
-      return quotes[currentIndex];
+
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dailyKey = `@zentrack_daily_quote_cache_${personality}`;
+
+    try {
+      const cachedTodayStr = await AsyncStorage.getItem(dailyKey);
+      if (cachedTodayStr) {
+        const parsed = JSON.parse(cachedTodayStr);
+        if (parsed.date === today && typeof parsed.index === 'number' && quotes[parsed.index]) {
+          return quotes[parsed.index];
+        }
+      }
+
+      const bagKey = `@zentrack_quote_bag_${personality}`;
+      const poolSizeKey = `@zentrack_quote_pool_size_${personality}`;
+
+      const [bagStr, storedSizeStr] = await Promise.all([
+        AsyncStorage.getItem(bagKey),
+        AsyncStorage.getItem(poolSizeKey),
+      ]);
+
+      let bag: number[] = bagStr ? JSON.parse(bagStr) : [];
+      const storedSize = storedSizeStr ? parseInt(storedSizeStr, 10) : 0;
+      
+      // Regenerate and reshuffle full bag if empty, corrupted, or if the quotes collection size changed
+      if (!Array.isArray(bag) || bag.length === 0 || storedSize !== quotes.length || bag.some(i => i >= quotes.length || typeof i !== 'number')) {
+        bag = Array.from({ length: quotes.length }, (_, i) => i);
+        // Modern Fisher-Yates unbiased shuffle
+        for (let i = bag.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [bag[i], bag[j]] = [bag[j], bag[i]];
+        }
+        await AsyncStorage.setItem(poolSizeKey, String(quotes.length));
+      }
+      
+      // Pop the next guaranteed unique index for today
+      const currentIndex = bag.pop();
+      
+      // Save the remaining bag and today's selected quote index
+      await Promise.all([
+        AsyncStorage.setItem(bagKey, JSON.stringify(bag)),
+        typeof currentIndex === 'number'
+          ? AsyncStorage.setItem(dailyKey, JSON.stringify({ date: today, index: currentIndex }))
+          : Promise.resolve(),
+      ]);
+      
+      if (typeof currentIndex === 'number' && quotes[currentIndex]) {
+        return quotes[currentIndex];
+      }
+      return quotes[Math.floor(Math.random() * quotes.length)] || quotes[0];
+    } catch (e) {
+      // Fallback to random if storage fails
+      return quotes[Math.floor(Math.random() * quotes.length)] || quotes[0];
+    } finally {
+      inFlightQuotePromise = null;
     }
-    return quotes[Math.floor(Math.random() * quotes.length)] || quotes[0];
-  } catch (e) {
-    // Fallback to random if storage fails
-    return quotes[Math.floor(Math.random() * quotes.length)] || quotes[0];
-  }
+  })();
+
+  return inFlightQuotePromise;
 }
 

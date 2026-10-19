@@ -1191,7 +1191,7 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "aliases": []
   },
   {
-    "id": "lower_chest_high_to_low_woodchoppers",
+    "id": "obliques_high_to_low_woodchoppers",
     "name": "High To Low Woodchoppers",
     "muscle": "Obliques",
     "tier": "C Tier",
@@ -1291,7 +1291,7 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
   {
     "id": "mid_back_incline_dumbbell_row",
     "name": "Incline Dumbbell Row",
-    "muscle": "Upper Chest",
+    "muscle": "Mid-Back",
     "tier": "A Tier",
     "aliases": []
   },
@@ -2214,7 +2214,7 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
   {
     "id": "brachioradialis__upper_forearm__reverse_dumbbell_curl",
     "name": "Reverse Dumbbell Curl",
-    "muscle": "Short Bicep (Inner head)",
+    "muscle": "Brachioradialis",
     "tier": "C Tier",
     "aliases": []
   },
@@ -2237,7 +2237,7 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
   {
     "id": "uncategorized_standing_dumbbell_overhead_extension",
     "name": "Standing Dumbbell Overhead Extension",
-    "muscle": "Uncategorized",
+    "muscle": "Long Tricep",
     "tier": "C Tier",
     "aliases": []
   },
@@ -2655,7 +2655,7 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
   {
     "id": "lat_width_dual_rope_straight_arm_lat_pushdown",
     "name": "Dual-Rope Straight-Arm Lat Pushdown",
-    "muscle": "Lat/Med Tricep (Lateral / Medial Head)",
+    "muscle": "Lat Width (Lats)",
     "tier": "A Tier",
     "aliases": [
       "double rope lat pushdown",
@@ -2674,7 +2674,7 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
   {
     "id": "lat_width_neutral_underhand_close_grip_pulldown",
     "name": "Neutral Underhand Close-Grip Pulldown",
-    "muscle": "Lat/Med Tricep (Lateral / Medial Head)",
+    "muscle": "Lat Width (Lats)",
     "tier": "C Tier",
     "aliases": [
       "close grip reverse pulldown"
@@ -2693,7 +2693,7 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
   {
     "id": "mid_back_chest_supported_incline_row_45_deg",
     "name": "Chest-Supported Incline Row (45° Elbows)",
-    "muscle": "Upper Chest",
+    "muscle": "Mid-Back",
     "tier": "C Tier",
     "aliases": [
       "incline db row 45 degrees",
@@ -3203,9 +3203,9 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     ]
   },
   {
-    "id": "hamstrings_copenhagen_plank",
+    "id": "adductors_copenhagen_plank",
     "name": "Copenhagen Plank",
-    "muscle": "Transverse Abs (Deep core)",
+    "muscle": "Adductors",
     "tier": "B Tier",
     "aliases": [
       "copenhagen adductor plank"

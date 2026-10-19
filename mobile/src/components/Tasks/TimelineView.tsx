@@ -16,6 +16,7 @@ import { formatLocalDateStr } from '../../utils/dateUtils';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
 
 // Extracted math, subcomponents & styles
 import {
@@ -58,6 +59,7 @@ const TimelineView = React.memo(function TimelineView({
   const colors = propColors || theme.colors;
   const isDark = propIsDark !== undefined ? propIsDark : theme.isDark;
   const navigation = useNavigation<any>();
+  const { optimisticUpdateTask } = useCoreData();
 
   // Domain context fallbacks: allows TasksScreen to avoid subscribing to Academic and Wellness contexts
   const academic = useAcademicData();
@@ -145,7 +147,7 @@ const TimelineView = React.memo(function TimelineView({
         const endText = parts[1];
 
         const startFloat = parseTime(startText);
-        const endFloat = endText ? parseTime(endText) : (startFloat ? startFloat + 1 : null);
+        const endFloat = endText ? parseTime(endText) : (startFloat !== null ? startFloat + 1 : null);
 
         if (startFloat === null || startFloat > END_HOUR) return null;
 
@@ -162,7 +164,7 @@ const TimelineView = React.memo(function TimelineView({
           top,
           height: Math.max(height, HOUR_HEIGHT * 0.5),
           startFloat,
-          endFloat: endFloat || (startFloat + 0.75),
+          endFloat: endFloat ?? (startFloat + 0.75),
           durationFloat,
           isMissed,
           leftPercent: 0,
@@ -203,15 +205,34 @@ const TimelineView = React.memo(function TimelineView({
     if (currentGroup.length > 0) groups.push(currentGroup);
 
     groups.forEach((group) => {
-      const count = group.length;
-      group.forEach((block, idx) => {
-        if (count > 1) {
-          block.leftPercent = (idx / count) * 100;
-          block.widthPercent = 100 / count;
-        } else {
-          block.leftPercent = 0;
-          block.widthPercent = 100;
+      // Greedy column packing for overlapping intervals within group
+      const columns: (typeof raw[0])[][] = [];
+      group.forEach((block) => {
+        let placed = false;
+        for (let c = 0; c < columns.length; c++) {
+          const lastInCol = columns[c][columns[c].length - 1];
+          if (block.startFloat >= lastInCol.endFloat) {
+            columns[c].push(block);
+            placed = true;
+            break;
+          }
         }
+        if (!placed) {
+          columns.push([block]);
+        }
+      });
+
+      const totalCols = columns.length;
+      columns.forEach((col, colIdx) => {
+        col.forEach((block) => {
+          if (totalCols > 1) {
+            block.leftPercent = (colIdx / totalCols) * 100;
+            block.widthPercent = 100 / totalCols;
+          } else {
+            block.leftPercent = 0;
+            block.widthPercent = 100;
+          }
+        });
       });
     });
 
@@ -416,16 +437,17 @@ const TimelineView = React.memo(function TimelineView({
     return false;
   }, [positionedTasks, classBlocks, gymBlock, START_HOUR]);
 
-  // •• Save new timeSlot to Firestore ••••••••••••••••••••••••••••••••••••••••
+  // •• Save new timeSlot to Firestore & Optimistic UI ••••••••••••••••••••••••••••••
   const handleReschedule = useCallback(async (taskId: string, newTimeSlot: string) => {
     try {
       feedback.commit();
+      optimisticUpdateTask(taskId, { timeSlot: newTimeSlot });
       await updateDoc(doc(db, 'tasks', taskId), { timeSlot: newTimeSlot });
     } catch (e) {
       feedback.warning();
       console.warn('[TimelineView] reschedule failed:', e);
     }
-  }, []);
+  }, [optimisticUpdateTask]);
 
   const handleStaticBlockPress = (cb: ClassBlock) => {
     feedback.tap();

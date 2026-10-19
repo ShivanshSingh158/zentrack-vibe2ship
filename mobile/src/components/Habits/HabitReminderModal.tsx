@@ -24,6 +24,7 @@ import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from "../../theme/tokens";
 import { hapticMedium, hapticSelection, hapticLight } from "../../utils/haptics";
 import { useTheme } from "../../contexts/ThemeContext";
 import { Habit } from "../../contexts/MobileDataContext";
+import { useCoreData } from "../../contexts/domains/CoreDataContext";
 
 // ── AsyncStorage key helpers ──────────────────────────────────────────────────
 export const HABIT_NOTIF_ENABLED_KEY = (id: string) => `@habit_notif_enabled_${id}`;
@@ -181,6 +182,7 @@ interface Props {
 export function HabitReminderModal({ visible, onClose, habits }: Props) {
   const { colors, isDark } = useTheme();
   const s = makeStyles(colors, isDark);
+  const { tasks } = useCoreData();
 
   const [rows, setRows] = useState<Record<string, HabitRowState>>({});
   const [loading, setLoading] = useState(true);
@@ -235,7 +237,7 @@ export function HabitReminderModal({ visible, onClose, habits }: Props) {
       // Trigger notification engine to reschedule all notifications with updated habit settings
       const { scheduleAllNotifications, clearScheduleCache } = await import("../../services/notifications");
       clearScheduleCache();
-      await scheduleAllNotifications({ allHabits: habits, tasks: [] });
+      await scheduleAllNotifications({ allHabits: habits, tasks: tasks || [] });
 
       onClose();
     } catch (e: any) {

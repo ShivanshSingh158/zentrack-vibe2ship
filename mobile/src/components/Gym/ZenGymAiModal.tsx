@@ -70,6 +70,13 @@ export function ZenGymAiModal({
   workoutData,
   userGymPlan,
   currentPlanDay,
+  onAddExercise,
+  onDeleteExercise,
+  onLogSet,
+  onGenerateWorkoutPlan,
+  onAutoregulateDeload,
+  onImportMultiDayPlan,
+  onAddExerciseToPlanDay,
 }: Props) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeZenGymAiStyles(colors, isDark), [colors, isDark]);
@@ -82,6 +89,7 @@ export function ZenGymAiModal({
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const textInputRef = useRef<TextInput>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
@@ -166,15 +174,33 @@ export function ZenGymAiModal({
           gymProfile,
           userGymPlan,
           gymPlanDay: currentPlanDay,
+          workoutDayName: currentPlanDay?.name,
+          exercises: currentPlanDay?.exercises,
+          ...(workoutData || {}),
         }
       );
 
       const { cleanText, options: parsedOptions } = parseOptionsFromText(response?.text || '');
+      let rawActionCard = (response as any)?.actionCard;
+      if (rawActionCard && !rawActionCard.onConfirm) {
+        if (rawActionCard.type === 'add_exercise' && onAddExercise) {
+          rawActionCard.onConfirm = () => onAddExercise(rawActionCard.name, rawActionCard.targetSets || 3, rawActionCard.targetReps || '8-12');
+        } else if (rawActionCard.type === 'generate_workout_plan' && onGenerateWorkoutPlan) {
+          rawActionCard.onConfirm = () => onGenerateWorkoutPlan(rawActionCard.planName || 'AI Workout', rawActionCard.exercises || []);
+        } else if (rawActionCard.type === 'autoregulate_deload' && onAutoregulateDeload) {
+          rawActionCard.onConfirm = () => onAutoregulateDeload();
+        } else if (rawActionCard.type === 'import_multi_day_plan' && onImportMultiDayPlan) {
+          rawActionCard.onConfirm = () => onImportMultiDayPlan(rawActionCard.planName || 'AI Split', rawActionCard.days || []);
+        } else if (rawActionCard.type === 'add_exercise_to_plan_day' && onAddExerciseToPlanDay) {
+          rawActionCard.onConfirm = () => onAddExerciseToPlanDay(rawActionCard.dayIndex, rawActionCard.dayName, rawActionCard.exercise);
+        }
+      }
+
       const aiMsg: ChatMessage = {
         id: String(Date.now() + 1),
         role: 'gains',
         text: cleanText || response?.text || 'I analyzed your training profile.',
-        actionCard: (response as any)?.actionCard,
+        actionCard: rawActionCard,
         options: parsedOptions.length > 0 ? parsedOptions : undefined,
       };
 
@@ -275,7 +301,7 @@ export function ZenGymAiModal({
                 key={msg.id}
                 msg={msg}
                 onSelectOption={opt => handleSend(opt)}
-                onWriteOwn={() => {}}
+                onWriteOwn={() => textInputRef.current?.focus()}
                 styles={styles}
                 colors={colors}
                 isDark={isDark}
@@ -319,6 +345,7 @@ export function ZenGymAiModal({
           <View style={styles.inputBarWrapper}>
             <View style={styles.inputContainer}>
               <TextInput
+                ref={textInputRef}
                 style={styles.textInput}
                 value={input}
                 onChangeText={setInput}

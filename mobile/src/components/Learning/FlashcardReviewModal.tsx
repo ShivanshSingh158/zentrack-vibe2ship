@@ -146,26 +146,30 @@ export default function FlashcardReviewModal({
 
     setSessionStats(prev => ({ ...prev, [grade]: prev[grade] + 1 }));
 
-    const currentCard = deck[currentIndex];
-    if (currentCard.id) {
-      await submitFlashcardReview(currentCard.id, currentCard, grade);
-    }
+    try {
+      const currentCard = deck[currentIndex];
+      if (currentCard.id) {
+        await submitFlashcardReview(currentCard.id, currentCard, grade);
+      }
 
-    if (currentIndex + 1 < deck.length) {
-      // Flip back to front smoothly and advance
-      flipAnim.setValue(0);
-      setIsFlipped(false);
-      setShowHint(false);
-      hintOpacity.setValue(0);
-      setCurrentIndex(prev => prev + 1);
+      if (currentIndex + 1 < deck.length) {
+        // Flip back to front smoothly and advance
+        flipAnim.setValue(0);
+        setIsFlipped(false);
+        setShowHint(false);
+        hintOpacity.setValue(0);
+        setCurrentIndex(prev => prev + 1);
+      } else {
+        // Session finished!
+        await awardXP('FLASHCARD_REVIEW');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setSessionFinished(true);
+        if (onSessionComplete) onSessionComplete();
+      }
+    } catch (err) {
+      console.warn('[FlashcardReviewModal] grade error:', err);
+    } finally {
       setSubmitting(false);
-    } else {
-      // Session finished!
-      await awardXP('FLASHCARD_REVIEW');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setSessionFinished(true);
-      setSubmitting(false);
-      if (onSessionComplete) onSessionComplete();
     }
   };
 
@@ -293,79 +297,83 @@ export default function FlashcardReviewModal({
                 style={s.cardWrapper}
               >
                 <Animated.View style={{ flex: 1, transform: [{ scale: scaleAnim }, { perspective: 1000 }] }}>
-                  {!isFlipped ? (
-                    /* ── FRONT FACE: QUESTION ── */
-                    <Animated.View style={[s.cardFace, s.cardFaceFront, { transform: [{ rotateY: frontInterpolate }] }]}>
-                      <View style={s.cardTop}>
-                        <View style={s.badgeQuestion}>
-                          <Ionicons name="help-circle" size={13} color={colors.accentPrimary} style={{ marginRight: 4 }} />
-                          <Text style={s.badgeQuestionText}>QUESTION</Text>
-                        </View>
-                        <View style={s.flipPromptBadge}>
-                          <Ionicons name="sync-outline" size={12} color={colors.textSecondary} />
-                          <Text style={s.flipPromptText}>Tap to Flip</Text>
-                        </View>
+                  {/* ── FRONT FACE: QUESTION ── */}
+                  <Animated.View
+                    pointerEvents={isFlipped ? 'none' : 'auto'}
+                    style={[s.cardFace, s.cardFaceFront, { transform: [{ rotateY: frontInterpolate }] }]}
+                  >
+                    <View style={s.cardTop}>
+                      <View style={s.badgeQuestion}>
+                        <Ionicons name="help-circle" size={13} color={colors.accentPrimary} style={{ marginRight: 4 }} />
+                        <Text style={s.badgeQuestionText}>QUESTION</Text>
                       </View>
-
-                      <ScrollView style={s.cardScroll} showsVerticalScrollIndicator={false}>
-                        <FormattedCardText text={currentCard.question} isQuestion={true} styles={s} />
-                      </ScrollView>
-
-                      {/* Hint Trigger Accordion */}
-                      {currentCard.hint && (
-                        <View style={s.hintContainer}>
-                          {showHint ? (
-                            <Animated.View style={[s.hintBox, { opacity: hintOpacity }]}>
-                              <View style={s.hintHeader}>
-                                <Ionicons name="bulb" size={14} color="#f5a623" />
-                                <Text style={s.hintLabel}>Memory Cue:</Text>
-                              </View>
-                              <Text style={s.hintText}>{currentCard.hint}</Text>
-                            </Animated.View>
-                          ) : (
-                            <TouchableOpacity
-                              style={s.showHintBtn}
-                              activeOpacity={0.7}
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                handleToggleHint();
-                              }}
-                            >
-                              <Ionicons name="bulb-outline" size={14} color="#f5a623" />
-                              <Text style={s.showHintText}>Need a memory hint?</Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      )}
-
-                      <View style={s.cardBottomCue}>
-                        <Ionicons name="hand-left-outline" size={13} color={colors.textSecondary} />
-                        <Text style={s.cardBottomCueText}>Tap card to reveal answer</Text>
+                      <View style={s.flipPromptBadge}>
+                        <Ionicons name="sync-outline" size={12} color={colors.textSecondary} />
+                        <Text style={s.flipPromptText}>Tap to Flip</Text>
                       </View>
-                    </Animated.View>
-                  ) : (
-                    /* ── BACK FACE: ANSWER ── */
-                    <Animated.View style={[s.cardFace, s.cardFaceBack, { transform: [{ rotateY: backInterpolate }] }]}>
-                      <View style={s.cardTop}>
-                        <View style={s.badgeAnswer}>
-                          <Ionicons name="checkmark-circle" size={13} color={isDark ? '#00c16e' : '#059669'} style={{ marginRight: 4 }} />
-                          <Text style={s.badgeAnswerText}>KEY ANSWER</Text>
-                        </View>
-                        <View style={s.flipPromptBadge}>
-                          <Ionicons name="shield-checkmark-outline" size={12} color={isDark ? '#00c16e' : '#059669'} />
-                          <Text style={[s.flipPromptText, { color: isDark ? '#00c16e' : '#059669' }]}>Recall Test</Text>
-                        </View>
-                      </View>
+                    </View>
 
-                      <ScrollView style={s.cardScroll} showsVerticalScrollIndicator={false}>
-                        <FormattedCardText text={currentCard.answer} isQuestion={false} styles={s} />
-                      </ScrollView>
+                    <ScrollView style={s.cardScroll} showsVerticalScrollIndicator={false}>
+                      <FormattedCardText text={currentCard.question} isQuestion={true} styles={s} />
+                    </ScrollView>
 
-                      <View style={s.cardBottomCue}>
-                        <Text style={[s.cardBottomCueText, { color: colors.textSecondary }]}>Rate your recall below to schedule next review</Text>
+                    {/* Hint Trigger Accordion */}
+                    {currentCard.hint && (
+                      <View style={s.hintContainer}>
+                        {showHint ? (
+                          <Animated.View style={[s.hintBox, { opacity: hintOpacity }]}>
+                            <View style={s.hintHeader}>
+                              <Ionicons name="bulb" size={14} color="#f5a623" />
+                              <Text style={s.hintLabel}>Memory Cue:</Text>
+                            </View>
+                            <Text style={s.hintText}>{currentCard.hint}</Text>
+                          </Animated.View>
+                        ) : (
+                          <TouchableOpacity
+                            style={s.showHintBtn}
+                            activeOpacity={0.7}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleToggleHint();
+                            }}
+                          >
+                            <Ionicons name="bulb-outline" size={14} color="#f5a623" />
+                            <Text style={s.showHintText}>Need a memory hint?</Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
-                    </Animated.View>
-                  )}
+                    )}
+
+                    <View style={s.cardBottomCue}>
+                      <Ionicons name="hand-left-outline" size={13} color={colors.textSecondary} />
+                      <Text style={s.cardBottomCueText}>Tap card to reveal answer</Text>
+                    </View>
+                  </Animated.View>
+
+                  {/* ── BACK FACE: ANSWER ── */}
+                  <Animated.View
+                    pointerEvents={isFlipped ? 'auto' : 'none'}
+                    style={[s.cardFace, s.cardFaceBack, { transform: [{ rotateY: backInterpolate }] }]}
+                  >
+                    <View style={s.cardTop}>
+                      <View style={s.badgeAnswer}>
+                        <Ionicons name="checkmark-circle" size={13} color={isDark ? '#00c16e' : '#059669'} style={{ marginRight: 4 }} />
+                        <Text style={s.badgeAnswerText}>KEY ANSWER</Text>
+                      </View>
+                      <View style={s.flipPromptBadge}>
+                        <Ionicons name="shield-checkmark-outline" size={12} color={isDark ? '#00c16e' : '#059669'} />
+                        <Text style={[s.flipPromptText, { color: isDark ? '#00c16e' : '#059669' }]}>Recall Test</Text>
+                      </View>
+                    </View>
+
+                    <ScrollView style={s.cardScroll} showsVerticalScrollIndicator={false}>
+                      <FormattedCardText text={currentCard.answer} isQuestion={false} styles={s} />
+                    </ScrollView>
+
+                    <View style={s.cardBottomCue}>
+                      <Text style={[s.cardBottomCueText, { color: colors.textSecondary }]}>Rate your recall below to schedule next review</Text>
+                    </View>
+                  </Animated.View>
                 </Animated.View>
               </TouchableOpacity>
 
@@ -571,6 +579,7 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     justifyContent: 'space-between',
+    backfaceVisibility: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: isDark ? 0.35 : 0.08,
@@ -582,6 +591,11 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     borderColor: isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.20)',
   },
   cardFaceBack: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: isDark ? '#111614' : '#F7FDF9',
     borderColor: isDark ? 'rgba(0,193,110,0.25)' : 'rgba(5,150,105,0.25)',
   },

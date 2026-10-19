@@ -118,17 +118,7 @@ export const LectureChatHistoryModal: React.FC<LectureChatHistoryModalProps> = (
         return b.messageCount - a.messageCount;
       });
 
-      // Cap at 5 most recent/active chat histories — auto-prune oldest
-      if (items.length > 5) {
-        const toKeep = items.slice(0, 5);
-        const toPrune = items.slice(5);
-        for (const excess of toPrune) {
-          AsyncStorage.removeItem(`@lecture_chat_${excess.subId}`).catch(() => {});
-        }
-        setHistoryItems(toKeep);
-      } else {
-        setHistoryItems(items);
-      }
+      setHistoryItems(items);
     } catch (e) {
       console.warn('Failed to load chat history:', e);
     } finally {
@@ -193,7 +183,7 @@ export const LectureChatHistoryModal: React.FC<LectureChatHistoryModalProps> = (
               <View>
                 <Text style={s.headerTitle}>Lecture Chat History</Text>
                 <Text style={s.headerSubtitle}>
-                  {historyItems.length} saved (max 5 kept)
+                  {historyItems.length} saved conversation{historyItems.length !== 1 ? 's' : ''}
                 </Text>
               </View>
             </View>

@@ -29,6 +29,13 @@ interface LearningTopicCardProps extends RenderItemParams<LearningTopic> {
   setSubtaskModalVisible: (v: boolean) => void;
 }
 
+function getLocalDateStr(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function LearningTopicCard({
   item: topic, drag, isActive,
   expandedTopics, visibleLimits,
@@ -38,7 +45,7 @@ export default function LearningTopicCard({
   setActiveTopicId, setSubtaskModalVisible,
 }: LearningTopicCardProps) {
   const { colors, isDark } = useTheme();
-  const s = makeStyles(colors, isDark);
+  const s = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const isExpanded = expandedTopics.has(topic.id!);
   const subTasks = topic.subTasks || [];
   const completedCount = subTasks.filter(s => s.isCompleted).length;
@@ -71,10 +78,10 @@ export default function LearningTopicCard({
     if (!user || !scheduleSubtask) return;
     setScheduling(true);
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = getLocalDateStr(new Date());
     const tmrw = new Date();
     tmrw.setDate(tmrw.getDate() + 1);
-    const tmrwStr = tmrw.toISOString().slice(0, 10);
+    const tmrwStr = getLocalDateStr(tmrw);
 
     try {
       if (slot === 'today' || slot === 'tomorrow') {
@@ -181,7 +188,7 @@ export default function LearningTopicCard({
                 onPress={() => {
                   const firstUncompleted = subTasks.find(s => !s.isCompleted);
                   if (firstUncompleted) {
-                    if (extractVideoId(firstUncompleted.url)) {
+                    if (extractVideoId(firstUncompleted.url) || firstUncompleted.url) {
                       openVideo(topic.id!, firstUncompleted);
                     } else {
                       if (!isExpanded) toggleTopic(topic.id!);
@@ -219,7 +226,7 @@ export default function LearningTopicCard({
                     <Text style={[s.subTitle, sub.isCompleted ? s.subTitleDone : (isCurrent ? s.subTitleActive : undefined)]} numberOfLines={1}>
                       {sub.title}
                     </Text>
-                    {!sub.isCompleted && extractVideoId(sub.url) && (
+                    {!sub.isCompleted && (extractVideoId(sub.url) || sub.url) && (
                       <TouchableOpacity style={s.watchBtn} onPress={() => openVideo(topic.id!, sub)}>
                         <Ionicons name="play" size={10} color={colors.accentPrimary} />
                         <Text style={s.watchBtnText}>Watch</Text>

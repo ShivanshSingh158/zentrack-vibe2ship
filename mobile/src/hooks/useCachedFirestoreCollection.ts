@@ -49,11 +49,18 @@ export function useCachedFirestoreCollection<T>({
     readCache<T>(cacheKey)
       .then((cached) => {
         if (cancelled) return;
-        if (cached !== null) setData(cached);
+        if (cached !== null) {
+          setData(cached);
+        } else {
+          setData(null);
+        }
         setIsHydrating(false);
       })
       .catch(() => {
-        if (!cancelled) setIsHydrating(false);
+        if (!cancelled) {
+          setData(null);
+          setIsHydrating(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -70,6 +77,7 @@ export function useCachedFirestoreCollection<T>({
           if (isCancelled()) return;
           const mapped = mapSnapshotRef.current(snapshot);
           setData(mapped);
+          setError(null);
           setIsLive(true);
           writeCache(cacheKey, mapped);
         },

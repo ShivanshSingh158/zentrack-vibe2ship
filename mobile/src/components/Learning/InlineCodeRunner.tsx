@@ -56,7 +56,8 @@ function buildJsSandboxHtml(code: string): string {
   const escaped = code
     .replace(/\\/g, '\\\\')
     .replace(/`/g, '\\`')
-    .replace(/\$/g, '\\$');
+    .replace(/\$/g, '\\$')
+    .replace(/<\/script>/gi, '<\\/script>');
 
   return `<!DOCTYPE html>
 <html>
@@ -92,9 +93,17 @@ function buildJsSandboxHtml(code: string): string {
   };
 
   try {
-    // TS: strip type annotations naively (removes ': Type' patterns)
     var userCode = \`${escaped}\`;
-    eval(userCode);
+    try {
+      eval(userCode);
+    } catch (syntaxErr) {
+      // TS: strip simple type annotations and interface definitions naively
+      var cleanCode = userCode
+        .replace(/(interface|type)\\s+[A-Za-z0-9_]+[\\s\\S]*?(\\{[\\s\\S]*?\\}|=[^;]+;)/g, '')
+        .replace(/:\\s*([A-Za-z0-9_<>[\\]]+)/g, '')
+        .replace(/as\\s+[A-Za-z0-9_<>[\\\]]+/g, '');
+      eval(cleanCode);
+    }
   } catch (e) {
     window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'line', kind: 'error', text: e.name + ': ' + e.message }));
   }
@@ -109,7 +118,11 @@ function buildJsSandboxHtml(code: string): string {
 // Loads Pyodide from CDN once, then evaluates user code.
 // stdout/stderr are redirected via js.console override.
 function buildPythonSandboxHtml(code: string): string {
-  const escaped = code.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+  const escaped = code
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .replace(/\$/g, '\\$')
+    .replace(/<\/script>/gi, '<\\/script>');
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><style>body{margin:0;background:#000}</style></head>
@@ -151,6 +164,7 @@ export default function InlineCodeRunner({ code, language, nodeKey }: InlineCode
   const [outputVisible, setOutputVisible] = useState(false);
   const [sandboxHtml, setSandboxHtml] = useState<string | null>(null);
   const runCountRef = useRef(0);
+  const timeoutRef = useRef<any>(null);
 
   const handleRun = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -158,6 +172,13 @@ export default function InlineCodeRunner({ code, language, nodeKey }: InlineCode
     setOutputLines([]);
     setOutputVisible(true);
     setRunning(true);
+
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      setRunning(false);
+      setOutputLines(prev => prev.length === 0 ? [{ type: 'error', text: 'Execution timed out (15s).' }] : prev);
+    }, 15000);
+
     // Generate fresh sandbox HTML with current run ID to force WebView reload
     const html = isPython(language)
       ? buildPythonSandboxHtml(code)
@@ -172,6 +193,7 @@ export default function InlineCodeRunner({ code, language, nodeKey }: InlineCode
       if (msg.type === 'line') {
         setOutputLines(prev => [...prev, { type: msg.kind as OutputLine['type'], text: msg.text }]);
       } else if (msg.type === 'done') {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
         setRunning(false);
       }
     } catch { /* ignore */ }

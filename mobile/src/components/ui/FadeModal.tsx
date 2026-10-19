@@ -24,7 +24,7 @@ export default function FadeModal({
   dismissible = true,
 }: FadeModalProps) {
     const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+    const styles = React.useMemo(() => makeStyles(colors), [colors]);
   const [mounted, setMounted] = React.useState(visible);
   const opacity = useSharedValue(0);
 
@@ -39,7 +39,7 @@ export default function FadeModal({
         }
       });
     }
-  }, [visible]);
+  }, [visible, mounted]);
 
   if (!mounted) return null;
 

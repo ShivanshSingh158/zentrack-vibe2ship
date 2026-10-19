@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { TouchableOpacity, Animated, StyleSheet, ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,7 +25,7 @@ export default function FloatingActionButton({
   size = 56,
 }: FABProps) {
     const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors), [colors]);
     const resolvedColor = color ?? colors.accentPrimary;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const { onPressIn, onPressOut } = getPressHandlers(scaleAnim);

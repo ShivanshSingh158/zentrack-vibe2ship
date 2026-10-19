@@ -54,11 +54,9 @@ export function HabitDetailModal({
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
-  if (!habit) return null;
-
-  const habitColor = habit.color || (isDark ? colors.accentPrimary : '#6C5CE7');
-  const isNegative = habit.type === 'negative';
-  const targetCount = habit.targetCount && habit.targetCount > 0 ? habit.targetCount : null;
+  const habitColor = habit?.color || (isDark ? colors.accentPrimary : '#6C5CE7');
+  const isNegative = habit?.type === 'negative';
+  const targetCount = habit?.targetCount && habit.targetCount > 0 ? habit.targetCount : null;
 
   // Selected tile state for interactive inspecting
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -139,6 +137,10 @@ export function HabitDetailModal({
         } else if (log) {
           if (log.isFreeze) {
             status = 'freeze';
+          } else if (isNegative) {
+            // For a negative habit (vice tracker), a log entry indicates a relapse!
+            status = 'missed';
+            ratio = 0;
           } else if (targetCount) {
             ratio = Math.min(1, count / targetCount);
             status = count >= targetCount ? 'completed' : 'missed';
@@ -147,7 +149,9 @@ export function HabitDetailModal({
             status = 'completed';
           }
         } else {
-          status = 'missed';
+          // For a negative habit, no log means clean day (completed!)
+          status = isNegative ? 'completed' : 'missed';
+          ratio = isNegative ? 1 : 0;
         }
 
         if (!isFuture) {
@@ -198,7 +202,7 @@ export function HabitDetailModal({
         rate: Math.round(bestDowRate * 100),
       },
     };
-  }, [logMap, targetCount]);
+  }, [logMap, targetCount, isNegative]);
 
   // ── 2. Day-of-Week Breakdown Bars ──────────────────────────────────────────
   const dayOfWeekBars = useMemo(() => {
@@ -233,8 +237,8 @@ export function HabitDetailModal({
   }, [annualWeeks]);
 
   const overallConsistencyRate = totalPossible > 0 ? Math.round((totalCompleted / totalPossible) * 100) : 0;
-  const currentStreak = habit.streak || 0;
-  const longestStreak = Math.max(currentStreak, habit.longestStreak || 0);
+  const currentStreak = habit?.streak || 0;
+  const longestStreak = Math.max(currentStreak, habit?.longestStreak || 0);
 
   const handleTilePress = useCallback((dateStr: string, isFuture: boolean) => {
     if (isFuture) return;
@@ -256,6 +260,7 @@ export function HabitDetailModal({
     : false;
 
   const handleMenuPress = () => {
+    if (!habit) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert('Manage Habit', habit.name, [
       {
@@ -287,6 +292,8 @@ export function HabitDetailModal({
   };
 
   const annualScrollRef = useRef<ScrollView>(null);
+
+  if (!habit) return null;
 
   return (
     <BottomSheet visible={visible} onClose={onClose} fullHeight={true}>
@@ -388,6 +395,24 @@ export function HabitDetailModal({
               }}
             >
               <View style={styles.matrixWrapper}>
+                {/* Month Headers */}
+                <View style={{ height: 16, position: 'relative', marginBottom: 6 }}>
+                  {monthHeaders.map((m, mIdx) => (
+                    <Text
+                      key={mIdx}
+                      style={{
+                        position: 'absolute',
+                        left: m.weekIdx * 13,
+                        fontSize: 9,
+                        fontFamily: FONT_FAMILY.bold,
+                        color: colors.textTertiary,
+                      }}
+                    >
+                      {m.label}
+                    </Text>
+                  ))}
+                </View>
+
                 {/* 52 Columns of Weeks */}
                 <View style={styles.annualColumns}>
                   {annualWeeks.map((week, wIdx) => (

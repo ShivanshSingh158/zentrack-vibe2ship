@@ -54,7 +54,7 @@ export default function BottomSheet({
   const [mounted, setMounted] = useState(visible);
   const translateY = useSharedValue(SCREEN_HEIGHT);
   const backdropOpacity = useSharedValue(0);
-  const isClosingRef = useRef(false);
+  const isClosing = useSharedValue(false);
 
   const safeBottom = Math.max(insets.bottom, 16);
   const baseBottomPadding = fullHeight ? 0 : safeBottom;
@@ -87,8 +87,8 @@ export default function BottomSheet({
   }));
 
   const dismissToBottom = useCallback(() => {
-    if (isClosingRef.current) return;
-    isClosingRef.current = true;
+    if (isClosing.value) return;
+    isClosing.value = true;
     Keyboard.dismiss();
     backdropOpacity.value = withTiming(0, {
       duration: 180,
@@ -104,7 +104,7 @@ export default function BottomSheet({
         if (finished) {
           runOnJS(setMounted)(false);
           runOnJS(onClose)();
-          isClosingRef.current = false;
+          isClosing.value = false;
         }
       }
     );
@@ -134,8 +134,8 @@ export default function BottomSheet({
       'worklet';
       // Dismiss threshold: either dragged down > 110px or fast flick downward (> 650px/s)
       if (event.translationY > 110 || event.velocityY > 650) {
-        if (isClosingRef.current) return;
-        isClosingRef.current = true;
+        if (isClosing.value) return;
+        isClosing.value = true;
         backdropOpacity.value = withTiming(0, { duration: 160 });
         translateY.value = withTiming(
           SCREEN_HEIGHT,
@@ -144,7 +144,7 @@ export default function BottomSheet({
             if (finished) {
               runOnJS(setMounted)(false);
               runOnJS(onClose)();
-              isClosingRef.current = false;
+              isClosing.value = false;
             }
           }
         );
@@ -180,7 +180,7 @@ export default function BottomSheet({
     if (visible) {
       if (!isOpenedRef.current) {
         isOpenedRef.current = true;
-        isClosingRef.current = false;
+        isClosing.value = false;
         setMounted(true);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         // Apple iOS Critically Damped Spring: fluid glide, zero rubber-band bounce
@@ -197,7 +197,7 @@ export default function BottomSheet({
       }
     } else {
       isOpenedRef.current = false;
-      if (mounted && !isClosingRef.current) {
+      if (mounted && !isClosing.value) {
         handleClose();
       }
     }
