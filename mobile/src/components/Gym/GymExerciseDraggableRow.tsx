@@ -84,24 +84,7 @@ export const GymExerciseDraggableRow: React.FC<GymExerciseDraggableRowProps> = R
         onPress={() => {
           if (isActive) return;
           hapticLight();
-          if (logWorkoutStartTime) {
-            onResumeWorkout(ex.originalIndex);
-          } else {
-            Alert.alert(
-              ex.name,
-              'Ready to start logging this exercise?',
-              [
-                {
-                  text: 'Just Checking',
-                  onPress: () => navigation.navigate('ActiveLogging', { date: selectedDate, initialIndex: ex.originalIndex }),
-                },
-                {
-                  text: 'Start Workout',
-                  onPress: () => onResumeWorkout(ex.originalIndex),
-                },
-              ]
-            );
-          }
+          onResumeWorkout(ex.originalIndex);
         }}
         onLongPress={() => {
           hapticMedium();

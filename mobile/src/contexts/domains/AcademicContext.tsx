@@ -15,7 +15,7 @@ import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { AttendanceSubject, AttendanceLog, Assignment, Semester, SemesterSubject } from "../MobileDataContext";
 import { readAcademicCache, writeAcademicCache } from "../../utils/domainCache";
-import { loadBootManifest, getBootManifestSync } from "../../utils/bootManifest";
+import { loadBootManifest, getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
 import { parseAttendanceSubject, parseAttendanceLog, parseAssignment, areItemsEqual } from "../../utils/schemaGuards";
 import { formatLocalDateStr, offsetDateStr } from "../../utils/dateUtils";
 import { applyPendingQueueOverlay } from "../../services/offlineSync";
@@ -147,68 +147,6 @@ export function AcademicProvider({
     return () => sub.remove();
   }, []);
 
-  // ── AppState active: defer cache reconciliation behind InteractionManager ────
-  useEffect(() => {
-    let interactionHandle: { cancel: () => void } | null = null;
-    const handleAppStateChange = (nextState: AppStateStatus) => {
-      if (nextState === 'active') {
-        interactionHandle?.cancel();
-        interactionHandle = InteractionManager.runAfterInteractions(async () => {
-          try {
-            const cache = await readAcademicCache();
-            unstable_batchedUpdates(() => {
-              if (cache.attendanceLogs && cache.attendanceLogs.length > 0) {
-                const todayDateStr = formatLocalDateStr(new Date());
-                setAttendanceLogs(prev => {
-                  const prevMap = new Map(prev.map(l => [l.id, l]));
-                  let hasChanges = false;
-                  cache.attendanceLogs!.forEach(cl => {
-                    // Only reconcile logs for today so logs deleted on Web while backgrounded are NEVER resurrected
-                    const logDate = (cl.date || '').slice(0, 10);
-                    if (logDate !== todayDateStr) return;
-                    const existing = prevMap.get(cl.id);
-                    if (!existing || existing.action !== cl.action) {
-                      prevMap.set(cl.id, cl);
-                      hasChanges = true;
-                    }
-                  });
-                  if (!hasChanges) return prev;
-                  return Array.from(prevMap.values());
-                });
-              }
-              if (cache.attendance && cache.attendance.length > 0) {
-                setAttendance(prev => {
-                  const cacheMap = new Map(cache.attendance!.map(s => [s.id, s]));
-                  let changed = false;
-                  const merged = prev.map(p => {
-                    const c = cacheMap.get(p.id);
-                    if (c && (
-                      c.classesAttended !== p.classesAttended ||
-                      c.classesTotal !== p.classesTotal ||
-                      c.labsAttended !== p.labsAttended ||
-                      c.labsTotal !== p.labsTotal
-                    )) {
-                      changed = true;
-                      return { ...p, ...c };
-                    }
-                    return p;
-                  });
-                  return changed ? merged : prev;
-                });
-              }
-            });
-          } catch {}
-        });
-      }
-    };
-
-    const sub = AppState.addEventListener('change', handleAppStateChange);
-    return () => {
-      interactionHandle?.cancel();
-      sub.remove();
-    };
-  }, []);
-
   // ── Offline-first boot: seed ALL academic collections using functional updaters ──
   useEffect(() => {
     let isCancelled = false;
@@ -252,8 +190,8 @@ export function AcademicProvider({
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.ATTENDANCE, snap.docs.map(d => parseAttendanceSubject(d.data(), d.id)));
+          updateL1Cache('attendance', fresh);
           setAttendance(prev => {
-            if (areItemsEqual(prev, fresh)) return prev;
             const freshMap = new Map(fresh.map(s => [s.id!, s]));
             const merged = prev
               .filter(ps => freshMap.has(ps.id!) || (Date.now() - (ps.lastUpdated || 0) < 5000))
@@ -278,7 +216,7 @@ export function AcademicProvider({
           });
           setAttendanceSnapshotFired(true);
           pendingCacheWriteRef.current?.cancel();
-          pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendance: fresh }));
+          pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendance: fresh }, false));
         });
       },
       scheduleListenerRestart("attendance")
@@ -317,6 +255,7 @@ export function AcademicProvider({
           });
           const extraLogs = rawFresh.filter(l => l.isExtra);
           const fresh = [...Array.from(seen.values()), ...extraLogs];
+          updateL1Cache('attendanceLogs', fresh);
 
           setAttendanceLogs(prev => {
             if (areItemsEqual(prev, fresh)) return prev;
@@ -327,7 +266,7 @@ export function AcademicProvider({
             return [...fresh, ...inFlight];
           });
           pendingCacheWriteRef.current?.cancel();
-          pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendanceLogs: fresh }));
+          pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendanceLogs: fresh }, false));
         });
       },
       scheduleListenerRestart("attendanceLogs")
@@ -339,8 +278,9 @@ export function AcademicProvider({
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.ASSIGNMENTS, snap.docs.map(d => parseAssignment(d.data(), d.id)));
+          updateL1Cache('assignments', fresh);
           setAssignments(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-          InteractionManager.runAfterInteractions(() => writeAcademicCache({ assignments: fresh }));
+          InteractionManager.runAfterInteractions(() => writeAcademicCache({ assignments: fresh }, false));
         });
       },
       scheduleListenerRestart("assignments")
@@ -353,7 +293,7 @@ export function AcademicProvider({
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.SEMESTERS, snap.docs.map(d => ({ id: d.id, ...d.data() } as Semester)));
           setSemesters(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-          InteractionManager.runAfterInteractions(() => writeAcademicCache({ semesters: fresh }));
+          InteractionManager.runAfterInteractions(() => writeAcademicCache({ semesters: fresh }, false));
         });
       },
       scheduleListenerRestart("semesters")
@@ -366,7 +306,7 @@ export function AcademicProvider({
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.SEMESTER_SUBJECTS, snap.docs.map(d => ({ id: d.id, ...d.data() } as SemesterSubject)));
           setSemesterSubjects(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-          InteractionManager.runAfterInteractions(() => writeAcademicCache({ semesterSubjects: fresh }));
+          InteractionManager.runAfterInteractions(() => writeAcademicCache({ semesterSubjects: fresh }, false));
         });
       },
       scheduleListenerRestart("semesterSubjects")
@@ -383,24 +323,39 @@ export function AcademicProvider({
           return String(raw).slice(0, 10);
         }).filter(Boolean);
         setHolidays(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-        InteractionManager.runAfterInteractions(() => writeAcademicCache({ holidays: fresh }));
+        InteractionManager.runAfterInteractions(() => writeAcademicCache({ holidays: fresh }, false));
       },
       scheduleListenerRestart("holidays")
     ));
   }, [scheduleListenerRestart]);
 
-  const wasSubscribedRef = useRef(false);
+  const demandRequestedRef = useRef(false);
+  const deferredSubTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (user) {
-      subscribedRef.current = false;
-      openSubscriptions(user.uid);
-      wasSubscribedRef.current = true;
+      if (demandRequestedRef.current) {
+        subscribedRef.current = false;
+        openSubscriptions(user.uid);
+      } else {
+        if (deferredSubTimerRef.current) clearTimeout(deferredSubTimerRef.current);
+        const handle = InteractionManager.runAfterInteractions(() => {
+          deferredSubTimerRef.current = setTimeout(() => {
+            if (user && !subscribedRef.current) {
+              openSubscriptions(user.uid);
+            }
+          }, 2500);
+        });
+        return () => {
+          handle.cancel();
+          if (deferredSubTimerRef.current) clearTimeout(deferredSubTimerRef.current);
+        };
+      }
     } else {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
-      wasSubscribedRef.current = false;
+      demandRequestedRef.current = false;
       hasCachedDataRef.current = false;
       unstable_batchedUpdates(() => {
         setAttendance([]);
@@ -423,11 +378,16 @@ export function AcademicProvider({
   useEffect(() => () => {
     unsubsRef.current.forEach(u => u());
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    if (deferredSubTimerRef.current) clearTimeout(deferredSubTimerRef.current);
   }, []);
 
   const ensureSubscribed = useCallback(() => {
+    demandRequestedRef.current = true;
+    if (deferredSubTimerRef.current) {
+      clearTimeout(deferredSubTimerRef.current);
+      deferredSubTimerRef.current = null;
+    }
     if (user && !subscribedRef.current) {
-      wasSubscribedRef.current = true;
       openSubscriptions(user.uid);
     }
   }, [user?.uid, openSubscriptions]);
@@ -437,7 +397,8 @@ export function AcademicProvider({
     pendingCacheWriteRef.current?.cancel();
     setAttendance(prev => {
       const next = [subject, ...prev];
-      writeAcademicCache({ attendance: next }, true); // immediate: optimistic add
+      updateL1Cache('attendance', next);
+      pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendance: next }, false));
       return next;
     });
   }, []);
@@ -446,7 +407,8 @@ export function AcademicProvider({
     pendingCacheWriteRef.current?.cancel();
     setAttendance(prev => {
       const next = prev.filter(s => s.id !== subjectId);
-      writeAcademicCache({ attendance: next }, true); // immediate: optimistic delete
+      updateL1Cache('attendance', next);
+      pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendance: next }, false));
       return next;
     });
   }, []);
@@ -455,7 +417,8 @@ export function AcademicProvider({
     pendingCacheWriteRef.current?.cancel();
     setAttendance(prev => {
       const next = prev.map(s => s.id === subjectId ? { ...s, ...partial, lastUpdated: Date.now() } : s);
-      writeAcademicCache({ attendance: next }, true); // immediate: optimistic update
+      updateL1Cache('attendance', next);
+      pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendance: next }, false));
       return next;
     });
   }, []);
@@ -464,7 +427,8 @@ export function AcademicProvider({
     pendingCacheWriteRef.current?.cancel();
     setAssignments(prev => {
       const next = [assignment, ...prev];
-      writeAcademicCache({ assignments: next }, true); // immediate: optimistic add
+      updateL1Cache('assignments', next);
+      pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ assignments: next }, false));
       return next;
     });
   }, []);
@@ -473,7 +437,8 @@ export function AcademicProvider({
     pendingCacheWriteRef.current?.cancel();
     setAssignments(prev => {
       const next = prev.map(a => a.id === assignmentId ? { ...a, ...partial } : a);
-      writeAcademicCache({ assignments: next }, true); // immediate: optimistic update
+      updateL1Cache('assignments', next);
+      pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ assignments: next }, false));
       return next;
     });
   }, []);
@@ -482,7 +447,8 @@ export function AcademicProvider({
     pendingCacheWriteRef.current?.cancel();
     setAssignments(prev => {
       const next = prev.filter(a => a.id !== assignmentId);
-      writeAcademicCache({ assignments: next }, true); // immediate: optimistic delete
+      updateL1Cache('assignments', next);
+      pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ assignments: next }, false));
       return next;
     });
   }, []);
@@ -501,7 +467,8 @@ export function AcademicProvider({
         ))
       );
       const next = [log, ...filtered];
-      writeAcademicCache({ attendanceLogs: next }, true); // immediate: optimistic add
+      updateL1Cache('attendanceLogs', next);
+      pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendanceLogs: next }, false));
       return next;
     });
   }, []);
@@ -510,7 +477,8 @@ export function AcademicProvider({
     pendingCacheWriteRef.current?.cancel();
     setAttendanceLogs(prev => {
       const next = prev.map(l => l.id === logId ? { ...l, ...partial } : l);
-      writeAcademicCache({ attendanceLogs: next }, true); // immediate: optimistic update
+      updateL1Cache('attendanceLogs', next);
+      pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendanceLogs: next }, false));
       return next;
     });
   }, []);
@@ -519,7 +487,8 @@ export function AcademicProvider({
     pendingCacheWriteRef.current?.cancel();
     setAttendanceLogs(prev => {
       const next = prev.filter(l => l.id !== logId);
-      writeAcademicCache({ attendanceLogs: next }, true); // immediate: optimistic remove
+      updateL1Cache('attendanceLogs', next);
+      pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendanceLogs: next }, false));
       return next;
     });
   }, []);
@@ -530,7 +499,8 @@ export function AcademicProvider({
       const next = subjectId
         ? prev.filter(l => l.subjectId !== subjectId && l.subjectName !== subjectId)
         : [];
-      writeAcademicCache({ attendanceLogs: next }, true); // immediate: atomic cache write once
+      updateL1Cache('attendanceLogs', next);
+      pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendanceLogs: next }, false));
       return next;
     });
   }, []);
@@ -542,7 +512,7 @@ export function AcademicProvider({
       const next = isHoliday
         ? (prev.some(d => d.slice(0, 10) === cleanDate) ? prev : [...prev, cleanDate])
         : prev.filter(d => d.slice(0, 10) !== cleanDate);
-      writeAcademicCache({ holidays: next }, true); // immediate: optimistic holiday toggle
+      pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ holidays: next }, false));
       return next;
     });
   }, []);

@@ -4,7 +4,7 @@
  * Fast exercise catalogue search, auto-fill, custom exercise creation,
  * and AI fallback integration.
  */
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity, TextInput,
@@ -38,14 +38,15 @@ function buildCatalogue(): ExerciseCatalogEntry[] {
 
   const add = (e: ExerciseCatalogEntry) => {
     const key = normalizeExerciseKey(e.name);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    if (Array.isArray(e.aliases)) {
-      for (const a of e.aliases) {
-        const aKey = normalizeExerciseKey(a);
-        if (aKey) seen.add(aKey);
+    if (!key) return;
+    if (seen.has(key)) {
+      const existing = result.find(r => normalizeExerciseKey(r.name) === key);
+      if (existing && e.aliases && e.aliases.length > 0) {
+        existing.aliases = Array.from(new Set([...(existing.aliases || []), ...e.aliases]));
       }
+      return;
     }
+    seen.add(key);
     result.push(e);
   };
 
@@ -98,7 +99,6 @@ function buildCatalogue(): ExerciseCatalogEntry[] {
       targetReps: rx.targetReps,
       restTimeSecs: rx.restTimeSecs,
       videoId: '',
-      aliases: ex.secondaryMuscles,
     });
   }
 
@@ -245,23 +245,150 @@ function checkCategoryMatch(m: string, category: string): boolean {
   return l.includes(cat);
 }
 
+// ── Closest Word & Synonym Relevance Engine ─────────────────────────────────
+const GYM_SYNONYMS: Record<string, string> = {
+  db: 'dumbbell',
+  bb: 'barbell',
+  kb: 'kettlebell',
+  rdl: 'romanian deadlift',
+  rdls: 'romanian deadlift',
+  ohp: 'overhead press',
+  ghr: 'glute ham raise',
+  flys: 'fly',
+  flyes: 'fly',
+  cables: 'cable',
+  pulldowns: 'pulldown',
+  pushdowns: 'pushdown',
+  curls: 'curl',
+  presses: 'press',
+  rows: 'row',
+  squats: 'squat',
+  deadlifts: 'deadlift',
+  raises: 'raise',
+  shrugs: 'shrug',
+  extensions: 'extension',
+  crunches: 'crunch',
+  pushups: 'pushup',
+  pullups: 'pullup',
+  dips: 'dip',
+  'high-to-low': 'high to low',
+  'low-to-high': 'low to high',
+  'pec deck': 'pec deck fly',
+};
+
+function cleanSearchString(str: string): string {
+  let cleaned = str.toLowerCase();
+  for (const [abbr, full] of Object.entries(GYM_SYNONYMS)) {
+    const reg = new RegExp(`\\b${abbr}\\b`, 'gi');
+    cleaned = cleaned.replace(reg, full);
+  }
+  return cleaned
+    .replace(/[\(\)\/\,\-\–\—\.]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getQueryTokens(str: string): string[] {
+  return cleanSearchString(str)
+    .split(' ')
+    .filter(t => t.length > 0)
+    .map(t => t.replace(/(s|es|ing)$/, ''));
+}
+
+function scoreExerciseMatch(
+  entry: ExerciseCatalogEntry,
+  rawQuery: string,
+  cleanedQuery: string,
+  queryTokens: string[],
+  normQuery: string,
+  categoryFilter?: string | null
+): number {
+  const nameLower = entry.name.toLowerCase();
+  const normName = nameLower.replace(/[^a-z0-9]/g, '');
+  const nameTokens = getQueryTokens(entry.name);
+  const aliases = (entry.aliases || []).map(a => a.toLowerCase());
+  const normAliases = aliases.map(a => a.replace(/[^a-z0-9]/g, ''));
+
+  let score = 0;
+
+  // 1. Exact full name or alias match
+  if (normName === normQuery) {
+    score += 3000;
+  } else if (normAliases.includes(normQuery)) {
+    score += 2600;
+  }
+
+  // 2. Starts with query
+  if (nameLower.startsWith(rawQuery) || normName.startsWith(normQuery)) {
+    score += 1500;
+  } else if (aliases.some(a => a.startsWith(rawQuery))) {
+    score += 1200;
+  }
+
+  // 3. Substring match
+  if (nameLower.includes(rawQuery) || normName.includes(normQuery)) {
+    score += 1000;
+  } else if (cleanedQuery !== rawQuery && nameLower.includes(cleanedQuery)) {
+    score += 900;
+  } else if (aliases.some(a => a.includes(rawQuery) || a.includes(cleanedQuery))) {
+    score += 800;
+  }
+
+  // 4. Token-level matching & coverage
+  if (queryTokens.length > 0) {
+    let matchedTokenCount = 0;
+    for (const qt of queryTokens) {
+      if (nameTokens.includes(qt)) {
+        matchedTokenCount += 1;
+        score += 160;
+      } else if (nameTokens.some(nt => nt.includes(qt) || qt.includes(nt))) {
+        matchedTokenCount += 0.8;
+        score += 100;
+      } else if (aliases.some(a => a.includes(qt))) {
+        matchedTokenCount += 0.6;
+        score += 70;
+      }
+    }
+
+    if (matchedTokenCount >= queryTokens.length) {
+      score += 650;
+    } else if (matchedTokenCount > 0) {
+      score += (matchedTokenCount / queryTokens.length) * 300;
+    }
+  }
+
+  // 5. Category boost if muscleSearchFilter is active
+  if (categoryFilter) {
+    if (checkCategoryMatch(entry.muscle, categoryFilter)) {
+      score += 250;
+    }
+  }
+
+  // 6. Tier weighting
+  const tierWeights: Record<string, number> = {
+    'S Tier': 50,
+    'A+ Tier': 40,
+    'A Tier': 30,
+    'B Tier': 15,
+    'C Tier': 5,
+  };
+  score += tierWeights[entry.tier || ''] || 0;
+
+  return score;
+}
+
 export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeAddExerciseStyles(colors, isDark), [colors, isDark]);
   const { userGymPlan, updateMasterPlan, gymLogs } = useWellnessData();
 
-  // Ensure catalogue is built lazily on first open (off the module parse critical path)
+  // Ensure catalogue is built once and immediately ready
   const [catalogueReady, setCatalogueReady] = useState(!!_exerciseCatalogue);
   useEffect(() => {
     if (!_exerciseCatalogue) {
-      // Build off the interaction critical path so modal opens instantly
-      const { InteractionManager } = require('react-native');
-      const handle = InteractionManager.runAfterInteractions(() => {
-        getExerciseCatalogue(); // populates lazy singleton
-        getCategoryMap();
-        setCatalogueReady(true);
-      });
-      return () => handle.cancel();
+      getExerciseCatalogue(); // populates lazy singleton
+      getCategoryMap();
+      setCatalogueReady(true);
     }
   }, []);
 
@@ -282,36 +409,59 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
   const [aiLoading, setAiLoading] = useState(false);
   const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 150ms debounced search query — prevents the 1600-item filter from running
-  // on every keystroke. Filter only fires when user pauses typing.
+  // 50ms snappy debounced search query
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = setTimeout(() => setDebouncedQuery(name.trim().toLowerCase()), 150);
+    searchDebounceRef.current = setTimeout(() => setDebouncedQuery(name.trim().toLowerCase()), 50);
     return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
   }, [name]);
 
-  // 0ms Instant Search & Filter Memo (gated on debouncedQuery)
+  // 0ms Instant Search & Filter Memo (Closest Word & Relevance Ranking)
   const suggestions = useMemo(() => {
-    const q = debouncedQuery;
+    const q = debouncedQuery.trim().toLowerCase();
     const catalogue = getExerciseCatalogue();
     const categoryMap = getCategoryMap();
 
-    if (muscleSearchFilter && !q) {
-      return categoryMap[muscleSearchFilter] || [];
+    // If no text query, show category filtered exercises
+    if (!q) {
+      if (muscleSearchFilter) {
+        return categoryMap[muscleSearchFilter] || [];
+      }
+      return [];
     }
-    if (!q || q.length < 1) return [];
 
-    const baseList = muscleSearchFilter ? (categoryMap[muscleSearchFilter] || catalogue) : catalogue;
-    const searchFiltered = baseList.filter(e => {
-      return (
-        e.name.toLowerCase().includes(q) ||
-        (e.aliases && e.aliases.some(alias => alias.toLowerCase().includes(q)))
+    const cleanedQuery = cleanSearchString(q);
+    const queryTokens = getQueryTokens(q);
+    const normQuery = q.replace(/[^a-z0-9]/g, '');
+
+    const scored: { item: ExerciseCatalogEntry; score: number }[] = [];
+
+    for (const entry of catalogue) {
+      const score = scoreExerciseMatch(
+        entry,
+        q,
+        cleanedQuery,
+        queryTokens,
+        normQuery,
+        muscleSearchFilter
       );
+      if (score > 0) {
+        scored.push({ item: entry, score });
+      }
+    }
+
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (a.item.name.length !== b.item.name.length) {
+        return a.item.name.length - b.item.name.length;
+      }
+      return a.item.name.localeCompare(b.item.name);
     });
-    return searchFiltered;
-  }, [debouncedQuery, muscleSearchFilter]);
+
+    return scored.map(s => s.item);
+  }, [debouncedQuery, muscleSearchFilter, catalogueReady]);
 
   const getLastSessionSets = (exerciseId: string, exerciseName: string) => {
     if (!gymLogs) return null;
@@ -379,55 +529,81 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
     }).catch(() => {});
   };
 
+  const executeAiSearch = useCallback(async (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed || trimmed.length < 2) return;
+
+    setAiLoading(true);
+    setAiSuggestion(null);
+
+    try {
+      const result = await aiResolveExercise(trimmed);
+      if (result) {
+        setAiSuggestion(result);
+      } else {
+        const fallbackMuscle = resolveExerciseTargetMuscle(trimmed).canonicalGroup || 'Mixed';
+        setAiSuggestion({
+          canonicalName: trimmed.charAt(0).toUpperCase() + trimmed.slice(1),
+          muscle: fallbackMuscle,
+          targetSets: 3,
+          targetReps: '8–12',
+          restTimeSecs: 60,
+          youtubeSearchQuery: trimmed,
+        });
+      }
+    } catch (_) {
+      const fallbackMuscle = resolveExerciseTargetMuscle(trimmed).canonicalGroup || 'Mixed';
+      setAiSuggestion({
+        canonicalName: trimmed.charAt(0).toUpperCase() + trimmed.slice(1),
+        muscle: fallbackMuscle,
+        targetSets: 3,
+        targetReps: '8–12',
+        restTimeSecs: 60,
+        youtubeSearchQuery: trimmed,
+      });
+    } finally {
+      setAiLoading(false);
+    }
+  }, []);
+
   const handleNameChange = (text: string) => {
     setName(text);
     setSelectedExerciseId(null);
     setShowDropdown(true);
     setAiSuggestion(null);
+    setAiLoading(false);
 
-    if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current);
-
-    if (text.trim().length >= 3) {
-      aiDebounceRef.current = setTimeout(async () => {
-        const q = text.trim().toLowerCase();
-        const cat = getExerciseCatalogue();
-        const hasMatches = cat.some(e =>
-          e.name.toLowerCase().includes(q) ||
-          (e.aliases && e.aliases.some((a: string) => a.toLowerCase().includes(q)))
-        );
-
-        if (!hasMatches) {
-          setAiLoading(true);
-          try {
-            const result = await aiResolveExercise(text.trim());
-            if (result) {
-              setAiSuggestion(result);
-            } else {
-              setAiSuggestion({
-                canonicalName: text.trim(),
-                muscle: 'Mixed',
-                targetSets: 3,
-                targetReps: '8-12',
-                restTimeSecs: 60,
-                youtubeSearchQuery: text.trim()
-              });
-            }
-          } catch (_) {
-            setAiSuggestion({
-              canonicalName: text.trim(),
-              muscle: 'Mixed',
-              targetSets: 3,
-              targetReps: '8-12',
-              restTimeSecs: 60,
-              youtubeSearchQuery: text.trim()
-            });
-          } finally {
-            setAiLoading(false);
-          }
-        }
-      }, 900);
+    if (aiDebounceRef.current) {
+      clearTimeout(aiDebounceRef.current);
+      aiDebounceRef.current = null;
     }
   };
+
+  // Auto-identify with AI ONLY when there are genuinely ZERO matching exercises in the local database
+  useEffect(() => {
+    const q = debouncedQuery.trim();
+    if (!q || q.length < 3 || suggestions.length > 0) {
+      if (aiDebounceRef.current) {
+        clearTimeout(aiDebounceRef.current);
+        aiDebounceRef.current = null;
+      }
+      setAiLoading(false);
+      return;
+    }
+
+    // Only if local database has 0 matches and user paused typing
+    if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current);
+    aiDebounceRef.current = setTimeout(() => {
+      executeAiSearch(q);
+    }, 1200);
+
+    return () => {
+      if (aiDebounceRef.current) {
+        clearTimeout(aiDebounceRef.current);
+        aiDebounceRef.current = null;
+      }
+    };
+  }, [debouncedQuery, suggestions.length, executeAiSearch]);
 
   const handleAddExercise = () => {
     if (!name.trim()) return;
@@ -602,6 +778,8 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay }: Props) {
                   aiSuggestion={aiSuggestion}
                   onSelectSuggestion={handleSelectSuggestion}
                   onSelectAiSuggestion={handleSelectAiSuggestion}
+                  onTriggerAiSearch={() => executeAiSearch(name)}
+                  searchQuery={name}
                   colors={colors}
                   styles={styles}
                 />

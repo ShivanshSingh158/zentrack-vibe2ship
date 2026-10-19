@@ -18,11 +18,10 @@ import { enableScreens, enableFreeze } from 'react-native-screens';
 // hideAsync() as the single source of truth for when to reveal the app.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-// Fix for React Native New Architecture (Fabric) grey screen bug.
-// A system notification/overlay triggers an onPause, and React Freeze catastrophically fails
-// to render the frame during this state transition, causing the grey screen.
-// We MUST keep this false permanently and accept the CPU tradeoff.
-enableFreeze(false);
+// Enable React Freeze to suspend inactive tab rendering and eliminate background CPU waste.
+// Combined with freezeOnBlur: true and detachInactiveScreens={false} in AppNavigator,
+// this freezes background tabs without Android grey-screen detach bugs.
+enableFreeze(true);
 
 import { setupNetworkListener } from './src/services/offlineSync';
 import { setupLifecycleHygiene } from './src/services/lifecycleHygiene';

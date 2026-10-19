@@ -70,14 +70,44 @@ export interface PomodoroContextType {
   setConfig: React.Dispatch<React.SetStateAction<PomodoroConfig>>;
   setLinkedTask: (taskId: string | null, taskTitle?: string | null, customDurationSecs?: number) => void;
   unlinkTask: () => void;
-  openPomodoro: (taskId?: string) => void;
+  openPomodoro: (taskId?: string, taskTitle?: string, durationMinutes?: number) => void;
+  startTaskPomodoro: (taskId: string, taskTitle?: string, durationMinutes?: number) => void;
   closePomodoro: () => void;
   keepAwakeEnabled: boolean;
   toggleKeepAwake: () => void;
   setKeepAwakeEnabled: (enabled: boolean) => void;
 }
 
+export interface PomodoroActionsType {
+  startTimer: () => void;
+  pauseTimer: () => void;
+  toggleTimer: () => void;
+  resetTimer: () => void;
+  skipSession: () => void;
+  extendTime: (seconds?: number) => void;
+  switchMode: (newMode: PomodoroMode, customDuration?: number) => void;
+  setConfig: React.Dispatch<React.SetStateAction<PomodoroConfig>>;
+  setLinkedTask: (taskId: string | null, taskTitle?: string | null, customDurationSecs?: number) => void;
+  unlinkTask: () => void;
+  openPomodoro: (taskId?: string, taskTitle?: string, durationMinutes?: number) => void;
+  startTaskPomodoro: (taskId: string, taskTitle?: string, durationMinutes?: number) => void;
+  closePomodoro: () => void;
+  setIsSheetOpen: (open: boolean) => void;
+  toggleKeepAwake: () => void;
+  setKeepAwakeEnabled: (enabled: boolean) => void;
+}
+
+export interface PomodoroActiveTaskType {
+  linkedTaskId: string | null;
+  isPomodoroRunning: boolean;
+}
+
 const PomodoroContext = createContext<PomodoroContextType | null>(null);
+const PomodoroActionsContext = createContext<PomodoroActionsType | null>(null);
+const PomodoroActiveTaskContext = createContext<PomodoroActiveTaskType>({
+  linkedTaskId: null,
+  isPomodoroRunning: false,
+});
 
 export function usePomodoro(): PomodoroContextType {
   const ctx = useContext(PomodoroContext);
@@ -85,6 +115,18 @@ export function usePomodoro(): PomodoroContextType {
     throw new Error('usePomodoro must be used within a PomodoroProvider');
   }
   return ctx;
+}
+
+export function usePomodoroActions(): PomodoroActionsType {
+  const ctx = useContext(PomodoroActionsContext);
+  if (!ctx) {
+    throw new Error('usePomodoroActions must be used within a PomodoroProvider');
+  }
+  return ctx;
+}
+
+export function usePomodoroActiveTask(): PomodoroActiveTaskType {
+  return useContext(PomodoroActiveTaskContext);
 }
 
 export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -164,23 +206,21 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     config,
   });
 
-  useEffect(() => {
-    stateRef.current = {
-      status,
-      mode,
-      timeLeft,
-      totalDuration,
-      startTime,
-      targetEndTime,
-      pausedAt,
-      sessionCount,
-      completedToday,
-      totalSecondsToday,
-      linkedTaskId,
-      linkedTaskTitle,
-      config,
-    };
-  });
+  stateRef.current = {
+    status,
+    mode,
+    timeLeft,
+    totalDuration,
+    startTime,
+    targetEndTime,
+    pausedAt,
+    sessionCount,
+    completedToday,
+    totalSecondsToday,
+    linkedTaskId,
+    linkedTaskTitle,
+    config,
+  };
 
   const persistState = useCallback(async (statePayload: Partial<ActivePomodoroState>) => {
     try {
@@ -216,37 +256,53 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     feedback.success();
 
     const s = stateRef.current;
+    const completedMode = _completedMode || s.mode;
+    const isFocus = completedMode === 'focus';
     const uid = auth.currentUser?.uid;
-    const newSessionCount = s.sessionCount + 1;
-    const newCompletedToday = s.completedToday + 1;
-    const sessionSecs = s.totalDuration > 0 ? s.totalDuration : s.config.focus;
-    const newTotalSecondsToday = s.totalSecondsToday + sessionSecs;
 
-    setSessionCount(newSessionCount);
-    setCompletedToday(newCompletedToday);
-    setTotalSecondsToday(newTotalSecondsToday);
+    let newSessionCount = s.sessionCount;
+    let newCompletedToday = s.completedToday;
+    let newTotalSecondsToday = s.totalSecondsToday;
 
-    AsyncStorage.setItem(STORAGE_KEY_POMO_TODAY, JSON.stringify({
-      date: formatLocalDateStr(new Date()),
-      count: newCompletedToday,
-      totalSeconds: newTotalSecondsToday,
-    })).catch(() => {});
+    if (isFocus) {
+      newSessionCount = s.sessionCount + 1;
+      newCompletedToday = s.completedToday + 1;
+      const sessionSecs = s.totalDuration > 0 ? s.totalDuration : s.config.focus;
+      newTotalSecondsToday = s.totalSecondsToday + sessionSecs;
 
-    if (uid) {
-      try {
-        await addDoc(collection(db, COLLECTION.POMODORO_SESSIONS || 'pomodoro_sessions'), {
-          userId: uid,
-          startTime: serverTimestamp(),
-          duration: sessionSecs,
-          taskId: s.linkedTaskId ?? null,
-          mode: 'focus',
-        });
-        await awardXP('POMODORO_SESSION');
-      } catch { /* non-blocking */ }
+      setSessionCount(newSessionCount);
+      setCompletedToday(newCompletedToday);
+      setTotalSecondsToday(newTotalSecondsToday);
+
+      AsyncStorage.setItem(STORAGE_KEY_POMO_TODAY, JSON.stringify({
+        date: formatLocalDateStr(new Date()),
+        count: newCompletedToday,
+        totalSeconds: newTotalSecondsToday,
+      })).catch(() => {});
+
+      if (uid) {
+        try {
+          await addDoc(collection(db, COLLECTION.POMODORO_SESSIONS || 'pomodoro_sessions'), {
+            userId: uid,
+            startTime: serverTimestamp(),
+            duration: sessionSecs,
+            taskId: s.linkedTaskId ?? null,
+            mode: 'focus',
+          });
+          await awardXP('POMODORO_SESSION');
+        } catch { /* non-blocking */ }
+      }
     }
 
-    const nextDuration = s.config.focus;
-    setMode('focus');
+    let nextMode: PomodoroMode = 'focus';
+    if (isFocus) {
+      nextMode = (newSessionCount % 4 === 0) ? 'longBreak' : 'shortBreak';
+    } else {
+      nextMode = 'focus';
+    }
+    const nextDuration = s.config[nextMode];
+
+    setMode(nextMode);
     setTimeLeft(nextDuration);
     setTotalDuration(nextDuration);
     setStatus('idle');
@@ -256,7 +312,7 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     persistState({
       status: 'idle',
-      mode: 'focus',
+      mode: nextMode,
       timeLeft: nextDuration,
       totalDuration: nextDuration,
       startTime: null,
@@ -364,7 +420,9 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === 'active') {
-        reconcileActiveTimer();
+        if (stateRef.current.status === 'running') {
+          reconcileActiveTimer();
+        }
       }
     };
     const sub = AppState.addEventListener('change', handleAppStateChange);
@@ -531,16 +589,111 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
   }, [persistState]);
 
-  const openPomodoro = useCallback((taskId?: string) => {
+  const openPomodoro = useCallback((taskId?: string, taskTitle?: string, durationMinutes?: number) => {
     if (taskId) {
       setLinkedTaskId(taskId);
+      if (taskTitle) setLinkedTaskTitle(taskTitle);
+      if (durationMinutes && durationMinutes > 0) {
+        const durSecs = durationMinutes * 60;
+        setConfig(prev => ({ ...prev, focus: durSecs }));
+        if (stateRef.current.status === 'idle') {
+          setTimeLeft(durSecs);
+          setTotalDuration(durSecs);
+        }
+      }
     }
     setIsSheetOpen(true);
   }, []);
 
+  const startTaskPomodoro = useCallback((taskId: string, taskTitle?: string, durationMinutes?: number) => {
+    feedback.success();
+    const s = stateRef.current;
+    const durSecs = (durationMinutes && durationMinutes > 0 ? durationMinutes : 25) * 60;
+
+    // If timer is already running for this exact task, just open sheet
+    if (s.status === 'running' && s.linkedTaskId === taskId) {
+      setIsSheetOpen(true);
+      return;
+    }
+
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+
+    const now = Date.now();
+    const newTargetEndTime = now + durSecs * 1000;
+
+    setLinkedTaskId(taskId);
+    setLinkedTaskTitle(taskTitle || null);
+    setConfig(prev => ({ ...prev, focus: durSecs }));
+    setMode('focus');
+    setStatus('running');
+    setTimeLeft(durSecs);
+    setTotalDuration(durSecs);
+    setStartTime(now);
+    setTargetEndTime(newTargetEndTime);
+    setPausedAt(null);
+    setIsSheetOpen(true);
+
+    persistState({
+      status: 'running',
+      mode: 'focus',
+      timeLeft: durSecs,
+      totalDuration: durSecs,
+      startTime: now,
+      targetEndTime: newTargetEndTime,
+      pausedAt: null,
+      sessionCount: s.sessionCount,
+      completedToday: s.completedToday,
+      linkedTaskId: taskId,
+      linkedTaskTitle: taskTitle || null,
+    });
+  }, [persistState]);
+
   const closePomodoro = useCallback(() => {
     setIsSheetOpen(false);
   }, []);
+
+  const actionsValue = useMemo<PomodoroActionsType>(() => ({
+    startTimer,
+    pauseTimer,
+    toggleTimer,
+    resetTimer,
+    skipSession,
+    extendTime,
+    switchMode,
+    setConfig,
+    setLinkedTask,
+    unlinkTask,
+    openPomodoro,
+    startTaskPomodoro,
+    closePomodoro,
+    setIsSheetOpen,
+    toggleKeepAwake,
+    setKeepAwakeEnabled,
+  }), [
+    startTimer,
+    pauseTimer,
+    toggleTimer,
+    resetTimer,
+    skipSession,
+    extendTime,
+    switchMode,
+    setConfig,
+    setLinkedTask,
+    unlinkTask,
+    openPomodoro,
+    startTaskPomodoro,
+    closePomodoro,
+    toggleKeepAwake,
+    setKeepAwakeEnabled,
+  ]);
+
+  const activeTaskValue = useMemo<PomodoroActiveTaskType>(() => ({
+    linkedTaskId,
+    isPomodoroRunning: status === 'running',
+  }), [linkedTaskId, status]);
 
   const contextValue = useMemo<PomodoroContextType>(() => ({
     status,
@@ -565,6 +718,7 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLinkedTask,
     unlinkTask,
     openPomodoro,
+    startTaskPomodoro,
     closePomodoro,
     keepAwakeEnabled,
     toggleKeepAwake,
@@ -590,6 +744,7 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLinkedTask,
     unlinkTask,
     openPomodoro,
+    startTaskPomodoro,
     closePomodoro,
     keepAwakeEnabled,
     toggleKeepAwake,
@@ -597,8 +752,12 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   ]);
 
   return (
-    <PomodoroContext.Provider value={contextValue}>
-      {children}
-    </PomodoroContext.Provider>
+    <PomodoroActionsContext.Provider value={actionsValue}>
+      <PomodoroActiveTaskContext.Provider value={activeTaskValue}>
+        <PomodoroContext.Provider value={contextValue}>
+          {children}
+        </PomodoroContext.Provider>
+      </PomodoroActiveTaskContext.Provider>
+    </PomodoroActionsContext.Provider>
   );
 };

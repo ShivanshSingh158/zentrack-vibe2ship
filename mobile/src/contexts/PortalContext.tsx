@@ -98,8 +98,11 @@ export function Portal({ children, name }: { children: ReactNode; name: string }
 
   React.useEffect(() => {
     mount(children, name);
+  }, [children, name, mount]);
+
+  React.useEffect(() => {
     return () => unmount(name);
-  }, [children, name, mount, unmount]);
+  }, [name, unmount]);
 
   return null;
 }

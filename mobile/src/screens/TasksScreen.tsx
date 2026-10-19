@@ -65,7 +65,7 @@ import { TaskDateStrip } from '../components/Tasks/TaskDateStrip';
 import TaskRow from '../components/Tasks/TaskRow';
 import TaskContextMenuModal from '../components/Tasks/TaskContextMenuModal';
 import EmptyState from '../components/ui/EmptyState';
-import { usePomodoro } from '../contexts/PomodoroContext';
+import { usePomodoroActions, usePomodoroActiveTask } from '../contexts/PomodoroContext';
 import TasksSkeleton from '../components/Tasks/TasksSkeleton';
 import type { Task } from '../contexts/MobileDataContext';
 
@@ -83,30 +83,10 @@ export default function TasksScreen() {
   
   const { tasks, user, habits, habitLogs, tasksReady, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
   const isInitialLoading = !tasksReady && (!tasks || tasks.length === 0);
-  const { openPomodoro } = usePomodoro();
+  const { openPomodoro, startTaskPomodoro } = usePomodoroActions();
+  const { linkedTaskId, isPomodoroRunning } = usePomodoroActiveTask();
   const todayDateStr = useMemo(() => formatLocalDateStr(new Date()), []);
-  const [currentMinuteTick, setCurrentMinuteTick] = useState(() => Math.floor(Date.now() / 60000));
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentMinuteTick(Math.floor(Date.now() / 60000));
-    }, 60000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Preload lazy sheet & alternate view chunks after interactions so first tap is instantaneous (Issue 72)
-  useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      import('../components/UniversalCalendarModal');
-      import('../components/Tasks/BulkRescheduleSheet');
-      import('../components/Tasks/TaskTemplatesSheet');
-      import('../components/Tasks/TaskTimeLogSheet');
-      import('../components/Tasks/VoiceDictationOverlay');
-      import('../components/Tasks/TimelineView');
-      import('../components/Tasks/KanbanView');
-    });
-    return () => handle.cancel?.();
-  }, []);
 
   // 1. Recurring Spawn Logic (Deferred background run, guarded by tasksReady)
   useRecurringSpawn(tasks, user?.uid, optimisticAddTask, tasksReady);
@@ -327,6 +307,12 @@ export default function TasksScreen() {
     setBulkRescheduleModal(true);
   }, [setIsInboxModalOpen, setSelectedTaskIds, setBulkRescheduleModal]);
 
+  const onStartPomodoroRef = useCallback((task: Task) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const mins = task.estimatedMinutes && task.estimatedMinutes > 0 ? task.estimatedMinutes : 25;
+    startTaskPomodoro(task.id!, task.title, mins);
+  }, [startTaskPomodoro]);
+
   const selectedTaskIdsRef = useRef(selectedTaskIds);
   selectedTaskIdsRef.current = selectedTaskIds;
 
@@ -337,7 +323,9 @@ export default function TasksScreen() {
       isBulkEdit={isBulkEditRef.current}
       isSelected={selectedTaskIdsRef.current.has(item.id!)}
       todayDateStr={todayDateStr}
-      currentMinuteTick={currentMinuteTick}
+      onStartPomodoro={onStartPomodoroRef}
+      activePomodoroTaskId={linkedTaskId}
+      isPomodoroRunning={isPomodoroRunning}
       onComplete={onCompleteRef}
       onReschedule={onRescheduleRef}
       onPress={onPressRef}
@@ -347,7 +335,7 @@ export default function TasksScreen() {
       onUpdateTask={onUpdateTaskRef}
       onAddSubtask={onAddSubtaskRef}
     />
-  ), [todayDateStr, currentMinuteTick, onCompleteRef, onRescheduleRef, onPressRef, onLongPressRef, onDeleteRef, onToggleSelectRef, onUpdateTaskRef, onAddSubtaskRef]);
+  ), [todayDateStr, linkedTaskId, isPomodoroRunning, onStartPomodoroRef, onCompleteRef, onRescheduleRef, onPressRef, onLongPressRef, onDeleteRef, onToggleSelectRef, onUpdateTaskRef, onAddSubtaskRef]);
 
   const listHeaderComponent = useMemo(() => {
     if (displayedTasks.length === 0) return null;
@@ -712,34 +700,19 @@ export default function TasksScreen() {
               </Pressable>
             )}
           </View>
-          <TypedFlashList
-            data={overdueTasks}
-            keyExtractor={taskKeyExtractor}
-            estimatedItemSize={54}
-            renderItem={({ item, index }: { item: Task; index: number }) => (
-              index < 8 ? (
-                <Animated.View entering={FadeInDown.duration(180).delay(index * 25)}>
-                  <TaskRow
-                    task={item}
-                    isOverdue={true}
-                    todayDateStr={todayDateStr}
-                    currentMinuteTick={currentMinuteTick}
-                    onComplete={onCompleteRef}
-                    onReschedule={onOverdueRescheduleRef}
-                    onPress={onOverduePressRef}
-                    onLongPress={onLongPressRef}
-                    onDelete={onDeleteRef}
-                    onToggleSelect={onToggleSelectRef}
-                    onUpdateTask={onUpdateTaskRef}
-                    onAddSubtask={onAddSubtaskRef}
-                  />
-                </Animated.View>
-              ) : (
+          {isOverdueModalOpen && (
+            <TypedFlashList
+              data={overdueTasks}
+              keyExtractor={taskKeyExtractor}
+              estimatedItemSize={54}
+              renderItem={({ item }: { item: Task }) => (
                 <TaskRow
                   task={item}
                   isOverdue={true}
                   todayDateStr={todayDateStr}
-                  currentMinuteTick={currentMinuteTick}
+                  onStartPomodoro={onStartPomodoroRef}
+                  activePomodoroTaskId={linkedTaskId}
+                  isPomodoroRunning={isPomodoroRunning}
                   onComplete={onCompleteRef}
                   onReschedule={onOverdueRescheduleRef}
                   onPress={onOverduePressRef}
@@ -749,11 +722,11 @@ export default function TasksScreen() {
                   onUpdateTask={onUpdateTaskRef}
                   onAddSubtask={onAddSubtaskRef}
                 />
-              )
-            )}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 20 }}
-          />
+              )}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            />
+          )}
         </View>
       </BottomSheet>
 
@@ -766,54 +739,35 @@ export default function TasksScreen() {
           </View>
           {inboxTasks.length === 0 ? (
             <Text style={{ color: colors.textTertiary, fontFamily: 'Inter_500Medium', textAlign: 'center', marginTop: 20, paddingBottom: 40 }}>No tasks in your inbox.</Text>
-          ) : (
+          ) : isInboxModalOpen ? (
             <TypedFlashList
               data={inboxTasks}
               keyExtractor={taskKeyExtractor}
               estimatedItemSize={54}
-              renderItem={({ item, index }: { item: Task; index: number }) => (
-                index < 8 ? (
-                  <Animated.View entering={FadeInDown.duration(180).delay(index * 25)}>
-                    <TaskRow
-                      task={item}
-                      isOverdue={false}
-                      isBulkEdit={isBulkEdit}
-                      isSelected={selectedTaskIds.has(item.id!)}
-                      todayDateStr={todayDateStr}
-                      currentMinuteTick={currentMinuteTick}
-                      onComplete={onCompleteRef}
-                      onReschedule={onInboxRescheduleRef}
-                      onPress={onInboxPressRef}
-                      onLongPress={onLongPressRef}
-                      onDelete={onDeleteRef}
-                      onToggleSelect={onToggleSelectRef}
-                      onUpdateTask={onUpdateTaskRef}
-                      onAddSubtask={onAddSubtaskRef}
-                    />
-                  </Animated.View>
-                ) : (
-                  <TaskRow
-                    task={item}
-                    isOverdue={false}
-                    isBulkEdit={isBulkEdit}
-                    isSelected={selectedTaskIds.has(item.id!)}
-                    todayDateStr={todayDateStr}
-                    currentMinuteTick={currentMinuteTick}
-                    onComplete={onCompleteRef}
-                    onReschedule={onInboxRescheduleRef}
-                    onPress={onInboxPressRef}
-                    onLongPress={onLongPressRef}
-                    onDelete={onDeleteRef}
-                    onToggleSelect={onToggleSelectRef}
-                    onUpdateTask={onUpdateTaskRef}
-                    onAddSubtask={onAddSubtaskRef}
-                  />
-                )
+              renderItem={({ item }: { item: Task }) => (
+                <TaskRow
+                  task={item}
+                  isOverdue={false}
+                  isBulkEdit={isBulkEdit}
+                  isSelected={selectedTaskIds.has(item.id!)}
+                  todayDateStr={todayDateStr}
+                  onStartPomodoro={onStartPomodoroRef}
+                  activePomodoroTaskId={linkedTaskId}
+                  isPomodoroRunning={isPomodoroRunning}
+                  onComplete={onCompleteRef}
+                  onReschedule={onInboxRescheduleRef}
+                  onPress={onInboxPressRef}
+                  onLongPress={onLongPressRef}
+                  onDelete={onDeleteRef}
+                  onToggleSelect={onToggleSelectRef}
+                  onUpdateTask={onUpdateTaskRef}
+                  onAddSubtask={onAddSubtaskRef}
+                />
               )}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 40 }}
+              contentContainerStyle={{ paddingBottom: 20 }}
             />
-          )}
+          ) : null}
         </View>
       </BottomSheet>
 

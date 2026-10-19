@@ -68,16 +68,11 @@ export const makeAddExerciseStyles = (colors: any, isDark: boolean = true) =>
       color: colors.textPrimary,
     },
     dropdown: {
-      position: 'absolute',
-      top: 52,
-      left: 0,
-      right: 0,
+      marginTop: SPACE.xs,
       backgroundColor: isDark ? '#1C1C1E' : colors.surface,
       borderRadius: RADIUS.md,
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border,
-      zIndex: 9999,
-      elevation: 8,
       overflow: 'hidden',
     },
     suggestionRow: {

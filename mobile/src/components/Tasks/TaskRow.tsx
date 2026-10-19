@@ -41,6 +41,9 @@ export interface TaskRowProps {
   onAddSubtask?: (task: Task) => void;
   todayDateStr?: string;
   currentMinuteTick?: number;
+  onStartPomodoro?: (task: Task) => void;
+  activePomodoroTaskId?: string | null;
+  isPomodoroRunning?: boolean;
 }
 
 /** Convert a time string to clean 12-hr display */
@@ -325,10 +328,22 @@ const TaskRow = React.memo(function TaskRow({
   onAddSubtask,
   todayDateStr,
   currentMinuteTick,
+  onStartPomodoro,
+  activePomodoroTaskId,
+  isPomodoroRunning,
 }: TaskRowProps) {
   const { colors, isDark } = useTheme();
   const styles = getCachedStyles(colors, isDark);
   const effectiveToday = todayDateStr || formatLocalDateStr(new Date());
+
+  const isTaskPomodoroActive = Boolean(task.id && task.id === activePomodoroTaskId && isPomodoroRunning);
+
+  const handleTimerPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (onStartPomodoro) {
+      onStartPomodoro(task);
+    }
+  }, [onStartPomodoro, task]);
 
   const swipeableRef = useRef<any>(null);
   const checkScale = useSharedValue(1);
@@ -431,7 +446,8 @@ const TaskRow = React.memo(function TaskRow({
     task.isRecurring ||
     (taskTags && taskTags.length > 0) ||
     hasSubtasks ||
-    task.isReminder
+    task.isReminder ||
+    (task.estimatedMinutes && task.estimatedMinutes > 0)
   );
 
   const overdueText = useMemo(() => {
@@ -757,25 +773,83 @@ const TaskRow = React.memo(function TaskRow({
                       </View>
                     </>
                   )}
+
+                  {/* 8. Pomodoro / Estimated Duration Inline */}
+                  {task.estimatedMinutes && task.estimatedMinutes > 0 ? (
+                    <>
+                      {(subtextData || (taskTags && taskTags.length > 0) || isOverdue || isLiveNow || task.isRecurring || (!subtextData && priorityColor) || task.isReminder || hasSubtasks) && (
+                        <Text style={styles.metaDot}>•</Text>
+                      )}
+                      <View style={styles.subtaskInlineItem}>
+                        <Ionicons
+                          name="timer-outline"
+                          size={11}
+                          color={isDark ? '#a599ff' : '#6C5CE7'}
+                          style={{ marginRight: 3 }}
+                        />
+                        <Text style={[styles.subtaskInlineText, { color: isDark ? '#a599ff' : '#6C5CE7', fontFamily: 'Inter_500Medium' }]}>
+                          {task.estimatedMinutes >= 60
+                            ? (task.estimatedMinutes % 60 === 0
+                                ? `${task.estimatedMinutes / 60}h`
+                                : `${Math.floor(task.estimatedMinutes / 60)}h ${task.estimatedMinutes % 60}m`)
+                            : `${task.estimatedMinutes}m`}
+                        </Text>
+                      </View>
+                    </>
+                  ) : null}
                 </View>
               )}
             </View>
 
-            {/* Right Side: Clean Expand Chevron */}
-            {hasSubtasks && !isDone && (
-              <TouchableOpacity
-                style={styles.expandChevronBtn}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setIsExpanded(!isExpanded);
-                }}
-                hitSlop={10}
-                activeOpacity={0.7}
-              >
-                <Animated.View style={animatedChevronStyle}>
-                  <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
-                </Animated.View>
-              </TouchableOpacity>
+            {/* Right Side: Timer Button + Expand Chevron */}
+            {!isDone && !isBulkEdit && (
+              <View style={styles.rightActionArea}>
+                <TouchableOpacity
+                  style={[
+                    styles.timerBtn,
+                    isTaskPomodoroActive && styles.timerBtnActive,
+                  ]}
+                  onPress={handleTimerPress}
+                  hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={isTaskPomodoroActive ? "timer" : "timer-outline"}
+                    size={15}
+                    color={isTaskPomodoroActive ? (isDark ? '#a599ff' : '#6C5CE7') : (task.estimatedMinutes ? (isDark ? '#a599ff' : '#6C5CE7') : colors.textTertiary)}
+                  />
+                  {task.estimatedMinutes && task.estimatedMinutes > 0 ? (
+                    <Text
+                      style={[
+                        styles.timerBtnText,
+                        { color: isTaskPomodoroActive ? (isDark ? '#a599ff' : '#6C5CE7') : (isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.65)') },
+                      ]}
+                    >
+                      {task.estimatedMinutes >= 60
+                        ? (task.estimatedMinutes % 60 === 0
+                            ? `${task.estimatedMinutes / 60}h`
+                            : `${Math.floor(task.estimatedMinutes / 60)}h ${task.estimatedMinutes % 60}m`)
+                        : `${task.estimatedMinutes}m`}
+                    </Text>
+                  ) : null}
+                </TouchableOpacity>
+
+                {hasSubtasks && (
+                  <TouchableOpacity
+                    style={styles.expandChevronBtn}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setIsExpanded(!isExpanded);
+                    }}
+                    hitSlop={8}
+                    activeOpacity={0.7}
+                  >
+                    <Animated.View style={animatedChevronStyle}>
+                      <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
+                    </Animated.View>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
           </TouchableOpacity>
         </View>
@@ -826,6 +900,9 @@ const TaskRow = React.memo(function TaskRow({
     prev.isSelected === next.isSelected &&
     prev.todayDateStr === next.todayDateStr &&
     prev.currentMinuteTick === next.currentMinuteTick &&
+    prev.activePomodoroTaskId === next.activePomodoroTaskId &&
+    prev.isPomodoroRunning === next.isPomodoroRunning &&
+    prev.onStartPomodoro === next.onStartPomodoro &&
     prev.onComplete === next.onComplete &&
     prev.onPress === next.onPress &&
     prev.onLongPress === next.onLongPress &&
@@ -977,6 +1054,33 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     fontSize: 11,
     color: colors.textTertiary,
+  },
+  rightActionArea: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingLeft: 4,
+  },
+  timerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 3.5,
+    paddingHorizontal: 6.5,
+    borderRadius: 7,
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+  },
+  timerBtnActive: {
+    backgroundColor: isDark ? 'rgba(165, 153, 255, 0.16)' : 'rgba(108, 92, 231, 0.14)',
+    borderColor: isDark ? 'rgba(165, 153, 255, 0.4)' : 'rgba(108, 92, 231, 0.35)',
+  },
+  timerBtnText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+    color: colors.textTertiary,
+    marginLeft: 3.5,
   },
   expandChevronBtn: {
     padding: 4,

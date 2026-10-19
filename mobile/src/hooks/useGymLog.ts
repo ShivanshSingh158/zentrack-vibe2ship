@@ -24,6 +24,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { dismissActiveWorkoutNotification } from '../services/activeWorkoutNotificationService';
 import { safeWrite } from '../utils/safeWrite';
 import { buildLiveWorkoutWidgetData, saveCachedLiveWorkoutData, updateLiveWorkoutWidget } from '../services/widgetSyncService';
+import { setActiveWorkoutFlag } from '../components/BackgroundNotificationWatcher';
 
 
 let currentRestTimerNotifId: string | null = null;
@@ -175,6 +176,7 @@ export function useGymLog(dateStr: string) {
 
   const prevDateStrRef = useRef<string | null>(null);
   const prevPlanUpdatedRef = useRef<number | null>(null);
+  const instanceIdRef = useRef<string>('gym_inst_' + Math.random().toString(36).slice(2));
 
   useEffect(() => {
     if (prevDateStrRef.current !== null && prevDateStrRef.current !== dateStr) {
@@ -184,6 +186,11 @@ export function useGymLog(dateStr: string) {
       localWriteAtRef.current = 0;
     }
     prevDateStrRef.current = dateStr;
+
+    // Skip heavy hydration and mapping if we wrote to this document within the last 5000ms
+    if (logRef.current && (Date.now() - localWriteAtRef.current) < 5000) {
+      return;
+    }
 
     const currentPlanUpdatedAt = userGymPlan?.updatedAt ?? 0;
     if (prevPlanUpdatedRef.current !== null && prevPlanUpdatedRef.current !== currentPlanUpdatedAt) {
@@ -421,7 +428,7 @@ export function useGymLog(dateStr: string) {
     localWriteAtRef.current = writeAt;
 
     // Issue 1 & 2: Broadcast local mutation to all mounted useGymLog instances for instant cross-screen sync
-    DeviceEventEmitter.emit('gym_log_local_mutation', { date: updatedLog.date, log: updatedLog });
+    DeviceEventEmitter.emit('gym_log_local_mutation', { date: updatedLog.date, log: updatedLog, senderId: instanceIdRef.current });
 
     // ── STEP 1: Optimistic update — instant UI, no waiting for Firestore.
     unstable_batchedUpdates(() => {
@@ -461,6 +468,7 @@ export function useGymLog(dateStr: string) {
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('gym_log_local_mutation', (event: any) => {
       if (event?.date && event.date !== dateStr) return;
+      if (event?.senderId === instanceIdRef.current) return; // Skip self-notification to avoid double-render
       if (event?.log) {
         logRef.current = event.log;
         setLog(event.log);
@@ -741,20 +749,6 @@ export function useGymLog(dateStr: string) {
       await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId).catch(() => {});
       currentRestTimerNotifId = null;
     }
-    if (durationSecs > 0) {
-      try {
-        const notifId = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Rest is over',
-            body: `${exerciseName ? exerciseName + ' — ' : ''}Time for your next set!`,
-            data: { type: 'rest_over' },
-            channelId: 'timer',
-          } as any,
-          trigger: { seconds: durationSecs, channelId: 'timer' } as any,
-        });
-        currentRestTimerNotifId = notifId;
-      } catch {}
-    }
   }, [saveLog]);
 
   const swapExercise = useCallback((exerciseIndex: number, newName: string, newVideoId?: string, newMuscle?: string) => {
@@ -842,6 +836,11 @@ export function useGymLog(dateStr: string) {
         updatedAt: Date.now(),
       };
       saveLog(updated);
+
+      // PERF FIX: Tell BackgroundNotificationWatcher to block scheduleAllNotifications()
+      // for the duration of this workout. Without this, every set completion triggers a
+      // full notification reschedule (cancel all + schedule 50+ alarms) in the background.
+      setActiveWorkoutFlag(true);
 
       try {
         const today = todayStr();
@@ -931,6 +930,11 @@ export function useGymLog(dateStr: string) {
       updatedAt: Date.now(),
     })).catch(() => {});
     dismissActiveWorkoutNotification().catch(() => {});
+
+    // PERF FIX: Re-enable scheduling now that workout is done.
+    // gym_workout_completed event in BackgroundNotificationWatcher also clears this flag,
+    // but we set it here too for the rare case where the event fires before this line runs.
+    setActiveWorkoutFlag(false);
   }, [user, dateStr, planIdx, saveLog, userGymPlan]);
 
   const resumeWorkout = useCallback(() => {
@@ -1009,20 +1013,6 @@ export function useGymLog(dateStr: string) {
       await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId).catch(() => {});
       currentRestTimerNotifId = null;
     }
-    if (durationSecs > 0) {
-      try {
-        const notifId = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Rest is over',
-            body: `${exerciseName ? exerciseName + ' — ' : ''}Time for your next set!`,
-            data: { type: 'rest_over' },
-            channelId: 'timer',
-          } as any,
-          trigger: { seconds: durationSecs, channelId: 'timer' } as any,
-        });
-        currentRestTimerNotifId = notifId;
-      } catch {}
-    }
   }, [saveLog]);
 
   const clearRestTimer = useCallback(async () => {
@@ -1050,11 +1040,6 @@ export function useGymLog(dateStr: string) {
   // so we must NOT add it on top of the current value.
   const setRestTimerDuration = useCallback(async (absoluteSecs: number) => {
     const newDuration = Math.max(0, absoluteSecs);
-    const currentLog = logRef.current;
-    const exName = currentLog?.restTimerExerciseName;
-    const startMs = currentLog?.restTimerStartTime || Date.now();
-    const elapsedSecs = Math.max(0, Math.round((Date.now() - startMs) / 1000));
-    const remainingSecs = Math.max(1, newDuration - elapsedSecs);
 
     // Update local state without rewriting the entire Firestore log doc on every ±30s tap
     setLog(prev => {
@@ -1067,21 +1052,6 @@ export function useGymLog(dateStr: string) {
     if (currentRestTimerNotifId) {
       await Notifications.cancelScheduledNotificationAsync(currentRestTimerNotifId).catch(() => {});
       currentRestTimerNotifId = null;
-    }
-
-    if (remainingSecs > 0) {
-      try {
-        const notifId = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Rest is over',
-            body: `${exName ? exName + ' — ' : ''}Time for your next set!`,
-            data: { type: 'rest_over' },
-            channelId: 'timer',
-          } as any,
-          trigger: { seconds: remainingSecs, channelId: 'timer' } as any,
-        });
-        currentRestTimerNotifId = notifId;
-      } catch {}
     }
   }, []);
 

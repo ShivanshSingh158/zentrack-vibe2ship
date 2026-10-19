@@ -224,7 +224,7 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
     lockTimerRef.current = setTimeout(() => {
       processingRef.current = false;
       lockTimerRef.current = null;
-    }, 300);
+    }, 100);
   }, []);
 
   const handlePressPresent = useCallback(() => {
@@ -244,18 +244,12 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
         : '';
       const undoId = log?.id || fallbackDetId;
       if (undoId) {
-        if (deferredTimerRef.current) clearTimeout(deferredTimerRef.current);
-        deferredTimerRef.current = setTimeout(() => {
-          onUndo(undoId);
-        }, 60);
+        onUndo(undoId);
       }
     } else {
       rowColorVal.value = withTiming(1, { duration: 220 });
       setLocalAction('attended');
-      if (deferredTimerRef.current) clearTimeout(deferredTimerRef.current);
-      deferredTimerRef.current = setTimeout(() => {
-        onLog(subject, type, 'attended', log?.id, sessionIdx, cleanDate, isExtra);
-      }, 60);
+      onLog(subject, type, 'attended', log?.id, sessionIdx, cleanDate, isExtra);
     }
   }, [isPresent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, session.date, selectedDate, rowColorVal, armDebounceLock]);
 
@@ -276,18 +270,12 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
         : '';
       const undoId = log?.id || fallbackDetId;
       if (undoId) {
-        if (deferredTimerRef.current) clearTimeout(deferredTimerRef.current);
-        deferredTimerRef.current = setTimeout(() => {
-          onUndo(undoId);
-        }, 60);
+        onUndo(undoId);
       }
     } else {
       rowColorVal.value = withTiming(-1, { duration: 220 });
       setLocalAction('missed');
-      if (deferredTimerRef.current) clearTimeout(deferredTimerRef.current);
-      deferredTimerRef.current = setTimeout(() => {
-        onLog(subject, type, 'missed', log?.id, sessionIdx, cleanDate, isExtra);
-      }, 60);
+      onLog(subject, type, 'missed', log?.id, sessionIdx, cleanDate, isExtra);
     }
   }, [isAbsent, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, session.date, selectedDate, rowColorVal, armDebounceLock]);
 
@@ -308,18 +296,12 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
         : '';
       const undoId = log?.id || fallbackDetId;
       if (undoId) {
-        if (deferredTimerRef.current) clearTimeout(deferredTimerRef.current);
-        deferredTimerRef.current = setTimeout(() => {
-          onUndo(undoId);
-        }, 60);
+        onUndo(undoId);
       }
     } else {
       rowColorVal.value = withTiming(0.5, { duration: 220 });
       setLocalAction('cancelled');
-      if (deferredTimerRef.current) clearTimeout(deferredTimerRef.current);
-      deferredTimerRef.current = setTimeout(() => {
-        onLog(subject, type, 'cancelled', log?.id, sessionIdx, cleanDate, isExtra);
-      }, 60);
+      onLog(subject, type, 'cancelled', log?.id, sessionIdx, cleanDate, isExtra);
     }
   }, [isCancelled, log?.id, onUndo, onLog, subject, type, sessionIdx, isExtra, session.date, selectedDate, rowColorVal, armDebounceLock]);
 

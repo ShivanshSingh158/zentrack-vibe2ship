@@ -10,7 +10,7 @@
  * Accessible from: Settings → Sara → Action History
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { formatDateShort } from '../utils/dateUtils';
 import {
   View,
@@ -66,7 +66,7 @@ function getActionMeta(type: string, colors: any): ActionMeta {
 
 // ── Tier badge ────────────────────────────────────────────────────────────────
 
-function TierBadge({ tier }: { tier: ActionTier }) {
+const TierBadge = React.memo(function TierBadge({ tier }: { tier: ActionTier }) {
   const { colors } = useTheme();
   const config: Record<ActionTier, { label: string; bg: string; text: string }> = {
     1: { label: 'AUTO', bg: 'rgba(52,199,89,0.15)', text: '#34C759' },
@@ -79,24 +79,34 @@ function TierBadge({ tier }: { tier: ActionTier }) {
       <Text style={[styles.tierBadgeText, { color: c.text }]}>{c.label}</Text>
     </View>
   );
-}
+});
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 
-function ActionRow({ item }: { item: AgentAction }) {
+const ActionRow = React.memo(function ActionRow({ item }: { item: AgentAction }) {
   const { colors } = useTheme();
-  const meta = getActionMeta(item.type, colors);
+  const meta = useMemo(() => getActionMeta(item.type, colors), [item.type, colors]);
 
-  const relativeTime = useCallback(() => {
+  const timeLabel = useMemo(() => {
     const diffMs = Date.now() - item.timestampMs;
     const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return 'Just now';
-    if (diffMin < 60) return `${diffMin}m ago`;
-    const diffH = Math.floor(diffMin / 60);
-    if (diffH < 24) return `${diffH}h ago`;
-    const diffD = Math.floor(diffH / 24);
-    return `${diffD}d ago`;
-  }, [item.timestampMs]);
+    let rel = 'Just now';
+    if (diffMin >= 60) {
+      const diffH = Math.floor(diffMin / 60);
+      rel = diffH >= 24 ? `${Math.floor(diffH / 24)}d ago` : `${diffH}h ago`;
+    } else if (diffMin >= 1) {
+      rel = `${diffMin}m ago`;
+    }
+
+    try {
+      const d = new Date(item.timestamp);
+      const datePart = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      const timePart = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return `${rel} · ${datePart}, ${timePart}`;
+    } catch {
+      return rel;
+    }
+  }, [item.timestamp, item.timestampMs]);
 
   return (
     <View style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -123,15 +133,12 @@ function ActionRow({ item }: { item: AgentAction }) {
           {item.description}
         </Text>
         <Text style={[styles.rowTime, { color: colors.textTertiary }]}>
-          {relativeTime()} · {new Date(item.timestamp).toLocaleString([], {
-            month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit',
-          })}
+          {timeLabel}
         </Text>
       </View>
     </View>
   );
-}
+});
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -179,6 +186,10 @@ export default function AgentHistoryScreen() {
     );
   };
 
+  const renderItem = useCallback(({ item }: { item: AgentAction }) => (
+    <ActionRow item={item} />
+  ), []);
+
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]} edges={['bottom']}>
       {/* Header */}
@@ -222,7 +233,7 @@ export default function AgentHistoryScreen() {
           keyExtractor={(item, idx) => `${item.timestampMs}-${idx}`}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => <ActionRow item={item} />}
+          renderItem={renderItem}
           ListFooterComponent={
             <Text style={[styles.footerNote, { color: colors.textTertiary }]}>
               Showing last {history.length} action{history.length !== 1 ? 's' : ''} (max 50 stored)
@@ -233,6 +244,7 @@ export default function AgentHistoryScreen() {
     </SafeAreaView>
   );
 }
+
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 

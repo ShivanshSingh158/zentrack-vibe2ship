@@ -346,6 +346,18 @@ export default function ActiveLoggingScreen() {
     return () => sub.remove();
   }, []);
 
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setIsKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setIsKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   const [showSupersetPicker, setShowSupersetPicker] = useState(false);
   const [activeExIndex, setActiveExIndex] = useState(route.params?.initialIndex ?? 0);
   // ── FIX 3: Track initialIndex consumption via ref only — no navigation.setParams() on mount.
@@ -526,10 +538,20 @@ export default function ActiveLoggingScreen() {
   }, [exercise?.supersetGroup, exercise?.exerciseId, exercise?.name, activeExercises, safeIdx]);
 
   const targetDateStr = date || todayStr();
-  // Filter historical gym logs strictly BEFORE targetDateStr so today's live sets don't churn history
+  // Filter historical gym logs strictly BEFORE targetDateStr and stabilize with fingerprinting
+  // so today's live sets don't churn history or re-trigger overload calculations
+  const pastGymLogsRef = useRef<any[]>([]);
+  const pastLogsFingerprintRef = useRef<string>('');
   const pastGymLogs = useMemo(() => {
     if (!gymLogs || gymLogs.length === 0) return [];
-    return gymLogs.filter(l => l.date < targetDateStr);
+    const past = gymLogs.filter(l => l.date < targetDateStr);
+    const fingerprint = past.map(l => `${l.date}_${l.exercises?.length ?? 0}`).join('|');
+    if (fingerprint === pastLogsFingerprintRef.current && pastGymLogsRef.current.length === past.length) {
+      return pastGymLogsRef.current;
+    }
+    pastLogsFingerprintRef.current = fingerprint;
+    pastGymLogsRef.current = past;
+    return past;
   }, [gymLogs, targetDateStr]);
 
   // ── Compute overloadSuggestion + lastTimeData without layout collapse flickers.
@@ -718,6 +740,7 @@ export default function ActiveLoggingScreen() {
     liveInputsRef.current[setIdx][field] = sanitized;
 
     setSetInputs(prev => {
+      if (prev[setIdx] && prev[setIdx][field] === sanitized) return prev;
       const next = [...prev];
       const curSet = stateRef.current.exercise?.setsLog?.[setIdx];
       const current = next[setIdx] || {
@@ -1381,28 +1404,6 @@ export default function ActiveLoggingScreen() {
           </ScrollView>
         </View>
 
-        {/* Sticky Rest Timer Overlay (Always floating strictly above the Bottom Tab Bar) */}
-        {(restTimerStartTime && restTimerDurationSecs) ? (
-          <View
-            style={{
-              position: 'absolute',
-              bottom: timerBottomOffset,
-              left: 0,
-              right: 0,
-              alignItems: 'center',
-              zIndex: 9999,
-            }}
-            pointerEvents="box-none"
-          >
-            <AnimatedRestTimer
-              startTime={restTimerStartTime}
-              durationSecs={restTimerDurationSecs}
-              onAdd={handleTimerAdd}
-              onSubtract={handleTimerSubtract}
-              onSkip={handleTimerSkip}
-            />
-          </View>
-        ) : null}
 
         {/* ── FIX 4: Lazy-mount Superset Modal — only inserted into the tree on first open.
              Before first open: zero JS evaluation, zero layout cost, zero PanResponder init. */}
@@ -1515,6 +1516,29 @@ export default function ActiveLoggingScreen() {
         )}
 
       </KeyboardAvoidingView>
+
+      {/* Sticky Rest Timer Overlay (Rendered outside KeyboardAvoidingView so it never jumps with keyboard) */}
+      {(restTimerStartTime && restTimerDurationSecs && !isKeyboardVisible) ? (
+        <View
+          style={{
+            position: 'absolute',
+            bottom: timerBottomOffset,
+            left: 0,
+            right: 0,
+            alignItems: 'center',
+            zIndex: 9999,
+          }}
+          pointerEvents="box-none"
+        >
+          <AnimatedRestTimer
+            startTime={restTimerStartTime}
+            durationSecs={restTimerDurationSecs}
+            onAdd={handleTimerAdd}
+            onSubtract={handleTimerSubtract}
+            onSkip={handleTimerSkip}
+          />
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }

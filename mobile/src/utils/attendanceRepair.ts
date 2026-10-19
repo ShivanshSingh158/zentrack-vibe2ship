@@ -71,6 +71,17 @@ export async function repairDuplicateAttendanceLogs(
   isRepairRunning = true;
   lastRepairRunMs = now;
 
+  // One-time run check: do not query Firestore if repair already ran successfully
+  if (!force) {
+    try {
+      const alreadyDone = await AsyncStorage.getItem(REPAIR_FLAG_PREFIX + uid);
+      if (alreadyDone === 'true') {
+        isRepairRunning = false;
+        return result;
+      }
+    } catch (_) {}
+  }
+
   try {
     // ── 1. Load all non-extra scheduled logs for this user ─────────────────
     const logsSnap = await getDocs(query(
@@ -174,6 +185,7 @@ export async function repairDuplicateAttendanceLogs(
     }
 
     if (docsToDelete.length === 0 && docsToMigrate.length === 0) {
+      await AsyncStorage.setItem(REPAIR_FLAG_PREFIX + uid, 'true').catch(() => {});
       return result;
     }
 
@@ -225,6 +237,7 @@ export async function repairDuplicateAttendanceLogs(
       }
     }
 
+    await AsyncStorage.setItem(REPAIR_FLAG_PREFIX + uid, 'true').catch(() => {});
     console.log(
       `[AttendanceRepair] Done. Fixed ${result.fixed} groups, deleted ${result.deleted} extra logs.`
     );

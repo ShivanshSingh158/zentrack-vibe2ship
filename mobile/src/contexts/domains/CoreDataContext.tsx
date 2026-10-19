@@ -328,7 +328,6 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           setFirestoreReady(true);
           return;
         }
-        if (isHabitLocked.current) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.HABITS, snap.docs.map(d => parseHabit(d.data(), d.id)));
           setHabits(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -350,7 +349,6 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           setFirestoreReady(true);
           return;
         }
-        if (isHabitLogLocked.current) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.HABIT_LOGS, snap.docs.map(d => parseHabitLog(d.data(), d.id)));
           setHabitLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -453,85 +451,104 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const todayHabits      = useMemo(() => activeHabits.slice(0, 5), [activeHabits]);
   const pendingTaskCount = useMemo(() => tasks.filter(t => t.status === "pending").length, [tasks]);
 
-  const optimisticAddTask = (task: Task) => {
+  const optimisticAddTask = useCallback((task: Task) => {
     setTasks(prev => {
       const next = [task, ...prev];
-      writeCoreCacheMulti({ tasks: next }, true);
       updateL1Cache('tasks', next);
+      InteractionManager.runAfterInteractions(() => {
+        writeCoreCacheMulti({ tasks: next }, false);
+      });
       return next;
     });
-  };
-  const optimisticUpdateTask = (taskId: string, partial: Partial<Task>) => {
+  }, []);
+
+  const optimisticUpdateTask = useCallback((taskId: string, partial: Partial<Task>) => {
     setTasks(prev => {
       const next = prev.map(t => t.id === taskId ? { ...t, ...partial } : t);
-      // Write-through to AsyncStorage: survives offline app kill+restart
-      writeCoreCacheMulti({ tasks: next }, true);
       updateL1Cache('tasks', next);
+      InteractionManager.runAfterInteractions(() => {
+        writeCoreCacheMulti({ tasks: next }, false);
+      });
       return next;
     });
-  };
-  const optimisticDeleteTask = (taskId: string) => {
+  }, []);
+
+  const optimisticDeleteTask = useCallback((taskId: string) => {
     setTasks(prev => {
       const next = prev.filter(t => t.id !== taskId);
-      writeCoreCacheMulti({ tasks: next }, true);
       updateL1Cache('tasks', next);
+      InteractionManager.runAfterInteractions(() => {
+        writeCoreCacheMulti({ tasks: next }, false);
+      });
       return next;
     });
-  };
-  const optimisticAddHabit = (habit: Habit) => {
-    lockHabits();
+  }, []);
+
+  const optimisticAddHabit = useCallback((habit: Habit) => {
     setHabits(prev => {
       const next = [habit, ...prev];
-      writeCoreCacheMulti({ habits: next }, true);
       updateL1Cache('habits', next);
+      InteractionManager.runAfterInteractions(() => {
+        writeCoreCacheMulti({ habits: next }, false);
+      });
       return next;
     });
-  };
-  const optimisticUpdateHabit = (habitId: string, partial: Partial<Habit>) => {
-    lockHabits();
+  }, []);
+
+  const optimisticUpdateHabit = useCallback((habitId: string, partial: Partial<Habit>) => {
     setHabits(prev => {
       const next = prev.map(h => h.id === habitId ? { ...h, ...partial } : h);
-      writeCoreCacheMulti({ habits: next }, true);
       updateL1Cache('habits', next);
+      InteractionManager.runAfterInteractions(() => {
+        writeCoreCacheMulti({ habits: next }, false);
+      });
       return next;
     });
-  };
-  const optimisticDeleteHabit = (habitId: string) => {
-    lockHabits();
+  }, []);
+
+  const optimisticDeleteHabit = useCallback((habitId: string) => {
     setHabits(prev => {
       const next = prev.filter(h => h.id !== habitId);
-      writeCoreCacheMulti({ habits: next }, true);
       updateL1Cache('habits', next);
+      InteractionManager.runAfterInteractions(() => {
+        writeCoreCacheMulti({ habits: next }, false);
+      });
       return next;
     });
-  };
-  const optimisticAddHabitLog = (log: HabitLog) => {
-    lockHabitLogs();
+  }, []);
+
+  const optimisticAddHabitLog = useCallback((log: HabitLog) => {
     setHabitLogs(prev => {
       const next = [...prev, log];
-      writeCoreCacheMulti({ habitLogs: next }, true);
       updateL1Cache('habitLogs', next);
+      InteractionManager.runAfterInteractions(() => {
+        writeCoreCacheMulti({ habitLogs: next }, false);
+      });
       return next;
     });
-  };
-  const optimisticUpdateHabitLog = (logId: string, partial: Partial<HabitLog>) => {
-    lockHabitLogs();
+  }, []);
+
+  const optimisticUpdateHabitLog = useCallback((logId: string, partial: Partial<HabitLog>) => {
     setHabitLogs(prev => {
       const next = prev.map(l => l.id === logId ? { ...l, ...partial } : l);
-      writeCoreCacheMulti({ habitLogs: next }, true);
       updateL1Cache('habitLogs', next);
+      InteractionManager.runAfterInteractions(() => {
+        writeCoreCacheMulti({ habitLogs: next }, false);
+      });
       return next;
     });
-  };
-  const optimisticRemoveHabitLog = (habitId: string, date: string) => {
-    lockHabitLogs();
+  }, []);
+
+  const optimisticRemoveHabitLog = useCallback((habitId: string, date: string) => {
     setHabitLogs(prev => {
       const next = prev.filter(l => !(l.habitId === habitId && l.date === date));
-      writeCoreCacheMulti({ habitLogs: next }, true);
       updateL1Cache('habitLogs', next);
+      InteractionManager.runAfterInteractions(() => {
+        writeCoreCacheMulti({ habitLogs: next }, false);
+      });
       return next;
     });
-  };
+  }, []);
 
   const value = useMemo(() => ({
     user, tasks, habits: activeHabits, allHabits: habits, habitLogs,

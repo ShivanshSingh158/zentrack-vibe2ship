@@ -43,15 +43,48 @@ export default function ExerciseDetailScreen() {
   const { gymLogs, userGymPlan, updateMasterPlan } = useWellnessData();
   const { log, updateExercise, deleteExercise } = useGymLog(date);
 
-  const currentExercise = log?.exercises?.find(e => e.exerciseId === exerciseId);
+  const currentExercise = useMemo(() => {
+    if (log?.exercises) {
+      const found = log.exercises.find(e => e.exerciseId === exerciseId);
+      if (found) return found;
+    }
+    let fallbackDef: any = null;
+    GYM_PLAN.forEach(day => {
+      const found = day.exercises.find(e => e.id === exerciseId);
+      if (found) fallbackDef = found;
+    });
+    return fallbackDef;
+  }, [log?.exercises, exerciseId]);
+
+  const initialFormState = useMemo(() => {
+    if (currentExercise) {
+      const resolved = resolveExerciseTargetMuscle(currentExercise.name, currentExercise.muscle).targetMuscle;
+      return {
+        name: currentExercise.name || '',
+        muscle: resolved || currentExercise.muscle || 'General',
+        targetSets: currentExercise.targetSets?.toString() || '3',
+        targetReps: currentExercise.targetReps || '10',
+        restTimeSecs: currentExercise.restTimeSecs?.toString() || '90',
+        videoLink: currentExercise.videoId ? `https://youtube.com/watch?v=${currentExercise.videoId}` : '',
+      };
+    }
+    return {
+      name: '',
+      muscle: 'General',
+      targetSets: '3',
+      targetReps: '10',
+      restTimeSecs: '90',
+      videoLink: '',
+    };
+  }, [currentExercise]);
 
   // Form state
-  const [name, setName] = useState('');
-  const [muscle, setMuscle] = useState('');
-  const [targetSets, setTargetSets] = useState('');
-  const [targetReps, setTargetReps] = useState('');
-  const [restTimeSecs, setRestTimeSecs] = useState('');
-  const [videoLink, setVideoLink] = useState('');
+  const [name, setName] = useState(initialFormState.name);
+  const [muscle, setMuscle] = useState(initialFormState.muscle);
+  const [targetSets, setTargetSets] = useState(initialFormState.targetSets);
+  const [targetReps, setTargetReps] = useState(initialFormState.targetReps);
+  const [restTimeSecs, setRestTimeSecs] = useState(initialFormState.restTimeSecs);
+  const [videoLink, setVideoLink] = useState(initialFormState.videoLink);
   const [showVideo, setShowVideo] = useState(false);
   const [showMuscleDropdown, setShowMuscleDropdown] = useState(false);
   const [saveGlobal, setSaveGlobal] = useState(false);
@@ -85,37 +118,17 @@ export default function ExerciseDetailScreen() {
     return suggestions.map(s => s.replace(/\b\w/g, c => c.toUpperCase()));
   }, [muscle, showMuscleDropdown]);
 
-  // Initialize form
+  // Sync form if exercise loads asynchronously
   useEffect(() => {
-    if (currentExercise) {
-      setName(currentExercise.name || '');
-      const resolved = resolveExerciseTargetMuscle(currentExercise.name, currentExercise.muscle).targetMuscle;
-      setMuscle(resolved || currentExercise.muscle || 'General');
-      setTargetSets(currentExercise.targetSets?.toString() || '');
-      setTargetReps(currentExercise.targetReps || '');
-      setRestTimeSecs(currentExercise.restTimeSecs?.toString() || '90');
-      if (currentExercise.videoId) {
-        setVideoLink(`https://youtube.com/watch?v=${currentExercise.videoId}`);
-      }
-    } else {
-      let fallbackDef: any = null;
-      GYM_PLAN.forEach(day => {
-        const found = day.exercises.find(e => e.id === exerciseId);
-        if (found) fallbackDef = found;
-      });
-      if (fallbackDef) {
-        setName(fallbackDef.name || '');
-        const resolved = resolveExerciseTargetMuscle(fallbackDef.name, fallbackDef.muscle).targetMuscle;
-        setMuscle(resolved || fallbackDef.muscle || 'General');
-        setTargetSets(fallbackDef.targetSets?.toString() || '');
-        setTargetReps(fallbackDef.targetReps || '');
-        setRestTimeSecs('90');
-        if (fallbackDef.videoId) {
-          setVideoLink(`https://youtube.com/watch?v=${fallbackDef.videoId}`);
-        }
-      }
+    if (initialFormState.name && !name) {
+      setName(initialFormState.name);
+      setMuscle(initialFormState.muscle);
+      setTargetSets(initialFormState.targetSets);
+      setTargetReps(initialFormState.targetReps);
+      setRestTimeSecs(initialFormState.restTimeSecs);
+      setVideoLink(initialFormState.videoLink);
     }
-  }, [currentExercise, exerciseId]);
+  }, [initialFormState]);
 
   // Auto-resolve video link if missing with 600ms debounce
   useEffect(() => {
@@ -221,7 +234,7 @@ export default function ExerciseDetailScreen() {
     const resolvedMuscle = resolveExerciseTargetMuscle(name, muscle).targetMuscle;
 
     const currentSets = currentExercise.setsLog || [];
-    let nextSets: GymSet[] = currentSets.map(s => ({ ...s }));
+    let nextSets: GymSet[] = currentSets.map((s: any) => ({ ...s }));
 
     if (parsedTargetSets > nextSets.length) {
       for (let i = nextSets.length; i < parsedTargetSets; i++) {

@@ -5,7 +5,7 @@ import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { CustomEvent, Goal, WeeklyReview } from "../MobileDataContext";
 import { writePlannerCache } from "../../utils/domainCache";
-import { loadBootManifest, getBootManifestSync } from "../../utils/bootManifest";
+import { loadBootManifest, getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
 import { parseCustomEvent, parseGoal, areItemsEqual } from "../../utils/schemaGuards";
 import { applyPendingQueueOverlay } from "../../services/offlineSync";
 
@@ -56,6 +56,9 @@ export function PlannerProvider({
   const [weeklyReviews, setWeeklyReviews] = useState<WeeklyReview[]>(initialManifest?.weeklyReviews ?? []);
 
   const subscribedRef = useRef(false);
+  const demandRequestedRef = useRef(false);
+  const deferredSubTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deferredInteractionRef = useRef<{ cancel: () => void } | null>(null);
   const unsubsRef     = useRef<(() => void)[]>([]);
   const hasCachedDataRef = useRef(
     (initialManifest?.customEvents?.length ?? 0) > 0 ||
@@ -121,7 +124,8 @@ export function PlannerProvider({
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.CALENDAR_EVENTS, snap.docs.map(d => parseCustomEvent(d.data(), d.id)));
           setCustomEvents(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-          InteractionManager.runAfterInteractions(() => writePlannerCache({ customEvents: fresh }));
+          updateL1Cache('customEvents', fresh);
+          InteractionManager.runAfterInteractions(() => writePlannerCache({ customEvents: fresh }, false));
         });
       },
       scheduleListenerRestart("customEvents")
@@ -134,7 +138,8 @@ export function PlannerProvider({
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.GOALS, snap.docs.map(d => parseGoal(d.data(), d.id)));
           setGoals(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-          InteractionManager.runAfterInteractions(() => writePlannerCache({ goals: fresh }));
+          updateL1Cache('goals', fresh);
+          InteractionManager.runAfterInteractions(() => writePlannerCache({ goals: fresh }, false));
         });
       },
       scheduleListenerRestart("goals")
@@ -147,7 +152,8 @@ export function PlannerProvider({
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.WEEKLY_REVIEWS, snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview)));
           setWeeklyReviews(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-          InteractionManager.runAfterInteractions(() => writePlannerCache({ weeklyReviews: fresh }));
+          updateL1Cache('weeklyReviews', fresh);
+          InteractionManager.runAfterInteractions(() => writePlannerCache({ weeklyReviews: fresh }, false));
         });
       },
       scheduleListenerRestart("weeklyReviews")
@@ -157,11 +163,29 @@ export function PlannerProvider({
   useEffect(() => {
     if (user) {
       subscribedRef.current = false;
-      openSubscriptions(user.uid);
+      if (demandRequestedRef.current) {
+        openSubscriptions(user.uid);
+      } else {
+        if (deferredSubTimerRef.current) clearTimeout(deferredSubTimerRef.current);
+        const handle = InteractionManager.runAfterInteractions(() => {
+          deferredSubTimerRef.current = setTimeout(() => {
+            if (user && !subscribedRef.current) {
+              openSubscriptions(user.uid);
+            }
+          }, 2500);
+        });
+        deferredInteractionRef.current = handle;
+        return () => {
+          handle.cancel();
+          if (deferredSubTimerRef.current) clearTimeout(deferredSubTimerRef.current);
+        };
+      }
     } else {
+      deferredInteractionRef.current?.cancel();
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
+      demandRequestedRef.current = false;
       hasCachedDataRef.current = false;
       unstable_batchedUpdates(() => {
         setCustomEvents([]);
@@ -171,6 +195,7 @@ export function PlannerProvider({
       if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     }
     return () => {
+      deferredInteractionRef.current?.cancel();
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
@@ -178,11 +203,18 @@ export function PlannerProvider({
   }, [user?.uid, subscriptionVersion, openSubscriptions]);
 
   useEffect(() => () => {
+    deferredInteractionRef.current?.cancel();
     unsubsRef.current.forEach(u => u());
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    if (deferredSubTimerRef.current) clearTimeout(deferredSubTimerRef.current);
   }, []);
 
   const ensureSubscribed = useCallback(() => {
+    demandRequestedRef.current = true;
+    if (deferredSubTimerRef.current) {
+      clearTimeout(deferredSubTimerRef.current);
+      deferredSubTimerRef.current = null;
+    }
     if (user && !subscribedRef.current) {
       openSubscriptions(user.uid);
     }
@@ -191,7 +223,10 @@ export function PlannerProvider({
   const optimisticAddEvent = useCallback((event: CustomEvent) => {
     setCustomEvents(prev => {
       const next = [event, ...prev];
-      writePlannerCache({ customEvents: next }, true);
+      updateL1Cache('customEvents', next);
+      InteractionManager.runAfterInteractions(() => {
+        writePlannerCache({ customEvents: next }, false);
+      });
       return next;
     });
   }, []);
@@ -199,7 +234,10 @@ export function PlannerProvider({
   const optimisticUpdateEvent = useCallback((eventId: string, partial: Partial<CustomEvent>) => {
     setCustomEvents(prev => {
       const next = prev.map(e => e.id === eventId ? { ...e, ...partial } : e);
-      writePlannerCache({ customEvents: next }, true);
+      updateL1Cache('customEvents', next);
+      InteractionManager.runAfterInteractions(() => {
+        writePlannerCache({ customEvents: next }, false);
+      });
       return next;
     });
   }, []);
@@ -207,7 +245,10 @@ export function PlannerProvider({
   const optimisticDeleteEvent = useCallback((eventId: string) => {
     setCustomEvents(prev => {
       const next = prev.filter(e => e.id !== eventId);
-      writePlannerCache({ customEvents: next }, true);
+      updateL1Cache('customEvents', next);
+      InteractionManager.runAfterInteractions(() => {
+        writePlannerCache({ customEvents: next }, false);
+      });
       return next;
     });
   }, []);
@@ -215,7 +256,10 @@ export function PlannerProvider({
   const optimisticAddGoal = useCallback((goal: Goal) => {
     setGoals(prev => {
       const next = [goal, ...prev];
-      writePlannerCache({ goals: next }, true);
+      updateL1Cache('goals', next);
+      InteractionManager.runAfterInteractions(() => {
+        writePlannerCache({ goals: next }, false);
+      });
       return next;
     });
   }, []);
@@ -223,7 +267,10 @@ export function PlannerProvider({
   const optimisticUpdateGoal = useCallback((goalId: string, partial: Partial<Goal>) => {
     setGoals(prev => {
       const next = prev.map(g => g.id === goalId ? { ...g, ...partial } : g);
-      writePlannerCache({ goals: next }, true);
+      updateL1Cache('goals', next);
+      InteractionManager.runAfterInteractions(() => {
+        writePlannerCache({ goals: next }, false);
+      });
       return next;
     });
   }, []);
@@ -231,7 +278,10 @@ export function PlannerProvider({
   const optimisticDeleteGoal = useCallback((goalId: string) => {
     setGoals(prev => {
       const next = prev.filter(g => g.id !== goalId);
-      writePlannerCache({ goals: next }, true);
+      updateL1Cache('goals', next);
+      InteractionManager.runAfterInteractions(() => {
+        writePlannerCache({ goals: next }, false);
+      });
       return next;
     });
   }, []);

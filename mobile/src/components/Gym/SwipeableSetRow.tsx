@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, TextInput } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -117,22 +117,38 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
     }
   }, [idx, onAction, onLongPress]);
 
+  const currentWeightRef = useRef(displayWeight);
+  const currentRepsRef = useRef(displayReps);
+
+  useEffect(() => {
+    currentWeightRef.current = displayWeight;
+  }, [displayWeight]);
+
+  useEffect(() => {
+    currentRepsRef.current = displayReps;
+  }, [displayReps]);
+
   // Stepper Handlers (+/- 2.5kg for Weight up to 1000kg, +/- 1 for Reps up to 50)
+  // Uses synchronous ref tracking so rapid clicks (+ + +) register instantly on Frame 0 with zero throttle.
   const handleWeightAdjust = useCallback((delta: number) => {
     if (isCompleted) return;
     hapticLight();
-    const currentVal = parseFloat(displayWeight) || 0;
+    const currentVal = parseFloat(currentWeightRef.current) || 0;
     const newVal = Math.min(1000, Math.max(0, Math.round((currentVal + delta) * 10) / 10));
-    handleTextChangeInternal('weight', newVal === 0 ? '' : String(newVal));
-  }, [isCompleted, displayWeight, handleTextChangeInternal]);
+    const newValStr = newVal === 0 ? '' : String(newVal);
+    currentWeightRef.current = newValStr;
+    handleTextChangeInternal('weight', newValStr);
+  }, [isCompleted, handleTextChangeInternal]);
 
   const handleRepsAdjust = useCallback((delta: number) => {
     if (isCompleted) return;
     hapticLight();
-    const currentVal = parseInt(displayReps, 10) || 0;
+    const currentVal = parseInt(currentRepsRef.current, 10) || 0;
     const newVal = Math.min(50, Math.max(0, currentVal + delta));
-    handleTextChangeInternal('reps', newVal === 0 ? '' : String(newVal));
-  }, [isCompleted, displayReps, handleTextChangeInternal]);
+    const newValStr = newVal === 0 ? '' : String(newVal);
+    currentRepsRef.current = newValStr;
+    handleTextChangeInternal('reps', newValStr);
+  }, [isCompleted, handleTextChangeInternal]);
 
   return (
     <View style={[styles.setRowWrapper, isActive && styles.setRowWrapperActive]}>
@@ -189,7 +205,9 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
             style={styles.stepperBtn}
             onPress={() => handleWeightAdjust(-2.5)}
             disabled={isCompleted}
-            hitSlop={6}
+            delayPressIn={0}
+            activeOpacity={0.6}
+            hitSlop={8}
           >
             <Ionicons name="remove" size={17} color={isCompleted ? colors.textMuted : colors.textSecondary} />
           </TouchableOpacity>
@@ -215,7 +233,9 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
             style={styles.stepperBtn}
             onPress={() => handleWeightAdjust(2.5)}
             disabled={isCompleted}
-            hitSlop={6}
+            delayPressIn={0}
+            activeOpacity={0.6}
+            hitSlop={8}
           >
             <Ionicons name="add" size={17} color={isCompleted ? colors.textMuted : colors.textSecondary} />
           </TouchableOpacity>
@@ -227,7 +247,9 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
             style={styles.stepperBtn}
             onPress={() => handleRepsAdjust(-1)}
             disabled={isCompleted}
-            hitSlop={6}
+            delayPressIn={0}
+            activeOpacity={0.6}
+            hitSlop={8}
           >
             <Ionicons name="remove" size={17} color={isCompleted ? colors.textMuted : colors.textSecondary} />
           </TouchableOpacity>
@@ -253,7 +275,9 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
             style={styles.stepperBtn}
             onPress={() => handleRepsAdjust(1)}
             disabled={isCompleted}
-            hitSlop={6}
+            delayPressIn={0}
+            activeOpacity={0.6}
+            hitSlop={8}
           >
             <Ionicons name="add" size={17} color={isCompleted ? colors.textMuted : colors.textSecondary} />
           </TouchableOpacity>

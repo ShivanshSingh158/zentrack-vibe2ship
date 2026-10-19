@@ -76,9 +76,9 @@ const AgentHistoryScreen = cacheAwareLazy('AgentHistory', () => import('../scree
 const WellbeingDashboardScreen = cacheAwareLazy('WellbeingDashboard', () => import('../screens/WellbeingDashboardScreen'));
 // SARA screen hidden & completely deactivated per user directive
 const NullScreen = () => null;
-import { usePomodoro } from '../contexts/PomodoroContext';
 import PomodoroFloatingPill from '../components/Tasks/PomodoroFloatingPill';
 import PomodoroSheet from '../components/Tasks/PomodoroSheet';
+import { usePomodoro } from '../contexts/PomodoroContext';
 import { useQuickActions } from '../hooks/useQuickActions';
 
 // --- Navigators --------------------------------------------------------------
@@ -167,9 +167,28 @@ const ALLOWED_SAVE_ROUTES = new Set([
 
 
 /**
+ * withFocusFreeze
+ *
  * Freezes JS re-renders on inactive tabs while keeping their native Fabric view
  * surface mounted in memory (0ms tab switch, zero Android grey-screen bug).
+ *
+ * MEMO COMPARATOR CONTRACT:
+ * - Tab NOT focused (isFocused=false): ALWAYS skip re-render. Context updates from
+ *   gymLogs, tasks, etc. must NEVER propagate to background tabs — this is the primary
+ *   CPU saving (prevents 50+ re-renders per workout session in background tabs).
+ * - Tab IS focused (isFocused=true): Do a shallow comparison of passthroughProps.
+ *   If only navigation-internal props changed (route, navigation object refs) but the
+ *   meaningful screen props are identical, skip the re-render.
  */
+function shallowEqual(a: any, b: any): boolean {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every(k => a[k] === b[k]);
+}
+
 function withFocusFreeze<T extends object>(
   Component: React.ComponentType<T>,
   screenName: string
@@ -180,7 +199,14 @@ function withFocusFreeze<T extends object>(
         <Component {...passthroughProps} />
       </ErrorBoundary>
     ),
-    (prev, next) => !next.isFocused // Never re-render in JS while tab is in the background!
+    (prev, next) => {
+      // Tab is going into or staying in background: freeze all re-renders.
+      if (!next.isFocused) return true;
+      // Tab is focused: re-render only if meaningful props actually changed.
+      // This prevents irrelevant context updates (e.g. gymLogs array ref changing
+      // during a workout on the Gym tab) from cascading to every other focused screen.
+      return shallowEqual(prev.passthroughProps, next.passthroughProps) && prev.isFocused === next.isFocused;
+    }
   );
 
   const FocusGate = (props: T) => {
@@ -245,43 +271,6 @@ function MainTabNavigator() {
 
   const effectivePinned = useMemo(() => pinnedKey.split(','), [pinnedKey]);
 
-  // Staggered warm-mounting: warm 1 pinned tab every 700ms AFTER initial boot + Firestore syncs settle.
-  // Never mount all 4 tabs on the same frame at 350ms!
-  const [warmedTabs, setWarmedTabs] = useState<Set<string>>(() => new Set());
-
-  useEffect(() => {
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    let cancelled = false;
-
-    const handle = InteractionManager.runAfterInteractions(() => {
-      if (cancelled) return;
-      startPrefetching(effectivePinned, true);
-
-      effectivePinned.forEach((modId, idx) => {
-        const t = setTimeout(() => {
-          if (cancelled) return;
-          InteractionManager.runAfterInteractions(() => {
-            if (!cancelled) {
-              setWarmedTabs(prev => {
-                if (prev.has(modId)) return prev;
-                const next = new Set(prev);
-                next.add(modId);
-                return next;
-              });
-            }
-          });
-        }, 1800 + idx * 700);
-        timers.push(t);
-      });
-    });
-
-    return () => {
-      cancelled = true;
-      handle.cancel();
-      timers.forEach(clearTimeout);
-    };
-  }, [pinnedKey, effectivePinned]);
-
   // PERF FIX: Throttle AsyncStorage saves
   const lastTabSaveRef = useRef<number>(0);
   const onTabFocus = useCallback((routeName: string) => {
@@ -311,21 +300,20 @@ function MainTabNavigator() {
         animation: 'none',
         sceneStyle:  { backgroundColor: colors.background },
         lazy: true,
-        freezeOnBlur: false,
+        freezeOnBlur: true,
       }}
       backBehavior="history"
     >
       <Tab.Screen name="Home" component={SafeDashboard} options={{ lazy: false }} />
       {ALL_NAV_MODULE_IDS.map((modId) => {
         const isPinned = effectivePinned.includes(modId);
-        const isWarmed = isPinned && warmedTabs.has(modId);
         return (
           <Tab.Screen
             key={modId}
             name={modId}
             component={COMPONENT_MAP[modId]}
             options={{
-              lazy: !isWarmed,
+              lazy: true,
               ...(!isPinned ? {
                 tabBarItemStyle: { display: 'none' },
                 tabBarButton:    TabBarNullButton,
@@ -378,7 +366,7 @@ function NestedScreens() {
 // --- Root authenticated navigator + Pomodoro ---------------------------------
 function RootNavigatorWithSara() {
   const { colors } = useTheme();
-  const { isSheetOpen, setIsSheetOpen } = usePomodoro();
+  const { isSheetOpen } = usePomodoro();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -392,10 +380,8 @@ function RootNavigatorWithSara() {
       {/* Global Pomodoro Floating Pill (Active countdown when sheet minimized) */}
       <PomodoroFloatingPill />
 
-      {/* Global Pomodoro Sheet (Auto-surfaces on boot when running, or on user tap) */}
-      {isSheetOpen && (
-        <PomodoroSheet visible={isSheetOpen} onClose={() => setIsSheetOpen(false)} />
-      )}
+      {/* Global Pomodoro Sheet (Mounted only when active to eliminate 1s root re-renders) */}
+      {isSheetOpen && <PomodoroSheet />}
     </View>
   );
 }
@@ -725,6 +711,11 @@ const LINKING_CONFIG = {
   },
 };
 
+  const renderOnboarding = useCallback(
+    () => <OnboardingScreen onComplete={() => setOnboarded(true)} />,
+    []
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <NavigationContainer
@@ -741,7 +732,7 @@ const LINKING_CONFIG = {
             <ErrorBoundary screenName="Onboarding">
               <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: colors.background } }}>
                 <Stack.Screen name="Onboarding">
-                  {() => <OnboardingScreen onComplete={() => setOnboarded(true)} />}
+                  {renderOnboarding}
                 </Stack.Screen>
               </Stack.Navigator>
             </ErrorBoundary>

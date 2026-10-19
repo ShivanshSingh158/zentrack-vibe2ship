@@ -300,11 +300,12 @@ export async function getVaultCacheStats(): Promise<{ totalBytes: number; count:
     if (!dir) return { totalBytes: 0, count: 0, readableSize: '0 MB' };
 
     const files = await FileSystem.readDirectoryAsync(dir);
+    const infos = await Promise.all(
+      files.map(f => FileSystem.getInfoAsync(`${dir}${f}`).catch(() => null))
+    );
     let totalBytes = 0;
-
-    for (const f of files) {
-      const info = await FileSystem.getInfoAsync(`${dir}${f}`);
-      if (info.exists && info.size) {
+    for (const info of infos) {
+      if (info && info.exists && info.size) {
         totalBytes += info.size;
       }
     }

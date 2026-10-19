@@ -25,20 +25,11 @@ export default function GymStack() {
       }}
     >
       <Stack.Screen name="GymHome" component={GymHomeScreen} />
-      <Stack.Screen 
-        name="ActiveLogging" 
-        component={ActiveLoggingScreen} 
-        options={{ animation: 'fade' }} 
-      />
+      <Stack.Screen name="ActiveLogging" component={ActiveLoggingScreen} />
       <Stack.Screen name="WorkoutSummary" component={WorkoutSummaryScreen} />
       <Stack.Screen name="GymProgress" component={GymProgressScreen} />
       <Stack.Screen name="GymHistory" component={GymHistoryScreen} />
-
-      <Stack.Screen
-        name="ExerciseDetail"
-        component={ExerciseDetailScreen}
-        options={{ animation: 'fade' }}
-      />
+      <Stack.Screen name="ExerciseDetail" component={ExerciseDetailScreen} />
       <Stack.Screen
         name="CardioLog"
         component={CardioLogScreen}

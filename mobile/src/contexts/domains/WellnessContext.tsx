@@ -18,7 +18,7 @@ import { UserGymPlanDoc, GymPlanDay } from "../../types/gym.types";
 import type { GymLog, WaterLog, SleepLog, WeightLog } from "../MobileDataContext";
 import { GYM_PLAN_ARNOLD, GYM_PLAN_PPL } from "../../data/gymPlan";
 import { writeWellnessCache } from "../../utils/domainCache";
-import { loadBootManifest, getBootManifestSync } from "../../utils/bootManifest";
+import { loadBootManifest, getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
 import { parseGymLog, areItemsEqual } from "../../utils/schemaGuards";
 import { formatLocalDateStr, offsetDateStr } from "../../utils/dateUtils";
 import { checkAndTriggerWaterMilestones, clearScheduleCache } from "../../services/notifications";
@@ -142,24 +142,24 @@ export function WellnessProvider({
       if (isCancelled || !manifest) return;
       unstable_batchedUpdates(() => {
         let seeded = false;
-        if (gymLogs.length === 0 && (manifest.gymLogs?.length ?? 0) > 0) {
-          setGymLogs(manifest.gymLogs);
+        if ((manifest.gymLogs?.length ?? 0) > 0) {
+          setGymLogs(prev => prev.length === 0 ? manifest.gymLogs : prev);
           seeded = true;
         }
-        if (!userGymPlan && manifest.userGymPlan) {
-          setUserGymPlan(manifest.userGymPlan);
+        if (manifest.userGymPlan) {
+          setUserGymPlan(prev => !prev ? manifest.userGymPlan : prev);
           seeded = true;
         }
-        if (waterLogs.length === 0 && (manifest.waterLogs?.length ?? 0) > 0) {
-          setWaterLogs(manifest.waterLogs);
+        if ((manifest.waterLogs?.length ?? 0) > 0) {
+          setWaterLogs(prev => prev.length === 0 ? manifest.waterLogs : prev);
           seeded = true;
         }
-        if (sleepLogs.length === 0 && (manifest.sleepLogs?.length ?? 0) > 0) {
-          setSleepLogs(manifest.sleepLogs);
+        if ((manifest.sleepLogs?.length ?? 0) > 0) {
+          setSleepLogs(prev => prev.length === 0 ? manifest.sleepLogs : prev);
           seeded = true;
         }
-        if (weightLogs.length === 0 && (manifest.weightLogs?.length ?? 0) > 0) {
-          setWeightLogs(manifest.weightLogs);
+        if ((manifest.weightLogs?.length ?? 0) > 0) {
+          setWeightLogs(prev => prev.length === 0 ? manifest.weightLogs : prev);
           seeded = true;
         }
         if (seeded) hasCachedDataRef.current = true;
@@ -189,9 +189,10 @@ export function WellnessProvider({
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.GYM_LOGS, snap.docs.map(d => parseGymLog(d.data(), d.id)));
+          updateL1Cache('gymLogs', fresh);
           setGymLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           setGymLogsSnapshotFired(true);
-          InteractionManager.runAfterInteractions(() => writeWellnessCache({ gymLogs: fresh }));
+          InteractionManager.runAfterInteractions(() => writeWellnessCache({ gymLogs: fresh }, false));
         });
       },
       scheduleListenerRestart("gymLogs")
@@ -203,8 +204,14 @@ export function WellnessProvider({
         if (!docSnap.exists() && docSnap.metadata.fromCache && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const plan = docSnap.exists() ? ({ id: docSnap.id, ...docSnap.data() } as unknown as UserGymPlanDoc) : null;
-          setUserGymPlan(prev => JSON.stringify(prev) === JSON.stringify(plan) ? prev : plan);
-          InteractionManager.runAfterInteractions(() => writeWellnessCache({ userGymPlan: plan }));
+          updateL1Cache('userGymPlan', plan);
+          setUserGymPlan(prev => {
+            if (prev?.id === plan?.id && prev?.updatedAt && plan?.updatedAt && prev.updatedAt === plan.updatedAt) {
+              return prev;
+            }
+            return plan;
+          });
+          InteractionManager.runAfterInteractions(() => writeWellnessCache({ userGymPlan: plan }, false));
         });
       },
       scheduleListenerRestart("userGymPlan")
@@ -257,15 +264,34 @@ export function WellnessProvider({
     });
   }, [scheduleListenerRestart]);
 
+  const demandRequestedRef = useRef(false);
+  const deferredSubTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (user) {
-      subscribedRef.current = false;
-      openSubscriptions(user.uid);
+      if (demandRequestedRef.current) {
+        subscribedRef.current = false;
+        openSubscriptions(user.uid);
+      } else {
+        if (deferredSubTimerRef.current) clearTimeout(deferredSubTimerRef.current);
+        const handle = InteractionManager.runAfterInteractions(() => {
+          deferredSubTimerRef.current = setTimeout(() => {
+            if (user && !subscribedRef.current) {
+              openSubscriptions(user.uid);
+            }
+          }, 2500);
+        });
+        return () => {
+          handle.cancel();
+          if (deferredSubTimerRef.current) clearTimeout(deferredSubTimerRef.current);
+        };
+      }
     } else {
       deferredInteractionRef.current?.cancel();
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
+      demandRequestedRef.current = false;
       hasCachedDataRef.current = false;
       unstable_batchedUpdates(() => {
         setGymLogs([]);
@@ -289,9 +315,15 @@ export function WellnessProvider({
     deferredInteractionRef.current?.cancel();
     unsubsRef.current.forEach(u => u());
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    if (deferredSubTimerRef.current) clearTimeout(deferredSubTimerRef.current);
   }, []);
 
   const ensureSubscribed = useCallback(() => {
+    demandRequestedRef.current = true;
+    if (deferredSubTimerRef.current) {
+      clearTimeout(deferredSubTimerRef.current);
+      deferredSubTimerRef.current = null;
+    }
     if (user && !subscribedRef.current) {
       openSubscriptions(user.uid);
     }
@@ -312,8 +344,11 @@ export function WellnessProvider({
       updatedAt: now,
     };
     userGymPlanRef.current = updatedPlan;
+    updateL1Cache('userGymPlan', updatedPlan);
     setUserGymPlan(updatedPlan);
-    writeWellnessCache({ userGymPlan: updatedPlan }, true);
+    InteractionManager.runAfterInteractions(() => {
+      writeWellnessCache({ userGymPlan: updatedPlan }, false);
+    });
     await setDoc(docRef, { userId: user.uid, customDays: newCustomDays, updatedAt: now }, { merge: true });
   }, [user?.uid]);
 
@@ -331,8 +366,11 @@ export function WellnessProvider({
       updatedAt: now,
     };
     userGymPlanRef.current = updatedPlan;
+    updateL1Cache('userGymPlan', updatedPlan);
     setUserGymPlan(updatedPlan);
-    writeWellnessCache({ userGymPlan: updatedPlan }, true);
+    InteractionManager.runAfterInteractions(() => {
+      writeWellnessCache({ userGymPlan: updatedPlan }, false);
+    });
     await setDoc(docRef, { userId: user.uid, customDays: newCustomDays, updatedAt: now }, { merge: true });
   }, [user?.uid]);
 
@@ -430,7 +468,7 @@ export function WellnessProvider({
     setGymLogs(prev => {
       const exists = prev.some(l => l.id === log.id || l.date === log.date);
       const next = exists ? prev.map(l => (l.id === log.id || l.date === log.date) ? log : l) : [log, ...prev];
-      writeWellnessCache({ gymLogs: next }, true);
+      writeWellnessCache({ gymLogs: next }, false);
       return next;
     });
   }, []);
@@ -447,7 +485,7 @@ export function WellnessProvider({
         }
         return l;
       });
-      writeWellnessCache({ gymLogs: next }, true);
+      writeWellnessCache({ gymLogs: next }, false);
       return next;
     });
   }, []);
