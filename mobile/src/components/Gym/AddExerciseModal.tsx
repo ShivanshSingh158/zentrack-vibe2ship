@@ -136,6 +136,8 @@ function getCategoryMap(): Record<string, ExerciseCatalogEntry[]> {
 
 const CUSTOM_EXERCISES_KEY = '@zentrack_custom_exercises';
 
+let _customExercisesMutex: Promise<void> = Promise.resolve();
+
 async function loadCustomExercisesToCatalogue(): Promise<void> {
   try {
     const raw = await AsyncStorage.getItem(CUSTOM_EXERCISES_KEY);
@@ -144,23 +146,46 @@ async function loadCustomExercisesToCatalogue(): Promise<void> {
     const catalogue = getExerciseCatalogue();
     for (const ex of customs) {
       const key = ex.name.toLowerCase().trim();
-      if (!catalogue.some(e => e.name.toLowerCase().trim() === key)) {
+      const existing = catalogue.find(e => e.name.toLowerCase().trim() === key || (ex.id && e.id === ex.id));
+      if (!existing) {
         catalogue.push(ex);
+      } else if (ex.videoId && !existing.videoId) {
+        existing.videoId = ex.videoId;
       }
     }
   } catch (_) {}
 }
 
 async function persistCustomExercise(entry: ExerciseCatalogEntry): Promise<void> {
-  try {
-    const raw = await AsyncStorage.getItem(CUSTOM_EXERCISES_KEY);
-    const existing: ExerciseCatalogEntry[] = raw ? JSON.parse(raw) : [];
-    const key = entry.name.toLowerCase().trim();
-    if (!existing.some(e => e.name.toLowerCase().trim() === key)) {
-      existing.push(entry);
+  _customExercisesMutex = _customExercisesMutex.then(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(CUSTOM_EXERCISES_KEY);
+      const existing: ExerciseCatalogEntry[] = raw ? JSON.parse(raw) : [];
+      const key = entry.name.toLowerCase().trim();
+      const idx = existing.findIndex(e => e.name.toLowerCase().trim() === key || (entry.id && e.id === entry.id));
+      if (idx >= 0) {
+        // Update existing entry with any newly resolved properties (e.g., videoId)
+        existing[idx] = {
+          ...existing[idx],
+          ...entry,
+          videoId: entry.videoId || existing[idx].videoId || '',
+        };
+      } else {
+        existing.push(entry);
+      }
       await AsyncStorage.setItem(CUSTOM_EXERCISES_KEY, JSON.stringify(existing));
-    }
-  } catch (_) {}
+
+      // Also ensure live singleton catalogue stays synchronized
+      const catalogue = getExerciseCatalogue();
+      const live = catalogue.find(e => e.name.toLowerCase().trim() === key || (entry.id && e.id === entry.id));
+      if (live) {
+        if (entry.videoId) live.videoId = entry.videoId;
+      } else {
+        catalogue.push(entry);
+      }
+    } catch (_) {}
+  }).catch(() => {});
+  return _customExercisesMutex;
 }
 
 const extractVideoId = (urlOrId: string) => {

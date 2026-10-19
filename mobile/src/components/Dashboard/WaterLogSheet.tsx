@@ -34,7 +34,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   const s = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
   const { gymProfile, saveGymProfile } = useGymProfile();
-  const { weightLogs, optimisticAddWaterLog } = useWellnessData();
+  const { weightLogs, logWater } = useWellnessData();
 
   const [editingTarget, setEditingTarget] = useState(false);
   const [tempTarget, setTempTarget] = useState(String(target));
@@ -163,32 +163,11 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   const handleLog = async (amountMl: number) => {
     if (amountMl <= 0) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const todayStr = formatLocalDateStr(new Date());
-    const now = Date.now();
-    const waterRef = doc(collection(db, COLLECTION.WATER_LOGS));
-    const logId = waterRef.id;
-
-    const waterPayload = {
-      id: logId,
-      userId,
-      date: todayStr,
-      amountMl,
-      timestamp: now,
-      createdAt: now,
-    };
-
-    optimisticAddWaterLog(waterPayload);
     setShowCustomLog(false);
     setCustomMlInput('');
     onClose();
 
-    safeWrite(
-      () => setDoc(waterRef, waterPayload),
-      COLLECTION.WATER_LOGS,
-      'set',
-      waterPayload,
-      logId
-    ).catch(e => console.error('Error logging water', e));
+    await logWater(amountMl, userId);
   };
 
   const goalLitres = (target / 1000).toFixed(1);

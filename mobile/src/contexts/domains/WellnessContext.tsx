@@ -12,7 +12,7 @@ import React, { createContext, useContext, useEffect, useState, useRef, useMemo,
 import { collection, query, where, onSnapshot, doc, setDoc, limit } from "firebase/firestore";
 import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates } from 'react-native';
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { db } from "../../services/firebase";
+import { db, auth } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import { UserGymPlanDoc, GymPlanDay } from "../../types/gym.types";
 import type { GymLog, WaterLog, SleepLog, WeightLog } from "../MobileDataContext";
@@ -23,6 +23,7 @@ import { parseGymLog, areItemsEqual } from "../../utils/schemaGuards";
 import { formatLocalDateStr, offsetDateStr } from "../../utils/dateUtils";
 import { checkAndTriggerWaterMilestones, clearScheduleCache } from "../../services/notifications";
 import { applyPendingQueueOverlay } from "../../services/offlineSync";
+import { safeWrite } from "../../utils/safeWrite";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface WellnessContextType {
@@ -43,6 +44,8 @@ export interface WellnessContextType {
   optimisticUpdateGymLog: (logId: string, partial: Partial<GymLog>) => void;
   optimisticAddWaterLog: (log: WaterLog) => void;
   optimisticDeleteWaterLog: (logId: string) => void;
+  /** Consolidated water logging: optimistically updates local cache + safely writes to Firestore offline queue */
+  logWater: (amountMl: number, explicitUserId?: string) => Promise<void>;
 }
 
 const DEFAULT_WELLNESS_DATA: WellnessContextType = {
@@ -60,6 +63,7 @@ const DEFAULT_WELLNESS_DATA: WellnessContextType = {
   optimisticUpdateGymLog: () => {},
   optimisticAddWaterLog: () => {},
   optimisticDeleteWaterLog: () => {},
+  logWater: async () => {},
 };
 
 const WellnessContext = createContext<WellnessContextType | null>(null);
@@ -526,16 +530,48 @@ export function WellnessProvider({
     clearScheduleCache();
   }, []);
 
+  const logWater = useCallback(async (amountMl: number, explicitUserId?: string) => {
+    if (amountMl <= 0) return;
+    const todayStr = formatLocalDateStr(new Date());
+    const now = Date.now();
+    const uid = explicitUserId || auth.currentUser?.uid || '';
+    const waterRef = doc(collection(db, COLLECTION.WATER_LOGS));
+    const logId = waterRef.id;
+
+    const payload: WaterLog = {
+      id: logId,
+      userId: uid,
+      date: todayStr,
+      amountMl,
+      timestamp: now,
+      createdAt: now,
+    };
+
+    optimisticAddWaterLog(payload);
+
+    try {
+      await safeWrite(
+        () => setDoc(waterRef, payload),
+        COLLECTION.WATER_LOGS,
+        'set',
+        payload,
+        logId
+      );
+    } catch (e) {
+      console.warn('[WellnessContext] Error persisting water log:', e);
+    }
+  }, [optimisticAddWaterLog]);
+
   const gymLogsReady = gymLogsSnapshotFired || hasCachedDataRef.current;
 
   const value = useMemo(() => ({
     gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate,
     waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddGymLog, optimisticUpdateGymLog,
-    optimisticAddWaterLog, optimisticDeleteWaterLog
+    optimisticAddWaterLog, optimisticDeleteWaterLog, logWater
   }), [
     gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate,
     waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddGymLog, optimisticUpdateGymLog,
-    optimisticAddWaterLog, optimisticDeleteWaterLog
+    optimisticAddWaterLog, optimisticDeleteWaterLog, logWater
   ]);
 
   return (

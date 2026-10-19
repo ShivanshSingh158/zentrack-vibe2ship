@@ -131,7 +131,7 @@ export default function WellbeingDashboardScreen() {
   const navigation = useNavigation<any>();
 
   const { user } = useCoreData();
-  const { waterLogs, ensureSubscribed, optimisticAddWaterLog, optimisticDeleteWaterLog, gymLogs, weightLogs } = useWellnessData();
+  const { waterLogs, ensureSubscribed, logWater, optimisticAddWaterLog, optimisticDeleteWaterLog, gymLogs, weightLogs } = useWellnessData();
   const { gymProfile } = useGymProfile();
 
   // User weight: check gymProfile first, then weightLogs
@@ -212,24 +212,10 @@ export default function WellbeingDashboardScreen() {
   const handleQuickLog = async (amountMl: number) => {
     if (amountMl <= 0) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    const now = Date.now();
-    const waterRef = doc(collection(db, COLLECTION.WATER_LOGS));
-    const newLogId = waterRef.id;
-    const payload = {
-      id: newLogId,
-      userId: user?.uid || '',
-      date: todayStr,
-      amountMl,
-      timestamp: now,
-      createdAt: now,
-    };
-
-    optimisticAddWaterLog(payload);
     setIsCustomLogModalOpen(false);
 
     try {
-      await queueWrite(COLLECTION.WATER_LOGS, 'set', payload, newLogId);
+      await logWater(amountMl, user?.uid);
     } catch (e) {
       console.warn('[Wellbeing] Error logging water', e);
     }

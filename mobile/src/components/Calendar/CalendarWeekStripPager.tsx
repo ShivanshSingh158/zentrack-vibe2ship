@@ -324,7 +324,7 @@ export function CalendarWeekStripPager({
 
   // Reanimated continuous translation across the 3 weeks
   const translateX = useSharedValue(-initialWidth);
-  const isAnimatingRef = useRef(false);
+  const isTransitioning = useSharedValue(false);
 
   useEffect(() => {
     translateX.value = -containerWidth;
@@ -346,7 +346,8 @@ export function CalendarWeekStripPager({
 
   React.useLayoutEffect(() => {
     translateX.value = -containerWidthRef.current;
-  }, [anchorSundayStr, translateX]);
+    isTransitioning.value = false;
+  }, [anchorSundayStr, translateX, isTransitioning]);
 
   const commitNextWeek = useCallback(() => {
     Haptics.selectionAsync();
@@ -375,40 +376,54 @@ export function CalendarWeekStripPager({
       .failOffsetY([-14, 14])
       .onUpdate((event) => {
         'worklet';
+        if (isTransitioning.value) return;
         const w = containerWidth;
         translateX.value = -w + event.translationX;
       })
       .onEnd((event) => {
         'worklet';
+        if (isTransitioning.value) return;
         const w = containerWidth;
         const threshold = Math.min(w * 0.18, 50);
 
         if (event.translationX < -threshold || event.velocityX < -350) {
           // Slide to next week
+          isTransitioning.value = true;
           translateX.value = withTiming(
             -2 * w,
             { duration: 180, easing: REasing.bezier(0.25, 0.1, 0.25, 1) },
-            () => {
+            (finished) => {
               'worklet';
-              runOnJS(commitNextWeek)();
+              if (finished) {
+                runOnJS(commitNextWeek)();
+              }
+              isTransitioning.value = false;
             }
           );
         } else if (event.translationX > threshold || event.velocityX > 350) {
           // Slide to prev week
+          isTransitioning.value = true;
           translateX.value = withTiming(
             0,
             { duration: 180, easing: REasing.bezier(0.25, 0.1, 0.25, 1) },
-            () => {
+            (finished) => {
               'worklet';
-              runOnJS(commitPrevWeek)();
+              if (finished) {
+                runOnJS(commitPrevWeek)();
+              }
+              isTransitioning.value = false;
             }
           );
         } else {
           // Snap back
           translateX.value = withTiming(-w, { duration: 160 });
         }
+      })
+      .onFinalize(() => {
+        'worklet';
+        // Safeguard in case gesture cancels before transition completion
       });
-  }, [containerWidth, commitNextWeek, commitPrevWeek, translateX]);
+  }, [containerWidth, commitNextWeek, commitPrevWeek, translateX, isTransitioning]);
 
   const renderWeekRow = (days: WeekDayItem[], keySuffix: string, hasPill: boolean) => (
     <View key={keySuffix} style={[styles.weekRow, { width: containerWidth }]}>

@@ -452,6 +452,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const pendingTaskCount = useMemo(() => tasks.filter(t => t.status === "pending").length, [tasks]);
 
   const optimisticAddTask = useCallback((task: Task) => {
+    clearOrchestratorCache();
     setTasks(prev => {
       const next = [task, ...prev];
       updateL1Cache('tasks', next);
@@ -463,6 +464,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const optimisticUpdateTask = useCallback((taskId: string, partial: Partial<Task>) => {
+    clearOrchestratorCache();
     setTasks(prev => {
       const next = prev.map(t => t.id === taskId ? { ...t, ...partial } : t);
       updateL1Cache('tasks', next);
@@ -474,6 +476,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const optimisticDeleteTask = useCallback((taskId: string) => {
+    clearOrchestratorCache();
     setTasks(prev => {
       const next = prev.filter(t => t.id !== taskId);
       updateL1Cache('tasks', next);
@@ -485,6 +488,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const optimisticAddHabit = useCallback((habit: Habit) => {
+    clearOrchestratorCache();
     setHabits(prev => {
       const next = [habit, ...prev];
       updateL1Cache('habits', next);
@@ -496,6 +500,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const optimisticUpdateHabit = useCallback((habitId: string, partial: Partial<Habit>) => {
+    clearOrchestratorCache();
     setHabits(prev => {
       const next = prev.map(h => h.id === habitId ? { ...h, ...partial } : h);
       updateL1Cache('habits', next);
@@ -507,6 +512,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const optimisticDeleteHabit = useCallback((habitId: string) => {
+    clearOrchestratorCache();
     setHabits(prev => {
       const next = prev.filter(h => h.id !== habitId);
       updateL1Cache('habits', next);
@@ -518,6 +524,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const optimisticAddHabitLog = useCallback((log: HabitLog) => {
+    clearOrchestratorCache();
     setHabitLogs(prev => {
       const next = [...prev, log];
       updateL1Cache('habitLogs', next);
@@ -529,6 +536,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const optimisticUpdateHabitLog = useCallback((logId: string, partial: Partial<HabitLog>) => {
+    clearOrchestratorCache();
     setHabitLogs(prev => {
       const next = prev.map(l => l.id === logId ? { ...l, ...partial } : l);
       updateL1Cache('habitLogs', next);
@@ -540,6 +548,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const optimisticRemoveHabitLog = useCallback((habitId: string, date: string) => {
+    clearOrchestratorCache();
     setHabitLogs(prev => {
       const next = prev.filter(l => !(l.habitId === habitId && l.date === date));
       updateL1Cache('habitLogs', next);
