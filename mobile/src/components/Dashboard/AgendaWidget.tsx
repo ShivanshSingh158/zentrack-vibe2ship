@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../contexts/ThemeContext';
 import AnimatedPressable from '../AnimatedPressable';
-import VoiceDictationOverlay from '../Tasks/VoiceDictationOverlay';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { WEEKDAY_TO_PLAN, GYM_PLAN } from '../../data/gymPlan';
 import { getCustomPlanDay } from '../../hooks/useGymLog';
@@ -24,6 +23,8 @@ interface AgendaWidgetProps {
   userId?: string;
   /** Direct task check-off callback from Home Dashboard */
   onToggleTask?: (taskId: string, currentStatus: string) => void;
+  /** Optional voice dictation trigger */
+  onOpenVoiceDictation?: () => void;
 }
 
 export const AgendaWidget = React.memo(function AgendaWidget({
@@ -37,10 +38,10 @@ export const AgendaWidget = React.memo(function AgendaWidget({
   holidays = [],
   userId,
   onToggleTask,
+  onOpenVoiceDictation,
 }: AgendaWidgetProps) {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation<any>();
-  const [isVoiceDictationOpen, setIsVoiceDictationOpen] = useState(false);
 
   // Memoized to prevent agendaItems recomputing every 60s clock tick when items haven't changed
   const nowMins = useMemo(() => nowDate.getHours() * 60 + nowDate.getMinutes(), [nowDate]);
@@ -267,22 +268,19 @@ export const AgendaWidget = React.memo(function AgendaWidget({
           <AnimatedPressable
             variant="button"
             style={[styles.emptyActionBtn, styles.emptyVoiceBtn]}
-            onPress={() => setIsVoiceDictationOpen(true)}
+            onPress={() => {
+              if (onOpenVoiceDictation) {
+                onOpenVoiceDictation();
+              } else {
+                navigation.navigate('Tasks', { screen: 'TasksList', params: { openVoiceModal: true } });
+              }
+            }}
             haptic="medium"
           >
             <Ionicons name="mic" size={16} color="#FFFFFF" />
             <Text style={styles.emptyVoiceText}>Voice</Text>
           </AnimatedPressable>
         </View>
-
-        {isVoiceDictationOpen && (
-          <VoiceDictationOverlay
-            visible={isVoiceDictationOpen}
-            onClose={() => setIsVoiceDictationOpen(false)}
-            selectedDate={todayStr}
-            userId={userId}
-          />
-        )}
       </View>
     );
   }
@@ -357,15 +355,6 @@ export const AgendaWidget = React.memo(function AgendaWidget({
           </AnimatedPressable>
         );
       })}
-
-      {isVoiceDictationOpen && (
-        <VoiceDictationOverlay
-          visible={isVoiceDictationOpen}
-          onClose={() => setIsVoiceDictationOpen(false)}
-          selectedDate={todayStr}
-          userId={userId}
-        />
-      )}
     </View>
   );
 });

@@ -30,11 +30,11 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SCHEMA_VERSION = 1;
 const defaultSchedule = {
   '0': { classes: [], labs: [] },
-  '1': { classes: [{ time: '', room: '' }], labs: [] },
-  '2': { classes: [{ time: '', room: '' }], labs: [] },
-  '3': { classes: [{ time: '', room: '' }], labs: [] },
-  '4': { classes: [{ time: '', room: '' }], labs: [] },
-  '5': { classes: [{ time: '', room: '' }], labs: [] },
+  '1': { classes: [], labs: [] },
+  '2': { classes: [], labs: [] },
+  '3': { classes: [], labs: [] },
+  '4': { classes: [], labs: [] },
+  '5': { classes: [], labs: [] },
   '6': { classes: [], labs: [] },
 };
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];

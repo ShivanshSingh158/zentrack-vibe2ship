@@ -13,7 +13,7 @@ const PREDICTOR_CACHE_KEY = '@zentrack_academic_predictor';
 
 export default function AcademicPredictorCard() {
   const { colors } = useTheme();
-  const s = makeStyles(colors);
+  const s = React.useMemo(() => makeStyles(colors), [colors]);
   const { attendance, assignments } = useAcademicData();
 
   const [prediction, setPrediction] = useState<string | null>(null);
@@ -57,8 +57,9 @@ Output just the 2 sentences. No bold formatting, no markdown.`;
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
       });
 
-      if (response && response.text) {
-        const text = response.text.replace(/\*\*/g, '').trim();
+      const parsed = parseProxyResponse(response);
+      const text = (parsed.text || response?.text || '').replace(/\*\*/g, '').trim();
+      if (text) {
         setPrediction(text);
         setLastUpdated(Date.now());
         AsyncStorage.setItem(PREDICTOR_CACHE_KEY, JSON.stringify({ text, timestamp: Date.now() }));

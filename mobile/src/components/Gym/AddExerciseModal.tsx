@@ -276,11 +276,16 @@ const GYM_SYNONYMS: Record<string, string> = {
   'pec deck': 'pec deck fly',
 };
 
+// Pre-compile RegExp list once at module load — never re-compile inside hot search loops
+const GYM_SYNONYM_REGEXES = Object.entries(GYM_SYNONYMS).map(([abbr, full]) => ({
+  regex: new RegExp(`\\b${abbr}\\b`, 'gi'),
+  full,
+}));
+
 function cleanSearchString(str: string): string {
   let cleaned = str.toLowerCase();
-  for (const [abbr, full] of Object.entries(GYM_SYNONYMS)) {
-    const reg = new RegExp(`\\b${abbr}\\b`, 'gi');
-    cleaned = cleaned.replace(reg, full);
+  for (let i = 0; i < GYM_SYNONYM_REGEXES.length; i++) {
+    cleaned = cleaned.replace(GYM_SYNONYM_REGEXES[i].regex, GYM_SYNONYM_REGEXES[i].full);
   }
   return cleaned
     .replace(/[\(\)\/\,\-\–\—\.]/g, ' ')
@@ -295,6 +300,29 @@ function getQueryTokens(str: string): string[] {
     .map(t => t.replace(/(s|es|ing)$/, ''));
 }
 
+// Token & normalized string cache for catalogue entries so we don't re-tokenize 1,600 entries on every keystroke
+const entryMetaCache = new WeakMap<ExerciseCatalogEntry, {
+  nameLower: string;
+  normName: string;
+  nameTokens: string[];
+  aliasesLower: string[];
+  normAliases: string[];
+}>();
+
+function getEntryMeta(entry: ExerciseCatalogEntry) {
+  let meta = entryMetaCache.get(entry);
+  if (!meta) {
+    const nameLower = entry.name.toLowerCase();
+    const normName = nameLower.replace(/[^a-z0-9]/g, '');
+    const nameTokens = getQueryTokens(entry.name);
+    const aliasesLower = (entry.aliases || []).map(a => a.toLowerCase());
+    const normAliases = aliasesLower.map(a => a.replace(/[^a-z0-9]/g, ''));
+    meta = { nameLower, normName, nameTokens, aliasesLower, normAliases };
+    entryMetaCache.set(entry, meta);
+  }
+  return meta;
+}
+
 function scoreExerciseMatch(
   entry: ExerciseCatalogEntry,
   rawQuery: string,
@@ -303,11 +331,7 @@ function scoreExerciseMatch(
   normQuery: string,
   categoryFilter?: string | null
 ): number {
-  const nameLower = entry.name.toLowerCase();
-  const normName = nameLower.replace(/[^a-z0-9]/g, '');
-  const nameTokens = getQueryTokens(entry.name);
-  const aliases = (entry.aliases || []).map(a => a.toLowerCase());
-  const normAliases = aliases.map(a => a.replace(/[^a-z0-9]/g, ''));
+  const { nameLower, normName, nameTokens, aliasesLower: aliases, normAliases } = getEntryMeta(entry);
 
   let score = 0;
 

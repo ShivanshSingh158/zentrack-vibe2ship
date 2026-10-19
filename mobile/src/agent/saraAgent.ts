@@ -14,6 +14,7 @@
  */
 
 import { callProxy, parseProxyResponse } from '../services/geminiProxy';
+import { formatLocalDateStr, offsetDateStr } from '../utils/dateUtils';
 
 // ─── Memory Compression ──────────────────────────────────────────────────────
 
@@ -140,7 +141,7 @@ function summarizeTasks(tasks: any[] = []) {
 }
 
 function summarizeHabits(habits: any[] = [], logs: any[] = []) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatLocalDateStr(new Date());
   return habits.slice(0, 20).map(h => ({
     id: h.id,
     name: h.name,
@@ -191,8 +192,8 @@ export async function processSaraChat(
   suggestions?: string[];
 }> {
   const now = new Date();
-  const todayISO = now.toISOString().split('T')[0];
-  const tomorrowISO = new Date(now.getTime() + 86400000).toISOString().split('T')[0];
+  const todayISO = formatLocalDateStr(now);
+  const tomorrowISO = offsetDateStr(todayISO, 1);
 
   // ── Build compact context summaries ─────────────────────────────────────
   const tasksSummary = summarizeTasks(contextData.tasks);

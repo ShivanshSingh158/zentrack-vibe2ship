@@ -52,7 +52,7 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
   existingEvent?: CustomEvent | null;
 }) {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors, isDark);
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const { user } = useCoreData();
   const { customEvents, optimisticAddEvent, optimisticUpdateEvent, optimisticDeleteEvent } = usePlannerData();
   const { attendance } = useAcademicData();

@@ -75,16 +75,44 @@ export async function executeDag(
              ]
            });
            resultStr = parseProxyResponse(resp).text;
+        } else if (node.type === 'create_task') {
+          const actionObj = {
+            type: 'createTask',
+            title: (node as any).title || node.description,
+            dueDate: (node as any).dueDate || (node as any).date,
+            dueTime: (node as any).dueTime || (node as any).timeSlot,
+            priority: (node as any).priority || 'medium',
+          };
+          resultStr = `[[ACTION:${JSON.stringify(actionObj)}]]`;
+        } else if (node.type === 'create_habit') {
+          const actionObj = {
+            type: 'createHabit',
+            name: (node as any).name || (node as any).title || node.description,
+            frequency: (node as any).frequency || 'daily',
+          };
+          resultStr = `[[ACTION:${JSON.stringify(actionObj)}]]`;
+        } else if (node.type === 'create_subject') {
+          const actionObj = {
+            type: 'createSubject',
+            name: (node as any).name || (node as any).title || node.description,
+          };
+          resultStr = `[[ACTION:${JSON.stringify(actionObj)}]]`;
+        } else if (node.type === 'delete_event') {
+          const actionObj = {
+            type: 'deleteEvent',
+            eventId: (node as any).eventId || (node as any).id,
+            title: (node as any).title || node.description,
+          };
+          resultStr = `[[ACTION:${JSON.stringify(actionObj)}]]`;
         } else {
-           // For mutate actions (create_task, etc), we just return the raw JSON action request
-           // The orchestrator will parse this later and show it in the UI.
-           const resp = await callProxy({
-             model: 'gemini-2.5-flash',
-             contents: [
-               { role: 'user', parts: [{ text: `Output the exact ACTION JSON block for this task: ${node.description}`}] }
-             ]
-           });
-           resultStr = parseProxyResponse(resp).text;
+          // Fallback general action or chat task
+          const resp = await callProxy({
+            model: 'gemini-2.5-flash',
+            contents: [
+              { role: 'user', parts: [{ text: `Process this task: ${node.description}`}] }
+            ]
+          });
+          resultStr = parseProxyResponse(resp).text;
         }
         
         onProgress(node.id, `done`);

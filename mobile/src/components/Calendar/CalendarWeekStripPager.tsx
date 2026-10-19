@@ -344,6 +344,10 @@ export function CalendarWeekStripPager({
     }
   }, [translateX]);
 
+  React.useLayoutEffect(() => {
+    translateX.value = -containerWidthRef.current;
+  }, [anchorSundayStr, translateX]);
+
   const commitNextWeek = useCallback(() => {
     Haptics.selectionAsync();
     const cur = parseDateToMidnight(currentDateRef.current);
@@ -352,8 +356,7 @@ export function CalendarWeekStripPager({
     const nextSunStr = formatLocalDateStr(getSundayOfDate(nextDateStr));
     setAnchorSundayStr(nextSunStr);
     onSelectDate(nextDateStr);
-    translateX.value = -containerWidthRef.current;
-  }, [onSelectDate, translateX]);
+  }, [onSelectDate]);
 
   const commitPrevWeek = useCallback(() => {
     Haptics.selectionAsync();
@@ -363,8 +366,7 @@ export function CalendarWeekStripPager({
     const prevSunStr = formatLocalDateStr(getSundayOfDate(prevDateStr));
     setAnchorSundayStr(prevSunStr);
     onSelectDate(prevDateStr);
-    translateX.value = -containerWidthRef.current;
-  }, [onSelectDate, translateX]);
+  }, [onSelectDate]);
 
   // Native UI thread 60/120fps gesture with zero bridge latency
   const panGesture = useMemo(() => {

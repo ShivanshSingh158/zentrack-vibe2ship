@@ -41,17 +41,11 @@ import Reanimated, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FONT_FAMILY } from '../../theme/tokens';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useCoreData } from '../../contexts/domains/CoreDataContext';
-import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-import { usePlannerData } from '../../contexts/domains/PlannerContext';
 import type { AttendanceSubject } from '../../contexts/MobileDataContext';
-import {
-  scheduleAllNotifications,
-  clearScheduleCache,
-} from '../../services/notifications';
+import { clearScheduleCache } from '../../services/notifications';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -102,10 +96,7 @@ const ClassNotifSettingsModal = React.memo(function ClassNotifSettingsModal({ vi
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors, isDark, insets), [colors, isDark, insets]);
-  const { tasks, habitLogs, allHabits } = useCoreData();
-  const { gymLogs, waterLogs, sleepLogs, userGymPlan } = useWellnessData();
-  const { attendance, attendanceLogs, assignments, holidays } = useAcademicData();
-  const { customEvents } = usePlannerData();
+  const { attendance } = useAcademicData();
   const subjects: AttendanceSubject[] = attendance ?? [];
 
   const [prefs, setPrefs]     = useState<Record<string, SubjectPref>>({});
@@ -166,43 +157,6 @@ const ClassNotifSettingsModal = React.memo(function ClassNotifSettingsModal({ vi
     });
   }, []);
 
-  const handleSave = useCallback(async () => {
-    setSaving(true);
-    try {
-      const pairs: [string, string][] = [];
-      Object.entries(prefs).forEach(([id, pref]) => {
-        pairs.push([`@class_notif_enabled_${id}`,      String(pref.enabled)]);
-        pairs.push([`@class_notif_pre_offsets_${id}`,  JSON.stringify(pref.preOffsets)]);
-        pairs.push([`@class_notif_log_delay_${id}`,    String(pref.logDelay)]);
-        pairs.push([`@class_notif_first_pre_${id}`,    String(pref.firstPreEnabled)]);
-        pairs.push([`@class_notif_lab_mid_${id}`,      String(pref.labMidEnabled)]);
-        pairs.push([`@class_notif_lab_end_delay_${id}`, String(pref.labEndDelay)]);
-      });
-      await AsyncStorage.multiSet(pairs);
-
-      clearScheduleCache();
-      await scheduleAllNotifications({
-        tasks:          tasks          ?? [],
-        customEvents:   customEvents   ?? [],
-        gymLogs:        gymLogs        ?? [],
-        attendance:     subjects       ?? [],
-        attendanceLogs: attendanceLogs ?? [],
-        habitLogs:      habitLogs      ?? [],
-        allHabits:      allHabits      ?? [],
-        assignments:    assignments    ?? [],
-        waterLogs:      waterLogs      ?? [],
-        sleepLogs:      sleepLogs      ?? [],
-        userGymPlan:    userGymPlan    ?? null,
-        holidays:       holidays       ?? [],
-      });
-    } catch (e) {
-      console.warn('[ClassNotifModal] Save failed:', e);
-    } finally {
-      setSaving(false);
-      handleRequestClose();
-    }
-  }, [prefs, subjects, tasks, customEvents, gymLogs, habitLogs, allHabits, assignments, waterLogs, sleepLogs, onClose]);
-
   const [mounted, setMounted] = useState(visible);
   const translateY = useSharedValue(SCREEN_HEIGHT);
   const backdropOpacity = useSharedValue(0);
@@ -231,6 +185,31 @@ const ClassNotifSettingsModal = React.memo(function ClassNotifSettingsModal({ vi
       }
     );
   }, [backdropOpacity, translateY, onClose]);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      const pairs: [string, string][] = [];
+      Object.entries(prefs).forEach(([id, pref]) => {
+        pairs.push([`@class_notif_enabled_${id}`,      String(pref.enabled)]);
+        pairs.push([`@class_notif_pre_offsets_${id}`,  JSON.stringify(pref.preOffsets)]);
+        pairs.push([`@class_notif_log_delay_${id}`,    String(pref.logDelay)]);
+        pairs.push([`@class_notif_first_pre_${id}`,    String(pref.firstPreEnabled)]);
+        pairs.push([`@class_notif_lab_mid_${id}`,      String(pref.labMidEnabled)]);
+        pairs.push([`@class_notif_lab_end_delay_${id}`, String(pref.labEndDelay)]);
+      });
+      await AsyncStorage.multiSet(pairs);
+
+      clearScheduleCache();
+      const { DeviceEventEmitter } = require('react-native');
+      DeviceEventEmitter.emit('reschedule_notifications');
+    } catch (e) {
+      console.warn('[ClassNotifModal] Save failed:', e);
+    } finally {
+      setSaving(false);
+      handleRequestClose();
+    }
+  }, [prefs, handleRequestClose]);
 
   useEffect(() => {
     if (visible) {

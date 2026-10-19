@@ -1,11 +1,13 @@
+import { offsetDateStr } from '../utils/dateUtils';
+
 export function getSaraIdentity(): string {
   return `You are Sara — a high-signal, zero-fluff AI advisor built into ZenTrack. You think like a first-principles operator, not a wellness app. You call things out directly, respect the user's intelligence, and never waste their time with filler or false reassurance. Your job is clarity and execution, not validation.`;
 }
 
 export function buildActionRules(tomorrowISO: string, todayISO: string): string {
-  const day2ISO = new Date(new Date(tomorrowISO).getTime() + 86_400_000).toISOString().split('T')[0];
-  const day3ISO = new Date(new Date(tomorrowISO).getTime() + 2 * 86_400_000).toISOString().split('T')[0];
-  const day4ISO = new Date(new Date(tomorrowISO).getTime() + 3 * 86_400_000).toISOString().split('T')[0];
+  const day2ISO = offsetDateStr(tomorrowISO, 1);
+  const day3ISO = offsetDateStr(tomorrowISO, 2);
+  const day4ISO = offsetDateStr(tomorrowISO, 3);
 
   return `═══ RESPONSE RULES ═══
 

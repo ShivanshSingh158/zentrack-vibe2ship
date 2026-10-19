@@ -17,6 +17,7 @@
  */
 
 import { BehavioralFingerprint } from '../services/saraMemory';
+import { formatLocalDateStr } from '../utils/dateUtils';
 
 // AppContext mirrors orchestrator.AppContext — defined here to avoid circular imports
 // If you update AppContext in orchestrator.ts, update this too.
@@ -266,7 +267,7 @@ export function buildSelectiveContext(
   profile: IntentProfile
 ): string {
   const now = new Date();
-  const todayISO = now.toISOString().slice(0, 10);
+  const todayISO = formatLocalDateStr(now);
   const domains = new Set(profile.primaryDomains);
   const lines: string[] = [];
 

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { View, Text, ActivityIndicator, Pressable, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import YoutubeIframe from 'react-native-youtube-iframe';
 import { FONT_FAMILY, SPACE } from '../../theme/tokens';
 import ExerciseAnimationCard from './ExerciseAnimationCard';
+
+const YoutubeIframe = React.lazy<React.ComponentType<any>>(() => import('react-native-youtube-iframe'));
 
 export interface ActiveExerciseVideoProps {
   exercise: any;
@@ -129,20 +130,22 @@ export const ActiveExerciseVideo: React.FC<ActiveExerciseVideoProps> = React.mem
           isEmbedded={true}
         />
       ) : exercise.videoId ? (
-        <View style={{ borderRadius: 10, overflow: 'hidden', height: videoHeight, backgroundColor: '#000' }}>
-          <YoutubeIframe
-            height={videoHeight}
-            width={videoWidth}
-            play={true}
-            videoId={exercise.videoId}
-            onError={onError}
-            initialPlayerParams={{ modestbranding: true, rel: false }}
-            webViewProps={{
-              androidLayerType: appState === 'active' ? 'hardware' : 'software',
-              domStorageEnabled: true,
-              javaScriptEnabled: true,
-            }}
-          />
+        <View style={{ borderRadius: 10, overflow: 'hidden', height: videoHeight, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+          <React.Suspense fallback={<ActivityIndicator size="small" color="#ff453a" />}>
+            <YoutubeIframe
+              height={videoHeight}
+              width={videoWidth}
+              play={true}
+              videoId={exercise.videoId}
+              onError={onError}
+              initialPlayerParams={{ modestbranding: true, rel: false }}
+              webViewProps={{
+                androidLayerType: appState === 'active' ? 'hardware' : 'software',
+                domStorageEnabled: true,
+                javaScriptEnabled: true,
+              }}
+            />
+          </React.Suspense>
         </View>
       ) : (
         <View style={{ height: 140, alignItems: 'center', justifyContent: 'center' }}>

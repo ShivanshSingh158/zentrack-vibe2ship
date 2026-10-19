@@ -173,50 +173,26 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
         const localParsed = parseNLTask(textToSave.trim());
         let parsedData: any[] = [];
 
-        // Try AI enrichment online, but ALWAYS fall back to 0ms on-device parseNLTask when offline!
-        try {
-          const prompt = `Parse this task description into JSON: "${textToSave.trim()}"
-IMPORTANT: Extract ONLY the clean action-oriented task name for 'title', completely removing conversational commands (e.g. "create", "add", "make", "schedule", "remind me to") and any time, date, priority, or recurrence words.
-If it implies multiple tasks, return an array of tasks. If it's a single task, return an array of 1 task.
-Return ONLY a JSON array: [{"title": str, "date": "YYYY-MM-DD", "timeSlot": "HH:MM or null", "priority": "P1|P2|P3", "isRecurring": bool, "frequency": "daily|weekly|monthly or null"}]
-Today's date is ${todayLocal}.`;
-
-          const response = await callProxy({
-            model: 'gemini-2.5-flash',
-            timeoutMs: 6000,
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json' },
-          });
-
-          const proxyParsed = parseProxyResponse(response);
-          const cleanJson = (proxyParsed.text || response.text || '[]')
-            .replace(/```json/g, '')
-            .replace(/```/g, '')
-            .trim();
-          const candidate = JSON.parse(cleanJson);
-          parsedData = Array.isArray(candidate) ? candidate : [candidate];
-        } catch {
-          // Offline or AI timeout -> use instant on-device NLP parser
-          if (localParsed.oneTimeDates && localParsed.oneTimeDates.length > 1) {
-            parsedData = localParsed.oneTimeDates.map(dStr => ({
+        // 0ms instant on-device parsing — never block UI creation on network round-trip!
+        if (localParsed.oneTimeDates && localParsed.oneTimeDates.length > 1) {
+          parsedData = localParsed.oneTimeDates.map(dStr => ({
+            title: localParsed.title,
+            date: dStr,
+            timeSlot: localParsed.timeSlot,
+            priority: localParsed.priority,
+            isRecurring: false,
+          }));
+        } else {
+          parsedData = [
+            {
               title: localParsed.title,
-              date: dStr,
+              date: localParsed.date || todayLocal,
               timeSlot: localParsed.timeSlot,
               priority: localParsed.priority,
-              isRecurring: false,
-            }));
-          } else {
-            parsedData = [
-              {
-                title: localParsed.title,
-                date: localParsed.date || todayLocal,
-                timeSlot: localParsed.timeSlot,
-                priority: localParsed.priority,
-                isRecurring: localParsed.isRecurring,
-                recurrenceRule: localParsed.recurrenceRule,
-              },
-            ];
-          }
+              isRecurring: localParsed.isRecurring,
+              recurrenceRule: localParsed.recurrenceRule,
+            },
+          ];
         }
 
         if (parsedData.length === 1 && localParsed?.multiDays && localParsed.multiDays > 1) {

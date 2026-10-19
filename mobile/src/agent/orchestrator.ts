@@ -93,10 +93,14 @@ export function clearOrchestratorCache(): void {
 }
 
 function _buildPromptFingerprint(ctx: AppContext): string {
+  const tasks = ctx.tasks || [];
+  const completedTaskCount = tasks.filter(t => t.status === 'completed').length;
+  const habitLogs = ctx.habitLogs || [];
   return [
-    (ctx.tasks || []).length,
+    tasks.length,
+    completedTaskCount,
     (ctx.habits || []).length,
-    (ctx.habitLogs || []).length,
+    habitLogs.length,
     (ctx.gymLogs || []).length,
     (ctx.attendance || []).length,
     (ctx.assignments || []).length,

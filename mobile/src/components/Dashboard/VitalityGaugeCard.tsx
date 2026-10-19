@@ -206,12 +206,19 @@ export function VitalityGaugeCard({
 
           {activeTab === '7d' && (
             <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.centerAlign}>
-              <Text style={styles.scoreNumber}>{Math.max(82, vitalityScore)}%</Text>
-              <Text style={styles.scoreSubtitle}>7-DAY CONSISTENCY</Text>
-              <View style={[styles.streakPill, { backgroundColor: 'rgba(94,218,158,0.12)', borderColor: 'rgba(94,218,158,0.3)' }]}>
-                <Ionicons name="trending-up" size={12} color="#5eda9e" />
-                <Text style={[styles.streakPillText, { color: '#5eda9e' }]}>+8% vs last week</Text>
-              </View>
+              <Text style={styles.scoreNumber}>{vitalityScore}%</Text>
+              <Text style={styles.scoreSubtitle}>ROLLING CONSISTENCY</Text>
+              {currentStreak > 0 ? (
+                <View style={[styles.streakPill, { backgroundColor: 'rgba(94,218,158,0.12)', borderColor: 'rgba(94,218,158,0.3)' }]}>
+                  <Ionicons name="trending-up" size={12} color="#5eda9e" />
+                  <Text style={[styles.streakPillText, { color: '#5eda9e' }]}>{currentStreak} Day Streak</Text>
+                </View>
+              ) : (
+                <View style={[styles.streakPill, { backgroundColor: 'rgba(255,159,77,0.12)', borderColor: 'rgba(255,159,77,0.3)' }]}>
+                  <Ionicons name="time-outline" size={12} color="#ff9f4d" />
+                  <Text style={[styles.streakPillText, { color: '#ff9f4d' }]}>Building Momentum</Text>
+                </View>
+              )}
             </Animated.View>
           )}
 

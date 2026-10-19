@@ -198,11 +198,10 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
   }));
 
   // ── Gap 2: XP counter tick — animates from 0 → levelXP on mount ────────────
-  const displayXP = useSharedValue(0);
+  const displayXP = useSharedValue(levelXP);
   useEffect(() => {
-    displayXP.value = 0;
     displayXP.value = withTiming(levelXP, {
-      duration: 900,
+      duration: 600,
       easing: Easing.out(Easing.exp),
     });
   }, [levelXP]);

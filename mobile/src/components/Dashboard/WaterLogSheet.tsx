@@ -11,13 +11,10 @@ import { COLLECTION } from '../../config/constants';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { scheduleAllNotifications, clearScheduleCache } from '../../services/notifications';
+import { clearScheduleCache } from '../../services/notifications';
 import { queueWrite } from '../../services/offlineSync';
 import { useGymProfile } from '../../hooks/useGymProfile';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
-import { useCoreData } from '../../contexts/domains/CoreDataContext';
-import { useAcademicData } from '../../contexts/domains/AcademicContext';
-import { usePlannerData } from '../../contexts/domains/PlannerContext';
 import { formatLocalDateStr } from '../../utils/dateUtils';
 
 const WATER_GOAL_KEY = 'zentrack_water_goal_ml';
@@ -34,14 +31,10 @@ interface Props {
 
 export default function WaterLogSheet({ visible, onClose, userId, target, onUpdateTarget, hideDashboardBtn = false }: Props) {
   const { colors, isDark } = useTheme();
-  const s = makeStyles(colors, isDark);
+  const s = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
   const { gymProfile, saveGymProfile } = useGymProfile();
-  const wellnessData = useWellnessData();
-  const coreData = useCoreData();
-  const academicData = useAcademicData();
-  const plannerData = usePlannerData();
-  const { weightLogs, optimisticAddWaterLog } = wellnessData;
+  const { weightLogs, optimisticAddWaterLog } = useWellnessData();
 
   const [editingTarget, setEditingTarget] = useState(false);
   const [tempTarget, setTempTarget] = useState(String(target));
@@ -121,22 +114,8 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
       ).catch(() => {});
     }
     clearScheduleCache();
-    InteractionManager.runAfterInteractions(() => {
-      scheduleAllNotifications({
-        tasks: coreData.tasks,
-        customEvents: plannerData.customEvents,
-        gymLogs: wellnessData.gymLogs,
-        attendance: academicData.attendance,
-        attendanceLogs: academicData.attendanceLogs,
-        habitLogs: coreData.habitLogs,
-        allHabits: coreData.allHabits,
-        assignments: academicData.assignments,
-        waterLogs: wellnessData.waterLogs,
-        sleepLogs: wellnessData.sleepLogs,
-        userGymPlan: wellnessData.userGymPlan,
-        holidays: academicData.holidays,
-      }).catch(console.warn);
-    });
+    const { DeviceEventEmitter } = require('react-native');
+    DeviceEventEmitter.emit('reschedule_notifications');
   };
 
   const handleSaveTarget = () => {
