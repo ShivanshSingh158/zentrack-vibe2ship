@@ -34,7 +34,7 @@ export const GymWorkoutBanner: React.FC<GymWorkoutBannerProps> = React.memo(({
 }) => {
   const isCompleted = Boolean(
     (log as any)?.completed ||
-    (log?.workoutDurationMinutes !== undefined && !log?.workoutStartTime)
+    (typeof log?.workoutDurationMinutes === 'number' && log.workoutDurationMinutes > 0 && !log?.workoutStartTime)
   );
 
   const hasLoggedAnyWork = useMemo(() => {

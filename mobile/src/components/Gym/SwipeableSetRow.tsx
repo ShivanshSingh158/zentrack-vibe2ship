@@ -135,7 +135,7 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
     hapticLight();
     const currentVal = parseFloat(currentWeightRef.current) || 0;
     const newVal = Math.min(1000, Math.max(0, Math.round((currentVal + delta) * 10) / 10));
-    const newValStr = newVal === 0 ? '' : String(newVal);
+    const newValStr = String(newVal);
     currentWeightRef.current = newValStr;
     handleTextChangeInternal('weight', newValStr);
   }, [isCompleted, handleTextChangeInternal]);
@@ -144,8 +144,8 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
     if (isCompleted) return;
     hapticLight();
     const currentVal = parseInt(currentRepsRef.current, 10) || 0;
-    const newVal = Math.min(50, Math.max(0, currentVal + delta));
-    const newValStr = newVal === 0 ? '' : String(newVal);
+    const newVal = Math.min(999, Math.max(0, currentVal + delta));
+    const newValStr = String(newVal);
     currentRepsRef.current = newValStr;
     handleTextChangeInternal('reps', newValStr);
   }, [isCompleted, handleTextChangeInternal]);
@@ -223,7 +223,10 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
               value={displayWeight}
               keyboardType="decimal-pad"
               editable={!isCompleted}
-              onChangeText={(text) => handleTextChangeInternal('weight', text)}
+              onChangeText={(text) => {
+                currentWeightRef.current = text;
+                handleTextChangeInternal('weight', text);
+              }}
               onBlur={handleBlurInternal}
               selectTextOnFocus
             />
@@ -265,7 +268,10 @@ export const SwipeableSetRow: React.FC<SwipeableSetRowProps> = React.memo(({
               value={displayReps}
               keyboardType="number-pad"
               editable={!isCompleted}
-              onChangeText={(text) => handleTextChangeInternal('reps', text)}
+              onChangeText={(text) => {
+                currentRepsRef.current = text;
+                handleTextChangeInternal('reps', text);
+              }}
               onBlur={handleBlurInternal}
               selectTextOnFocus
             />

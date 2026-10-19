@@ -82,6 +82,11 @@ export const AnatomicalBodyMapCard: React.FC<Props> = React.memo(({
   const [onlyHardSets, setOnlyHardSets] = useState<boolean>(false);
   const [selectedMuscle, setSelectedMuscle] = useState<MuscleSlug | null>(null);
 
+  // Sync mode when variant or defaultMode changes
+  React.useEffect(() => {
+    setMode(defaultMode || (variant === 'weekly' ? 'fatigue' : 'volume'));
+  }, [variant, defaultMode]);
+
   // Sync with external timeWindowDays prop if passed
   React.useEffect(() => {
     if (timeWindowDays !== undefined) {
@@ -431,7 +436,7 @@ const InertSilhouetteLayer = React.memo(function InertSilhouetteLayer({
           <View style={styles.inspectorStatsRow}>
             {variant === 'weekly' ? (
               <>
-                {mode === 'fatigue' && (
+                {mode === 'fatigue' && selectedData.weeklyRecovery && (
                   <View style={{ gap: 3 }}>
                     <Text style={styles.inspectorStatText}>
                       Status:{' '}
@@ -485,7 +490,7 @@ const InertSilhouetteLayer = React.memo(function InertSilhouetteLayer({
                   </View>
                 )}
 
-                {mode === 'strength' && (
+                {mode === 'strength' && selectedData.weeklyRecovery && (
                   <Text style={styles.inspectorStatText}>
                     ⚡ Retained Capacity:{' '}
                     <Text style={{ color: '#ffd32a', fontFamily: FONT_FAMILY.bold }}>
@@ -496,7 +501,7 @@ const InertSilhouetteLayer = React.memo(function InertSilhouetteLayer({
               </>
             ) : (
               <>
-                {mode === 'volume' && (
+                {mode === 'volume' && selectedData.vol && (
                   <Text style={styles.inspectorStatText}>
                     🎯 Volume:{' '}
                     <Text style={{ color: '#5eda9e', fontFamily: FONT_FAMILY.bold }}>
@@ -509,7 +514,7 @@ const InertSilhouetteLayer = React.memo(function InertSilhouetteLayer({
                   </Text>
                 )}
 
-                {mode === 'growth' && (
+                {mode === 'growth' && selectedData.growth && (
                   <View style={{ gap: 3 }}>
                     <Text style={styles.inspectorStatText}>
                       📈 Overload Gain:{' '}
@@ -532,7 +537,7 @@ const InertSilhouetteLayer = React.memo(function InertSilhouetteLayer({
                   </View>
                 )}
 
-                {mode === 'balance' && (
+                {mode === 'balance' && selectedData.balance && (
                   <View style={{ gap: 3 }}>
                     <Text style={styles.inspectorStatText}>
                       ⚖️ Symmetry Status:{' '}
@@ -591,7 +596,7 @@ const InertSilhouetteLayer = React.memo(function InertSilhouetteLayer({
                   <Text style={styles.legendLabel}>Recovering</Text>
                 </View>
                 <View style={styles.legendPill}>
-                  <View style={[styles.legendDot, { backgroundColor: '#232128' }]} />
+                  <View style={[styles.legendDot, { backgroundColor: isDark ? '#232128' : '#e4e4e9' }]} />
                   <Text style={styles.legendLabel}>Ready</Text>
                 </View>
               </View>
@@ -616,7 +621,7 @@ const InertSilhouetteLayer = React.memo(function InertSilhouetteLayer({
                   <Text style={styles.legendLabel}>1–3 Sets</Text>
                 </View>
                 <View style={styles.legendPill}>
-                  <View style={[styles.legendDot, { backgroundColor: '#232128' }]} />
+                  <View style={[styles.legendDot, { backgroundColor: isDark ? '#232128' : '#e4e4e9' }]} />
                   <Text style={styles.legendLabel}>0</Text>
                 </View>
               </View>
@@ -637,7 +642,7 @@ const InertSilhouetteLayer = React.memo(function InertSilhouetteLayer({
                   <Text style={styles.legendLabel}>80%</Text>
                 </View>
                 <View style={styles.legendPill}>
-                  <View style={[styles.legendDot, { backgroundColor: '#232128' }]} />
+                  <View style={[styles.legendDot, { backgroundColor: isDark ? '#232128' : '#e4e4e9' }]} />
                   <Text style={styles.legendLabel}>Floor</Text>
                 </View>
               </View>
@@ -660,7 +665,7 @@ const InertSilhouetteLayer = React.memo(function InertSilhouetteLayer({
                   <Text style={styles.legendLabel}>Base</Text>
                 </View>
                 <View style={styles.legendPill}>
-                  <View style={[styles.legendDot, { backgroundColor: '#232128' }]} />
+                  <View style={[styles.legendDot, { backgroundColor: isDark ? '#232128' : '#e4e4e9' }]} />
                   <Text style={styles.legendLabel}>Untrained</Text>
                 </View>
               </View>

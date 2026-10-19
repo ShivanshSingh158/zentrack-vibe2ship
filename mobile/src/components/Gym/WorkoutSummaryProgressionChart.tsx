@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LineChart } from 'react-native-chart-kit';
 import Animated from 'react-native-reanimated';
@@ -28,7 +28,13 @@ export const WorkoutSummaryProgressionChart: React.FC<WorkoutSummaryProgressionC
   styles,
   isDark,
 }) => {
-  const screenWidth = Dimensions.get('window').width;
+  const { width: screenWidth } = useWindowDimensions();
+
+  const hasValidChartPoints = Boolean(
+    chartData?.datasets?.[0]?.data &&
+    chartData.datasets[0].data.length > 0 &&
+    chartData.datasets[0].data.every((n: any) => typeof n === 'number' && Number.isFinite(n))
+  );
 
   return (
     <Animated.View style={[styles.progressionCard, streakStyle]}>
@@ -87,7 +93,7 @@ export const WorkoutSummaryProgressionChart: React.FC<WorkoutSummaryProgressionC
         </TouchableOpacity>
       </View>
 
-      {chartData ? (
+      {hasValidChartPoints ? (
         <View style={styles.chartWrapper}>
           <LineChart
             data={chartData}

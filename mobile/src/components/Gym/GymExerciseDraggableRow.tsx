@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../../theme/tokens';
+import { COLORS, FONT_FAMILY } from '../../theme/tokens';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
 
 export interface GymExerciseDraggableRowProps {
@@ -33,14 +33,16 @@ export const GymExerciseDraggableRow: React.FC<GymExerciseDraggableRowProps> = R
   onShowMenu,
 }) => {
   const { item: ex, drag, isActive } = itemParams;
-  const isDone = ex.setsLog.length > 0 && ex.setsLog.every((set: any) => set.completed);
-  const totalSets = ex.setsLog.length;
-  const completedSets = ex.setsLog.filter((s: any) => s.completed);
+  const setsLog = ex.setsLog || [];
+  const isDone = setsLog.length > 0 && setsLog.every((set: any) => set.completed);
+  const totalSets = setsLog.length;
+  const completedSets = setsLog.filter((s: any) => s.completed);
 
   let subText = '';
   if (completedSets.length > 0) {
-    const avgReps = Math.round(completedSets.reduce((sum: number, s: any) => sum + (s.reps || 0), 0) / completedSets.length) || 0;
-    const maxWeight = Math.max(...completedSets.map((s: any) => s.weight || s.weightKg || 0));
+    const avgReps = Math.round(completedSets.reduce((sum: number, s: any) => sum + (Number(s.reps) || 0), 0) / completedSets.length) || 0;
+    const weights = completedSets.map((s: any) => Number(s.weight ?? s.weightKg) || 0);
+    const maxWeight = weights.length > 0 ? Math.max(0, ...weights) : 0;
     subText = `${completedSets.length}/${totalSets} sets, ~${avgReps} reps ${maxWeight > 0 ? `@ ${maxWeight}kg` : ''}`;
   } else {
     subText = `${totalSets} sets, ${ex.targetReps || '0'} reps`;
@@ -123,7 +125,7 @@ export const GymExerciseDraggableRow: React.FC<GymExerciseDraggableRowProps> = R
                 borderColor: 'rgba(255,159,77,0.25)',
                 marginBottom: 4,
               }}>
-                <Text style={{ fontSize: 9, fontFamily: 'Inter-Bold', color: '#ff9f4d', letterSpacing: 0.5 }}>
+                <Text style={{ fontSize: 9, fontFamily: FONT_FAMILY.bold, color: '#ff9f4d', letterSpacing: 0.5 }}>
                   SUPER-{ex.supersetGroup}
                 </Text>
               </View>
@@ -161,7 +163,10 @@ export const GymExerciseDraggableRow: React.FC<GymExerciseDraggableRowProps> = R
   prev.logWorkoutStartTime === next.logWorkoutStartTime &&
   prev.logExercises === next.logExercises &&
   prev.s === next.s &&
-  prev.selectedDate === next.selectedDate
+  prev.selectedDate === next.selectedDate &&
+  prev.onResumeWorkout === next.onResumeWorkout &&
+  prev.onShowHistory === next.onShowHistory &&
+  prev.onShowMenu === next.onShowMenu
 );
 
 export default GymExerciseDraggableRow;

@@ -21,13 +21,13 @@ export const PRFeed: React.FC<PRFeedProps> = React.memo(function PRFeed({ data }
     let maxReps = { val: 0, date: '', weight: 0 };
 
     data.forEach(d => {
-      if (d.rawWeight > maxWeight.val) {
+      if (d.rawWeight > maxWeight.val || (d.rawWeight === maxWeight.val && d.rawReps > maxWeight.reps)) {
         maxWeight = { val: d.rawWeight, date: d.dateStr, reps: d.rawReps };
       }
       if (d.volume > maxVolume.val) {
         maxVolume = { val: d.volume, date: d.dateStr };
       }
-      if (d.rawReps > maxReps.val) {
+      if (d.rawReps > maxReps.val || (d.rawReps === maxReps.val && d.rawWeight > maxReps.weight)) {
         maxReps = { val: d.rawReps, date: d.dateStr, weight: d.rawWeight };
       }
     });
@@ -93,7 +93,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   title: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: FONT_SIZE.md,
-    color: colors.text,
+    color: colors.textPrimary,
     marginBottom: SPACE.md,
   },
   prList: {
@@ -120,7 +120,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   prLabel: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: FONT_SIZE.sm,
-    color: colors.text,
+    color: colors.textPrimary,
   },
   prDate: {
     fontFamily: FONT_FAMILY.regular,
@@ -131,6 +131,6 @@ const makeStyles = (colors: any) => StyleSheet.create({
   prValue: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: FONT_SIZE.md,
-    color: colors.text,
+    color: colors.textPrimary,
   },
 });

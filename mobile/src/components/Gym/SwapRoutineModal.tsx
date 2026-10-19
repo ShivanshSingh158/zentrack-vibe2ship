@@ -3,7 +3,7 @@
  * Allows user to swap the active workout routine for the selected day.
  */
 import React, { useMemo } from 'react';
-import { View, Text, Modal, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { GYM_PLAN } from '../../data/gymPlan';
@@ -51,8 +51,9 @@ export function SwapRoutineModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <TouchableOpacity style={styles.modalBg} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity style={styles.sheet} activeOpacity={1} onPress={e => e.stopPropagation?.()}>
+      <View style={styles.modalBg}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        <View style={styles.sheet}>
           {/* Header */}
           <View style={styles.header}>
             <View>
@@ -77,8 +78,8 @@ export function SwapRoutineModal({
               />
             ))}
           </ScrollView>
-        </TouchableOpacity>
-      </TouchableOpacity>
+        </View>
+      </View>
     </Modal>
   );
 }

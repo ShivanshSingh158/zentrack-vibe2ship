@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import Svg, { Polyline, Circle, Line, Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Polyline, Circle, Line, Defs, LinearGradient, Stop, Polygon, Text as SvgText } from 'react-native-svg';
 import { formatDateShort } from '../../utils/dateUtils';
 
 export interface WeightChartEntry {
@@ -42,6 +42,7 @@ export const BodyMetricsHistoryChart: React.FC<BodyMetricsHistoryChartProps> = R
   if (!chartPoints || chartPoints.length < 2) return null;
 
   const polylinePoints = chartPoints.map(p => `${p.x},${p.y}`).join(' ');
+  const areaPoints = `${chartPoints[0].x},${CHART_H} ${polylinePoints} ${chartPoints[chartPoints.length - 1].x},${CHART_H}`;
 
   return (
     <Animated.View entering={FadeInDown.delay(100).duration(250)} style={styles.sectionCard}>
@@ -58,6 +59,7 @@ export const BodyMetricsHistoryChart: React.FC<BodyMetricsHistoryChartProps> = R
               <Stop offset="1" stopColor={isDark ? '#FFFFFF' : colors.accentPrimary} stopOpacity="0" />
             </LinearGradient>
           </Defs>
+          <Polygon points={areaPoints} fill="url(#wgrad)" />
           {[0.25, 0.5, 0.75].map(f => (
             <Line
               key={f}
@@ -90,10 +92,10 @@ export const BodyMetricsHistoryChart: React.FC<BodyMetricsHistoryChartProps> = R
               {i === chartPoints.length - 1 && (
                 <SvgText
                   x={p.x}
-                  y={p.y - 8}
+                  y={Math.max(11, p.y - 8)}
                   fontSize={10}
                   fill={isDark ? '#FFFFFF' : colors.textPrimary}
-                  textAnchor="middle"
+                  textAnchor="end"
                   fontWeight="700"
                 >
                   {p.weight}kg

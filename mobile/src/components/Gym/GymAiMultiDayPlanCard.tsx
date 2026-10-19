@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, RADIUS, SPACE } from '../../theme/tokens';
@@ -23,13 +23,19 @@ export const GymAiMultiDayPlanCard: React.FC<MultiDayPlanCardProps> = React.memo
   const { colors, isDark } = useTheme();
   const [confirmed, setConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   const handleConfirm = async () => {
+    if (isSubmittingRef.current || confirmed || loading) return;
+    isSubmittingRef.current = true;
     setLoading(true);
     try {
       await card.onConfirm?.();
       setConfirmed(true);
+    } catch (err) {
+      console.warn('[GymAiMultiDayPlanCard] Import failed:', err);
     } finally {
+      isSubmittingRef.current = false;
       setLoading(false);
     }
   };
@@ -64,7 +70,10 @@ export const GymAiMultiDayPlanCard: React.FC<MultiDayPlanCardProps> = React.memo
               <View style={{ flex: 1 }}>
                 <Text style={[styles.dayFocus, { color: colors.textPrimary }]}>{day.focus || day.dayName}</Text>
                 <Text style={[styles.dayExCount, { color: colors.textMuted }]}>
-                  {day.exercises?.length || 0} exercises ({day.exercises?.map(e => e.name).slice(0, 2).join(', ')}...)
+                  {day.exercises?.length || 0} exercises
+                  {day.exercises && day.exercises.length > 0
+                    ? ` (${day.exercises.slice(0, 2).map(e => e.name).join(', ')}${day.exercises.length > 2 ? '...' : ''})`
+                    : ''}
                 </Text>
               </View>
             </View>

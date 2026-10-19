@@ -93,10 +93,16 @@ export function GymProfileModal({ visible, onClose }: Props) {
   const [draft, setDraft] = useState<GymProfile>(DEFAULT_PROFILE);
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
   const [selectedMuscles, setSelectedMuscles] = useState<string[]>([]);
+  const [heightStr, setHeightStr] = useState('');
+  const [weightStr, setWeightStr] = useState('');
+  const [ageStr, setAgeStr] = useState('');
 
   useEffect(() => {
     if (visible) {
       setDraft(gymProfile);
+      setHeightStr(gymProfile.heightCm != null ? String(gymProfile.heightCm) : '');
+      setWeightStr(gymProfile.weightKg != null ? String(gymProfile.weightKg) : '');
+      setAgeStr(gymProfile.age != null ? String(gymProfile.age) : '');
       const g = gymProfile.goal as any;
       if (Array.isArray(g)) {
         setSelectedGoals(g);
@@ -223,8 +229,12 @@ export function GymProfileModal({ visible, onClose }: Props) {
                   placeholder="e.g. 175"
                   placeholderTextColor={colors.textMuted}
                   keyboardType="numeric"
-                  value={draft.heightCm?.toString() || ''}
-                  onChangeText={v => set('heightCm', v ? parseFloat(v) : null)}
+                  value={heightStr}
+                  onChangeText={v => {
+                    setHeightStr(v);
+                    const parsed = parseFloat(v);
+                    set('heightCm', Number.isFinite(parsed) ? parsed : null);
+                  }}
                 />
               </View>
               <View style={{ flex: 1 }}>
@@ -234,8 +244,12 @@ export function GymProfileModal({ visible, onClose }: Props) {
                   placeholder="e.g. 75"
                   placeholderTextColor={colors.textMuted}
                   keyboardType="numeric"
-                  value={draft.weightKg?.toString() || ''}
-                  onChangeText={v => set('weightKg', v ? parseFloat(v) : null)}
+                  value={weightStr}
+                  onChangeText={v => {
+                    setWeightStr(v);
+                    const parsed = parseFloat(v);
+                    set('weightKg', Number.isFinite(parsed) ? parsed : null);
+                  }}
                 />
               </View>
               <View style={{ flex: 1 }}>
@@ -245,8 +259,12 @@ export function GymProfileModal({ visible, onClose }: Props) {
                   placeholder="e.g. 22"
                   placeholderTextColor={colors.textMuted}
                   keyboardType="numeric"
-                  value={draft.age?.toString() || ''}
-                  onChangeText={v => set('age', v ? parseInt(v, 10) : null)}
+                  value={ageStr}
+                  onChangeText={v => {
+                    setAgeStr(v);
+                    const parsed = parseInt(v, 10);
+                    set('age', Number.isFinite(parsed) ? parsed : null);
+                  }}
                 />
               </View>
             </View>
@@ -321,6 +339,12 @@ export function GymProfileModal({ visible, onClose }: Props) {
             <Text style={p.sectionLabel}>TRAINING EXPERIENCE</Text>
             <View style={{ marginBottom: 20 }}>
               <OptionPill options={EXP} value={draft.experience} onSelect={v => set('experience', v)} colors={colors} isDark={isDark} />
+            </View>
+
+            {/* Equipment */}
+            <Text style={p.sectionLabel}>AVAILABLE EQUIPMENT</Text>
+            <View style={{ marginBottom: 20 }}>
+              <OptionPill options={EQUIP} value={draft.equipment} onSelect={v => set('equipment', v)} colors={colors} isDark={isDark} />
             </View>
 
             {/* Days per week */}

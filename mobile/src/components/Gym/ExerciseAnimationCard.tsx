@@ -37,13 +37,14 @@ export const ExerciseAnimationCard: React.FC<ExerciseAnimationCardProps> = React
     isOffline: boolean;
   } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [imageError, setImageError] = useState(false);
+  const [failedUris, setFailedUris] = useState<Record<string, boolean>>({});
   const [showCues, setShowCues] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
-    setImageError(false);
+    setFailedUris({});
+    setShowCues(false);
 
     getExerciseMediaUri(exerciseName).then(result => {
       if (isMounted) {
@@ -60,7 +61,11 @@ export const ExerciseAnimationCard: React.FC<ExerciseAnimationCardProps> = React
   }, [exerciseName]);
 
   const def = media?.definition;
-  const activeUri = imageError ? (media?.imageUri || media?.gifUri) : (media?.gifUri || media?.imageUri);
+  const activeUri = (media?.gifUri && !failedUris[media.gifUri])
+    ? media.gifUri
+    : (media?.imageUri && !failedUris[media.imageUri])
+    ? media.imageUri
+    : null;
 
   return (
     <View
@@ -120,8 +125,8 @@ export const ExerciseAnimationCard: React.FC<ExerciseAnimationCardProps> = React
             fadeDuration={0}
             progressiveRenderingEnabled={true}
             onError={() => {
-              if (!imageError && media?.imageUri) {
-                setImageError(true);
+              if (activeUri) {
+                setFailedUris(prev => ({ ...prev, [activeUri]: true }));
               }
             }}
           />

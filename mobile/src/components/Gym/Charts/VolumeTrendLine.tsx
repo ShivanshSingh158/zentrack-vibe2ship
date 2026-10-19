@@ -10,7 +10,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop, Rect, Circle, G, Line } from 'react-native-svg';
 import { COLORS, FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '../../../theme/tokens';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -58,8 +58,9 @@ function buildAreaPath(values: number[], width: number, height: number, maxVal: 
 export const VolumeTrendLine: React.FC<VolumeTrendLineProps> = React.memo(function VolumeTrendLine({ thisWeek, lastWeek, height = 160 }: VolumeTrendLineProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const { width: windowWidth } = useWindowDimensions();
 
-  const svgWidth = 320; // rendered full width via flex
+  const svgWidth = Math.max(280, windowWidth - 64);
   const padX = 8;
   const padY = 12;
 
@@ -67,28 +68,40 @@ export const VolumeTrendLine: React.FC<VolumeTrendLineProps> = React.memo(functi
   const secondaryColor = isDark ? '#89dceb' : '#64748B';
   const gridColor = isDark ? 'rgba(255,255,255,0.06)' : '#EAE9F2';
 
+  const safeThisWeek = useMemo(() => {
+    const arr = [...(thisWeek || [])];
+    while (arr.length < 7) arr.push(0);
+    return arr.slice(0, 7);
+  }, [thisWeek]);
+
+  const safeLastWeek = useMemo(() => {
+    const arr = [...(lastWeek || [])];
+    while (arr.length < 7) arr.push(0);
+    return arr.slice(0, 7);
+  }, [lastWeek]);
+
   const maxVal = useMemo(
-    () => Math.max(1, ...thisWeek, ...lastWeek),
-    [thisWeek, lastWeek],
+    () => Math.max(1, ...safeThisWeek, ...safeLastWeek),
+    [safeThisWeek, safeLastWeek],
   );
 
   const thisLinePath = useMemo(
-    () => buildLinePath(thisWeek, svgWidth, height, maxVal, padX, padY),
-    [thisWeek, height, maxVal],
+    () => buildLinePath(safeThisWeek, svgWidth, height, maxVal, padX, padY),
+    [safeThisWeek, svgWidth, height, maxVal],
   );
   const thisAreaPath = useMemo(
-    () => buildAreaPath(thisWeek, svgWidth, height, maxVal, padX, padY),
-    [thisWeek, height, maxVal],
+    () => buildAreaPath(safeThisWeek, svgWidth, height, maxVal, padX, padY),
+    [safeThisWeek, svgWidth, height, maxVal],
   );
   const lastLinePath = useMemo(
-    () => buildLinePath(lastWeek, svgWidth, height, maxVal, padX, padY),
-    [lastWeek, height, maxVal],
+    () => buildLinePath(safeLastWeek, svgWidth, height, maxVal, padX, padY),
+    [safeLastWeek, svgWidth, height, maxVal],
   );
 
   const chartW = svgWidth - padX * 2;
-  const step = chartW / Math.max(thisWeek.length - 1, 1);
+  const step = chartW / Math.max(safeThisWeek.length - 1, 1);
 
-  const hasData = thisWeek.some(v => v > 0) || lastWeek.some(v => v > 0);
+  const hasData = safeThisWeek.some(v => v > 0) || safeLastWeek.some(v => v > 0);
 
   if (!hasData) {
     return (
@@ -121,7 +134,7 @@ export const VolumeTrendLine: React.FC<VolumeTrendLineProps> = React.memo(functi
 
       {/* SVG Chart */}
       <View style={styles.svgWrap}>
-        <Svg width="100%" height={height} viewBox={`0 0 ${svgWidth} ${height}`} preserveAspectRatio="none">
+        <Svg width="100%" height={height} viewBox={`0 0 ${svgWidth} ${height}`}>
           <Defs>
             <LinearGradient id="thisWeekGrad" x1="0" y1="0" x2="0" y2="1">
               <Stop offset="0" stopColor={primaryColor} stopOpacity={isDark ? 0.28 : 0.20} />
@@ -168,7 +181,7 @@ export const VolumeTrendLine: React.FC<VolumeTrendLineProps> = React.memo(functi
           />
 
           {/* Data point dots for this week */}
-          {thisWeek.map((v, i) => {
+          {safeThisWeek.map((v, i) => {
             if (v === 0) return null;
             const x = padX + i * step;
             const y = padY + (height - padY * 2) - (v / maxVal) * (height - padY * 2);
@@ -190,7 +203,7 @@ export const VolumeTrendLine: React.FC<VolumeTrendLineProps> = React.memo(functi
       {/* Day labels */}
       <View style={styles.dayLabels}>
         {DAY_LABELS.map((label, i) => {
-          const vol = thisWeek[i] || 0;
+          const vol = safeThisWeek[i] || 0;
           const isTrained = vol > 0;
           return (
             <View key={i} style={styles.dayLabelCol}>

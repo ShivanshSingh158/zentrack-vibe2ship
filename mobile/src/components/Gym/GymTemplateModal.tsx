@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { hapticMedium, hapticLight } from '../../utils/haptics';
@@ -29,8 +29,9 @@ export const GymTemplateModal: React.FC<Props> = ({ visible, onClose, onApply })
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity style={s.content} activeOpacity={1} onPress={e => e.stopPropagation?.()}>
+      <View style={s.overlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        <View style={s.content}>
           {/* Header */}
           <View style={s.header}>
             <View style={{ flex: 1, paddingRight: 8 }}>
@@ -125,8 +126,8 @@ export const GymTemplateModal: React.FC<Props> = ({ visible, onClose, onApply })
           <TouchableOpacity style={s.applyBtn} onPress={handleApply} activeOpacity={0.85}>
             <Text style={s.applyBtnText}>Apply Selected Template</Text>
           </TouchableOpacity>
-        </TouchableOpacity>
-      </TouchableOpacity>
+        </View>
+      </View>
     </Modal>
   );
 };

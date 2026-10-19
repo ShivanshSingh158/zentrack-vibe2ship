@@ -111,8 +111,11 @@ export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(fu
     // Reset position to default dock location whenever a new timer starts
     pan.setValue({ x: 0, y: 0 });
     pan.setOffset({ x: 0, y: 0 });
-    lastBeepSecRef.current = null;
   }, [startTime]);
+
+  useEffect(() => {
+    lastBeepSecRef.current = null;
+  }, [startTime, durationSecs]);
 
   useEffect(() => {
     let skipped = false;
@@ -179,40 +182,42 @@ export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(fu
     >
       {!isExpanded ? (
         <Animated.View style={{ transform: [{ scale: breatheAnim }] }}>
-          <TouchableOpacity
-            onPress={toggleExpand}
-            activeOpacity={0.85}
-            style={styles.collapsedBadge}
-          >
-            {/* Circular SVG Progress Ring */}
-            <View style={{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center', marginRight: 4 }}>
-              <Svg width={22} height={22} style={{ transform: [{ rotate: '-90deg' }] }}>
-                <Circle
-                  cx={11}
-                  cy={11}
-                  r={8.5}
-                  stroke={isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'}
-                  strokeWidth={2.4}
-                  fill="none"
-                />
-                <Circle
-                  cx={11}
-                  cy={11}
-                  r={8.5}
-                  stroke={colors.accentPrimary || '#a599ff'}
-                  strokeWidth={2.4}
-                  strokeDasharray={`${circumference} ${circumference}`}
-                  strokeDashoffset={strokeDashoffset}
-                  strokeLinecap="round"
-                  fill="none"
-                />
-              </Svg>
-              <View style={{ position: 'absolute' }}>
-                <Ionicons name="timer-outline" size={10} color={colors.accentPrimary || '#a599ff'} />
+          <View style={styles.collapsedBadge}>
+            <TouchableOpacity
+              onPress={toggleExpand}
+              activeOpacity={0.85}
+              style={{ flexDirection: 'row', alignItems: 'center' }}
+            >
+              {/* Circular SVG Progress Ring */}
+              <View style={{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center', marginRight: 4 }}>
+                <Svg width={22} height={22} style={{ transform: [{ rotate: '-90deg' }] }}>
+                  <Circle
+                    cx={11}
+                    cy={11}
+                    r={8.5}
+                    stroke={isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'}
+                    strokeWidth={2.4}
+                    fill="none"
+                  />
+                  <Circle
+                    cx={11}
+                    cy={11}
+                    r={8.5}
+                    stroke={colors.accentPrimary || '#a599ff'}
+                    strokeWidth={2.4}
+                    strokeDasharray={`${circumference} ${circumference}`}
+                    strokeDashoffset={strokeDashoffset}
+                    strokeLinecap="round"
+                    fill="none"
+                  />
+                </Svg>
+                <View style={{ position: 'absolute' }}>
+                  <Ionicons name="timer-outline" size={10} color={colors.accentPrimary || '#a599ff'} />
+                </View>
               </View>
-            </View>
 
-            <Text style={styles.collapsedTimeText}>{timeDisplay}</Text>
+              <Text style={styles.collapsedTimeText}>{timeDisplay}</Text>
+            </TouchableOpacity>
 
             {/* Quick +30s Bump Pill */}
             <TouchableOpacity
@@ -225,7 +230,7 @@ export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(fu
             >
               <Text style={styles.quickAddText}>+30s</Text>
             </TouchableOpacity>
-          </TouchableOpacity>
+          </View>
         </Animated.View>
       ) : (
         <View style={styles.expandedCapsule}>

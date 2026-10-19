@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, COLORS } from '../../../theme/tokens';
@@ -47,17 +47,24 @@ function formatDateShort(dateStr: string): string {
 export const ConsistencyHeatmap: React.FC<ConsistencyHeatmapProps> = React.memo(function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const scrollRef = useRef<ScrollView>(null);
 
   const [selected, setSelected] = useState<{ date: string; volume: number } | null>(null);
 
   const { grid, totalWorkouts, volumeMap } = useMemo(() => {
     const dateStrings = getRecentWeeksDates(NUM_WEEKS);
+    const dateSet = new Set(dateStrings);
     const volumeMap = new Map<string, number>();
-    let workoutCount = 0;
 
     data.forEach(d => {
-      volumeMap.set(d.date, d.volume);
-      if (d.volume > 0) workoutCount++;
+      if (d.volume > 0) {
+        volumeMap.set(d.date, (volumeMap.get(d.date) || 0) + d.volume);
+      }
+    });
+
+    let workoutCount = 0;
+    dateSet.forEach(dateStr => {
+      if ((volumeMap.get(dateStr) || 0) > 0) workoutCount++;
     });
 
     // Group into columns of 7 (Mon–Sun)
@@ -116,10 +123,12 @@ export const ConsistencyHeatmap: React.FC<ConsistencyHeatmapProps> = React.memo(
 
         {/* Full-width scrollable grid (auto-scrolled to latest) */}
         <ScrollView
+          ref={scrollRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.scrollArea}
           contentContainerStyle={styles.scrollContent}
+          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
         >
           <View style={styles.grid}>
             {grid.map((col, colIndex) => (

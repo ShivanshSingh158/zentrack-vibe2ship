@@ -104,9 +104,9 @@ export const EffortDistributionCard: React.FC<Props> = React.memo(function Effor
         <View style={[styles.statPod, { backgroundColor: isDark ? '#141318' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
           <Text style={[styles.statLabel, { color: colors.textMuted }]}>Average Effort</Text>
           <Text style={[styles.statValue, { color: '#ff9f4d' }]}>
-            {summary.averageRIR !== null ? `${summary.averageRIR} RIR` : '1.8 RIR'}
+            {summary.averageRIR !== null ? `${summary.averageRIR} RIR` : '—'}
           </Text>
-          <Text style={[styles.statSub, { color: colors.textTertiary }]}>~{summary.averageRPE !== null ? summary.averageRPE : '8.2'} RPE</Text>
+          <Text style={[styles.statSub, { color: colors.textTertiary }]}>{summary.averageRPE !== null ? `~${summary.averageRPE} RPE` : '—'}</Text>
         </View>
 
         {/* Hypertrophy Stimulus */}

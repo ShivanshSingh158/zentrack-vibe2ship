@@ -44,7 +44,7 @@ export function ExerciseHistoryDrawer({ visible, exerciseName, exerciseId, onClo
   }, [visible, gymLogs, exerciseId]);
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalBg}>
         <KeyboardAvoidingView 
           behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
@@ -59,7 +59,7 @@ export function ExerciseHistoryDrawer({ visible, exerciseName, exerciseId, onClo
 
           <FlatList
             data={history}
-            keyExtractor={item => item.date}
+            keyExtractor={(item, idx) => `${item.date}_${idx}`}
             renderItem={({ item }) => {
               if (exerciseId === 'all') {
                 const log = (item as any).logItem;
@@ -77,19 +77,23 @@ export function ExerciseHistoryDrawer({ visible, exerciseName, exerciseId, onClo
               }
 
               const ex = (item as any).ex!;
-              const completedSets = ex.setsLog.filter((s: any) => s.completed);
-              const maxWeight = Math.max(0, ...completedSets.filter((s:any) => s.weight).map((s: any) => s.weight as number));
-              const setsStr = completedSets.map((s: any) => `${s.reps || 0}×${s.weight || 0}kg`).join(', ');
+              const completedSets = (ex.setsLog || []).filter((s: any) => s.completed && !s.isWarmup);
+              const maxWeight = Math.max(0, ...completedSets.filter((s: any) => Number(s.weight) > 0).map((s: any) => Number(s.weight)));
+              const setsStr = completedSets.map((s: any) => `${Number(s.reps) || 0}×${Number(s.weight) || 0}kg`).join(', ');
               
               // Estimated 1RM using Epley formula on heaviest completed set
               const best1RMSet = completedSets.reduce((best: any, s: any) => {
-                const rm = s.weight && s.reps ? s.weight * (1 + s.reps / 30) : 0;
-                const bestRm = best?.weight && best?.reps ? best.weight * (1 + best.reps / 30) : 0;
+                const w = Number(s.weight) || 0;
+                const r = Number(s.reps) || 0;
+                const rm = w && r ? w * (1 + r / 30) : 0;
+                const bw = Number(best?.weight) || 0;
+                const br = Number(best?.reps) || 0;
+                const bestRm = bw && br ? bw * (1 + br / 30) : 0;
                 return rm > bestRm ? s : best;
               }, null);
-              const est1RM = best1RMSet?.weight && best1RMSet?.reps
-                ? Math.round(best1RMSet.weight * (1 + best1RMSet.reps / 30))
-                : null;
+              const bw = Number(best1RMSet?.weight) || 0;
+              const br = Number(best1RMSet?.reps) || 0;
+              const est1RM = bw && br ? Math.round(bw * (1 + br / 30)) : null;
               
               return (
                 <View style={styles.item}>

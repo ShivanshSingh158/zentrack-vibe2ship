@@ -61,7 +61,7 @@ export const MuscleDonutChart: React.FC<MuscleDonutChartProps> = React.memo(func
     const circ = 2 * Math.PI * r;
 
     let offset = 0; // degrees elapsed
-    const GAP_FRAC = GAP_DEG / 360;
+    const GAP_FRAC = filtered.length > 1 ? (GAP_DEG / 360) : 0;
 
     return filtered.map(d => {
       const frac = d.sets / totalSets;
@@ -129,7 +129,7 @@ export const MuscleDonutChart: React.FC<MuscleDonutChartProps> = React.memo(func
                   strokeWidth={STROKE_WIDTH}
                   strokeDasharray={`${seg.filled} ${seg.circ - seg.filled}`}
                   strokeDashoffset={seg.dashOffset}
-                  strokeLinecap="round"
+                  strokeLinecap={segments.length === 1 ? 'round' : 'butt'}
                 />
               </G>
             ))}

@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, ScrollView,
-  Platform, Alert,
+  Platform, Alert, StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -160,8 +160,9 @@ export function GymScheduleSettingsModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity style={s.card} activeOpacity={1} onPress={e => e.stopPropagation?.()}>
+      <View style={s.overlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+        <View style={s.card}>
           <View style={{ flex: 1, paddingBottom: Math.max(insets.bottom, 16) }}>
             {/* Header */}
             <View style={s.header}>
@@ -485,8 +486,8 @@ export function GymScheduleSettingsModal({
               )}
             </ScrollView>
           </View>
-        </TouchableOpacity>
-      </TouchableOpacity>
+        </View>
+      </View>
     </Modal>
   );
 }

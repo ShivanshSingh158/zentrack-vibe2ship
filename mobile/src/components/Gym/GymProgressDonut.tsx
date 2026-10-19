@@ -36,7 +36,7 @@ export const GymProgressDonut: React.FC<GymProgressDonutProps> = React.memo(({
   return (
     <View style={styles.donutContainer}>
       <View style={styles.donutSvgWrapper}>
-        <Svg width={150} height={150} viewBox="0 0 150 150">
+        <Svg width={150} height={150} viewBox="0 0 150 150" style={{ transform: [{ rotate: '-90deg' }] }}>
           {donutData.map((item, i) => {
             const strokeDasharray = `${(item.percent / 100) * CIRCUMFERENCE} ${CIRCUMFERENCE}`;
             const strokeDashoffset = -((cumulativePercent / 100) * CIRCUMFERENCE);
@@ -52,7 +52,7 @@ export const GymProgressDonut: React.FC<GymProgressDonutProps> = React.memo(({
                 strokeDasharray={strokeDasharray}
                 strokeDashoffset={strokeDashoffset}
                 fill="none"
-                strokeLinecap="round"
+                strokeLinecap={donutData.length === 1 ? 'round' : 'butt'}
               />
             );
           })}

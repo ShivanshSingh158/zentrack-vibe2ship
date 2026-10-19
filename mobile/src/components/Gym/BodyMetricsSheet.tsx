@@ -85,12 +85,12 @@ export default function BodyMetricsSheet({ visible, onClose }: Props) {
   // Combine context weight logs and local weight logs
   const combinedLogs = useMemo(() => {
     const map = new Map<string, WeightEntry>();
+    localLogs.forEach(l => {
+      if (l.date && l.weight) map.set(l.date, l);
+    });
     (contextWeightLogs || []).forEach((l: any) => {
       const w = l.weightKg ?? l.weight;
       if (l.date && w) map.set(l.date, { id: l.id, weight: w, date: l.date, photoUrl: l.photoUrl });
-    });
-    localLogs.forEach(l => {
-      if (l.date && l.weight) map.set(l.date, l);
     });
     return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
   }, [contextWeightLogs, localLogs]);
@@ -150,44 +150,49 @@ export default function BodyMetricsSheet({ visible, onClose }: Props) {
 
     try {
       if (photoUri) {
-        const res = await uploadFileToCloudinary(photoUri, 'image/jpeg', 'photo.jpg', () => {});
-        uploadedPhotoUrl = res.url;
+        try {
+          const res = await uploadFileToCloudinary(photoUri, 'image/jpeg', 'photo.jpg', () => {});
+          uploadedPhotoUrl = res.url;
+        } catch (e) {
+          console.error("Photo upload error:", e);
+          uploadedPhotoUrl = photoUri; // Local fallback
+        }
       }
-    } catch (e) {
-      console.error("Photo upload error:", e);
-      if (photoUri) uploadedPhotoUrl = photoUri; // Local fallback
+
+      const newEntry: WeightEntry = { weight: w, date: today, photoUrl: uploadedPhotoUrl };
+
+      // Update local state & AsyncStorage for instant UI rendering
+      const updatedLocal = [newEntry, ...localLogs.filter(l => l.date !== today)];
+      setLocalLogs(updatedLocal);
+      await AsyncStorage.setItem(WEIGHT_LOGS_KEY, JSON.stringify(updatedLocal));
+
+      // Update gym profile height/weight
+      const heightVal = heightInput ? parseFloat(heightInput) : gymProfile.heightCm;
+      await saveGymProfile({ weightKg: w, heightCm: heightVal || gymProfile.heightCm });
+
+      // Sync to Firestore background queue with deterministic ID to prevent duplicates
+      if (user?.uid) {
+        const docId = `${user.uid}_weight_${today}`;
+        await queueWrite(COLLECTION.WEIGHT_LOGS, "set", {
+          userId: user.uid,
+          weightKg: w,
+          weight: w,
+          photoUrl: uploadedPhotoUrl,
+          date: today,
+          createdAt: serverTimestamp(),
+        }, docId);
+      }
+
+      setWeightInput("");
+      setHeightInput("");
+      setPhotoUri(null);
+      setShowLogWeight(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      console.error("Weight logging error:", err);
+    } finally {
+      setSaving(false);
     }
-
-    const newEntry: WeightEntry = { weight: w, date: today, photoUrl: uploadedPhotoUrl };
-
-    // Update local state & AsyncStorage for instant UI rendering
-    const updatedLocal = [newEntry, ...localLogs.filter(l => l.date !== today)];
-    setLocalLogs(updatedLocal);
-    await AsyncStorage.setItem(WEIGHT_LOGS_KEY, JSON.stringify(updatedLocal));
-
-    // Update gym profile height/weight
-    const heightVal = heightInput ? parseFloat(heightInput) : gymProfile.heightCm;
-    await saveGymProfile({ weightKg: w, heightCm: heightVal || gymProfile.heightCm });
-
-    // Sync to Firestore background queue with deterministic ID to prevent duplicates
-    if (user?.uid) {
-      const docId = `${user.uid}_weight_${today}`;
-      await queueWrite(COLLECTION.WEIGHT_LOGS, "set", {
-        userId: user.uid,
-        weightKg: w,
-        weight: w,
-        photoUrl: uploadedPhotoUrl,
-        date: today,
-        createdAt: serverTimestamp(),
-      }, docId);
-    }
-
-    setSaving(false);
-    setWeightInput("");
-    setHeightInput("");
-    setPhotoUri(null);
-    setShowLogWeight(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
   return (
@@ -347,7 +352,7 @@ export default function BodyMetricsSheet({ visible, onClose }: Props) {
 
       {/* Full Photo Modal */}
       {selectedPhoto && (
-        <Modal visible={true} transparent={true} animationType="fade">
+        <Modal visible={true} transparent={true} animationType="fade" onRequestClose={() => setSelectedPhoto(null)}>
           <View style={s.photoModalOverlay}>
             <TouchableOpacity style={s.closePhotoModalBtn} onPress={() => setSelectedPhoto(null)}>
               <Ionicons name="close" size={24} color="#FFFFFF" />
