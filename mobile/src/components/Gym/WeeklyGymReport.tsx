@@ -371,7 +371,7 @@ export const WeeklyGymReport = React.memo(function WeeklyGymReport({ gymLogs, we
             sessions++;
             totalMinutes += Number(c.durationMinutes) || 0;
             totalKm += Number(c.distanceKm) || 0;
-            loggedCalories += Number(c.caloriesBurned) || 0;
+            loggedCalories += Number((c as any).calories ?? c.caloriesBurned) || 0;
           }
         }
       }
@@ -454,10 +454,8 @@ export const WeeklyGymReport = React.memo(function WeeklyGymReport({ gymLogs, we
     for (const log of weekLogs) {
       for (const ex of log.exercises ?? []) {
         if (ex.skipped) continue;
-        const completed = (ex.setsLog ?? []).filter((s: any) => s.completed);
-        const maxW = Math.max(0, ...completed.map((s: any) => Number(s.weight) || 0));
-        const maxReps = completed.find((s: any) => Number(s.weight) === maxW)?.reps || 0;
-        const rm = epley1RM(maxW, maxReps);
+        const completed = (ex.setsLog ?? []).filter((s: any) => s.completed && Number(s.weight) > 0);
+        const rm = Math.max(0, ...completed.map((s: any) => epley1RM(Number(s.weight) || 0, Number(s.reps) || 0)));
         if (rm > 0 && rm > (rmMap[ex.name] || 0)) rmMap[ex.name] = rm;
       }
     }
@@ -544,11 +542,9 @@ export const WeeklyGymReport = React.memo(function WeeklyGymReport({ gymLogs, we
         if (weekIdx === undefined) continue;
         for (const ex of log.exercises ?? []) {
           if (ex.skipped) continue;
-          const completed = (ex.setsLog ?? []).filter((s: any) => s.completed);
+          const completed = (ex.setsLog ?? []).filter((s: any) => s.completed && Number(s.weight) > 0);
           if (!completed.length) continue;
-          const maxW = Math.max(0, ...completed.map((s: any) => Number(s.weight) || 0));
-          const maxReps = completed.find((s: any) => Number(s.weight) === maxW)?.reps || 0;
-          const rm = epley1RM(maxW, maxReps);
+          const rm = Math.max(0, ...completed.map((s: any) => epley1RM(Number(s.weight) || 0, Number(s.reps) || 0)));
           if (!exWeeklyRMs[ex.name]) {
             exWeeklyRMs[ex.name] = { muscle: canonicalizeMuscle(ex.muscle), weeks: [0, 0, 0, 0] };
           }

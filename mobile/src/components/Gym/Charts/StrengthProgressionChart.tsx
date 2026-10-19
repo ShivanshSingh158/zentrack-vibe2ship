@@ -77,20 +77,23 @@ function generateSmoothSparkline(values: number[], w: number, h: number): { line
 const SparkCard = React.memo(function SparkCard({ ex, onPress }: { ex: ExerciseSpark; onPress?: () => void }) {
   const { colors, isDark } = useTheme();
 
-  // Normalize historical points: filter out non-existent zero weeks to avoid artificial spikes
-  const rawValues = ex.weeks.map(w => w.est1RM);
-  const nonZeroValues = rawValues.filter(v => v > 0);
-  const isFirstTimeBaseline = nonZeroValues.length <= 1;
-
-  // For chart plotting: if only current week exists, create a gentle baseline
-  const plotValues = useMemo(() => {
-    if (isFirstTimeBaseline) {
-      return [ex.currentRM, ex.currentRM, ex.currentRM, ex.currentRM];
+  // Normalize historical points & generate plot values with stable memoization
+  const { plotValues, isFirstTimeBaseline } = useMemo(() => {
+    const rawValues = ex.weeks.map(w => w.est1RM);
+    const nonZeroValues = rawValues.filter(v => v > 0);
+    const isBaseline = nonZeroValues.length <= 1;
+    if (isBaseline) {
+      return {
+        plotValues: [ex.currentRM, ex.currentRM, ex.currentRM, ex.currentRM],
+        isFirstTimeBaseline: true,
+      };
     }
-    // Fill in earlier 0s with the first recorded non-zero value
-    const firstValid = rawValues.find(v => v > 0) || ex.currentRM;
-    return rawValues.map(v => (v > 0 ? v : firstValid));
-  }, [rawValues, ex.currentRM, isFirstTimeBaseline]);
+    const firstValid = nonZeroValues[0] || ex.currentRM;
+    return {
+      plotValues: rawValues.map(v => (v > 0 ? v : firstValid)),
+      isFirstTimeBaseline: false,
+    };
+  }, [ex.weeks, ex.currentRM]);
 
   const { linePath, areaPath, points } = useMemo(
     () => generateSmoothSparkline(plotValues, SPARK_W, SPARK_H),

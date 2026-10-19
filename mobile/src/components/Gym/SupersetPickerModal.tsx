@@ -25,10 +25,10 @@ export const SupersetPickerModal: React.FC<SupersetPickerModalProps> = React.mem
   onRemoveSuperset,
   onSelectPartner,
 }) => {
-  if (!visible) return null;
+  if (!visible || !exercise) return null;
 
   return (
-    <Modal transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContent, { maxHeight: '75%' }]}>
           <View style={styles.modalHeader}>
@@ -61,7 +61,7 @@ export const SupersetPickerModal: React.FC<SupersetPickerModalProps> = React.mem
               </TouchableOpacity>
             )}
 
-            {exercises.filter(e => e.exerciseId !== exercise.exerciseId).map((altEx, idx) => {
+            {exercises.filter(e => !e.skipped && e.exerciseId !== exercise.exerciseId).map((altEx, idx) => {
               const isPartner = altEx.supersetGroup && altEx.supersetGroup === exercise.supersetGroup;
               return (
                 <TouchableOpacity

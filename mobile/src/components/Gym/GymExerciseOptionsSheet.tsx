@@ -230,7 +230,14 @@ export const GymExerciseOptionsSheet = memo(function GymExerciseOptionsSheet({
                   onPress={() => {
                     const ex = supersetPickerFor;
                     setSupersetPickerFor(null);
-                    const groupLetter = partner.supersetGroup || String.fromCharCode(65 + Math.floor(Math.random() * 26));
+                    const usedGroups = new Set(
+                      (log?.exercises || []).map((e: any) => e.supersetGroup).filter(Boolean)
+                    );
+                    let nextCharCode = 65; // 'A'
+                    while (usedGroups.has(String.fromCharCode(nextCharCode)) && nextCharCode < 90) {
+                      nextCharCode++;
+                    }
+                    const groupLetter = partner.supersetGroup || String.fromCharCode(nextCharCode);
                     const updated = (log?.exercises || []).map((e: any) => {
                       if (e.exerciseId === ex.exerciseId || e.exerciseId === partner.exerciseId) {
                         return { ...e, supersetGroup: groupLetter };

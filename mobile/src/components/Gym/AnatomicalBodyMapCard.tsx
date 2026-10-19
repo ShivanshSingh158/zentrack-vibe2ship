@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ScrollView, useWindowDimensions } from 'react-native';
 import Svg, { Path, G } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, RADIUS, FONT_FAMILY, FONT_SIZE } from '../../theme/tokens';
@@ -74,6 +74,8 @@ export const AnatomicalBodyMapCard: React.FC<Props> = React.memo(({
   style,
 }) => {
   const { colors, isDark } = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
+  const colWidth = Math.min((screenWidth - 70) / 2, 175);
   const initialMode = defaultMode || (variant === 'weekly' ? 'fatigue' : 'volume');
   const [mode, setMode] = useState<string>(initialMode);
   const [windowDays, setWindowDays] = useState<TimeWindow>(timeWindowDays ?? (variant === 'weekly' ? 7 : 30));
@@ -87,20 +89,23 @@ export const AnatomicalBodyMapCard: React.FC<Props> = React.memo(({
     }
   }, [timeWindowDays]);
 
-  // ── Macro Analytics Models (Only computed when variant === 'analytics') ──
+  // ── Macro Analytics Models (Strictly gated by active mode) ──
+  const needVolume = variant === 'analytics' && mode === 'volume';
   const volumeModel = useMemo(
-    () => (variant === 'analytics' || mode === 'volume') ? calculateMacroVolumeLoad(gymLogs, windowDays as any, weekAnchorDate) : ({} as Record<string, any>),
-    [gymLogs, windowDays, weekAnchorDate, variant, mode]
+    () => needVolume ? calculateMacroVolumeLoad(gymLogs, windowDays as any, weekAnchorDate) : ({} as Record<string, any>),
+    [gymLogs, windowDays, weekAnchorDate, needVolume]
   );
 
+  const needGrowth = variant === 'analytics' && mode === 'growth';
   const growthModel = useMemo(
-    () => (variant === 'analytics' && mode === 'growth') ? calculateMuscleGrowthProgression(gymLogs, windowDays as any, weekAnchorDate) : ({} as Record<string, any>),
-    [gymLogs, windowDays, weekAnchorDate, variant, mode]
+    () => needGrowth ? calculateMuscleGrowthProgression(gymLogs, windowDays as any, weekAnchorDate) : ({} as Record<string, any>),
+    [gymLogs, windowDays, weekAnchorDate, needGrowth]
   );
 
+  const needBalance = (variant === 'analytics' || variant === 'weekly') && mode === 'balance';
   const balanceModel = useMemo(
-    () => (mode === 'balance') ? calculateSymmetryAndBalance(gymLogs, windowDays as any, weekAnchorDate) : ({} as Record<string, any>),
-    [gymLogs, windowDays, weekAnchorDate, mode]
+    () => needBalance ? calculateSymmetryAndBalance(gymLogs, windowDays as any, weekAnchorDate) : ({} as Record<string, any>),
+    [gymLogs, windowDays, weekAnchorDate, needBalance]
   );
 
   // ── Weekly Report Models (Only computed when variant === 'weekly') ───────────
@@ -186,25 +191,32 @@ export const AnatomicalBodyMapCard: React.FC<Props> = React.memo(({
     setSelectedMuscle(prev => (prev === slug ? null : slug));
   };
 
+const InertSilhouetteLayer = React.memo(function InertSilhouetteLayer({
+  viewGeo,
+  isDark,
+}: {
+  viewGeo: ViewGeometry;
+  isDark: boolean;
+}) {
+  const inertColor = isDark ? '#18171c' : '#d1d1d6';
+  return (
+    <G>
+      {INERT.map(slug =>
+        (viewGeo.p[slug] || []).map((dStr, idx) => (
+          <Path key={`inert-${slug}-${idx}`} d={dStr} fill={inertColor} />
+        ))
+      )}
+    </G>
+  );
+});
+
   // ── Render Single SVG View (Front or Back) ──────────────────────────────────
   const renderBodySvg = (viewGeo: ViewGeometry, label: string) => {
-    const inertColor = isDark ? '#18171c' : '#d1d1d6';
-
     return (
-      <View style={styles.bodyViewCol}>
+      <View style={[styles.bodyViewCol, { width: colWidth }]}>
         <Svg viewBox={viewGeo.vb} style={styles.svgCanvas}>
           {/* Inert Silhouette (Head, Neck, Hands, Feet, Knees, Joints) */}
-          <G>
-            {INERT.map(slug =>
-              (viewGeo.p[slug] || []).map((dStr, idx) => (
-                <Path
-                  key={`inert-${slug}-${idx}`}
-                  d={dStr}
-                  fill={inertColor}
-                />
-              ))
-            )}
-          </G>
+          <InertSilhouetteLayer viewGeo={viewGeo} isDark={isDark} />
 
           {/* Interactive Muscle Layers with Expanded Hit Boxes */}
           <G>
@@ -406,7 +418,7 @@ export const AnatomicalBodyMapCard: React.FC<Props> = React.memo(({
           <View style={styles.inspectorTop}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <View style={[styles.inspectorDot, { backgroundColor: getMuscleFillColor(selectedMuscle!) }]} />
-              <Text style={styles.inspectorTitle}>{selectedData.name}</Text>
+              <Text style={[styles.inspectorTitle, { color: colors.textPrimary }]}>{selectedData.name}</Text>
             </View>
             <TouchableOpacity
               onPress={() => setSelectedMuscle(null)}
@@ -696,8 +708,6 @@ export const AnatomicalBodyMapCard: React.FC<Props> = React.memo(({
 
 export default AnatomicalBodyMapCard;
 
-const windowWidth = Dimensions.get('window').width;
-
 const styles = StyleSheet.create({
   card: {
     borderRadius: 20,
@@ -782,7 +792,6 @@ const styles = StyleSheet.create({
   },
   bodyViewCol: {
     alignItems: 'center',
-    width: Math.min((windowWidth - 70) / 2, 175),
   },
   svgCanvas: {
     width: '100%',

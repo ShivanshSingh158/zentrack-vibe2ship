@@ -208,7 +208,7 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   title: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 11,
-    color: '#ffffff',
+    color: isDark ? '#ffffff' : colors.textPrimary,
     letterSpacing: 0.8,
   },
   subtitle: {
@@ -321,7 +321,7 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   tooltipDate: {
     fontSize: 11,
     fontFamily: FONT_FAMILY.bold,
-    color: '#ffffff',
+    color: isDark ? '#ffffff' : colors.textPrimary,
   },
   tooltipVol: {
     fontSize: 11,

@@ -25,6 +25,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import BottomSheet from "../ui/BottomSheet";
 import { queueWrite } from "../../services/offlineSync";
 import { uploadFileToCloudinary } from "../../services/cloudinary";
+import { formatLocalDateStr } from "../../utils/dateUtils";
 
 // Extracted Subcomponents & Styles
 import { makeBodyMetricsStyles } from "./bodyMetricsStyles";
@@ -143,8 +144,9 @@ export default function BodyMetricsSheet({ visible, onClose }: Props) {
     setSaving(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const today = new Date().toISOString().slice(0, 10);
-    let uploadedPhotoUrl: string | null = null;
+    const today = formatLocalDateStr(new Date());
+    const existingToday = combinedLogs.find(l => l.date === today);
+    let uploadedPhotoUrl: string | null = existingToday?.photoUrl ?? null;
 
     try {
       if (photoUri) {
@@ -153,6 +155,7 @@ export default function BodyMetricsSheet({ visible, onClose }: Props) {
       }
     } catch (e) {
       console.error("Photo upload error:", e);
+      if (photoUri) uploadedPhotoUrl = photoUri; // Local fallback
     }
 
     const newEntry: WeightEntry = { weight: w, date: today, photoUrl: uploadedPhotoUrl };
@@ -166,16 +169,17 @@ export default function BodyMetricsSheet({ visible, onClose }: Props) {
     const heightVal = heightInput ? parseFloat(heightInput) : gymProfile.heightCm;
     await saveGymProfile({ weightKg: w, heightCm: heightVal || gymProfile.heightCm });
 
-    // Sync to Firestore background queue if logged in
+    // Sync to Firestore background queue with deterministic ID to prevent duplicates
     if (user?.uid) {
-      await queueWrite(COLLECTION.WEIGHT_LOGS, "add", {
+      const docId = `${user.uid}_weight_${today}`;
+      await queueWrite(COLLECTION.WEIGHT_LOGS, "set", {
         userId: user.uid,
         weightKg: w,
         weight: w,
         photoUrl: uploadedPhotoUrl,
         date: today,
         createdAt: serverTimestamp(),
-      });
+      }, docId);
     }
 
     setSaving(false);

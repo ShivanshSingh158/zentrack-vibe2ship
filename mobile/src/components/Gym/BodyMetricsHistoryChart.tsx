@@ -26,14 +26,14 @@ export const BodyMetricsHistoryChart: React.FC<BodyMetricsHistoryChartProps> = R
   const CHART_H = 110;
 
   const chartPoints = useMemo(() => {
-    if (entries.length < 2) return null;
-    const weights = entries.map(l => l.weight).filter(w => w > 0);
-    if (weights.length < 2) return null;
+    const validEntries = (entries || []).filter(l => Number.isFinite(l.weight) && l.weight > 0);
+    if (validEntries.length < 2) return null;
+    const weights = validEntries.map(l => l.weight);
     const minW = Math.min(...weights) - 0.5;
     const maxW = Math.max(...weights) + 0.5;
     const range = maxW - minW || 1;
-    return entries.map((entry, i) => {
-      const x = 20 + (i / (entries.length - 1)) * (CHART_W - 40);
+    return validEntries.map((entry, i) => {
+      const x = 20 + (i / (validEntries.length - 1)) * (CHART_W - 40);
       const y = CHART_H - (((entry.weight - minW) / range) * (CHART_H - 28) + 14);
       return { x, y, weight: entry.weight, date: entry.date };
     });

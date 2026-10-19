@@ -17,25 +17,31 @@ interface Props {
   onClose: () => void;
 }
 
+type HistoryItem = { date: string; logItem?: any; ex?: any };
+
 export function ExerciseHistoryDrawer({ visible, exerciseName, exerciseId, onClose }: Props) {
   const { colors, isDark } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const { gymLogs } = useWellnessData();
 
   // Find history: either all workouts, or specific exercise
-  const history: any[] = exerciseId === 'all'
-    ? gymLogs
+  const history = React.useMemo<HistoryItem[]>(() => {
+    if (!visible || !gymLogs) return [];
+    if (exerciseId === 'all') {
+      return gymLogs
         .filter(log => log.exercises && log.exercises.length > 0)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        .map(log => ({ date: log.date, logItem: log }))
-    : gymLogs
-        .map(log => ({
-          date: log.date,
-          ex: log.exercises?.find(e => e.exerciseId === exerciseId)
-        }))
-        .filter(item => item.ex)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        .slice(0, 20);
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+        .map(log => ({ date: log.date, logItem: log }));
+    }
+    return gymLogs
+      .map(log => ({
+        date: log.date,
+        ex: log.exercises?.find((e: any) => e.exerciseId === exerciseId),
+      }))
+      .filter(item => Boolean(item.ex))
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .slice(0, 20);
+  }, [visible, gymLogs, exerciseId]);
 
   return (
     <Modal visible={visible} animationType="slide" transparent>

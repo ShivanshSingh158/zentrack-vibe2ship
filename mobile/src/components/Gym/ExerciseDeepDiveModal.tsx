@@ -17,6 +17,7 @@ import {
   ScrollView,
   StyleSheet,
   Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import Svg, { Path, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -58,9 +59,15 @@ function ExerciseDeepDiveModal({ visible, exerciseName, gymLogs, onClose }: Prop
             const completedSets = (ex.setsLog || []).filter(s => s.completed && !s.isWarmup);
             if (completedSets.length > 0) {
               const topWeight = Math.max(0, ...completedSets.map(s => Number(s.weight) || 0));
-              const topSet = completedSets.find(s => Number(s.weight) === topWeight) || completedSets[0];
-              const maxReps = Number(topSet?.reps) || 0;
-              const oneRM = estimate1RM(topWeight, maxReps, 'epley');
+              const maxRepsAtTopWeight = Math.max(
+                0,
+                ...completedSets.filter(s => Number(s.weight) === topWeight).map(s => Number(s.reps) || 0)
+              );
+              const oneRM = Math.max(
+                0,
+                ...completedSets.map(s => estimate1RM(Number(s.weight) || 0, Number(s.reps) || 0, 'epley'))
+              );
+              const maxReps = maxRepsAtTopWeight;
 
               // Compute average RIR
               let rirSum = 0;
@@ -104,6 +111,8 @@ function ExerciseDeepDiveModal({ visible, exerciseName, gymLogs, onClose }: Prop
         best1RMVal = s.oneRM;
         bestDate = s.date;
         bestReps = s.maxReps;
+      }
+      if (s.topWeight > heaviestWeight) {
         heaviestWeight = s.topWeight;
       }
     }
@@ -123,7 +132,8 @@ function ExerciseDeepDiveModal({ visible, exerciseName, gymLogs, onClose }: Prop
   const recent5 = useMemo(() => historySessions.slice(-5).reverse(), [historySessions]);
 
   // Chart Dimensions & SVG Path Builder
-  const chartWidth = Dimensions.get('window').width - 72;
+  const { width: windowWidth } = useWindowDimensions();
+  const chartWidth = windowWidth - 72;
   const chartHeight = 130;
 
   const chartData = useMemo(() => {
@@ -144,7 +154,8 @@ function ExerciseDeepDiveModal({ visible, exerciseName, gymLogs, onClose }: Prop
     const coordinates = pts.map((p, idx) => {
       const val = curveMode === 'top' ? p.topWeight : curveMode === '1rm' ? p.oneRM : p.avgRIR;
       const x = padX + (idx / (pts.length - 1)) * innerW;
-      const y = chartHeight - padY - ((val - minVal) / range) * innerH;
+      const norm = maxVal === minVal ? 0.5 : (val - minVal) / range;
+      const y = chartHeight - padY - norm * innerH;
       return { x, y, val, date: p.date.slice(5), rir: p.avgRIR };
     });
 

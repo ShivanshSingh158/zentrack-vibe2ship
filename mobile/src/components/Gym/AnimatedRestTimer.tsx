@@ -36,6 +36,10 @@ export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(fu
   const breatheAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    if (isExpanded) {
+      breatheAnim.setValue(1);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(breatheAnim, {
@@ -52,7 +56,7 @@ export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(fu
     );
     loop.start();
     return () => loop.stop();
-  }, [breatheAnim]);
+  }, [breatheAnim, isExpanded]);
 
   // Draggable position state (PanResponder)
   const pan = useRef(new Animated.ValueXY()).current;
@@ -83,6 +87,7 @@ export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(fu
         }).start();
       },
       onPanResponderTerminate: () => {
+        pan.flattenOffset();
         Animated.spring(pan, {
           toValue: { x: 0, y: 0 },
           useNativeDriver: false,
@@ -97,6 +102,11 @@ export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(fu
     return Math.max(0, durationSecs - elapsed);
   });
 
+  const onSkipRef = useRef(onSkip);
+  useEffect(() => {
+    onSkipRef.current = onSkip;
+  }, [onSkip]);
+
   useEffect(() => {
     // Reset position to default dock location whenever a new timer starts
     pan.setValue({ x: 0, y: 0 });
@@ -106,11 +116,12 @@ export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(fu
 
   useEffect(() => {
     let skipped = false;
+    let timeoutId: NodeJS.Timeout | null = null;
     const updateTimer = () => {
       if (skipped) return;
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
       const rem = Math.max(0, durationSecs - elapsed);
-      setRemSecs(rem);
+      setRemSecs(prev => (prev !== rem ? rem : prev));
 
       // Synthesizer Audio Cues: 3... 2... 1... Tick
       if (rem > 0 && rem <= 3 && lastBeepSecRef.current !== rem) {
@@ -124,9 +135,9 @@ export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(fu
           lastBeepSecRef.current = 0;
           playTimerFinishChime();
         }
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           InteractionManager.runAfterInteractions(() => {
-            onSkip();
+            onSkipRef.current();
           });
         }, 100);
       }
@@ -134,7 +145,10 @@ export const AnimatedRestTimer: React.FC<AnimatedRestTimerProps> = React.memo(fu
 
     updateTimer();
     const interval = setInterval(updateTimer, 500);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [startTime, durationSecs]);
 
   const m = Math.floor(remSecs / 60);

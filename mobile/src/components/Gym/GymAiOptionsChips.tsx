@@ -19,7 +19,11 @@ export const GymAiOptionsChips: React.FC<GymAiOptionsChipsProps> = React.memo(({
   disabled,
 }) => {
   const { colors, isDark } = useTheme();
-  const scaleAnims = useRef(options.map(() => new Animated.Value(1))).current;
+  const scaleAnimsRef = useRef<Animated.Value[]>([]);
+  while (scaleAnimsRef.current.length < options.length) {
+    scaleAnimsRef.current.push(new Animated.Value(1));
+  }
+  const scaleAnims = scaleAnimsRef.current;
 
   const pressIn = (i: number) =>
     Animated.spring(scaleAnims[i], { toValue: 0.94, useNativeDriver: true, speed: 40 }).start();

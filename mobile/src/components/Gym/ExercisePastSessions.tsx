@@ -18,8 +18,9 @@ export const ExercisePastSessions: React.FC<ExercisePastSessionsProps> = React.m
   styles,
 }) => {
   const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return formatDateShort(d.toISOString().slice(0, 10)) + ' ' + d.getFullYear();
+    if (!dateStr) return '';
+    const cleanDate = dateStr.slice(0, 10);
+    return `${formatDateShort(cleanDate)} ${cleanDate.slice(0, 4)}`;
   };
 
   if (history.length === 0) {
@@ -34,14 +35,16 @@ export const ExercisePastSessions: React.FC<ExercisePastSessionsProps> = React.m
   return (
     <>
       {history.map((item, index) => {
-        const ex = item.ex!;
+        const ex = item.ex;
+        if (!ex) return null;
+        const setsLog = ex.setsLog || [];
         const maxWeight = Math.max(
           0,
-          ...ex.setsLog
+          ...setsLog
             .filter((s: any) => s.completed && s.weight)
-            .map((s: any) => s.weight as number)
+            .map((s: any) => Number(s.weight) || 0)
         );
-        const completedSets = ex.setsLog.filter((s: any) => s.completed).length;
+        const completedSets = setsLog.filter((s: any) => s.completed).length;
 
         return (
           <View key={index} style={styles.historyItem}>
@@ -52,7 +55,7 @@ export const ExercisePastSessions: React.FC<ExercisePastSessionsProps> = React.m
               </Text>
             </View>
             <View style={styles.setsList}>
-              {ex.setsLog.map((s: any, idx: number) => (
+              {setsLog.map((s: any, idx: number) => (
                 <View
                   key={idx}
                   style={[

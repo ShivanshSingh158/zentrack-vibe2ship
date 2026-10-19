@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-import { FONT_SIZE } from '../../theme/tokens';
+import { FONT_SIZE, FONT_FAMILY } from '../../theme/tokens';
 import { hapticMedium, hapticLight } from '../../utils/haptics';
 import { useTheme } from '../../contexts/ThemeContext';
 import { UserGymPlanDoc, GymPlanDay } from '../../types/gym.types';
@@ -114,6 +114,12 @@ export function GymScheduleSettingsModal({
   const saveEditedDayWeekly = () => {
     if (editingDayIdx === null) return;
     hapticLight();
+    const startMins = tempStartTimeWeekly.getHours() * 60 + tempStartTimeWeekly.getMinutes();
+    let endMins = tempEndTimeWeekly.getHours() * 60 + tempEndTimeWeekly.getMinutes();
+    if (endMins <= startMins) {
+      endMins = Math.min(23 * 60 + 59, startMins + 60);
+      tempEndTimeWeekly.setHours(Math.floor(endMins / 60), endMins % 60, 0, 0);
+    }
     const startStr = `${tempStartTimeWeekly.getHours().toString().padStart(2, '0')}:${tempStartTimeWeekly.getMinutes().toString().padStart(2, '0')}`;
     const endStr = `${tempEndTimeWeekly.getHours().toString().padStart(2, '0')}:${tempEndTimeWeekly.getMinutes().toString().padStart(2, '0')}`;
     setLocalDays(prev => ({
@@ -422,24 +428,35 @@ export function GymScheduleSettingsModal({
                       </View>
 
                       {showPickerWeekly && (
-                        <DateTimePicker
-                          value={showPickerWeekly === 'start' ? tempStartTimeWeekly : tempEndTimeWeekly}
-                          mode="time"
-                          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                          onChange={(event, selectedDate) => {
-                            setShowPickerWeekly(null);
-                            if (selectedDate) {
+                        <>
+                          <DateTimePicker
+                            value={showPickerWeekly === 'start' ? tempStartTimeWeekly : tempEndTimeWeekly}
+                            mode="time"
+                            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            onChange={(event, selectedDate) => {
+                              if (Platform.OS === 'android') {
+                                setShowPickerWeekly(null);
+                              }
+                              if (event.type === 'dismissed' || !selectedDate) return;
+
                               if (showPickerWeekly === 'start') {
                                 setTempStartTimeWeekly(selectedDate);
-                                const newEnd = new Date(selectedDate);
-                                newEnd.setHours(newEnd.getHours() + 1);
+                                const newEnd = new Date(selectedDate.getTime() + 60 * 60 * 1000);
                                 setTempEndTimeWeekly(newEnd);
                               } else {
                                 setTempEndTimeWeekly(selectedDate);
                               }
-                            }
-                          }}
-                        />
+                            }}
+                          />
+                          {Platform.OS === 'ios' && (
+                            <TouchableOpacity
+                              onPress={() => setShowPickerWeekly(null)}
+                              style={{ alignSelf: 'flex-end', paddingVertical: 6, paddingHorizontal: 12 }}
+                            >
+                              <Text style={{ color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold, fontSize: 13 }}>Done</Text>
+                            </TouchableOpacity>
+                          )}
+                        </>
                       )}
                     </>
                   )}

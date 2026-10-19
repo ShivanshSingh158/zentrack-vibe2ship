@@ -147,6 +147,8 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
       if (raw && raw.trim()) {
         const num = parseFloat(raw);
         if (!isNaN(num)) (updates as any)[key] = num;
+      } else {
+        (updates as any)[key] = undefined;
       }
     });
 

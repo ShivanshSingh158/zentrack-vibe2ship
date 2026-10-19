@@ -33,6 +33,65 @@ export const GymAiChatBubble: React.FC<GymAiChatBubbleProps> = React.memo(({
 }) => {
   const isUser = msg.role === 'user';
 
+  const markdownStyles = React.useMemo(() => ({
+    body: { color: colors.textPrimary, fontSize: 14, lineHeight: 20 },
+    strong: { fontFamily: FONT_FAMILY.bold, fontWeight: '700' as const, color: colors.textPrimary },
+    em: { fontStyle: 'italic' as const, color: colors.textPrimary },
+    bullet_list: { marginVertical: 4 },
+    list_item: { marginVertical: 2, color: colors.textPrimary },
+    bullet_list_icon: { color: colors.accentPrimary, fontSize: 13, marginTop: 4 },
+    ordered_list_icon: { color: colors.accentPrimary, fontSize: 13 },
+    paragraph: { marginTop: 0, marginBottom: 6, color: colors.textPrimary },
+    heading1: { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold, fontSize: 18, marginTop: 10, marginBottom: 4 },
+    heading2: { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold, fontSize: 16, marginTop: 8, marginBottom: 4 },
+    heading3: { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold, fontSize: 14, marginTop: 6, marginBottom: 2 },
+    code_inline: {
+      backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)',
+      color: isDark ? '#c4b5fd' : colors.accentPrimary,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      fontSize: 12.5,
+      fontWeight: '600' as const,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 5,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(165, 153, 255, 0.3)' : 'rgba(108, 92, 231, 0.2)',
+    },
+    code_block: {
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#f5f5f7',
+      color: colors.textPrimary,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      fontSize: 12,
+      padding: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.border,
+      marginVertical: 6,
+    },
+    fence: {
+      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#f5f5f7',
+      color: colors.textPrimary,
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      fontSize: 12,
+      padding: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.border,
+      marginVertical: 6,
+    },
+    blockquote: {
+      backgroundColor: isDark ? 'rgba(165, 153, 255, 0.06)' : 'rgba(108, 92, 231, 0.06)',
+      borderLeftColor: colors.accentPrimary,
+      borderLeftWidth: 3,
+      paddingLeft: 10,
+      paddingVertical: 4,
+      marginVertical: 6,
+      borderRadius: 4,
+    },
+    link: { color: colors.accentPrimary, textDecorationLine: 'underline' as const },
+    hr: { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : colors.border, height: 1, marginVertical: 8 },
+  }), [colors, isDark]);
+
   return (
     <View style={[styles.msgRow, isUser ? styles.msgRowUser : styles.msgRowAi]}>
       <View style={isUser ? styles.msgBubbleUser : styles.msgBubbleAi}>
@@ -40,66 +99,7 @@ export const GymAiChatBubble: React.FC<GymAiChatBubbleProps> = React.memo(({
           <Text style={styles.msgTextUser}>{msg.text}</Text>
         ) : (
           <>
-            <Markdown
-              style={{
-                body: { color: colors.textPrimary, fontSize: 14, lineHeight: 20 },
-                strong: { fontFamily: FONT_FAMILY.bold, fontWeight: '700', color: colors.textPrimary },
-                em: { fontStyle: 'italic', color: colors.textPrimary },
-                bullet_list: { marginVertical: 4 },
-                list_item: { marginVertical: 2, color: colors.textPrimary },
-                bullet_list_icon: { color: colors.accentPrimary, fontSize: 13, marginTop: 4 },
-                ordered_list_icon: { color: colors.accentPrimary, fontSize: 13 },
-                paragraph: { marginTop: 0, marginBottom: 6, color: colors.textPrimary },
-                heading1: { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold, fontSize: 18, marginTop: 10, marginBottom: 4 },
-                heading2: { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold, fontSize: 16, marginTop: 8, marginBottom: 4 },
-                heading3: { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold, fontSize: 14, marginTop: 6, marginBottom: 2 },
-                code_inline: {
-                  backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)',
-                  color: isDark ? '#c4b5fd' : colors.accentPrimary,
-                  fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-                  fontSize: 12.5,
-                  fontWeight: '600',
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  borderRadius: 5,
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(165, 153, 255, 0.3)' : 'rgba(108, 92, 231, 0.2)',
-                },
-                code_block: {
-                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#f5f5f7',
-                  color: colors.textPrimary,
-                  fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-                  fontSize: 12,
-                  padding: 10,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.border,
-                  marginVertical: 6,
-                },
-                fence: {
-                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#f5f5f7',
-                  color: colors.textPrimary,
-                  fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-                  fontSize: 12,
-                  padding: 10,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.border,
-                  marginVertical: 6,
-                },
-                blockquote: {
-                  backgroundColor: isDark ? 'rgba(165, 153, 255, 0.06)' : 'rgba(108, 92, 231, 0.06)',
-                  borderLeftColor: colors.accentPrimary,
-                  borderLeftWidth: 3,
-                  paddingLeft: 10,
-                  paddingVertical: 4,
-                  marginVertical: 6,
-                  borderRadius: 4,
-                },
-                link: { color: colors.accentPrimary, textDecorationLine: 'underline' },
-                hr: { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : colors.border, height: 1, marginVertical: 8 },
-              }}
-            >
+            <Markdown style={markdownStyles}>
               {msg.text}
             </Markdown>
 
