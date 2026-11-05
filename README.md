@@ -3,7 +3,7 @@
 # 🧘 ZenTrack — The Autonomous AI Life OS
 ### *The Next-Generation Multi-Agent Productivity Operating System for Web & Mobile*
 
-[![Live Web App](https://img.shields.io/badge/Live%20Web%20App-zentrack--vibe2ship.vercel.app-6366f1?style=for-the-badge&logo=vercel&logoColor=white)](https://zentrack-vibe2ship.vercel.app)
+[![Live Web App](https://img.shields.io/badge/Live%20Web%20App-myzentrack.vercel.app-6366f1?style=for-the-badge&logo=vercel&logoColor=white)](https://myzentrack.vercel.app)
 [![Android APK](https://img.shields.io/badge/Download-Android%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://zentrack-vibe2ship.vercel.app/ZenTrack.apk)
 [![Powered by Gemini](https://img.shields.io/badge/AI%20Core-Gemini%202.5%20Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
 [![Voice by Sarvam](https://img.shields.io/badge/Voice%20TTS-Sarvam%20AI-FF6B6B?style=for-the-badge)](https://sarvam.ai)
