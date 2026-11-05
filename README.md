@@ -3,8 +3,8 @@
 # 🧘 ZenTrack — The Autonomous AI Life OS
 ### *The Next-Generation Multi-Agent Productivity Operating System for Web & Mobile*
 
-[![Live Web App](https://img.shields.io/badge/Live%20Web%20App-myzentrack.vercel.app-6366f1?style=for-the-badge&logo=vercel&logoColor=white)](https://myzentrack.vercel.app)
-[![Android APK](https://img.shields.io/badge/Download-Android%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://zentrack-vibe2ship.vercel.app/ZenTrack.apk)
+[![Live Web App](https://img.shields.io/badge/Live%20Web%20App-myzentrackworld.vercel.app-6366f1?style=for-the-badge&logo=vercel&logoColor=white)](https://myzentrackworld.vercel.app)
+[![Android APK](https://img.shields.io/badge/Download-Android%20APK-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://myzentrackworld.vercel.app/ZenTrack.apk)
 [![Powered by Gemini](https://img.shields.io/badge/AI%20Core-Gemini%202.5%20Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev)
 [![Voice by Sarvam](https://img.shields.io/badge/Voice%20TTS-Sarvam%20AI-FF6B6B?style=for-the-badge)](https://sarvam.ai)
 [![React 19 & Expo](https://img.shields.io/badge/Cross--Platform-React%2019%20%7C%20Expo%2054-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://expo.dev)
