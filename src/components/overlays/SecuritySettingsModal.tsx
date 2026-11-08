@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { 
   X, User, Palette, Bell, ShieldCheck, 
   LogOut, Copy, Check, RefreshCw, Trash2, 
-  Sun, Moon, Download, Sliders, Volume2, Clock
+  Sun, Moon, Download, Sliders
 } from 'lucide-react';
 import { auth, db } from '../../services/firebase';
 import { signOut, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
@@ -30,17 +30,14 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
   onToggleTheme,
   initialTab = 'account'
 }) => {
-  const { 
-    tasks, 
-    notes,
-  } = useGlobalData();
+  const { tasks, notes } = useGlobalData();
 
   const currentUser = userProp || auth.currentUser;
   const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab);
   const [copiedUid, setCopiedUid] = useState(false);
   const [logoutConfirmStep, setLogoutConfirmStep] = useState(false);
 
-  // ── User Profile Edit Name State ─────────────────────────────────────────
+  // ── Profile Edit Name State ──────────────────────────────────────────────
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(() => currentUser?.displayName || '');
   const [isSavingName, setIsSavingName] = useState(false);
@@ -86,7 +83,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
     } else {
       document.body.classList.remove('density-compact');
     }
-    toast.success(`Density updated to ${val}`);
+    toast.success(`Density: ${val}`);
   };
 
   const handleToggleReducedMotion = (val: boolean) => {
@@ -109,7 +106,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
   const handleSetReminderLeadTime = (mins: '15' | '30' | '60' | '120') => {
     setReminderLeadTime(mins);
     localStorage.setItem('zen_reminder_lead_time', mins);
-    toast.success(`Default reminder buffer set to ${mins} mins`);
+    toast.success(`Reminder buffer: ${mins}m`);
   };
 
   const handleSaveDisplayName = async () => {
@@ -124,7 +121,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
         updatedAt: new Date().toISOString()
       }, { merge: true });
       setIsEditingName(false);
-      toast.success('Display name saved successfully');
+      toast.success('Display name saved');
     } catch (err: any) {
       console.error('Failed to update name:', err);
       toast.error('Failed to update display name');
@@ -137,7 +134,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
     if (!currentUser?.email) return;
     try {
       await sendPasswordResetEmail(auth, currentUser.email);
-      toast.success(`Password reset email sent to ${currentUser.email}`);
+      toast.success(`Password reset sent to ${currentUser.email}`);
     } catch (err: any) {
       toast.error(err.message || 'Failed to send password reset');
     }
@@ -153,9 +150,9 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
         body: 'Your notification pipeline is connected and active.',
         icon: '/pwa-192x192.png'
       });
-      toast.success('Test notification sent to your desktop');
+      toast.success('Test notification dispatched');
     } catch {
-      toast.info('Test notification dispatched');
+      toast.info('Test notification sent');
     }
   };
 
@@ -168,9 +165,9 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
       const permission = await Notification.requestPermission();
       setBrowserNotifPermission(permission);
       if (permission === 'granted') {
-        toast.success('Browser desktop notifications enabled!');
+        toast.success('Desktop notifications enabled');
       } else {
-        toast.info(`Notification permission: ${permission}`);
+        toast.info(`Permission: ${permission}`);
       }
     } catch (err) {
       console.error('Failed to request notification permission:', err);
@@ -181,7 +178,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
     if (!currentUser?.uid) return;
     navigator.clipboard.writeText(currentUser.uid).then(() => {
       setCopiedUid(true);
-      toast.success('User ID copied to clipboard');
+      toast.success('User ID copied');
       setTimeout(() => setCopiedUid(false), 2000);
     });
   };
@@ -233,7 +230,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast.success(`Data exported: ${(tasks || []).length} tasks, ${(notes || []).length} notes`);
+      toast.success(`Exported ${(tasks || []).length} tasks, ${(notes || []).length} notes`);
     } catch (err) {
       console.error('Export failed:', err);
       toast.error('Failed to export data JSON');
@@ -259,7 +256,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
       }
       
       await batch.commit();
-      toast.success('Account data wiped cleanly');
+      toast.success('Account data wiped');
       window.location.reload();
     } catch (e) {
       console.error("Failed to wipe data", e);
@@ -279,30 +276,26 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
   return (
     <div className="security-modal-overlay" onClick={onClose}>
       <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 16 }}
+        initial={{ opacity: 0, scale: 0.97, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 16 }}
-        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+        exit={{ opacity: 0, scale: 0.97, y: 12 }}
+        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
         className="security-modal-container"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Top Header */}
         <div className="security-modal-header">
           <div className="security-modal-header-left">
-            <div className="security-modal-header-icon">
-              <Sliders size={20} strokeWidth={2.2} />
-            </div>
-            <div>
-              <h2 className="security-modal-title">Settings & Preferences</h2>
-              <p className="security-modal-subtitle">Manage your account, appearance, notifications & data</p>
-            </div>
+            <Sliders size={16} className="modal-header-icon" />
+            <span className="security-modal-title">Settings</span>
           </div>
           <button 
+            type="button"
             onClick={onClose} 
             className="security-modal-close-btn"
-            aria-label="Close modal"
+            aria-label="Close settings"
           >
-            <X size={19} />
+            <X size={16} />
           </button>
         </div>
 
@@ -317,8 +310,8 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
                 className={`settings-sidebar-tab ${activeTab === 'account' ? 'active' : ''}`}
                 onClick={() => setActiveTab('account')}
               >
-                <User size={16} />
-                <span>Account & Profile</span>
+                <User size={15} />
+                <span>Account</span>
               </button>
 
               <button
@@ -326,8 +319,8 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
                 className={`settings-sidebar-tab ${activeTab === 'appearance' ? 'active' : ''}`}
                 onClick={() => setActiveTab('appearance')}
               >
-                <Palette size={16} />
-                <span>Appearance & Themes</span>
+                <Palette size={15} />
+                <span>Appearance</span>
               </button>
 
               <button
@@ -335,7 +328,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
                 className={`settings-sidebar-tab ${activeTab === 'notifications' ? 'active' : ''}`}
                 onClick={() => setActiveTab('notifications')}
               >
-                <Bell size={16} />
+                <Bell size={15} />
                 <span>Notifications</span>
               </button>
 
@@ -344,12 +337,12 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
                 className={`settings-sidebar-tab ${activeTab === 'data' ? 'active' : ''}`}
                 onClick={() => setActiveTab('data')}
               >
-                <ShieldCheck size={16} />
+                <ShieldCheck size={15} />
                 <span>Data & Privacy</span>
               </button>
             </div>
 
-            {/* Quick Log Out Button in Sidebar Footer */}
+            {/* Quick Log Out in Sidebar Footer */}
             <div className="settings-nav-footer">
               <button
                 type="button"
@@ -357,7 +350,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
                 onClick={handleTriggerLogout}
                 title="Log out of ZenTrack"
               >
-                <LogOut size={15} />
+                <LogOut size={14} />
                 <span>{logoutConfirmStep ? 'Confirm Log Out?' : 'Log Out'}</span>
               </button>
             </div>
@@ -367,241 +360,239 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
           <main className="settings-content-wrapper">
             <div className="settings-content-body">
 
-              {/* ── TAB 1: ACCOUNT & PROFILE ─────────────────────────────── */}
+              {/* ── TAB 1: ACCOUNT ─────────────────────────────────────── */}
               {activeTab === 'account' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  <div className="settings-tab-header">
-                    <h3 className="settings-tab-title">Account & Profile</h3>
-                    <p className="settings-tab-subtitle">Manage your personal credentials, subscription tier, and active session</p>
+                <div className="settings-section">
+                  <div className="settings-section-header">
+                    <h3 className="settings-section-title">Profile & Identity</h3>
                   </div>
 
-                  {/* Profile Identity Card */}
-                  <div className="settings-profile-card">
-                    <div className="settings-avatar-wrapper">
-                      {currentUser?.photoURL ? (
-                        <img 
-                          src={currentUser.photoURL} 
-                          alt={displayName} 
-                          className="settings-profile-avatar"
-                        />
-                      ) : (
-                        <div className="settings-avatar-fallback">{initialLetter}</div>
-                      )}
-                    </div>
-
-                    <div className="settings-profile-details">
-                      <div className="settings-name-row">
-                        {isEditingName ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-                            <input
-                              type="text"
-                              value={nameInput}
-                              onChange={(e) => setNameInput(e.target.value)}
-                              placeholder="Your full name"
-                              className="security-input"
-                              style={{ maxWidth: '240px', padding: '0.35rem 0.65rem', fontSize: '0.9rem' }}
-                              autoFocus
+                  <div className="settings-group-card">
+                    {/* Row 1: Profile Info */}
+                    <div className="settings-row profile-row">
+                      <div className="settings-profile-left">
+                        <div className="settings-avatar-wrapper">
+                          {currentUser?.photoURL ? (
+                            <img 
+                              src={currentUser.photoURL} 
+                              alt={displayName} 
+                              className="settings-profile-avatar"
                             />
-                            <button
-                              type="button"
-                              onClick={handleSaveDisplayName}
-                              disabled={isSavingName}
-                              className="security-btn security-btn-primary"
-                              style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
-                            >
-                              {isSavingName ? <RefreshCw size={13} className="animate-spin" /> : 'Save'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setIsEditingName(false);
-                                setNameInput(currentUser?.displayName || '');
-                              }}
-                              className="security-btn"
-                              style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem' }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <>
-                            <h4 className="settings-profile-name">{displayName}</h4>
-                            <button 
-                              type="button" 
-                              onClick={() => setIsEditingName(true)}
-                              className="settings-edit-name-btn"
-                              title="Edit display name"
-                            >
-                              Edit
-                            </button>
-                          </>
-                        )}
+                          ) : (
+                            <div className="settings-avatar-fallback">{initialLetter}</div>
+                          )}
+                        </div>
+
+                        <div className="settings-profile-info">
+                          {isEditingName ? (
+                            <div className="name-edit-inline">
+                              <input
+                                type="text"
+                                value={nameInput}
+                                onChange={(e) => setNameInput(e.target.value)}
+                                className="settings-input-sm"
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                onClick={handleSaveDisplayName}
+                                disabled={isSavingName}
+                                className="settings-btn-primary-sm"
+                              >
+                                {isSavingName ? <RefreshCw size={12} className="animate-spin" /> : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsEditingName(false);
+                                  setNameInput(currentUser?.displayName || '');
+                                }}
+                                className="settings-btn-ghost-sm"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="profile-name-wrap">
+                              <span className="profile-name-text">{displayName}</span>
+                              <button 
+                                type="button" 
+                                onClick={() => setIsEditingName(true)}
+                                className="profile-edit-trigger"
+                                title="Edit display name"
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          )}
+                          <span className="profile-email-text">{currentUser?.email || 'No email attached'}</span>
+                        </div>
                       </div>
 
-                      <div className="settings-email-row">
-                        <span>{currentUser?.email || 'No email attached'}</span>
-                      </div>
-
-                      <div className="settings-badges-row">
-                        <span className="settings-plan-badge">Pro Active</span>
-                        <span className="settings-provider-badge">
-                          {currentUser?.providerData?.[0]?.providerId === 'google.com' ? 'Google Auth' : 'Email/Password'}
+                      <div className="settings-row-right">
+                        <span className="cloud-status-indicator">
+                          <span className="cloud-status-dot" /> Cloud Active
                         </span>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Unique Cloud UID */}
-                  <div className="security-card-box">
-                    <div className="security-card-row">
-                      <div>
-                        <div className="security-card-label">Cloud Workspace User ID</div>
-                        <div className="security-card-sub">Unique cryptographic identifier for your Firestore data sync</div>
+                    <div className="settings-hairline" />
+
+                    {/* Row 2: User ID */}
+                    <div className="settings-row">
+                      <div className="settings-row-left">
+                        <span className="settings-row-title">User ID</span>
+                        <span className="settings-row-subtitle">Cryptographic sync identifier</span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <code className="security-code-tag">{currentUser?.uid || 'Unknown'}</code>
+                      <div className="settings-row-right">
+                        <code className="settings-code-inline">
+                          {currentUser?.uid ? `${currentUser.uid.slice(0, 8)}...${currentUser.uid.slice(-6)}` : 'Unknown'}
+                        </code>
                         <button
                           type="button"
                           onClick={handleCopyUid}
-                          className="security-icon-btn"
+                          className="settings-action-icon-btn"
                           title="Copy User ID"
                         >
-                          {copiedUid ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
+                          {copiedUid ? <Check size={13} color="#5eda9e" /> : <Copy size={13} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="settings-hairline" />
+
+                    {/* Row 3: Password Reset */}
+                    <div className="settings-row">
+                      <div className="settings-row-left">
+                        <span className="settings-row-title">Password Recovery</span>
+                        <span className="settings-row-subtitle">Send a secure reset link to your email</span>
+                      </div>
+                      <div className="settings-row-right">
+                        <button
+                          type="button"
+                          onClick={handleSendPasswordReset}
+                          className="settings-btn-secondary"
+                        >
+                          Send Reset Link
                         </button>
                       </div>
                     </div>
                   </div>
-
-                  {/* Password & Security Actions */}
-                  <div className="security-card-box">
-                    <div className="security-card-row">
-                      <div>
-                        <div className="security-card-label">Reset Account Password</div>
-                        <div className="security-card-sub">Dispatch a secure password recovery link to your primary email address</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleSendPasswordReset}
-                        className="security-btn"
-                      >
-                        Send Reset Link
-                      </button>
-                    </div>
-                  </div>
                 </div>
               )}
 
-              {/* ── TAB 2: APPEARANCE & THEMES ───────────────────────────── */}
+              {/* ── TAB 2: APPEARANCE ───────────────────────────────────── */}
               {activeTab === 'appearance' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  <div className="settings-tab-header">
-                    <h3 className="settings-tab-title">Appearance & Themes</h3>
-                    <p className="settings-tab-subtitle">Configure color schemes, layout density, and interface motion preferences</p>
+                <div className="settings-section">
+                  <div className="settings-section-header">
+                    <h3 className="settings-section-title">Theme & Layout</h3>
                   </div>
 
-                  {/* Theme Selector */}
-                  <div className="security-card-box">
-                    <h4 className="security-section-title">Color Theme</h4>
-                    <p className="security-section-desc">Choose between Obsidian Glassmorphism and Minimal Light Mode</p>
-
-                    <div className="settings-theme-cards-grid">
-                      <div 
-                        className={`settings-theme-preview-card ${!isPlainTheme ? 'selected' : ''}`}
-                        onClick={() => { if (isPlainTheme && onToggleTheme) onToggleTheme(); }}
-                      >
-                        <div className="theme-preview-box dark-theme-preview">
-                          <Moon size={20} color="#a599ff" />
-                        </div>
-                        <div className="theme-card-meta">
-                          <span className="theme-card-name">Obsidian Dark</span>
-                          <span className="theme-card-desc">Deep slate glassmorphism with lavender accents</span>
-                        </div>
-                        {!isPlainTheme && <div className="theme-check-pill"><Check size={12} /> Active</div>}
+                  <div className="settings-group-card">
+                    {/* Row 1: Color Theme */}
+                    <div className="settings-row">
+                      <div className="settings-row-left">
+                        <span className="settings-row-title">Color Theme</span>
+                        <span className="settings-row-subtitle">
+                          {!isPlainTheme ? 'Obsidian Cosmos (Pure Dark Mode)' : 'Frost Quartz (Minimal Light Mode)'}
+                        </span>
                       </div>
-
-                      <div 
-                        className={`settings-theme-preview-card ${isPlainTheme ? 'selected' : ''}`}
-                        onClick={() => { if (!isPlainTheme && onToggleTheme) onToggleTheme(); }}
-                      >
-                        <div className="theme-preview-box light-theme-preview">
-                          <Sun size={20} color="#f59e0b" />
+                      <div className="settings-row-right">
+                        <div className="settings-segmented-control">
+                          <button
+                            type="button"
+                            className={`segmented-item ${!isPlainTheme ? 'active' : ''}`}
+                            onClick={() => { if (isPlainTheme && onToggleTheme) onToggleTheme(); }}
+                          >
+                            <Moon size={12} />
+                            <span>Dark</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`segmented-item ${isPlainTheme ? 'active' : ''}`}
+                            onClick={() => { if (!isPlainTheme && onToggleTheme) onToggleTheme(); }}
+                          >
+                            <Sun size={12} />
+                            <span>Light</span>
+                          </button>
                         </div>
-                        <div className="theme-card-meta">
-                          <span className="theme-card-name">Minimal Light</span>
-                          <span className="theme-card-desc">Clean, high-contrast monochrome design</span>
-                        </div>
-                        {isPlainTheme && <div className="theme-check-pill"><Check size={12} /> Active</div>}
                       </div>
                     </div>
-                  </div>
 
-                  {/* Layout Density */}
-                  <div className="security-card-box">
-                    <h4 className="security-section-title">Layout Density</h4>
-                    <p className="security-section-desc">Adjust row heights, padding, and information density across task lists</p>
+                    <div className="settings-hairline" />
 
-                    <div className="settings-density-row">
-                      <button
-                        type="button"
-                        className={`settings-density-btn ${density === 'comfortable' ? 'active' : ''}`}
-                        onClick={() => handleToggleDensity('comfortable')}
-                      >
-                        Comfortable (Default)
-                      </button>
-                      <button
-                        type="button"
-                        className={`settings-density-btn ${density === 'compact' ? 'active' : ''}`}
-                        onClick={() => handleToggleDensity('compact')}
-                      >
-                        Compact (Dense Lists)
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Motion & Animations */}
-                  <div className="security-card-box">
-                    <div className="security-card-row">
-                      <div>
-                        <div className="security-card-label">Reduced Motion</div>
-                        <div className="security-card-sub">Disable micro-interactions and smooth page transitions for maximum performance</div>
+                    {/* Row 2: Layout Density */}
+                    <div className="settings-row">
+                      <div className="settings-row-left">
+                        <span className="settings-row-title">Layout Density</span>
+                        <span className="settings-row-subtitle">Spacing and item height across lists</span>
                       </div>
-                      <button
-                        type="button"
-                        className={`settings-toggle-switch ${reducedMotion ? 'on' : 'off'}`}
-                        onClick={() => handleToggleReducedMotion(!reducedMotion)}
-                        aria-label="Toggle reduced motion"
-                      >
-                        <div className="toggle-switch-thumb" />
-                      </button>
+                      <div className="settings-row-right">
+                        <div className="settings-segmented-control">
+                          <button
+                            type="button"
+                            className={`segmented-item ${density === 'comfortable' ? 'active' : ''}`}
+                            onClick={() => handleToggleDensity('comfortable')}
+                          >
+                            <span>Comfortable</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`segmented-item ${density === 'compact' ? 'active' : ''}`}
+                            onClick={() => handleToggleDensity('compact')}
+                          >
+                            <span>Compact</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="settings-hairline" />
+
+                    {/* Row 3: Reduced Motion */}
+                    <div className="settings-row">
+                      <div className="settings-row-left">
+                        <span className="settings-row-title">Reduced Motion</span>
+                        <span className="settings-row-subtitle">Disable transitions for maximum responsiveness</span>
+                      </div>
+                      <div className="settings-row-right">
+                        <button
+                          type="button"
+                          className={`settings-switch ${reducedMotion ? 'active' : ''}`}
+                          onClick={() => handleToggleReducedMotion(!reducedMotion)}
+                          aria-label="Toggle reduced motion"
+                        >
+                          <div className="switch-thumb" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* ── TAB 3: NOTIFICATIONS (SMS COMPLETELY REMOVED) ────────── */}
+              {/* ── TAB 3: NOTIFICATIONS ───────────────────────────────── */}
               {activeTab === 'notifications' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  <div className="settings-tab-header">
-                    <h3 className="settings-tab-title">Notifications & Alerts</h3>
-                    <p className="settings-tab-subtitle">Configure desktop push notifications, reminders, and audible alert feedback</p>
+                <div className="settings-section">
+                  <div className="settings-section-header">
+                    <h3 className="settings-section-title">Notifications & Audio</h3>
                   </div>
 
-                  {/* Browser Push Notifications */}
-                  <div className="security-card-box">
-                    <div className="security-card-row">
-                      <div>
-                        <h4 className="security-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', margin: 0 }}>
-                          <Bell size={16} /> Desktop Browser Push Notifications
-                        </h4>
-                        <p className="security-section-desc" style={{ marginTop: '0.3rem' }}>
-                          Receive alerts for approaching task deadlines, Pomodoro timer completion, and morning briefings.
-                        </p>
+                  <div className="settings-group-card">
+                    {/* Row 1: Browser Alerts */}
+                    <div className="settings-row">
+                      <div className="settings-row-left">
+                        <span className="settings-row-title">Desktop Browser Alerts</span>
+                        <span className="settings-row-subtitle">
+                          {browserNotifPermission === 'granted'
+                            ? 'Active for task deadlines and Pomodoro intervals'
+                            : 'Permission required for desktop reminders'}
+                        </span>
                       </div>
-                      <div>
+                      <div className="settings-row-right">
                         {browserNotifPermission !== 'granted' ? (
                           <button
                             type="button"
-                            className="security-btn security-btn-primary"
+                            className="settings-btn-primary"
                             onClick={handleRequestNotifPermission}
                           >
                             Enable Alerts
@@ -609,140 +600,140 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
                         ) : (
                           <button
                             type="button"
-                            className="security-btn"
+                            className="settings-btn-secondary"
                             onClick={handleSendTestNotification}
                           >
                             <Bell size={13} />
-                            <span>Send Test Alert</span>
+                            <span>Send Test</span>
                           </button>
                         )}
                       </div>
                     </div>
-                    <div style={{ marginTop: '0.75rem' }}>
-                      <span className={`settings-status-pill ${browserNotifPermission === 'granted' ? 'connected' : 'disconnected'}`}>
-                        {browserNotifPermission === 'granted' ? '● Notifications Enabled' : '○ Permission Not Granted'}
-                      </span>
-                    </div>
-                  </div>
 
-                  {/* Task Reminder Lead Time */}
-                  <div className="security-card-box">
-                    <h4 className="security-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                      <Clock size={16} /> Task Reminder Lead Time
-                    </h4>
-                    <p className="security-section-desc">
-                      Choose how far in advance desktop alerts should notify you before a scheduled task time.
-                    </p>
-                    <div className="settings-chips-group">
-                      {(['15', '30', '60', '120'] as const).map(mins => (
-                        <button
-                          key={mins}
-                          type="button"
-                          className={`settings-choice-chip ${reminderLeadTime === mins ? 'active' : ''}`}
-                          onClick={() => handleSetReminderLeadTime(mins)}
-                        >
-                          {mins === '60' ? '1 Hour' : mins === '120' ? '2 Hours' : `${mins} Minutes`}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                    <div className="settings-hairline" />
 
-                  {/* Audio & Sound Effects */}
-                  <div className="security-card-box">
-                    <div className="security-card-row">
-                      <div>
-                        <h4 className="security-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', margin: 0 }}>
-                          <Volume2 size={16} /> Sound Effects & Audio Chimes
-                        </h4>
-                        <p className="security-section-desc" style={{ marginTop: '0.3rem' }}>
-                          Play subtle audible chimes upon task completion, timer rings, and focus intervals.
-                        </p>
+                    {/* Row 2: Pre-task Lead Time */}
+                    <div className="settings-row">
+                      <div className="settings-row-left">
+                        <span className="settings-row-title">Pre-Task Buffer</span>
+                        <span className="settings-row-subtitle">Alert lead time before scheduled task time</span>
                       </div>
-                      <button
-                        type="button"
-                        className={`settings-toggle-switch ${soundEffects ? 'on' : 'off'}`}
-                        onClick={() => handleToggleSoundEffects(!soundEffects)}
-                        aria-label="Toggle sound effects"
-                      >
-                        <div className="toggle-switch-thumb" />
-                      </button>
+                      <div className="settings-row-right">
+                        <div className="settings-segmented-control">
+                          {(['15', '30', '60', '120'] as const).map(mins => (
+                            <button
+                              key={mins}
+                              type="button"
+                              className={`segmented-item ${reminderLeadTime === mins ? 'active' : ''}`}
+                              onClick={() => handleSetReminderLeadTime(mins)}
+                            >
+                              <span>{mins === '60' ? '1h' : mins === '120' ? '2h' : `${mins}m`}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="settings-hairline" />
+
+                    {/* Row 3: Audio Chimes */}
+                    <div className="settings-row">
+                      <div className="settings-row-left">
+                        <span className="settings-row-title">Audio Chimes</span>
+                        <span className="settings-row-subtitle">Sound effects on task completion and timer rings</span>
+                      </div>
+                      <div className="settings-row-right">
+                        <button
+                          type="button"
+                          className={`settings-switch ${soundEffects ? 'active' : ''}`}
+                          onClick={() => handleToggleSoundEffects(!soundEffects)}
+                          aria-label="Toggle audio chimes"
+                        >
+                          <div className="switch-thumb" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* ── TAB 4: DATA & PRIVACY ────────────────────────────────── */}
+              {/* ── TAB 4: DATA & PRIVACY ──────────────────────────────── */}
               {activeTab === 'data' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  <div className="settings-tab-header">
-                    <h3 className="settings-tab-title">Data, Backup & Privacy</h3>
-                    <p className="settings-tab-subtitle">Inspect your cloud storage metrics, export offline backups, and manage data</p>
+                <div className="settings-section">
+                  <div className="settings-section-header">
+                    <h3 className="settings-section-title">Cloud Storage & Backup</h3>
                   </div>
 
-                  {/* Cloud Item Metrics */}
-                  <div>
-                    <h4 className="security-section-title">Cloud Storage Item Metrics</h4>
-                    <div className="settings-stats-grid">
-                      <div className="settings-stat-box">
-                        <div className="settings-stat-num">{(tasks || []).length}</div>
-                        <div className="settings-stat-label">Tasks & Todos</div>
+                  <div className="settings-group-card">
+                    {/* Row 1: Metrics */}
+                    <div className="settings-row">
+                      <div className="settings-row-left">
+                        <span className="settings-row-title">Workspace Records</span>
+                        <span className="settings-row-subtitle">Synced to Firebase Firestore</span>
                       </div>
-                      <div className="settings-stat-box">
-                        <div className="settings-stat-num">{(notes || []).length}</div>
-                        <div className="settings-stat-label">Notes & Docs</div>
+                      <div className="settings-row-right">
+                        <div className="settings-stat-pill">
+                          <strong>{(tasks || []).length}</strong> tasks • <strong>{(notes || []).length}</strong> notes
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="settings-hairline" />
+
+                    {/* Row 2: Export */}
+                    <div className="settings-row">
+                      <div className="settings-row-left">
+                        <span className="settings-row-title">Export Workspace Backup</span>
+                        <span className="settings-row-subtitle">Download full JSON snapshot</span>
+                      </div>
+                      <div className="settings-row-right">
+                        <button
+                          type="button"
+                          onClick={handleExportDataJson}
+                          disabled={isExporting}
+                          className="settings-btn-secondary"
+                        >
+                          {isExporting ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
+                          <span>Export JSON</span>
+                        </button>
                       </div>
                     </div>
                   </div>
 
-                  {/* JSON Backup Export */}
-                  <div className="security-card-box">
-                    <div className="security-card-row">
-                      <div>
-                        <div className="security-card-label">Export Full Workspace Backup</div>
-                        <div className="security-card-sub">Download a JSON archive containing all tasks, notes, and profile settings</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleExportDataJson}
-                        disabled={isExporting}
-                        className="security-btn security-btn-primary"
-                      >
-                        {isExporting ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                        <span>Export JSON</span>
-                      </button>
-                    </div>
+                  {/* Danger Zone */}
+                  <div className="settings-section-header" style={{ marginTop: '1.4rem' }}>
+                    <h3 className="settings-section-title" style={{ color: '#f87171' }}>Danger Zone</h3>
                   </div>
 
-                  {/* Danger Zone: Wipe Data */}
-                  <div className="security-card-box danger-zone">
-                    <h4 className="security-section-title" style={{ color: '#ef4444' }}>Danger Zone: Wipe Workspace Data</h4>
-                    <p className="security-section-desc">
-                      Type <strong>DELETE</strong> below to irreversibly wipe all tasks and notes associated with this account.
-                    </p>
-                    <div className="security-input-row" style={{ marginTop: '0.75rem' }}>
-                      <input
-                        type="text"
-                        value={wipeConfirm}
-                        onChange={(e) => setWipeConfirm(e.target.value)}
-                        placeholder="Type DELETE to confirm"
-                        className="security-input"
-                        style={{ maxWidth: '240px', borderColor: wipeConfirm === 'DELETE' ? '#ef4444' : undefined }}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleWipeData}
-                        disabled={wipeConfirm !== 'DELETE' || isWiping}
-                        className="security-btn"
-                        style={{
-                          background: wipeConfirm === 'DELETE' ? '#ef4444' : 'rgba(239,68,68,0.1)',
-                          color: wipeConfirm === 'DELETE' ? '#ffffff' : '#ef4444',
-                          borderColor: '#ef4444',
-                          cursor: wipeConfirm === 'DELETE' ? 'pointer' : 'not-allowed'
-                        }}
-                      >
-                        {isWiping ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                        <span>Wipe All Data</span>
-                      </button>
+                  <div className="settings-group-card danger-card">
+                    <div className="settings-row" style={{ alignItems: 'flex-start' }}>
+                      <div className="settings-row-left">
+                        <span className="settings-row-title" style={{ color: '#f87171' }}>Wipe Cloud Data</span>
+                        <span className="settings-row-subtitle">
+                          Irreversibly erase all tasks and notes. Type <strong>DELETE</strong> to confirm.
+                        </span>
+                        <div style={{ marginTop: '0.6rem' }}>
+                          <input
+                            type="text"
+                            value={wipeConfirm}
+                            onChange={(e) => setWipeConfirm(e.target.value)}
+                            placeholder="Type DELETE"
+                            className="settings-input-sm"
+                            style={{ maxWidth: '160px' }}
+                          />
+                        </div>
+                      </div>
+                      <div className="settings-row-right" style={{ alignSelf: 'flex-end' }}>
+                        <button
+                          type="button"
+                          onClick={handleWipeData}
+                          disabled={wipeConfirm !== 'DELETE' || isWiping}
+                          className="settings-btn-danger"
+                        >
+                          {isWiping ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                          <span>Wipe Data</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
