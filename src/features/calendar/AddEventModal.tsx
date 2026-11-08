@@ -4,7 +4,7 @@ import {
   X, Calendar as CalendarIcon, Clock, MapPin, AlignLeft,
   Sparkles, Check, Link2, Repeat, Tag
 } from 'lucide-react';
-import { getEventColors, format12Hour } from './calendarUtils';
+import { format12Hour } from './calendarUtils';
 import { parseNLEvent, type ParsedEvent } from '../../utils/dateUtils';
 import { auth, db } from '../../services/firebase';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
@@ -51,7 +51,6 @@ export const AddEventModal: React.FC<AddEventModalProps> = ({
   isOpen,
   selectedDate,
   initialStartTime,
-  isDark = true,
   isGoogleConnected = false,
   existingEvent,
   onClose,
@@ -67,8 +66,6 @@ export const AddEventModal: React.FC<AddEventModalProps> = ({
   const [recurrenceRule, setRecurrenceRule] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none');
   const [syncToGCal, setSyncToGCal] = useState(isGoogleConnected);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const colorMap = getEventColors(isDark);
 
   // Sync state on open / initialStartTime change / existingEvent change
   useEffect(() => {
@@ -199,7 +196,7 @@ export const AddEventModal: React.FC<AddEventModalProps> = ({
         <div className="calendar-modal-header">
           <div className="modal-header-left">
             <CalendarIcon size={18} color="#a599ff" />
-            <h3>{existingEvent ? 'Edit Calendar Event' : 'Create Calendar Event'}</h3>
+            <h3>{existingEvent ? 'Edit Event' : 'Create Event'}</h3>
           </div>
           <button type="button" className="modal-close-btn" onClick={onClose} title="Close">
             <X size={18} />
@@ -211,17 +208,20 @@ export const AddEventModal: React.FC<AddEventModalProps> = ({
           <div className="calendar-academic-presets-bar">
             <span className="presets-label">QUICK PRESETS</span>
             <div className="presets-chips-row">
-              {ACADEMIC_PRESETS.map((p, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  className="preset-chip-btn"
-                  onClick={() => handleApplyPreset(p)}
-                >
-                  <span>{p.icon}</span>
-                  <span>{p.label}</span>
-                </button>
-              ))}
+              {ACADEMIC_PRESETS.map((p, idx) => {
+                const isSelected = title === p.label;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    className={`preset-chip-btn ${isSelected ? 'active' : ''}`}
+                    onClick={() => handleApplyPreset(p)}
+                  >
+                    <span>{p.icon}</span>
+                    <span>{p.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -229,12 +229,18 @@ export const AddEventModal: React.FC<AddEventModalProps> = ({
         <form onSubmit={handleSubmit} className="calendar-modal-form">
           {/* Title Input with live NLP detection */}
           <div className="form-field-group">
-            <label>Event Title & Natural Language</label>
+            <div className="field-label-row">
+              <label>Event Title</label>
+              <div className="nlp-indicator-pill">
+                <Sparkles size={11} className="nlp-sparkle-icon" />
+                <span>S.A.R.A NLP</span>
+              </div>
+            </div>
             <div className="calendar-input-wrapper">
               <input
                 type="text"
                 className="calendar-input title-input"
-                placeholder='e.g. "Midterm Exam next Friday from 10am to 12pm" or "Physics Viva"'
+                placeholder='e.g., "Midterm Exam next Friday from 10am to 12pm" or "Physics Viva"'
                 value={title}
                 onChange={e => handleTitleChange(e.target.value)}
                 autoFocus
@@ -255,30 +261,23 @@ export const AddEventModal: React.FC<AddEventModalProps> = ({
             )}
           </div>
 
-          {/* Type Selector Pills */}
+          {/* Type Selector Pills (Subtle, unified theme styling) */}
           <div className="form-field-group">
             <label>
               <Tag size={12} /> Event Category
             </label>
             <div className="event-type-pills-row">
               {EVENT_TYPES.map(t => {
-                const colorSpec = colorMap[t.key] || colorMap.todo;
                 const isSelected = type === t.key;
-
                 return (
                   <button
                     key={t.key}
                     type="button"
                     className={`event-type-pill ${isSelected ? 'selected' : ''}`}
-                    style={{
-                      backgroundColor: isSelected ? colorSpec.border : colorSpec.bg,
-                      color: isSelected ? '#000000' : colorSpec.border,
-                      borderColor: colorSpec.border,
-                    }}
                     onClick={() => setType(t.key)}
                   >
-                    <span>{t.icon}</span>
-                    <span>{t.label}</span>
+                    <span className="type-pill-icon">{t.icon}</span>
+                    <span className="type-pill-label">{t.label}</span>
                   </button>
                 );
               })}

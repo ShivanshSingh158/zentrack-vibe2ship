@@ -573,8 +573,8 @@ input[type="date"],
 input[type="time"],
 textarea,
 select {
-  background: rgba(12, 9, 5, 0.55);
-  border: 1px solid rgba(196, 149, 106, 0.16);
+  background: var(--color-surface, #141416);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
   border-radius: var(--radius-md);
   color: var(--text-primary);
   font-family: var(--font-sans);
@@ -590,15 +590,15 @@ select {
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: rgba(196, 149, 106, 0.50);
-  box-shadow: 0 0 0 3px rgba(196, 149, 106, 0.10);
-  background: rgba(18, 14, 8, 0.70);
+  border-color: rgba(165, 153, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(165, 153, 255, 0.12);
+  background: #18181b;
 }
 ::placeholder {
-  color: rgba(185, 168, 145, 0.32);
+  color: rgba(255, 255, 255, 0.32);
 }
 select option {
-  background: #1a1208;
+  background: #18181b;
   color: var(--text-primary);
 }
 
