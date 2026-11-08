@@ -116,7 +116,7 @@ function parseSingleTime(hStr: string, mStr: string, pStr: string): { hh: string
   return { hh, mm, display: `${hr12}:${mm}${ampm}` };
 }
 
-export {
+import {
   toYMD,
   getLocalDateString,
   formatLocalDateStr,
@@ -124,6 +124,15 @@ export {
   parseLocalDate,
   offsetDateStr,
 } from './dateFormatters';
+
+export {
+  toYMD,
+  getLocalDateString,
+  formatLocalDateStr,
+  getTodayLocalDateStr,
+  parseLocalDate,
+  offsetDateStr,
+};
 
 export function nextWeekday(targetDayIndex: number, forceNext = false): Date {
   const d = new Date();
