@@ -1888,10 +1888,14 @@ body.theme-plain .busy-block-title {
 
 /* ── MINI-MONTH PICKER ── */
 .calendar-mini-month-root {
-  background: #141416;
-  border: 1px solid #1c1c20;
-  border-radius: 14px;
-  padding: 0.75rem 0.85rem;
+  background: rgba(18, 18, 22, 0.75);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 0.85rem 0.95rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
 }
 
 .mini-month-header {
@@ -2037,11 +2041,14 @@ body.theme-plain .busy-block-title {
 }
 
 /* ── CALENDARS & LAYERS TOGGLES (APPLE iOS SUBTLE SPEC) ── */
-.calendar-layers-card {
-  background: #141416;
-  border: 1px solid #242428;
-  border-radius: 14px;
-  padding: 0.85rem 0.9rem;
+.calendar-layers-card,
+.cal-layers-card {
+  background: rgba(18, 18, 22, 0.75);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 0.85rem 0.95rem;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -2049,7 +2056,7 @@ body.theme-plain .busy-block-title {
   justify-content: space-between;
   gap: 0.75rem;
   box-sizing: border-box;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
   position: relative;
 }
 
@@ -2064,7 +2071,8 @@ body.theme-plain .busy-block-title {
   pointer-events: none;
 }
 
-.layers-card-header {
+.layers-card-header,
+.cal-layers-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2073,7 +2081,8 @@ body.theme-plain .busy-block-title {
   flex-shrink: 0;
 }
 
-.layers-header-title-wrap {
+.layers-header-title-wrap,
+.cal-layers-title-row {
   display: flex;
   align-items: center;
   gap: 0.4rem;
@@ -2084,7 +2093,8 @@ body.theme-plain .busy-block-title {
   opacity: 0.9;
 }
 
-.layers-title {
+.layers-title,
+.cal-layers-title {
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.72rem;
   font-weight: 700;
@@ -2104,7 +2114,8 @@ body.theme-plain .busy-block-title {
   letter-spacing: 0.02em;
 }
 
-.layers-list {
+.layers-list,
+.cal-layers-list {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
@@ -2113,7 +2124,8 @@ body.theme-plain .busy-block-title {
 }
 
 /* iOS Grouped Row */
-.layer-toggle-row {
+.layer-toggle-row,
+.cal-layer-item {
   display: flex;
   align-items: center;
   gap: 0.65rem;
@@ -2128,27 +2140,32 @@ body.theme-plain .busy-block-title {
   width: 100%;
 }
 
-.layer-toggle-row:hover {
+.layer-toggle-row:hover,
+.cal-layer-item:hover {
   background: rgba(255, 255, 255, 0.055);
   border-color: rgba(255, 255, 255, 0.1);
   transform: translateY(-1px);
 }
 
-.layer-toggle-row:active {
+.layer-toggle-row:active,
+.cal-layer-item:active {
   transform: scale(0.98);
 }
 
-.layer-toggle-row.active {
+.layer-toggle-row.active,
+.cal-layer-item.active {
   background: rgba(255, 255, 255, 0.035);
   border-color: rgba(255, 255, 255, 0.08);
 }
 
-.layer-toggle-row.inactive {
+.layer-toggle-row.inactive,
+.cal-layer-item.inactive {
   opacity: 0.45;
 }
 
 /* iOS Compact Squircle Indicator */
-.layer-custom-indicator {
+.layer-custom-indicator,
+.cal-layer-icon-box {
   width: 28px;
   height: 28px;
   border-radius: 8px;
@@ -2159,36 +2176,42 @@ body.theme-plain .busy-block-title {
   transition: transform 0.2s ease;
 }
 
-.layer-toggle-row:hover .layer-custom-indicator {
+.layer-toggle-row:hover .layer-custom-indicator,
+.cal-layer-item:hover .cal-layer-icon-box {
   transform: scale(1.05);
 }
 
-.layer-custom-indicator.classes {
+.layer-custom-indicator.classes,
+.cal-layer-icon-box.classes {
   background: rgba(56, 189, 248, 0.12);
   border: 1px solid rgba(56, 189, 248, 0.22);
   color: #38bdf8;
 }
 
-.layer-custom-indicator.gcal {
+.layer-custom-indicator.gcal,
+.cal-layer-icon-box.gcal {
   background: rgba(94, 218, 158, 0.12);
   border: 1px solid rgba(94, 218, 158, 0.22);
   color: #5eda9e;
 }
 
-.layer-custom-indicator.gym {
+.layer-custom-indicator.gym,
+.cal-layer-icon-box.gym {
   background: rgba(245, 158, 11, 0.12);
   border: 1px solid rgba(245, 158, 11, 0.22);
   color: #f59e0b;
 }
 
-.layer-custom-indicator.tasks {
+.layer-custom-indicator.tasks,
+.cal-layer-icon-box.tasks {
   background: rgba(165, 153, 255, 0.12);
   border: 1px solid rgba(165, 153, 255, 0.22);
   color: #a599ff;
 }
 
 /* Text Hierarchy */
-.layer-text-wrap {
+.layer-text-wrap,
+.cal-layer-meta {
   display: flex;
   flex-direction: column;
   gap: 0.06rem;
@@ -2196,7 +2219,8 @@ body.theme-plain .busy-block-title {
   min-width: 0;
 }
 
-.layer-label {
+.layer-label,
+.cal-layer-name {
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.8rem;
   font-weight: 600;
@@ -2208,7 +2232,8 @@ body.theme-plain .busy-block-title {
   line-height: 1.25;
 }
 
-.layer-sublabel {
+.layer-sublabel,
+.cal-layer-sub {
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.65rem;
   font-weight: 450;
@@ -2220,7 +2245,8 @@ body.theme-plain .busy-block-title {
   line-height: 1.2;
 }
 
-.layer-meta-right {
+.layer-meta-right,
+.cal-layer-right {
   display: flex;
   align-items: center;
   gap: 0.45rem;
@@ -2228,7 +2254,8 @@ body.theme-plain .busy-block-title {
 }
 
 /* iOS Count Pill */
-.layer-count-pill {
+.layer-count-pill,
+.cal-layer-count-badge {
   font-size: 0.68rem;
   font-weight: 700;
   padding: 0.1rem 0.38rem;
@@ -2242,38 +2269,44 @@ body.theme-plain .busy-block-title {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.layer-count-pill.classes:not(.zero) {
+.layer-count-pill.classes:not(.zero),
+.cal-layer-count-badge.classes:not(.zero) {
   color: #38bdf8;
   background: rgba(56, 189, 248, 0.12);
   border-color: rgba(56, 189, 248, 0.2);
 }
 
-.layer-count-pill.gcal:not(.zero) {
+.layer-count-pill.gcal:not(.zero),
+.cal-layer-count-badge.gcal:not(.zero) {
   color: #5eda9e;
   background: rgba(94, 218, 158, 0.12);
   border-color: rgba(94, 218, 158, 0.2);
 }
 
-.layer-count-pill.gym:not(.zero) {
+.layer-count-pill.gym:not(.zero),
+.cal-layer-count-badge.gym:not(.zero) {
   color: #f59e0b;
   background: rgba(245, 158, 11, 0.12);
   border-color: rgba(245, 158, 11, 0.2);
 }
 
-.layer-count-pill.tasks:not(.zero) {
+.layer-count-pill.tasks:not(.zero),
+.cal-layer-count-badge.tasks:not(.zero) {
   color: #a599ff;
   background: rgba(165, 153, 255, 0.12);
   border-color: rgba(165, 153, 255, 0.2);
 }
 
-.layer-count-pill.zero {
+.layer-count-pill.zero,
+.cal-layer-count-badge.zero {
   opacity: 0.4;
   background: transparent;
   border-color: transparent;
 }
 
 /* True Apple iOS Toggle Switch */
-.layer-ios-switch {
+.layer-ios-switch,
+.cal-layer-switch {
   width: 32px;
   height: 18px;
   border-radius: 9999px;
@@ -2285,7 +2318,8 @@ body.theme-plain .busy-block-title {
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
-.layer-ios-switch-knob {
+.layer-ios-switch-knob,
+.cal-layer-switch-thumb {
   position: absolute;
   top: 2px;
   left: 2px;
@@ -2298,23 +2332,33 @@ body.theme-plain .busy-block-title {
 }
 
 /* Active Switches with Pure White Knob & Vibrant Track */
-.layer-ios-switch.active.classes {
+.layer-ios-switch.active.classes,
+.cal-layer-switch.active.classes,
+.cal-layer-switch.on.classes {
   background: #38bdf8;
 }
 
-.layer-ios-switch.active.gcal {
+.layer-ios-switch.active.gcal,
+.cal-layer-switch.active.gcal,
+.cal-layer-switch.on.gcal {
   background: #5eda9e;
 }
 
-.layer-ios-switch.active.gym {
+.layer-ios-switch.active.gym,
+.cal-layer-switch.active.gym,
+.cal-layer-switch.on.gym {
   background: #f59e0b;
 }
 
-.layer-ios-switch.active.tasks {
+.layer-ios-switch.active.tasks,
+.cal-layer-switch.active.tasks,
+.cal-layer-switch.on.tasks {
   background: #a599ff;
 }
 
-.layer-ios-switch.active .layer-ios-switch-knob {
+.layer-ios-switch.active .layer-ios-switch-knob,
+.cal-layer-switch.active .cal-layer-switch-thumb,
+.cal-layer-switch.on .cal-layer-switch-thumb {
   transform: translateX(14px);
 }
 
@@ -2354,6 +2398,7 @@ body.theme-plain .busy-block-title {
   color: #8e8e93;
 }
 
+.cal-layers-quick-toggles,
 .layers-footer-actions {
   display: flex;
   align-items: center;
@@ -2364,6 +2409,7 @@ body.theme-plain .busy-block-title {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.cal-layers-quick-btn,
 .layer-quick-action-btn {
   display: inline-flex;
   align-items: center;
@@ -2380,11 +2426,18 @@ body.theme-plain .busy-block-title {
   outline: none;
 }
 
+.cal-layers-quick-btn:hover,
 .layer-quick-action-btn:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.06);
 }
 
+.cal-layers-quick-btn:active,
+.layer-quick-action-btn:active {
+  transform: scale(0.96);
+}
+
+.cal-layers-quick-btn.active,
 .layer-quick-action-btn.active {
   background: rgba(165, 153, 255, 0.15);
   color: #a599ff;
