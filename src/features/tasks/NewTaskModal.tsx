@@ -73,7 +73,15 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
 
-  // Real-Time NLP Parsing Engine
+  const nlpDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (nlpDebounceTimer.current) clearTimeout(nlpDebounceTimer.current);
+    };
+  }, []);
+
+  // Real-Time NLP Parsing Engine: 0ms Instant Typing + 120ms Debounced Token Synthesis
   const handleInputChange = useCallback((text: string) => {
     setRawInput(text);
 
@@ -83,43 +91,47 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
       return;
     }
 
-    const parsed = parseNLTask(text);
-    setTitle(parsed.title || text);
-    setNlpTokens(parsed.tokens || []);
+    if (nlpDebounceTimer.current) clearTimeout(nlpDebounceTimer.current);
 
-    if (parsed.date && parsed.tokens.some(t => t.type === 'date')) {
-      setDate(parsed.date);
-    }
-    if (parsed.timeSlot && parsed.tokens.some(t => t.type === 'time')) {
-      setStartTime(parsed.timeSlot);
-      if (parsed.endTimeSlot) setEndTime(parsed.endTimeSlot);
-    }
-    if (parsed.tokens.some(t => t.type === 'priority')) {
-      setPriority(parsed.priority);
-    }
-    if (parsed.tokens.some(t => t.type === 'recurrence') && parsed.recurrenceRule) {
-      setRecurrenceRule(parsed.recurrenceRule as any);
-    }
-    if (parsed.oneTimeDates && parsed.oneTimeDates.length > 1) {
-      setOneTimeDates(parsed.oneTimeDates);
-    } else {
-      setOneTimeDates(undefined);
-    }
-    if (parsed.tags && parsed.tags.length > 0) {
-      setSelectedTags(prev => Array.from(new Set([...prev, ...parsed.tags!])));
-    }
-    if (parsed.durationMinutes != null) {
-      setDurationMinutes(parsed.durationMinutes);
-    }
-    if (parsed.subtasks && parsed.subtasks.length > 0) {
-      setIsSubtasksOpen(true);
-      setSubtasks(parsed.subtasks.map((st, idx) => ({
-        id: `st-${Date.now()}-${idx}`,
-        title: st,
-        completed: false,
-        status: 'pending',
-      })));
-    }
+    nlpDebounceTimer.current = setTimeout(() => {
+      const parsed = parseNLTask(text);
+      setTitle(parsed.title || text);
+      setNlpTokens(parsed.tokens || []);
+
+      if (parsed.date && parsed.tokens.some(t => t.type === 'date')) {
+        setDate(parsed.date);
+      }
+      if (parsed.timeSlot && parsed.tokens.some(t => t.type === 'time')) {
+        setStartTime(parsed.timeSlot);
+        if (parsed.endTimeSlot) setEndTime(parsed.endTimeSlot);
+      }
+      if (parsed.tokens.some(t => t.type === 'priority')) {
+        setPriority(parsed.priority);
+      }
+      if (parsed.tokens.some(t => t.type === 'recurrence') && parsed.recurrenceRule) {
+        setRecurrenceRule(parsed.recurrenceRule as any);
+      }
+      if (parsed.oneTimeDates && parsed.oneTimeDates.length > 1) {
+        setOneTimeDates(parsed.oneTimeDates);
+      } else {
+        setOneTimeDates(undefined);
+      }
+      if (parsed.tags && parsed.tags.length > 0) {
+        setSelectedTags(prev => Array.from(new Set([...prev, ...parsed.tags!])));
+      }
+      if (parsed.durationMinutes != null) {
+        setDurationMinutes(parsed.durationMinutes);
+      }
+      if (parsed.subtasks && parsed.subtasks.length > 0) {
+        setIsSubtasksOpen(true);
+        setSubtasks(parsed.subtasks.map((st, idx) => ({
+          id: `st-${Date.now()}-${idx}`,
+          title: st,
+          completed: false,
+          status: 'pending',
+        })));
+      }
+    }, 120);
   }, []);
 
   // Voice Dictation (Web Speech API)
@@ -331,9 +343,11 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
     if (tok.type === 'priority') setPriority('medium');
     if (tok.type === 'recurrence') setRecurrenceRule({ type: 'once' });
     if (tok.type === 'tag') {
-      const tagClean = tok.value.replace(/^#/, '').toLowerCase();
+      const tagClean = (tok.display || '').replace(/^#/, '').toLowerCase();
       setSelectedTags(prev => prev.filter(t => t.toLowerCase() !== tagClean));
     }
+    setNlpTokens(prev => prev.filter(t => t.start !== tok.start || t.type !== tok.type));
+    setRawInput(cleaned);
     handleInputChange(cleaned);
   };
 
@@ -487,12 +501,14 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
           <motion.div
             ref={cardRef}
             className="todoist-quick-add-card"
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
+            initial={{ opacity: 0, scale: 0.94, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 8 }}
             transition={{
-              duration: 0.18,
-              ease: [0.16, 1, 0.3, 1]
+              type: 'spring',
+              damping: 28,
+              stiffness: 350,
+              mass: 0.75,
             }}
             onClick={e => e.stopPropagation()}
           >
@@ -523,40 +539,78 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
             </button>
           </form>
 
-          {/* Inline Subtasks Expansion */}
-          {isSubtasksOpen && (
-            <div className="todoist-subtasks-section">
-              {subtasks.map(st => (
-                <div key={st.id} className="todoist-subtask-row">
-                  <CheckSquare size={13} style={{ color: '#a1a1aa' }} />
-                  <span className="todoist-subtask-text">{st.title}</span>
-                  <button
-                    type="button"
-                    className="todoist-subtask-del-btn"
-                    onClick={() => handleRemoveSubtask(st.id)}
+          {/* Real-time Apple-Style NLP Detected Token Badges Strip */}
+          <AnimatePresence>
+            {nlpTokens.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.15, ease: 'easeOut' }}
+                className="todoist-detected-tokens-strip"
+              >
+                {nlpTokens.map(tok => (
+                  <motion.span
+                    key={`${tok.type}-${tok.start}`}
+                    initial={{ scale: 0.82, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.82, opacity: 0 }}
+                    transition={{ type: 'spring', damping: 24, stiffness: 340 }}
+                    className={`todoist-detected-token-chip chip-${tok.type}`}
+                    onClick={() => handleDismissToken(tok)}
+                    title={`Remove ${tok.type}: ${tok.display}`}
                   >
-                    <Trash2 size={12} />
-                  </button>
+                    <span className="token-dot" />
+                    <span>{tok.display}</span>
+                    <X size={10} className="token-del-icon" />
+                  </motion.span>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Inline Subtasks Expansion */}
+          <AnimatePresence>
+            {isSubtasksOpen && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+                className="todoist-subtasks-section"
+              >
+                {subtasks.map(st => (
+                  <div key={st.id} className="todoist-subtask-row">
+                    <CheckSquare size={13} style={{ color: '#a1a1aa' }} />
+                    <span className="todoist-subtask-text">{st.title}</span>
+                    <button
+                      type="button"
+                      className="todoist-subtask-del-btn"
+                      onClick={() => handleRemoveSubtask(st.id)}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+                <div className="todoist-subtask-add-row">
+                  <Plus size={13} style={{ color: '#71717a' }} />
+                  <input
+                    type="text"
+                    placeholder="Add a subtask..."
+                    value={newSubtaskInput}
+                    onChange={e => setNewSubtaskInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddSubtask();
+                      }
+                    }}
+                    className="todoist-subtask-quick-input"
+                  />
                 </div>
-              ))}
-              <div className="todoist-subtask-add-row">
-                <Plus size={13} style={{ color: '#71717a' }} />
-                <input
-                  type="text"
-                  placeholder="Add a subtask..."
-                  value={newSubtaskInput}
-                  onChange={e => setNewSubtaskInput(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddSubtask();
-                    }
-                  }}
-                  className="todoist-subtask-quick-input"
-                />
-              </div>
-            </div>
-          )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Bottom Action Bar — Single Line Layout */}
           <div className="todoist-quick-add-bottom-row">

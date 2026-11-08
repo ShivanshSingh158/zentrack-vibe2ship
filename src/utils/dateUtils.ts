@@ -196,9 +196,160 @@ export function resolveMonthDay(monthStr: string, dayNum: number): Date | null {
   const now = new Date();
   const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   let candidate = new Date(now.getFullYear(), monthIdx, dayNum);
-  if (candidate < todayDate) candidate = new Date(now.getFullYear() + 1, monthIdx, dayNum);
+  if (candidate.getMonth() !== monthIdx) return null;
+  if (candidate < todayDate) {
+    candidate = new Date(now.getFullYear() + 1, monthIdx, dayNum);
+    if (candidate.getMonth() !== monthIdx) return null;
+  }
   return candidate;
 }
+
+// Top-level hoisted constants for cleanTaskTitle performance (0ms GC thrash)
+const TASK_COMMAND_PREFIXES: RegExp[] = [
+  /^create\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
+  /^create\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
+  /^create\s+(?:a\s+|an\s+)?/i,
+  /^add\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
+  /^add\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
+  /^add\s+(?:a\s+|an\s+)?/i,
+  /^make\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
+  /^make\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
+  /^make\s+(?:a\s+|an\s+)?/i,
+  /^schedule\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
+  /^schedule\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
+  /^schedule\s+(?:a\s+|an\s+)?/i,
+  /^set\s+(?:up\s+)?(?:a\s+|an\s+)?(?:new\s+)?(?:reminder|alarm|task|event)\s+(?:to|for|at|about)\s+/i,
+  /^set\s+(?:up\s+)?(?:a\s+|an\s+)?(?:new\s+)?(?:reminder|alarm|task|event)\s*[:\-]?\s+/i,
+  /^set\s+alarm\s+(?:for|at|to)\s+/i,
+  /^remind\s+me\s+(?:that\s+(?:i|we)\s+(?:have|need|got|gotta)\s+to|that|to|for|about)?\s*/i,
+  /^remind\s+(?:that\s+(?:i|we)\s+(?:have|need|got|gotta)\s+to|that|to|for|about)?\s*/i,
+  /^reminder\s*[:\-]\s*/i,
+  /^reminder\s+(?:to|for|about)\s+/i,
+  /^(?:don'?t\s+forget|dont\s+forget)\s+(?:that\s+(?:i|we)\s+(?:have|need|got|gotta)\s+to|to\s+)?/i,
+  /^remember\s+(?:to\s+)?/i,
+  /^(?:make|be)\s+sure\s+to\s+/i,
+  /^(?:that\s+)?(?:(?:i|we)\s+)?(?:was\s+thinking\s+(?:of|about)|was\s+planning\s+(?:to|on)|am\s+planning\s+(?:to|on)|plan\s+to|planning\s+(?:to|on))\s+/i,
+  /^(?:that\s+)?(?:(?:i|we)\s+)?(?:am\s+supposed\s+to|are\s+supposed\s+to|supposed\s+to)\s+/i,
+  /^(?:that\s+)?(?:(?:i|we)\s+)?(?:have\s+got\s+to|'ve\s+gotta|have\s+to|need\s+to|want\s+to|wanna|wish\s+to|just\s+need\s+to|got\s+to|gotta)\s+/i,
+  /^(?:that\s+)?(?:i|we)\s+(?:should|must)\s+/i,
+  /^(?:gotta|wanna|need\s+to)\s+/i,
+  /^(?:hit|do)\s+(?:the\s+)?(?=(?:chest|back|legs|biceps|triceps|shoulders|push|pull|gym|workout)\b)/i,
+  /^(?:bhai|yaar|bro|dude)[,\s]+/i,
+  /^(?:put|write|note|take)\s+down\s+(?:a\s+|the\s+)?(?:task\s+)?(?:to|for)?\s*/i,
+  /^(?:log|record|enter|track)\s+(?:a\s+|the\s+)?(?:task\s+)?(?:to|for)?\s*/i,
+  /^(?:to-?do|task|action\s+item|new\s+task|note)\s*[:\-]\s*/i,
+  /^(?:um+|uh+|er+|ah+|like|you\s+know|basically|actually|literally|honestly|i\s+mean|to\s+be\s+honest|just\s+wanted\s+to|i\s+think\s+i\s+should|just|so|well)[,\s]+/i,
+  /^(?:i\s+want\s+you\s+to|can\s+you\s+help\s+me\s+to|help\s+me\s+to|i\s+need\s+you\s+to|can\s+you\s+make\s+sure\s+to)\s+/i,
+  /^(?:make\s+sure\s+(?:that\s+)?(?:i|we)\s+(?:have\s+to|need\s+to|don'?t\s+forget\s+to)?|ensure\s+(?:that\s+)?|ensure\s+to)\s*/i,
+  /^(?:note\s+to\s+self|memo|quick\s+note)[,\s:]+/i,
+  /^(?:bhai\s+sun|ek\s+kaam\s+kar|dekh\s+bhai|dekh\s+yaar|yaar\s+ek|mujhe\s+lagta\s+hai|suno)[,\s:]+/i,
+  /^(?:please\s+yaar|pls\s+yaar|bhai\s+please|yaar\s+please)[,\s]+/i,
+  /^(?:mujhe\s+)?(?:aaj|kal|parso)?\s*(?:subah|shaam|dopahar|raat)?\s*(?:ko)?\s*(?:ek\s+)?task\s+(?:bana\s+(?:do|o)|add\s+(?:karo|kar\s+do)|create\s+(?:karo|kar\s+do))\s*/i,
+  /^mujhe\s+/i,
+  /^(?:yaad\s+(?:dilana|dila\s+do|rakhna))\s+(?:ki\s+)?/i,
+  /^(?:ek\s+kaam|ek\s+task|mere\s+liye|meri\s+help)[,\s]+/i,
+  /^(?:padhai|padhna|likhna)\s+(?:ka\s+|ki\s+)?(?:task|kaam|reminder)\s*/i,
+];
+
+const TASK_GERUNDS: Record<string, string> = {
+  submitting: 'submit', studying: 'study', calling: 'call', buying: 'buy',
+  paying: 'pay', sending: 'send', scheduling: 'schedule', revising: 'revise',
+  writing: 'write', reading: 'read', booking: 'book', cleaning: 'clean',
+  practicing: 'practice', checking: 'check', meeting: 'meet', fixing: 'fix',
+  working: 'work', cooking: 'cook', attending: 'attend', completing: 'complete',
+  finishing: 'finish', preparing: 'prepare', ordering: 'order', learning: 'learn',
+  visiting: 'visit', taking: 'take', doing: 'do', going: 'go', watching: 'watch',
+  deploying: 'deploy', reviewing: 'review', organizing: 'organize', printing: 'print',
+  updating: 'update', renewing: 'renew', canceling: 'cancel', cancelling: 'cancel',
+  exercising: 'exercise', washing: 'wash', ironing: 'iron', emailing: 'email',
+  messaging: 'message', texting: 'text', dropping: 'drop', picking: 'pick',
+  collecting: 'collect', downloading: 'download', uploading: 'upload', installing: 'install',
+  uninstalling: 'uninstall', testing: 'test', debugging: 'debug', discussing: 'discuss',
+  presenting: 'present', tracking: 'track', logging: 'log', registering: 'register',
+  applying: 'apply', filing: 'file', signing: 'sign', verifying: 'verify',
+  confirming: 'confirm', informing: 'inform', notifying: 'notify', contacting: 'contact',
+  following: 'follow', researching: 'research', solving: 'solve', building: 'build',
+  designing: 'design', drafting: 'draft', editing: 'edit', sharing: 'share',
+  returning: 'return', reporting: 'report', joining: 'join', packing: 'pack',
+  charging: 'charge', backing: 'back', saving: 'save', archiving: 'archive',
+  exporting: 'export',
+};
+
+const TASK_SOV_PATTERNS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
+  [/^(.+?)\s+study$/i, m => m[1].toLowerCase() !== 'case' ? `study ${m[1]}` : m[0]],
+  [/^(.+?)\s+practice$/i, m => `practice ${m[1]}`],
+  [/^(.+?)\s+(?:revision|revise)$/i, m => `revise ${m[1]}`],
+  [/^(.+?)\s+(?:prep|preparation)$/i, m => `prep for ${m[1]}`],
+  [/^(.+?)\s+(?:submission|submit)$/i, m => `submit ${m[1]}`],
+  [/^(.+?)\s+(?:payment|pay)$/i, m => `pay ${m[1]}`],
+  [/^(.+?)\s+(?:booking|book)$/i, m => `book ${m[1]}`],
+  [/^(.+?)\s+(?:cleaning|clean)$/i, m => `clean ${m[1]}`],
+  [/^(.+?)\s+(?:washing|wash)$/i, m => `wash ${m[1]}`],
+  [/^(.+?)\s+(?:buying|buy)$/i, m => `buy ${m[1]}`],
+  [/^(.+?)\s+(?:calling|call)$/i, m => `call ${m[1]}`],
+  [/^(.+?)\s+(?:reviewing|review)$/i, m => `review ${m[1]}`],
+  [/^(.+?)\s+(?:scheduling|schedule)$/i, m => `schedule ${m[1]}`],
+  [/^(.+?)\s+(?:sending|send)$/i, m => `send ${m[1]}`],
+  [/^(.+?)\s+(?:ordering|order)$/i, m => `order ${m[1]}`],
+  [/^(.+?)\s+(?:deploying|deploy)$/i, m => `deploy ${m[1]}`],
+];
+
+const TASK_PHRASE_DEDUPE_PATTERNS = [6, 5, 4, 3, 2].map(
+  len => new RegExp(`\\b((?:[\\w'-]+\\s+){${len - 1}}[\\w'-]+)(?:\\s+\\1\\b)+`, 'gi')
+);
+
+function phraseDedupe(str: string): string {
+  let s = str.trim();
+  s = s.replace(/\b(?:high|medium|low)\s+priority\b/gi, '');
+  s = s.replace(/\bpriority\s+(?:high|medium|low|urgent|p[123])\b/gi, '');
+  s = s.replace(/\b(?:today|tomorrow|tommorow|tomorow|tommorrow|tmrw|tmr|tonight|yesterday)\b/gi, '');
+  s = s.replace(/\b\d{1,2}(?::\d{2})?\s*(?:to|-)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b/gi, '');
+  s = s.replace(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi, '');
+
+  for (let i = 0; i < TASK_PHRASE_DEDUPE_PATTERNS.length; i++) {
+    s = s.replace(TASK_PHRASE_DEDUPE_PATTERNS[i], '$1');
+  }
+  s = s.replace(/\b([a-zA-Z]{3,})\s+\1\b/gi, '$1');
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+const TASK_TRAIL_SCRUBBERS: RegExp[] = [
+  /^[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+|[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+$/g,
+  /\s+(?:at|from|to|by|on|in|for|with|until|till|and|or|during|of|about|then|also)$/i,
+  /\s+(?:please|pls|as\s+well|too|for\s+me|bhai|yaar|bro|dude|na|karo|do|h|hai)$/i,
+  /\s+(?:if\s+possible|as\s+soon\s+as\s+possible|right\s+now|or\s+something|you\s+know|at\s+the\s+earliest)$/i,
+  /\s+(?:[ap]\.?m\.?|am|pm|o'?clock)$/i,
+  /\s+(?:in\s+the\s+)?(?:early\s+morning|morning|afternoon|evening|night|tonight|today|tomorrow|yesterday)$/i,
+  /\s+(?:properly\s+)?(?:hi|high|medium|mid|med|low)\s+(?:priority|prio|importance)$/i,
+  /\s+priority\s*(?:is\s+|:\s*|\s+)?(?:hi|high|medium|mid|med|low|1|2|3|one|two|three)$/i,
+  /\s+(?:p:hi|p:high|p:med|p:low|!1|!2|!3|p1|p2|p3|hi|high|medium|med|low)$/i,
+  /\s+(?:urgent|asap|important|critical|fire|blocker)$/i,
+  /\s+(?:for\s+)?\d+(?:\.\d+)?\s*(?:hours?|hrs?|hr|h|minutes?|mins?|min|m)\s*(?:pomodoro|pomo|focus|timer)?$/i,
+  /\s+(?:pomodoro|pomo|focus|timer)(?:\s+(?:of|for))?\s*\d+(?:\.\d+)?\s*(?:hours?|hrs?|hr|h|minutes?|mins?|min|m)?$/i,
+  /\s+(?:pomodoro|pomo)\s*$/i,
+  /\s+properly\s*$/i,
+  /^[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+|[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+$/g,
+];
+
+const TASK_ACRONYMS: Record<string, string> = {
+  dsa: 'DSA', dbms: 'DBMS', os: 'OS', ai: 'AI', ml: 'ML', dl: 'DL',
+  nlp: 'NLP', cn: 'CN', oop: 'OOP', oops: 'OOPs', sql: 'SQL', nosql: 'NoSQL',
+  api: 'API', apis: 'APIs', html: 'HTML', css: 'CSS', js: 'JS', ts: 'TS',
+  pr: 'PR', prs: 'PRs', sde: 'SDE', hr: 'HR', ui: 'UI', ux: 'UX',
+  pdf: 'PDF', llm: 'LLM', llms: 'LLMs', cgpa: 'CGPA', sgpa: 'SGPA',
+  aws: 'AWS', gcp: 'GCP', toc: 'TOC', ppl: 'PPL', hiit: 'HIIT',
+  '1rm': '1RM', bmi: 'BMI', vad: 'VAD', rest: 'REST', crud: 'CRUD',
+  sdk: 'SDK', sdks: 'SDKs', cli: 'CLI', ci: 'CI', cd: 'CD', cicd: 'CI/CD',
+  iot: 'IoT', ip: 'IP', vpn: 'VPN', url: 'URL', urls: 'URLs',
+  bldc: 'BLDC', tv: 'TV', ev: 'EV', dc: 'DC', ac: 'AC',
+  json: 'JSON', jwt: 'JWT', ssh: 'SSH', ssl: 'SSL', tls: 'TLS',
+  dns: 'DNS', http: 'HTTP', https: 'HTTPS', ftp: 'FTP', ide: 'IDE',
+  gui: 'GUI', seo: 'SEO', mvp: 'MVP', kpi: 'KPI', okr: 'OKR', okrs: 'OKRs',
+  leetcode: 'LeetCode', gfg: 'GFG', codeforces: 'Codeforces', codechef: 'CodeChef',
+  nptel: 'NPTEL', neet: 'NEET', gate: 'GATE', cat: 'CAT', upsc: 'UPSC',
+  iit: 'IIT', nit: 'NIT', bits: 'BITS', gre: 'GRE', toefl: 'TOEFL',
+  whatsapp: 'WhatsApp', youtube: 'YouTube', instagram: 'Instagram',
+};
 
 /**
  * Strips conversational command prefixes, carrier words, filler phrases,
@@ -215,59 +366,13 @@ export function cleanTaskTitle(rawTitle: string): string {
   t = t.replace(/^please\s+(?:kindly\s+)?/i, '');
   t = t.replace(/^kindly\s+/i, '');
 
-  // 2. Command Prefixes & spoken preambles
-  const commandPrefixes = [
-    /^create\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
-    /^create\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
-    /^create\s+(?:a\s+|an\s+)?/i,
-    /^add\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
-    /^add\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
-    /^add\s+(?:a\s+|an\s+)?/i,
-    /^make\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
-    /^make\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
-    /^make\s+(?:a\s+|an\s+)?/i,
-    /^schedule\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s+(?:to|for|of|about|regarding)\s+/i,
-    /^schedule\s+(?:a\s+|an\s+)?(?:new\s+)?(?:task|event|item|reminder|entry|todo|to-do)\s*[:\-]?\s+/i,
-    /^schedule\s+(?:a\s+|an\s+)?/i,
-    /^set\s+(?:up\s+)?(?:a\s+|an\s+)?(?:new\s+)?(?:reminder|alarm|task|event)\s+(?:to|for|at|about)\s+/i,
-    /^set\s+(?:up\s+)?(?:a\s+|an\s+)?(?:new\s+)?(?:reminder|alarm|task|event)\s*[:\-]?\s+/i,
-    /^set\s+alarm\s+(?:for|at|to)\s+/i,
-    /^remind\s+me\s+(?:that\s+(?:i|we)\s+(?:have|need|got|gotta)\s+to|that|to|for|about)?\s*/i,
-    /^remind\s+(?:that\s+(?:i|we)\s+(?:have|need|got|gotta)\s+to|that|to|for|about)?\s*/i,
-    /^reminder\s*[:\-]\s*/i,
-    /^reminder\s+(?:to|for|about)\s+/i,
-    /^(?:don'?t\s+forget|dont\s+forget)\s+(?:that\s+(?:i|we)\s+(?:have|need|got|gotta)\s+to|to\s+)?/i,
-    /^remember\s+(?:to\s+)?/i,
-    /^(?:make|be)\s+sure\s+to\s+/i,
-    /^(?:that\s+)?(?:(?:i|we)\s+)?(?:was\s+thinking\s+(?:of|about)|was\s+planning\s+(?:to|on)|am\s+planning\s+(?:to|on)|plan\s+to|planning\s+(?:to|on))\s+/i,
-    /^(?:that\s+)?(?:(?:i|we)\s+)?(?:am\s+supposed\s+to|are\s+supposed\s+to|supposed\s+to)\s+/i,
-    /^(?:that\s+)?(?:(?:i|we)\s+)?(?:have\s+got\s+to|'ve\s+gotta|have\s+to|need\s+to|want\s+to|wanna|wish\s+to|just\s+need\s+to|got\s+to|gotta)\s+/i,
-    /^(?:that\s+)?(?:i|we)\s+(?:should|must)\s+/i,
-    /^(?:gotta|wanna|need\s+to)\s+/i,
-    /^(?:hit|do)\s+(?:the\s+)?(?=(?:chest|back|legs|biceps|triceps|shoulders|push|pull|gym|workout)\b)/i,
-    /^(?:bhai|yaar|bro|dude)[,\s]+/i,
-    /^(?:put|write|note|take)\s+down\s+(?:a\s+|the\s+)?(?:task\s+)?(?:to|for)?\s*/i,
-    /^(?:log|record|enter|track)\s+(?:a\s+|the\s+)?(?:task\s+)?(?:to|for)?\s*/i,
-    /^(?:to-?do|task|action\s+item|new\s+task|note)\s*[:\-]\s*/i,
-    /^(?:um+|uh+|er+|ah+|like|you\s+know|basically|actually|literally|honestly|i\s+mean|to\s+be\s+honest|just\s+wanted\s+to|i\s+think\s+i\s+should|just|so|well)[,\s]+/i,
-    /^(?:i\s+want\s+you\s+to|can\s+you\s+help\s+me\s+to|help\s+me\s+to|i\s+need\s+you\s+to|can\s+you\s+make\s+sure\s+to)\s+/i,
-    /^(?:make\s+sure\s+(?:that\s+)?(?:i|we)\s+(?:have\s+to|need\s+to|don'?t\s+forget\s+to)?|ensure\s+(?:that\s+)?|ensure\s+to)\s*/i,
-    /^(?:note\s+to\s+self|memo|quick\s+note)[,\s:]+/i,
-    /^(?:bhai\s+sun|ek\s+kaam\s+kar|dekh\s+bhai|dekh\s+yaar|yaar\s+ek|mujhe\s+lagta\s+hai|suno)[,\s:]+/i,
-    /^(?:please\s+yaar|pls\s+yaar|bhai\s+please|yaar\s+please)[,\s]+/i,
-    /^(?:mujhe\s+)?(?:aaj|kal|parso)?\s*(?:subah|shaam|dopahar|raat)?\s*(?:ko)?\s*(?:ek\s+)?task\s+(?:bana\s+(?:do|o)|add\s+(?:karo|kar\s+do)|create\s+(?:karo|kar\s+do))\s*/i,
-    /^mujhe\s+/i,
-    /^(?:yaad\s+(?:dilana|dila\s+do|rakhna))\s+(?:ki\s+)?/i,
-    /^(?:ek\s+kaam|ek\s+task|mere\s+liye|meri\s+help)[,\s]+/i,
-    /^(?:padhai|padhna|likhna)\s+(?:ka\s+|ki\s+)?(?:task|kaam|reminder)\s*/i,
-  ];
-
+  // 2. Command Prefixes & spoken preambles (using hoisted constants)
   let changed = true;
   let iterations = 0;
   while (changed && iterations < 5) {
     changed = false;
     iterations++;
-    for (const pat of commandPrefixes) {
+    for (const pat of TASK_COMMAND_PREFIXES) {
       if (pat.test(t)) {
         t = t.replace(pat, '').trim();
         changed = true;
@@ -277,35 +382,11 @@ export function cleanTaskTitle(rawTitle: string): string {
   }
 
   // 3. Gerund-to-imperative action verb normalization
-  const GERUNDS: Record<string, string> = {
-    submitting: 'submit', studying: 'study', calling: 'call', buying: 'buy',
-    paying: 'pay', sending: 'send', scheduling: 'schedule', revising: 'revise',
-    writing: 'write', reading: 'read', booking: 'book', cleaning: 'clean',
-    practicing: 'practice', checking: 'check', meeting: 'meet', fixing: 'fix',
-    working: 'work', cooking: 'cook', attending: 'attend', completing: 'complete',
-    finishing: 'finish', preparing: 'prepare', ordering: 'order', learning: 'learn',
-    visiting: 'visit', taking: 'take', doing: 'do', going: 'go', watching: 'watch',
-    deploying: 'deploy', reviewing: 'review', organizing: 'organize', printing: 'print',
-    updating: 'update', renewing: 'renew', canceling: 'cancel', cancelling: 'cancel',
-    exercising: 'exercise', washing: 'wash', ironing: 'iron', emailing: 'email',
-    messaging: 'message', texting: 'text', dropping: 'drop', picking: 'pick',
-    collecting: 'collect', downloading: 'download', uploading: 'upload', installing: 'install',
-    uninstalling: 'uninstall', testing: 'test', debugging: 'debug', discussing: 'discuss',
-    presenting: 'present', tracking: 'track', logging: 'log', registering: 'register',
-    applying: 'apply', filing: 'file', signing: 'sign', verifying: 'verify',
-    confirming: 'confirm', informing: 'inform', notifying: 'notify', contacting: 'contact',
-    following: 'follow', researching: 'research', solving: 'solve', building: 'build',
-    designing: 'design', drafting: 'draft', editing: 'edit', sharing: 'share',
-    returning: 'return', reporting: 'report', joining: 'join', packing: 'pack',
-    charging: 'charge', backing: 'back', saving: 'save', archiving: 'archive',
-    exporting: 'export',
-  };
-
   const firstWordMatch = t.match(/^([a-zA-Z]+)(.*)$/s);
   if (firstWordMatch) {
     const fw = firstWordMatch[1].toLowerCase();
-    if (GERUNDS[fw]) {
-      t = `${GERUNDS[fw]}${firstWordMatch[2]}`;
+    if (TASK_GERUNDS[fw]) {
+      t = `${TASK_GERUNDS[fw]}${firstWordMatch[2]}`;
     }
   }
 
@@ -318,26 +399,7 @@ export function cleanTaskTitle(rawTitle: string): string {
   }
 
   // English Inverted SOV-to-SVO normalization
-  const sovPatterns: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
-    [/^(.+?)\s+study$/i, m => m[1].toLowerCase() !== 'case' ? `study ${m[1]}` : m[0]],
-    [/^(.+?)\s+practice$/i, m => `practice ${m[1]}`],
-    [/^(.+?)\s+(?:revision|revise)$/i, m => `revise ${m[1]}`],
-    [/^(.+?)\s+(?:prep|preparation)$/i, m => `prep for ${m[1]}`],
-    [/^(.+?)\s+(?:submission|submit)$/i, m => `submit ${m[1]}`],
-    [/^(.+?)\s+(?:payment|pay)$/i, m => `pay ${m[1]}`],
-    [/^(.+?)\s+(?:booking|book)$/i, m => `book ${m[1]}`],
-    [/^(.+?)\s+(?:cleaning|clean)$/i, m => `clean ${m[1]}`],
-    [/^(.+?)\s+(?:washing|wash)$/i, m => `wash ${m[1]}`],
-    [/^(.+?)\s+(?:buying|buy)$/i, m => `buy ${m[1]}`],
-    [/^(.+?)\s+(?:calling|call)$/i, m => `call ${m[1]}`],
-    [/^(.+?)\s+(?:reviewing|review)$/i, m => `review ${m[1]}`],
-    [/^(.+?)\s+(?:scheduling|schedule)$/i, m => `schedule ${m[1]}`],
-    [/^(.+?)\s+(?:sending|send)$/i, m => `send ${m[1]}`],
-    [/^(.+?)\s+(?:ordering|order)$/i, m => `order ${m[1]}`],
-    [/^(.+?)\s+(?:deploying|deploy)$/i, m => `deploy ${m[1]}`],
-  ];
-
-  for (const [pat, replacer] of sovPatterns) {
+  for (const [pat, replacer] of TASK_SOV_PATTERNS) {
     const sm = t.match(pat);
     if (sm) {
       t = replacer(sm);
@@ -346,21 +408,6 @@ export function cleanTaskTitle(rawTitle: string): string {
   }
 
   // 5. Deduplicate repeated speech phrases, stuttered utterances & trailing duplicate metadata
-  const phraseDedupe = (str: string): string => {
-    let s = str.trim();
-    s = s.replace(/\b(?:high|medium|low)\s+priority\b/gi, '');
-    s = s.replace(/\bpriority\s+(?:high|medium|low|urgent|p[123])\b/gi, '');
-    s = s.replace(/\b(?:today|tomorrow|tommorow|tomorow|tommorrow|tmrw|tmr|tonight|yesterday)\b/gi, '');
-    s = s.replace(/\b\d{1,2}(?::\d{2})?\s*(?:to|-)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b/gi, '');
-    s = s.replace(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi, '');
-
-    for (let len = 6; len >= 2; len--) {
-      const pattern = new RegExp(`\\b((?:[\\w'-]+\\s+){${len - 1}}[\\w'-]+)(?:\\s+\\1\\b)+`, 'gi');
-      s = s.replace(pattern, '$1');
-    }
-    s = s.replace(/\b([a-zA-Z]{3,})\s+\1\b/gi, '$1');
-    return s.replace(/\s+/g, ' ').trim();
-  };
   t = phraseDedupe(t);
 
   // Pronoun & Determiner Simplification
@@ -392,64 +439,27 @@ export function cleanTaskTitle(rawTitle: string): string {
     trailChanged = false;
     trailPasses++;
     const prev = t;
-    t = t.replace(/^[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+|[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+$/g, '').trim();
-    t = t.replace(/\s+(?:at|from|to|by|on|in|for|with|until|till|and|or|during|of|about|then|also)$/i, '').trim();
-    t = t.replace(/\s+(?:please|pls|as\s+well|too|for\s+me|bhai|yaar|bro|dude|na|karo|do|h|hai)$/i, '').trim();
-    t = t.replace(/\s+(?:if\s+possible|as\s+soon\s+as\s+possible|right\s+now|or\s+something|you\s+know|at\s+the\s+earliest)$/i, '').trim();
-    t = t.replace(/\s+(?:[ap]\.?m\.?|am|pm|o'?clock)$/i, '').trim();
-    t = t.replace(/\s+(?:in\s+the\s+)?(?:early\s+morning|morning|afternoon|evening|night|tonight|today|tomorrow|yesterday)$/i, '').trim();
-    t = t.replace(/\s+(?:hi|high|medium|mid|low)\s+(?:priority|prio|importance)$/i, '').trim();
-    t = t.replace(/\s+priority\s*(?:is\s+|:\s*|\s+)?(?:hi|high|medium|mid|low|1|2|3|one|two|three)$/i, '').trim();
-    t = t.replace(/\s+(?:p:hi|p:high|p:med|p:low|!1|!2|!3|p1|p2|p3|hi)$/i, '').trim();
-    t = t.replace(/\s+(?:urgent|asap|important|critical|fire|blocker)$/i, '').trim();
-    t = t.replace(/^[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+|[\s,.:;—\-_/\\|~`!@#$%^&*()+=<>?]+$/g, '').trim();
+    for (const scrubber of TASK_TRAIL_SCRUBBERS) {
+      t = t.replace(scrubber, '').trim();
+    }
     if (t !== prev) trailChanged = true;
   }
 
   t = t.replace(/\s*,\s*,+/g, ', ');
   t = t.replace(/\s{2,}/g, ' ').trim();
 
-  // Acronym & Brand dictionary
-  const ACRONYMS: Record<string, string> = {
-    dsa: 'DSA', dbms: 'DBMS', os: 'OS', ai: 'AI', ml: 'ML', dl: 'DL',
-    nlp: 'NLP', cn: 'CN', oop: 'OOP', oops: 'OOPs', sql: 'SQL', nosql: 'NoSQL',
-    api: 'API', apis: 'APIs', html: 'HTML', css: 'CSS', js: 'JS', ts: 'TS',
-    pr: 'PR', prs: 'PRs', sde: 'SDE', hr: 'HR', ui: 'UI', ux: 'UX',
-    pdf: 'PDF', llm: 'LLM', llms: 'LLMs', cgpa: 'CGPA', sgpa: 'SGPA',
-    aws: 'AWS', gcp: 'GCP', toc: 'TOC', ppl: 'PPL', hiit: 'HIIT',
-    '1rm': '1RM', bmi: 'BMI', vad: 'VAD', rest: 'REST', crud: 'CRUD',
-    sdk: 'SDK', sdks: 'SDKs', cli: 'CLI', ci: 'CI', cd: 'CD', cicd: 'CI/CD',
-    iot: 'IoT', ip: 'IP', vpn: 'VPN', url: 'URL', urls: 'URLs',
-    bldc: 'BLDC', tv: 'TV', ev: 'EV', dc: 'DC', ac: 'AC',
-    json: 'JSON', jwt: 'JWT', ssh: 'SSH', ssl: 'SSL', tls: 'TLS',
-    dns: 'DNS', http: 'HTTP', https: 'HTTPS', ftp: 'FTP', ide: 'IDE',
-    gui: 'GUI', seo: 'SEO', mvp: 'MVP', kpi: 'KPI', okr: 'OKR', okrs: 'OKRs',
-    leetcode: 'LeetCode', gfg: 'GFG', codeforces: 'Codeforces', codechef: 'CodeChef',
-    nptel: 'NPTEL', neet: 'NEET', gate: 'GATE', cat: 'CAT', upsc: 'UPSC',
-    iit: 'IIT', nit: 'NIT', bits: 'BITS', gre: 'GRE', toefl: 'TOEFL',
-    whatsapp: 'WhatsApp', youtube: 'YouTube', instagram: 'Instagram',
-    linkedin: 'LinkedIn', github: 'GitHub', gitlab: 'GitLab', figma: 'Figma',
-    vscode: 'VS Code', nextjs: 'Next.js', react: 'React', nodejs: 'Node.js',
-    mongodb: 'MongoDB', docker: 'Docker', postman: 'Postman', slack: 'Slack',
-    notion: 'Notion', spotify: 'Spotify', gmail: 'Gmail', zoom: 'Zoom',
-  };
-
-  const MINOR_WORDS = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'for', 'nor', 'on', 'at', 'to', 'from', 'by', 'of', 'in', 'with']);
-  const words = t.split(/\s+/);
-  const formattedWords = words.map((w, idx) => {
+  // Acronym & Brand dictionary: preserve standard capitalized forms
+  const words = t.split(' ');
+  const capitalized = words.map(w => {
     const cleanWord = w.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (ACRONYMS[cleanWord]) {
-      return w.replace(new RegExp(cleanWord, 'i'), ACRONYMS[cleanWord]);
+    if (TASK_ACRONYMS[cleanWord]) {
+      return w.replace(new RegExp(cleanWord, 'i'), TASK_ACRONYMS[cleanWord]);
     }
-    if (/^\d/.test(w)) return w;
-    if (w.length > 0 && (idx === 0 || !MINOR_WORDS.has(w.toLowerCase()))) {
-      return w.charAt(0).toUpperCase() + w.slice(1);
-    }
-    return w.toLowerCase();
+    return w;
   });
+  t = capitalized.join(' ');
 
-  t = formattedWords.join(' ').trim();
-  return t || rawTitle.trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
 }
 
 /**
@@ -669,16 +679,21 @@ export function parseNLTask(rawInput: string): ParsedTask {
 
   // 2. DURATION
   const durationPatterns: Array<[RegExp, (m: RegExpMatchArray) => number]> = [
+    [/\b(?:pomodoro|pomo|focus|timer)(?:\s+(?:session|block|time))?(?:\s+(?:of|for))?\s+(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|hr|h)\b/i, m => Math.round(parseFloat(m[1]) * 60)],
+    [/\b(?:pomodoro|pomo|focus|timer)(?:\s+(?:session|block|time))?(?:\s+(?:of|for))?\s+(\d+)\s*(?:minutes?|mins?|min|m)\b/i, m => parseInt(m[1], 10)],
+    [/\b(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|hr|h)\s*(?:pomodoro|pomo|focus|timer)(?:\s+(?:session|block|time))?\b/i, m => Math.round(parseFloat(m[1]) * 60)],
+    [/\b(\d+)\s*(?:minutes?|mins?|min|m)\s*(?:pomodoro|pomo|focus|timer)(?:\s+(?:session|block|time))?\b/i, m => parseInt(m[1], 10)],
+    [/\b(?:pomodoro|pomo)\s*(?:session|block|timer)?\b/i,                   _ => 25],
     [/\bhalf\s+an?\s+hour\b/i,                                             _ => 30],
     [/\ban?\s+hour\s+and\s+a\s+half\b/i,                                  _ => 90],
     [/\b(\d+)\s+and\s+a\s+half\s+hours?\b/i,                             m => parseInt(m[1], 10) * 60 + 30],
     [/\ba\s+couple\s+(?:of\s+)?hours?\b/i,                                _ => 120],
     [/\bcouple\s+(?:of\s+)?hours?\b/i,                                    _ => 120],
     [/\ba\s+few\s+hours?\b/i,                                              _ => 180],
-    [/\ban?\s+hour\s*(?:block|session)?\b/i,                              _ => 60],
+    [/\ban?\s+hour\s*(?:block|session|pomodoro|pomo)?\b/i,                _ => 60],
     [/\ba\s+few\s+minutes?\b/i,                                           _ => 10],
-    [/\b(\d+(?:\.\d+)?)\s*h(?:(?:ou)?rs?)?\s*(?:block|time\s*block|time|session)?\b/i, m => Math.round(parseFloat(m[1]) * 60)],
-    [/\b(\d+)\s*(?:hours?|hrs?|hr)\s*(?:block|time\s*block|time|session)?\b/i,          m => parseInt(m[1], 10) * 60],
+    [/\b(\d+(?:\.\d+)?)\s*h(?:(?:ou)?rs?)?\s*(?:block|time\s*block|time|session|pomodoro|pomo)?\b/i, m => Math.round(parseFloat(m[1]) * 60)],
+    [/\b(\d+)\s*(?:hours?|hrs?|hr)\s*(?:block|time\s*block|time|session|pomodoro|pomo)?\b/i,          m => parseInt(m[1], 10) * 60],
     [/\bblock\s*(?:of\s*|time\s*(?:of\s*)?)?(\d+)\s*(?:hours?|hrs?|h)\b/i,               m => parseInt(m[1], 10) * 60],
     [/\bfor\s+(\d+)\s*h(?:(?:ou)?rs?)?\s+(\d+)\s*m(?:in(?:utes?)?)?\b/i, m => parseInt(m[1], 10) * 60 + parseInt(m[2], 10)],
     [/\bfor\s+(\d+)\s*h(\d{2})\b/i,                                        m => parseInt(m[1], 10) * 60 + parseInt(m[2], 10)],
@@ -686,7 +701,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
     [/\bfor\s+(\d+)\s*m(?:in(?:utes?)?)?\b/i,                             m => parseInt(m[1], 10)],
     [/\bfor\s+(\d+)\s+hours?\b/i,                                          m => parseInt(m[1], 10) * 60],
     [/\bfor\s+(\d+)\s+minutes?\b/i,                                        m => parseInt(m[1], 10)],
-    [/\b(\d+)\s*(?:minutes?|mins?|min)\s*(?:block|time\s*block|session)?\b/i,            m => parseInt(m[1], 10)],
+    [/\b(\d+)\s*(?:minutes?|mins?|min)\s*(?:block|time\s*block|session|pomodoro|pomo)?\b/i,            m => parseInt(m[1], 10)],
     [/\b(\d+)h(\d+)m\b/i,                                                  m => parseInt(m[1], 10) * 60 + parseInt(m[2], 10)],
     [/\b(\d+)h\b(?!\d)/i,                                                  m => parseInt(m[1], 10) * 60],
     [/\b(\d+)min\b/i,                                                       m => parseInt(m[1], 10)],
@@ -1038,7 +1053,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
         if (period === 'pm' && h < 12) h += 12;
         if (period === 'am' && h === 12) h = 0;
         const hh = h.toString().padStart(2, '0');
-        const mm = mins.toString().padStart(2, '00');
+        const mm = mins.toString().padStart(2, '0');
         timeSlot = `${hh}:${mm}`;
         const hr12 = h % 12 || 12;
         const ampm = h >= 12 ? 'pm' : 'am';
@@ -1086,7 +1101,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
         let h = parseInt(quarterToM[1], 10);
         if (h < 8 && !hasMorningHint) h += 12;
         const baseH = h - 1;
-        timeSlot = `${baseH.toString().padStart(2, '00')}:45`;
+        timeSlot = `${baseH.toString().padStart(2, '0')}:45`;
         const hr12 = baseH % 12 || 12;
         registerToken('time', quarterToM[0], `${hr12}:45${baseH >= 12 ? 'pm' : 'am'}`);
       }

@@ -81,7 +81,7 @@ export default function TasksScreen() {
   // Guaranteed synchronous status bar clearance on Frame 0 — prevents upward jump under Android status bar
   const topInset = Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0);
   
-  const { tasks, user, habits, habitLogs, tasksReady, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
+  const { tasks, user, tasksReady, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
   const isInitialLoading = !tasksReady && (!tasks || tasks.length === 0);
   const { openPomodoro, startTaskPomodoro } = usePomodoroActions();
   const { linkedTaskId, isPomodoroRunning } = usePomodoroActiveTask();
@@ -169,8 +169,6 @@ export default function TasksScreen() {
     setSelectedTaskIds,
     setBulkRescheduleModal,
     todayTasks: selectedDateTasks,
-    habits,
-    habitLogs,
     todayDateStr,
   });
 

@@ -51,7 +51,7 @@ import { BulkRescheduleSheet } from './BulkRescheduleSheet';
 import { InboxOverdueDrawer } from './InboxOverdueDrawer';
 
 export const TodoListModule: React.FC = () => {
-  const { tasks: globalTodos, habits: rawHabits, habitLogs: rawHabitLogs, isLoading } = useGlobalData();
+  const { tasks: globalTodos, isLoading } = useGlobalData();
   const user = auth.currentUser;
   const todayStr = useMemo(() => getLocalDateString(new Date()), []);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
@@ -59,30 +59,19 @@ export const TodoListModule: React.FC = () => {
   // Cross-device recurring task spawner: auto-creates today's occurrence for active daily habits/tasks
   useRecurringSpawn(globalTodos, user?.uid);
 
-  // PERFECT_DAY: fires once per day when all today's tasks + all habits are done
+  // PERFECT_DAY: fires once per day when all today's tasks are completed
   const checkPerfectDayAfterTask = useCallback(async (justCompletedId: string) => {
     const key = `zentrack_perfect_day_${todayStr}`;
     if (localStorage.getItem(key)) return;
-    // All tasks for selectedDate must be done (include the one just optimistically completed)
     const todayTasks = globalTodos.filter(t => t.date === todayStr);
     const allTasksDone = todayTasks.every(t => t.status === 'completed' || t.id === justCompletedId);
     if (!allTasksDone || todayTasks.length === 0) return;
-    // All positive non-archived habits must have a log for today
-    const positiveHabits = ((rawHabits || []) as any[]).filter((h: any) => h.type !== 'negative' && !h.archived);
-    if (positiveHabits.length === 0) return;
-    const todayHabitLogs = ((rawHabitLogs || []) as any[]).filter((l: any) => l.date === todayStr);
-    const allHabitsDone = positiveHabits.every((h: any) => {
-      const log = todayHabitLogs.find((l: any) => l.habitId === h.id);
-      if (!log) return false;
-      if (h.targetCount && h.targetCount > 0) return (log.count || 1) >= h.targetCount;
-      return true;
-    });
-    if (!allHabitsDone) return;
+
     localStorage.setItem(key, '1');
     const res = await awardXP('PERFECT_DAY');
-    toast.success(`★ PERFECT DAY! All tasks + habits done! +${res.added} XP 🏆`);
+    toast.success(`★ PERFECT DAY! All daily tasks complete! +${res.added} XP 🏆`);
     if (res.leveledUp) toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
-  }, [globalTodos, rawHabits, rawHabitLogs, todayStr]);
+  }, [globalTodos, todayStr]);
 
   // Optimistic deletion state: instantly removes deleted tasks from UI with background sync
   const [optimisticDeletedIds, setOptimisticDeletedIds] = useState<Set<string>>(new Set());
@@ -171,7 +160,6 @@ export const TodoListModule: React.FC = () => {
   // Filter states
   const [priorityFilter, setPriorityFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>('all');
-  const [quickInput, setQuickInput] = useState('');
 
   // Extract all unique tags across tasks
   const allAvailableTags = useMemo(() => {
@@ -182,151 +170,22 @@ export const TodoListModule: React.FC = () => {
     return Array.from(set);
   }, [activeGlobalTodos]);
 
-  // Handle Raycast-Style Fast Natural Language Quick Capture with Full NLP
-  const handleQuickCapture = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickInput.trim() || !user) return;
+  // Memoized card action handlers (prevents 50+ TodoCards re-rendering on every tick)
+  const handleToggleTaskSelection = useCallback((id: string) => {
+    setSelectedTaskIds(prev => {
+      const s = new Set(prev);
+      if (s.has(id)) s.delete(id); else s.add(id);
+      return s;
+    });
+  }, []);
 
-    const parsed = parseNLTask(quickInput);
-    const finalTitle = cleanTaskTitle(parsed.title || quickInput.trim());
-    const count = todos.filter(t => t.status !== 'completed').length;
-    const fullTimeSlot = parsed.timeSlot
-      ? (parsed.endTimeSlot && !parsed.timeSlot.includes('-') ? `${parsed.timeSlot} - ${parsed.endTimeSlot}` : parsed.timeSlot)
-      : null;
-    const resolvedDuration = parsed.durationMinutes
-      || (fullTimeSlot ? extractTaskDurationMinutes(null, fullTimeSlot, finalTitle) : null);
+  const handleSetSubtaskText = useCallback((id: string, txt: string) => {
+    setNewSubtaskTexts(prev => ({ ...prev, [id]: txt }));
+  }, []);
 
-    // 1. Multi-day one-time dates (e.g. "submit report on monday and wednesday")
-    if (parsed.oneTimeDates && parsed.oneTimeDates.length > 1) {
-      const batch = writeBatch(db);
-      for (const d of parsed.oneTimeDates) {
-        const docRef = doc(collection(db, 'todos'));
-        batch.set(docRef, {
-          userId: user.uid,
-          title: finalTitle,
-          text: finalTitle,
-          date: d,
-          status: 'pending',
-          priority: parsed.priority || 'medium',
-          timeSlot: fullTimeSlot,
-          estimatedMinutes: resolvedDuration,
-          subtasks: (parsed.subtasks || []).map((s, idx) => ({ id: `st-${Date.now()}-${idx}`, title: s, completed: false, status: 'pending' })),
-          tags: parsed.tags || [],
-          isRecurring: false,
-          createdAt: Date.now(),
-          order: count,
-        });
-      }
-      try {
-        await batch.commit();
-        playPopSound();
-        toast.success(`Created ${parsed.oneTimeDates.length} tasks across scheduled days ⚡`);
-        setQuickInput('');
-      } catch (err) {
-        console.error(err);
-        toast.error('Failed to create multi-day tasks');
-      }
-      return;
-    }
-
-    // 2. Recurring tasks (e.g. "go for run daily at 7am")
-    if (parsed.isRecurring && parsed.recurrenceRule) {
-      const rule = parsed.recurrenceRule;
-      const sourceId = `rec_${Date.now()}`;
-      const baseDateStr = parsed.date || selectedDate || getLocalDateString();
-      let curr = parseLocalDate(baseDateStr);
-      const end = rule.endDate
-        ? parseLocalDate(rule.endDate)
-        : new Date(curr.getTime() + 60 * 24 * 60 * 60 * 1000); // 60 days window
-
-      if (rule.type === 'weekly' && rule.daysOfWeek && rule.daysOfWeek.length > 0) {
-        while (!rule.daysOfWeek.includes(curr.getDay())) {
-          curr.setDate(curr.getDate() + 1);
-        }
-      }
-
-      const batch = writeBatch(db);
-      let instancesCount = 0;
-      const MAX_INSTANCES = 60;
-
-      while (curr <= end && instancesCount < MAX_INSTANCES) {
-        const docRef = doc(collection(db, 'todos'));
-        const dateStr = toYMD(curr);
-        batch.set(docRef, {
-          userId: user.uid,
-          title: finalTitle,
-          text: finalTitle,
-          date: dateStr,
-          status: 'pending',
-          priority: parsed.priority || 'medium',
-          timeSlot: fullTimeSlot,
-          estimatedMinutes: resolvedDuration,
-          subtasks: (parsed.subtasks || []).map((s, idx) => ({ id: `st-${Date.now()}-${idx}`, title: s, completed: false, status: 'pending' })),
-          tags: parsed.tags || [],
-          isRecurring: true,
-          recurrenceRule: rule,
-          recurringSourceId: sourceId,
-          createdAt: Date.now(),
-          order: count,
-        });
-        instancesCount++;
-
-        if (rule.type === 'daily' || rule.type === 'custom') {
-          curr.setDate(curr.getDate() + (rule.interval || 1));
-        } else if (rule.type === 'weekly') {
-          if (rule.daysOfWeek && rule.daysOfWeek.length > 0) {
-            do {
-              curr.setDate(curr.getDate() + 1);
-            } while (curr <= end && !rule.daysOfWeek.includes(curr.getDay()));
-          } else {
-            curr.setDate(curr.getDate() + 7 * (rule.interval || 1));
-          }
-        } else if (rule.type === 'monthly') {
-          curr.setMonth(curr.getMonth() + (rule.interval || 1));
-        } else {
-          break;
-        }
-      }
-
-      try {
-        await batch.commit();
-        playPopSound();
-        toast.success(`Created recurring task: "${finalTitle}" (${instancesCount} instances) ⚡`);
-        setQuickInput('');
-      } catch (err) {
-        console.error(err);
-        toast.error('Failed to create recurring tasks');
-      }
-      return;
-    }
-
-    // 3. Standard task
-    const newDoc: any = {
-      userId: user.uid,
-      title: finalTitle,
-      text: finalTitle,
-      date: parsed.date || selectedDate,
-      status: 'pending',
-      priority: parsed.priority || 'medium',
-      timeSlot: fullTimeSlot,
-      estimatedMinutes: resolvedDuration,
-      subtasks: (parsed.subtasks || []).map((s, idx) => ({ id: `st-${Date.now()}-${idx}`, title: s, completed: false, status: 'pending' })),
-      tags: parsed.tags || [],
-      isRecurring: false,
-      createdAt: Date.now(),
-      order: count,
-    };
-
-    try {
-      await addDoc(collection(db, 'todos'), newDoc);
-      playPopSound();
-      toast.success(`Task added: "${finalTitle}" ⚡`);
-      setQuickInput('');
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to add task');
-    }
-  };
+  const handleStartPomodoroTimer = useCallback((id: string, title: string, x?: number, y?: number, est?: number) => {
+    startTimer(id, title, x, y, est);
+  }, [startTimer]);
 
   // Sort & Filter todos for list view
   const pendingTodos = useMemo(() => {
@@ -1040,21 +899,15 @@ export const TodoListModule: React.FC = () => {
                           isBulkEdit={isBulkEdit}
                           newSubtaskText={newSubtaskTexts[todo.id!] || ''}
                           isBlocked={false}
-                          toggleSelection={id => {
-                            setSelectedTaskIds(prev => {
-                              const s = new Set(prev);
-                              if (s.has(id)) s.delete(id); else s.add(id);
-                              return s;
-                            });
-                          }}
+                          toggleSelection={handleToggleTaskSelection}
                           toggleTodoComplete={toggleTodoComplete}
                           setExpandedTaskId={setExpandedTaskId}
                           handleDeleteTask={handleDeleteTask}
                           toggleSubtask={handleToggleSubtask}
                           handleDeleteSubtask={handleDeleteSubtask}
                           addSubtask={handleAddSubtask}
-                          setNewSubtaskText={(id, txt) => setNewSubtaskTexts(prev => ({ ...prev, [id]: txt }))}
-                          startTimer={(id, title, x, y, est) => startTimer(id, title, x, y, est)}
+                          setNewSubtaskText={handleSetSubtaskText}
+                          startTimer={handleStartPomodoroTimer}
                           onEdit={setEditingTask}
                         />
                       ))}

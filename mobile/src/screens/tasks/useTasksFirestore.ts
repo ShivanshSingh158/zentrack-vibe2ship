@@ -38,8 +38,6 @@ interface UseTasksFirestoreProps {
   setBulkRescheduleModal: (v: boolean) => void;
   // PERFECT_DAY detection — pass live data from the screen
   todayTasks: Task[];
-  habits: Array<{ id: string; type?: string; archived?: boolean; targetCount?: number | null }>;
-  habitLogs: Array<{ habitId: string; date: string; count?: number }>;
   todayDateStr: string;
 }
 
@@ -52,28 +50,22 @@ export function useTasksFirestore({
   setSelectedTaskIds,
   setBulkRescheduleModal,
   todayTasks,
-  habits,
-  habitLogs,
   todayDateStr,
 }: UseTasksFirestoreProps) {
   // Live props synchronized via refs to prevent callback re-creation on data mutations
   const todayTasksRef = useRef(todayTasks);
-  const habitsRef = useRef(habits);
-  const habitLogsRef = useRef(habitLogs);
   const todayDateStrRef = useRef(todayDateStr);
   const optimisticUpdateTaskRef = useRef(optimisticUpdateTask);
   const optimisticDeleteTaskRef = useRef(optimisticDeleteTask);
   const optimisticAddTaskRef = useRef(optimisticAddTask);
 
   todayTasksRef.current = todayTasks;
-  habitsRef.current = habits;
-  habitLogsRef.current = habitLogs;
   todayDateStrRef.current = todayDateStr;
   optimisticUpdateTaskRef.current = optimisticUpdateTask;
   optimisticDeleteTaskRef.current = optimisticDeleteTask;
   optimisticAddTaskRef.current = optimisticAddTask;
 
-  // Helper: award PERFECT_DAY if all today's tasks done AND all positive habits logged
+  // Helper: award PERFECT_DAY if all today's tasks done
   const checkAndAwardPerfectDay = useCallback(async (justCompletedTaskId: string) => {
     try {
       const todayDate = todayDateStrRef.current;
@@ -83,22 +75,10 @@ export function useTasksFirestore({
 
       const currentTodayTasks = todayTasksRef.current;
       // All today's tasks must be completed (include the one just completed optimistically)
-      const allTasksDone = currentTodayTasks.every(
+      const allTasksDone = currentTodayTasks.length > 0 && currentTodayTasks.every(
         t => t.status === 'completed' || t.id === justCompletedTaskId
       );
-      if (!allTasksDone || currentTodayTasks.length === 0) return;
-
-      // All positive non-archived habits must have a log today
-      const positiveHabits = habitsRef.current.filter(h => h.type !== 'negative' && !h.archived);
-      if (positiveHabits.length === 0) return;
-      const todayHabitLogs = habitLogsRef.current.filter(l => l.date === todayDate);
-      const allHabitsDone = positiveHabits.every(h => {
-        const log = todayHabitLogs.find(l => l.habitId === h.id);
-        if (!log) return false;
-        if (h.targetCount && h.targetCount > 0) return (log.count || 1) >= h.targetCount;
-        return true;
-      });
-      if (!allHabitsDone) return;
+      if (!allTasksDone) return;
 
       await AsyncStorage.setItem(perfectDayKey, '1');
       await awardXP('PERFECT_DAY');

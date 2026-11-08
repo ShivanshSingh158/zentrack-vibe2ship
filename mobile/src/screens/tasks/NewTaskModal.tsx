@@ -367,7 +367,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
         setSubtasks(parsed.subtasks);
         setShowSubtasks(true);
       }
-    }, 300);
+    }, 120);
   }, [priority]);
 
   const handleDismissToken = useCallback((token: NLPToken) => {
@@ -398,7 +398,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   const handleOpenRecurrence = useCallback(() => setShowRecurrenceModal(true), []);
   const handleToggleTagInput = useCallback(() => setShowTagInput(v => !v), []);
   const handleToggleReminder = useCallback(() => {
-    import('expo-haptics').then(H => H.impactAsync(H.ImpactFeedbackStyle.Light));
+    feedback.tap();
     setIsReminder(prev => {
       const next = !prev;
       if (next && !startTime) {
@@ -469,15 +469,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
 
   useEffect(() => {
     setInternalVisible(visible);
-    if (visible) {
-      // 120ms: Smoothly synchronizes keyboard appearance with sheet entrance
-      const timer = setTimeout(() => {
-        setCanFocusInput(true);
-      }, 120);
-      return () => clearTimeout(timer);
-    } else {
-      setCanFocusInput(false);
-    }
+    setCanFocusInput(visible);
   }, [visible]);
 
   const requestClose = useCallback(() => {
