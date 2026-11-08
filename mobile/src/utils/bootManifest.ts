@@ -109,7 +109,7 @@ export interface BootManifest {
   notifFingerprint: string | null;
 }
 
-const DEFAULT_PINNED = ['Tasks', 'Calendar', 'Attendance', 'Habits'];
+const DEFAULT_PINNED = ['Tasks', 'Calendar', 'Attendance', 'Notes'];
 const DEFAULT_WATER_GOAL = 3800;
 
 let _memoryBootCache: BootManifest | null = null;
@@ -153,7 +153,11 @@ export async function loadBootManifest(): Promise<BootManifest> {
       if (pinnedRaw) {
         try {
           const parsed = JSON.parse(pinnedRaw);
-          if (Array.isArray(parsed) && parsed.length > 0) pinnedModules = parsed.slice(0, 4);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const pruned = new Set(['Gym', 'Habits', 'Analytics', 'Assignments']);
+            const filtered = parsed.filter(m => !pruned.has(m)).slice(0, 4);
+            if (filtered.length > 0) pinnedModules = filtered;
+          }
         } catch {}
       }
 

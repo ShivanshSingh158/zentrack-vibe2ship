@@ -46,8 +46,6 @@ import ErrorBoundary from '../components/ErrorBoundary';
 // --- Lightweight Shimmer Skeletons (Instant 0ms Fallbacks for Frame 1 Tab Switches) ---
 import TasksSkeleton from '../components/Tasks/TasksSkeleton';
 import AttendanceSkeleton from '../components/Academic/AttendanceSkeleton';
-import HabitsSkeleton from '../components/Habits/HabitsSkeleton';
-import AnalyticsSkeleton from '../components/Analytics/AnalyticsSkeleton';
 
 // --- Core App Screens (Synchronous for 0ms Instant Tab Switching) ----------
 import LandingScreen from '../screens/LandingScreen';
@@ -60,17 +58,11 @@ const TasksScreen = cacheAwareLazy('Tasks', () => import('../screens/TasksScreen
 const CalendarScreen = cacheAwareLazy('Calendar', () => import('../screens/CalendarScreen'));
 const AttendanceScreen = cacheAwareLazy('Attendance', () => import('../screens/AttendanceScreen'), AttendanceSkeleton);
 const MoreScreen = cacheAwareLazy('More', () => import('../screens/MoreScreen'));
-const HabitsScreen = cacheAwareLazy('Habits', () => import('../screens/HabitsScreen'), HabitsSkeleton);
 const NotesScreen = cacheAwareLazy('Notes', () => import('../screens/NotesScreen'));
-const AnalyticsScreen = cacheAwareLazy('Analytics', () => import('../screens/AnalyticsScreen'), AnalyticsSkeleton);
 const GradesScreen = cacheAwareLazy('Grades', () => import('../screens/GradesScreen'));
-const AssignmentsScreen = cacheAwareLazy('Assignments', () => import('../screens/AssignmentsScreen'));
 const LearningScreen = cacheAwareLazy('Learning', () => import('../screens/LearningScreen'));
 const SettingsScreen = cacheAwareLazy('Settings', () => import('../screens/SettingsScreen'));
 const NotificationsSettingsScreen = cacheAwareLazy('NotificationsSettings', () => import('../screens/NotificationsSettingsScreen'));
-const XPConstellationScreen = cacheAwareLazy('XPConstellation', () => import('../screens/XPConstellationScreen'));
-const StreakDetailScreen = cacheAwareLazy('StreakDetail', () => import('../screens/StreakDetailScreen'));
-const WellbeingDashboardScreen = cacheAwareLazy('WellbeingDashboard', () => import('../screens/WellbeingDashboardScreen'));
 // SARA screen hidden & completely deactivated per user directive
 const NullScreen = () => null;
 import PomodoroFloatingPill from '../components/Tasks/PomodoroFloatingPill';
@@ -157,8 +149,7 @@ function isAuthFatalError(error: any): boolean {
 }
 
 const ALLOWED_SAVE_ROUTES = new Set([
-  'Home', 'Tasks', 'Calendar', 'Habits',
-  'Attendance', 'Analytics', 'Notes', 'Grades', 'Assignments', 'Learning',
+  'Home', 'Tasks', 'Calendar', 'Attendance', 'Notes', 'Grades', 'Learning',
 ]);
 
 
@@ -216,13 +207,10 @@ function withFocusFreeze<T extends object>(
 
 const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
   Tasks:       withFocusFreeze(TasksScreen,       'Tasks'),
+  Calendar:    withFocusFreeze(CalendarScreen,    'Calendar'),
   Attendance:  withFocusFreeze(AttendanceScreen,  'Attendance'),
-    Calendar:    withFocusFreeze(CalendarScreen,    'Calendar'),
-  Habits:      withFocusFreeze(HabitsScreen,      'Habits'),
-  Analytics:   withFocusFreeze(AnalyticsScreen,   'Analytics'),
   Notes:       withFocusFreeze(NotesScreen,       'Notes'),
   Grades:      withFocusFreeze(GradesScreen,      'Grades'),
-  Assignments: withFocusFreeze(AssignmentsScreen, 'Assignments'),
   Learning:    withFocusFreeze(LearningScreen,    'Learning'),
 };
 
@@ -263,7 +251,7 @@ function MainTabNavigator() {
 
   const pinnedKey = (Array.isArray(pinnedModules) && pinnedModules.length > 0)
     ? pinnedModules.join(',')
-    : 'Tasks,Calendar,Attendance,Habits';
+    : 'Tasks,Calendar,Attendance,Notes';
 
   const effectivePinned = useMemo(() => pinnedKey.split(','), [pinnedKey]);
 
@@ -346,11 +334,6 @@ function NestedScreens() {
       >
         <Stack.Screen name="Settings"              component={withErrorBoundary(SettingsScreen,              'Settings')} />
         <Stack.Screen name="NotificationsSettings" component={withErrorBoundary(NotificationsSettingsScreen, 'Notifications')} options={{ headerShown: false }} />
-        {/* Modal-style screens lift up from bottom — more natural than a side-slide */}
-        <Stack.Screen name="StreakDetail"           component={withErrorBoundary(StreakDetailScreen,          'StreakDetail')}   options={{ headerShown: false, animation: 'fade_from_bottom', animationDuration: 320 }} />
-        <Stack.Screen name="Assignments"           component={withErrorBoundary(AssignmentsScreen,           'Assignments')}   options={{ headerShown: false }} />
-        <Stack.Screen name="WellbeingDashboard"    component={withErrorBoundary(WellbeingDashboardScreen,    'Wellbeing')}     options={{ headerShown: false, animation: 'fade_from_bottom', animationDuration: 320 }} />
-        <Stack.Screen name="XPConstellation"       component={withErrorBoundary(XPConstellationScreen,       'XPConstellation')} options={{ headerShown: false, animation: 'fade_from_bottom', animationDuration: 320 }} />
       </Stack.Navigator>
     </ErrorBoundary>
   );
@@ -679,21 +662,16 @@ const LINKING_CONFIG = {
           Home: 'dashboard',
           Tasks: 'tasks',
           Attendance: 'attendance',
-          Habits: 'habits',
-          Gym: 'gym',
           Calendar: 'calendar',
           Notes: 'notes',
-          Analytics: 'analytics',
+          Grades: 'grades',
+          Learning: 'learning',
         },
       },
       MoreStack: {
         screens: {
           Settings: 'settings',
           NotificationsSettings: 'notifications-settings',
-          StreakDetail: 'streak',
-          Assignments: 'assignments',
-          WellbeingDashboard: 'wellbeing',
-          XPConstellation: 'xp',
         },
       },
     },

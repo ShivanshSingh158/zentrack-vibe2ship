@@ -29,7 +29,6 @@ import { AgendaWidget } from '../components/Dashboard/AgendaWidget';
 import AnimatedPressable from '../components/AnimatedPressable';
 import QuickCaptureSheet from '../components/Dashboard/QuickCaptureSheet';
 import DashboardLayoutSheet from '../components/Dashboard/DashboardLayoutSheet';
-import WaterLogSheet from '../components/Dashboard/WaterLogSheet';
 import FlashcardReviewModal from '../components/Learning/FlashcardReviewModal';
 import { ActiveRecallBanner } from '../components/Dashboard/ActiveRecallBanner';
 import { getDueFlashcards, Flashcard } from '../services/flashcardService';
@@ -113,7 +112,7 @@ export default function DashboardScreen() {
     }
   }, [data.user?.uid, refreshFlashcards]);
 
-  const { todayTasksCount, doneTasksCount, habitsCompleted, positiveHabitsCount, waterCompleted } = useMemo(() => {
+  const { todayTasksCount, doneTasksCount } = useMemo(() => {
     let todayCount = 0;
     let doneCount = 0;
     for (const t of data.tasks) {
@@ -123,35 +122,11 @@ export default function DashboardScreen() {
       }
     }
 
-    const todayHabitLogMap = new Map<string, number>();
-    for (const l of data.habitLogs) {
-      if ((l.date || '').slice(0, 10) === data.todayStr && !l.isFreeze) {
-        todayHabitLogMap.set(l.habitId, l.count ?? 1);
-      }
-    }
-
-    let completedHabits = 0;
-    let activePositiveTotal = 0;
-    for (const h of data.allHabits) {
-      if (h.archived || h.type === 'negative') continue;
-      activePositiveTotal++;
-      const count = todayHabitLogMap.get(h.id) ?? 0;
-      if (count >= (h.targetCount || 1)) completedHabits++;
-    }
-
-    let waterSum = 0;
-    for (const w of data.waterLogs || []) {
-      if ((w.date || '').slice(0, 10) === data.todayStr) waterSum += w.amountMl;
-    }
-
     return {
       todayTasksCount: todayCount,
       doneTasksCount: doneCount,
-      habitsCompleted: completedHabits,
-      positiveHabitsCount: activePositiveTotal,
-      waterCompleted: waterSum,
     };
-  }, [data.tasks, data.allHabits, data.habitLogs, data.waterLogs, data.todayStr]);
+  }, [data.tasks, data.todayStr]);
 
   const urgentAssignments = useMemo(() => {
     // 1. Gather all completed assignment IDs from linked tasks
@@ -239,24 +214,20 @@ export default function DashboardScreen() {
   }, [data.layout]);
 
   const handlePressStreak = useCallback(() => {
-    navigation.navigate('MoreStack', { screen: 'StreakDetail' });
+    navigation.navigate('Tasks');
   }, [navigation]);
 
   const handlePressHabits = useCallback(() => {
-    navigation.navigate('Habits');
+    navigation.navigate('Tasks');
   }, [navigation]);
 
-  const handlePressWater = useCallback(() => {
-    data.setWaterLogVisible(true);
-  }, [data.setWaterLogVisible]);
+  const handlePressWater = useCallback(() => {}, []);
 
   const handlePressAttendance = useCallback(() => {
     navigation.navigate('Attendance');
   }, [navigation]);
 
-  const handlePressXP = useCallback(() => {
-    navigation.navigate('MoreStack', { screen: 'XPConstellation' });
-  }, [navigation]);
+  const handlePressXP = useCallback(() => {}, []);
 
   const handlePressRing = useCallback(() => {
     navigation.navigate(data.nextClass ? 'Attendance' : 'Tasks');
@@ -267,7 +238,7 @@ export default function DashboardScreen() {
   }, [data.setCaptureVisible]);
 
   const handlePressAssignments = useCallback(() => {
-    navigation.navigate('Assignments' as any);
+    navigation.navigate('Tasks');
   }, [navigation]);
 
   const handleToggleAssignment = useCallback((assignmentId: string) => {
@@ -469,10 +440,10 @@ export default function DashboardScreen() {
                     streakAtRisk={false}
                     agendaCompleted={doneTasksCount}
                     agendaTotal={todayTasksCount}
-                    habitsCompleted={habitsCompleted}
-                    habitsTotal={positiveHabitsCount}
-                    waterCompleted={waterCompleted}
-                    waterTotal={data.waterTotal}
+                    habitsCompleted={0}
+                    habitsTotal={0}
+                    waterCompleted={0}
+                    waterTotal={0}
                     classesAttendedToday={data.classesAttendedToday}
                     classesTotalToday={data.classesTotalToday}
                     overallAttendancePct={data.overallAttendancePct}
@@ -539,17 +510,6 @@ export default function DashboardScreen() {
       {data.captureVisible && (
         <QuickCaptureSheet visible={data.captureVisible} onClose={() => data.setCaptureVisible(false)} />
       )}
-      {data.waterLogVisible && (
-        <WaterLogSheet
-          visible={data.waterLogVisible}
-          onClose={() => data.setWaterLogVisible(false)}
-          userId={data.user?.uid || ''}
-          target={data.waterTotal}
-          onUpdateTarget={(val) => {
-            data.setWaterTotal(val);
-          }}
-        />
-      )}
       {flashcardModalVisible && (
         <FlashcardReviewModal
           visible={flashcardModalVisible}
@@ -588,7 +548,6 @@ export default function DashboardScreen() {
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       setQuickProfileVisible(false);
-                      navigation.navigate('MoreStack', { screen: 'XPConstellation' });
                     }}
                     style={s.profileLevelPill}
                   >

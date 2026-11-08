@@ -43,7 +43,6 @@ import AnimatedPressable from '../components/AnimatedPressable';
 import UserAvatar from '../components/ui/UserAvatar';
 import { useTheme } from '../contexts/ThemeContext';
 import { useCoreData, performSignOut } from '../contexts/domains/CoreDataContext';
-import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
 import { usePlannerData } from '../contexts/domains/PlannerContext';
 import { scheduleAllNotifications, clearScheduleCache } from '../services/notifications';
@@ -89,8 +88,7 @@ function formatMetaDate(dStr?: string | null): string {
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
-  const { user, tasks, habitLogs, allHabits } = useCoreData();
-  const { waterLogs, sleepLogs } = useWellnessData();
+  const { user, tasks } = useCoreData();
   const { attendance, assignments } = useAcademicData();
   const { customEvents } = usePlannerData();
 
@@ -181,11 +179,7 @@ export default function SettingsScreen() {
           tasks,
           customEvents,
           attendance,
-          habitLogs,
-          allHabits,
           assignments,
-          waterLogs,
-          sleepLogs,
           }).catch(err => console.warn('[Settings] Reschedule error:', err));
       });
     }
@@ -289,11 +283,7 @@ export default function SettingsScreen() {
                 tasks,
                 customEvents,
                 attendance,
-                habitLogs,
-                allHabits,
                 assignments,
-                waterLogs,
-                sleepLogs,
                 });
               setIsResyncing(false);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -828,8 +818,8 @@ export default function SettingsScreen() {
                   </View>
                   <View style={s.statBoxDivider} />
                   <View style={s.statBox}>
-                    <Text style={s.statValue}>{allHabits.length}</Text>
-                    <Text style={s.statLabel}>Habits</Text>
+                    <Text style={s.statValue}>{customEvents.length}</Text>
+                    <Text style={s.statLabel}>Events</Text>
                   </View>
                   <View style={s.statBoxDivider} />
                   <View style={s.statBox}>

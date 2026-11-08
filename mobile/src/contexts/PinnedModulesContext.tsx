@@ -7,7 +7,7 @@ import { COLLECTION } from '../config/constants';
 import { getBootManifestSync, updateL1Cache } from '../utils/bootManifest';
 import { safeWrite } from '../utils/safeWrite';
 
-const DEFAULT_PINNED_MODULES = ['Tasks', 'Calendar', 'Attendance', 'Habits'];
+const DEFAULT_PINNED_MODULES = ['Tasks', 'Calendar', 'Attendance', 'Notes'];
 
 export interface PinnedModulesContextType {
   pinnedModules: string[];
@@ -39,7 +39,8 @@ export function PinnedModulesProvider({ children }: { children: React.ReactNode 
           try {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              const clamped = parsed.filter(m => m !== 'Gym').slice(0, 4);
+              const pruned = new Set(['Gym', 'Habits', 'Analytics', 'Assignments']);
+              const clamped = parsed.filter(m => !pruned.has(m)).slice(0, 4);
               setPinnedModulesState(clamped);
               updateL1Cache('pinnedModules', clamped);
             }

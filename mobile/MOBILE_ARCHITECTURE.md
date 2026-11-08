@@ -323,30 +323,27 @@ The application uses React Navigation v7 with a native stack hierarchy:
 - **`GymStack.tsx`**: Dedicated stack for gym sessions, history, exercise swapping, and cardio logs.
 - **`MoreStack`**: Card presentation stack for secondary domain screens.
 
-### 5.2. Core Screen Directory
+### 5.2. Core Screen Directory (1:1 Unified with Web)
+
+The mobile app and web app share identical 7 core Life OS modules:
 
 | Screen | Route Name | File Path | Responsibilities & UI Features |
 |---|---|---|---|
-| **Dashboard** | `Home` | [`src/screens/DashboardScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/DashboardScreen.tsx) | Life Matrix ring, habit streak rings, hydration progress, Voice FAB, daily briefing, Quick Profile Sheet. |
-| **Tasks** | `Tasks` | [`src/screens/TasksScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/TasksScreen.tsx) | `@shopify/flash-list` task virtualization, 24h timeline, Eisenhower matrix, swipe day-change, undo toast. |
-| **Attendance**| `Attendance` | [`src/screens/AttendanceScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AttendanceScreen.tsx) | 7-day magnetic week strip, class/lab bunk calculator, timetable grid, danger zone banner, Excel export. |
-| **Calendar** | `Calendar` | [`src/screens/CalendarScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/CalendarScreen.tsx) | Interactive month grid, week strip pager, day agenda, schedule conflict markers, 1-tap "Today" alignment. |
-| **Habits** | `Habits` | [`src/screens/HabitsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/HabitsScreen.tsx) | 35-day contribution heatmaps, squircle check rings, 365-day annual analytics, 0ms optimistic check-off. |
-| **SARA AI** | `Sara`, `SaraModal` | [`src/screens/SaraScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/SaraScreen.tsx) | Deactivated ultra-lightweight stub ensuring maximum performance across all primary screens. |
+| **Dashboard** | `Home` | [`src/screens/DashboardScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/DashboardScreen.tsx) | Life Matrix, today tasks, attendance cutoff alert, active recall banner, quick profile. |
+| **Tasks** | `Tasks` | [`src/screens/TasksScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/TasksScreen.tsx) | `@shopify/flash-list` task virtualization, 24h timeline, recurring spawn, subtasks. |
+| **Attendance**| `Attendance` | [`src/screens/AttendanceScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AttendanceScreen.tsx) | 7-day week strip, bunk math (can bunk / attend N), timetable grid, danger zone banner. |
+| **Calendar** | `Calendar` | [`src/screens/CalendarScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/CalendarScreen.tsx) | Month dropdown, week pager, day agenda, custom events, timetable overlays. |
+| **Notes & Vault** | `Notes` | [`src/screens/NotesScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/NotesScreen.tsx) | ZenNotes Markdown editor, Cloud Vault document tree, PDF compressor, Cloudinary sync. |
+| **Grades** | `Grades` | [`src/screens/GradesScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GradesScreen.tsx) | University SGPA/CGPA grade calculation, semester subject credit weighting. |
+| **Learning** | `Learning` | [`src/screens/LearningScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/LearningScreen.tsx) | Synchronized YouTube player, ZenGPT AI tutor prompt engine, SM-2 flashcard review. |
+| **More Launcher** | `More` | [`src/screens/MoreScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/MoreScreen.tsx) | 6-module grid launcher & custom tab-pinning configuration. |
 
-### 5.3. Specialized Domain Screen Catalog
+### 5.3. Secondary Settings Screens
 
 | Screen | Route Name | File Path | Responsibilities & UI Features |
 |---|---|---|---|
-| **Notes & Vault** | `Notes` | [`src/screens/NotesScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/NotesScreen.tsx) | ZenNotes Markdown editor, Cloud Vault document tree, PDF compressor, floating 3-dots action popover. |
-| **Goals** | `Goals` | [`src/screens/GoalsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GoalsScreen.tsx) | OKR Goal Tracker, milestone breakdowns, progress completion rings, target deadline markers. |
-| **Grades** | `Grades` | [`src/screens/GradesScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GradesScreen.tsx) | University SGPA/CGPA grade calculation, semester subject credit weighting, target GPA projection. |
-| **Learning** | `Learning` | [`src/screens/LearningScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/LearningScreen.tsx) | Synchronized YouTube player, AI tutor chat, VS Code syntax highlighter, interactive mind map. |
-| **Analytics** | `Analytics` | [`src/screens/AnalyticsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AnalyticsScreen.tsx) | Concentric dual-ring Zen Score, 4-pillar balance tracks, task velocity chart, habit spline area wave. |
-| **Wellbeing** | `WellbeingDashboard` | [`src/screens/WellbeingDashboardScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/WellbeingDashboardScreen.tsx) | Sleep stage logs, hydration intervals, physical recovery scores, daily work-life balance insights. |
-| **XP Constellation**| `XPConstellation` | [`src/screens/XPConstellationScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/XPConstellationScreen.tsx) | Interactive galaxy map representing 20 mastery tiers, mascot lore codex, kinetic spring physics. |
-| **Streak Detail** | `StreakDetail` | [`src/screens/StreakDetailScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/StreakDetailScreen.tsx) | Longest streak records, habit freeze history, continuity milestones, Sunday rest day immunity. |
-| **More Launcher** | `More` | [`src/screens/MoreScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/MoreScreen.tsx) | 16-module grid launcher, custom tab-pinning configuration (1–4 selection with reordering). |
+| **Settings** | `Settings` | [`src/screens/SettingsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/SettingsScreen.tsx) | Account profile, biometric lock, theme toggle, telemetry diagnostics, cloud re-sync. |
+| **Notifications** | `NotificationsSettings` | [`src/screens/NotificationsSettingsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/NotificationsSettingsScreen.tsx) | Per-module alarms, quiet hours, morning brief time, alarm diagnostics. |
 
 ### 5.4. Gym Navigation Sub-Stack (`src/screens/gym/`)
 

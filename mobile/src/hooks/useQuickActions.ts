@@ -24,11 +24,11 @@ export const QUICK_ACTIONS_CONFIG: QuickActions.Action[] = [
     params: { screen: 'Attendance' },
   },
   {
-    id: 'quick_habits',
-    title: 'Habits',
-    subtitle: 'Track consistency',
-    icon: Platform.OS === 'ios' ? 'symbol:arrow.triangle.2.circlepath' : 'shortcut_habits',
-    params: { screen: 'Habits' },
+    id: 'quick_calendar',
+    title: 'Calendar',
+    subtitle: 'Schedule & events',
+    icon: Platform.OS === 'ios' ? 'symbol:calendar' : 'shortcut_calendar',
+    params: { screen: 'Calendar' },
   },
   {
     id: 'quick_upload_notes',
@@ -58,7 +58,9 @@ export function handleQuickActionNavigation(action: QuickActions.Action, attempt
     });
   } else if (screen === 'Attendance') {
     (navigationRef as any).navigate('MainTabs', { screen: 'Attendance' });
-  } else if (screen === 'Habits') { (navigationRef as any).navigate('MainTabs', { screen: 'Habits' }); } else if (screen === 'Notes') {
+  } else if (screen === 'Calendar') {
+    (navigationRef as any).navigate('MainTabs', { screen: 'Calendar' });
+  } else if (screen === 'Notes') {
     (navigationRef as any).navigate('MainTabs', {
       screen: 'Notes',
       params: { openUpload: true, timestamp: Date.now() },

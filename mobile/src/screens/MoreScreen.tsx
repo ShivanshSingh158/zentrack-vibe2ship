@@ -35,17 +35,14 @@ type ModuleDef = {
 
 const ALL_MODULES_DEF: ModuleDef[] = [
   { id: 'Tasks',       name: 'Tasks',       icon: 'checkmark-circle', colorDark: '#34C759', colorLight: '#059669' },
-  { id: 'Habits',      name: 'Habits',      icon: 'sync',             colorDark: '#FF9500', colorLight: '#D97706' },
   { id: 'Calendar',    name: 'Calendar',    icon: 'calendar-number',  colorDark: '#FF453A', colorLight: '#DC2626' },
   { id: 'Notes',       name: 'Notes Vault', icon: 'folder',           colorDark: '#FFD60A', colorLight: '#D97706' },
   { id: 'Attendance',  name: 'Attendance',  icon: 'id-card',          colorDark: '#5856D6', colorLight: '#6C5CE7' },
-  { id: 'Assignments', name: 'Assignments', icon: 'clipboard',        colorDark: '#A855F7', colorLight: '#7C3AED' },
   { id: 'Grades',      name: 'Grades',      icon: 'calculator',       colorDark: '#8E8E93', colorLight: '#6C5CE7' },
   { id: 'Learning',    name: 'Learning',    icon: 'library',          colorDark: '#00C7BE', colorLight: '#0284C7' },
-    { id: 'Analytics',   name: 'Analytics',   icon: 'bar-chart',        colorDark: '#007AFF', colorLight: '#0284C7' },
 ];
 
-const DEFAULT_PINNED_MODULES = ['Tasks', 'Calendar', 'Attendance', 'Habits'];
+const DEFAULT_PINNED_MODULES = ['Tasks', 'Calendar', 'Attendance', 'Notes'];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 

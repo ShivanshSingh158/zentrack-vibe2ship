@@ -15,7 +15,6 @@ import type { CustomEvent } from '../../contexts/MobileDataContext';
 import { usePlannerData } from '../../contexts/domains/PlannerContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
-import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';

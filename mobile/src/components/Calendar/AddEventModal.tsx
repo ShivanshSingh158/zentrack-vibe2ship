@@ -9,7 +9,6 @@ import type { CustomEvent } from '../../contexts/MobileDataContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { usePlannerData } from '../../contexts/domains/PlannerContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
-import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { COLLECTION } from '../../config/constants';
 import { useTheme } from "../../contexts/ThemeContext";
 import { safeWrite, safeUpdate, safeDelete } from '../../utils/safeWrite';

@@ -5,7 +5,6 @@
 
 export * as TasksFeature from './tasks';
 export * as AcademicFeature from './academic';
-export * as HabitsFeature from './habits';
 export * as CalendarFeature from './calendar';
 export * as DashboardFeature from './dashboard';
 export * as LearningFeature from './learning';

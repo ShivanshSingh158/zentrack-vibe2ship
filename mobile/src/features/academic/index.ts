@@ -6,7 +6,6 @@
 // --- Screens ---
 export { default as AttendanceScreen } from '../../screens/AttendanceScreen';
 export { default as GradesScreen } from '../../screens/GradesScreen';
-export { default as AssignmentsScreen } from '../../screens/AssignmentsScreen';
 
 // --- Hooks ---
 export * from '../../screens/attendance/useAttendanceData';

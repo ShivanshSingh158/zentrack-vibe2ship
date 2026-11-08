@@ -12,7 +12,6 @@ import { feedback } from '../../utils/haptics';
 import { formatLocalDateStr } from '../../utils/dateUtils';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
-import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 
 // Extracted math, subcomponents & styles

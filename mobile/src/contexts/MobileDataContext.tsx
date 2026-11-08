@@ -24,7 +24,6 @@ import React from "react";
 import { User } from "firebase/auth";
 
 import { CoreDataProvider, useCoreData }     from "./domains/CoreDataContext";
-import { WellnessProvider, useWellnessData } from "./domains/WellnessContext";
 import { AcademicProvider, useAcademicData } from "./domains/AcademicContext";
 import { CreativeProvider, useCreativeData } from "./domains/CreativeContext";
 import { PlannerProvider, usePlannerData }   from "./domains/PlannerContext";
@@ -33,7 +32,7 @@ import { BackgroundNotificationWatcher }     from "../components/BackgroundNotif
 import { handleSyncError } from '../utils/errorUtils';
 
 // Export domain hooks for fine-grained, zero-overhead subscriptions
-export { useCoreData, useWellnessData, useAcademicData, useCreativeData, usePlannerData, usePinnedModules };
+export { useCoreData, useAcademicData, useCreativeData, usePlannerData, usePinnedModules };
 
 
 // ΓöÇΓöÇΓöÇ Type Exports (all preserved ΓÇö no consumer changes needed) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -354,16 +353,14 @@ export function useMobileData(): MobileDataContextType {
 function _DomainProviders({ children }: { children: React.ReactNode }) {
   const { user } = useCoreData();
   return (
-    <WellnessProvider user={user}>
-      <AcademicProvider user={user}>
-        <CreativeProvider user={user}>
-          <PlannerProvider user={user}>
-            <BackgroundNotificationWatcher />
-            {children}
-          </PlannerProvider>
-        </CreativeProvider>
-      </AcademicProvider>
-    </WellnessProvider>
+    <AcademicProvider user={user}>
+      <CreativeProvider user={user}>
+        <PlannerProvider user={user}>
+          <BackgroundNotificationWatcher />
+          {children}
+        </PlannerProvider>
+      </CreativeProvider>
+    </AcademicProvider>
   );
 }
 

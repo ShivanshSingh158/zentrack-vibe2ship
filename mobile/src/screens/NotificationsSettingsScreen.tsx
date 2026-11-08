@@ -43,7 +43,6 @@ import {
   openExactAlarmSettings,
 } from '../services/notifications';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
-import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
 import { usePlannerData } from '../contexts/domains/PlannerContext';
 
@@ -193,8 +192,7 @@ export default function NotificationsSettingsScreen() {
   const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
 
-  const { tasks, habitLogs, allHabits, user } = useCoreData();
-  const { waterLogs, sleepLogs } = useWellnessData();
+  const { tasks, user } = useCoreData();
   const { attendance, assignments, attendanceLogs, holidays } = useAcademicData();
   const { customEvents } = usePlannerData();
 
@@ -333,11 +331,7 @@ export default function NotificationsSettingsScreen() {
       tasks,
       customEvents,
       attendance,
-      habitLogs,
-      allHabits,
       assignments,
-      waterLogs,
-      sleepLogs,
       attendanceLogs,
       holidays,
     }).catch(console.warn);
@@ -345,11 +339,7 @@ export default function NotificationsSettingsScreen() {
     tasks,
     customEvents,
     attendance,
-    habitLogs,
-    allHabits,
     assignments,
-    waterLogs,
-    sleepLogs,
     attendanceLogs,
     holidays,
   ]);
@@ -413,11 +403,7 @@ export default function NotificationsSettingsScreen() {
         tasks,
         customEvents,
         attendance,
-        habitLogs,
-        allHabits,
         assignments,
-        waterLogs,
-        sleepLogs,
         attendanceLogs,
         holidays,
       });
@@ -457,11 +443,7 @@ export default function NotificationsSettingsScreen() {
         tasks,
         customEvents,
         attendance,
-        habitLogs,
-        allHabits,
         assignments,
-        waterLogs,
-        sleepLogs,
         attendanceLogs,
         holidays,
       }).catch(console.warn);

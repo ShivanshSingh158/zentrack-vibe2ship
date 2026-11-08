@@ -28,7 +28,6 @@ import { Audio } from 'expo-av';
 import { scheduleAllNotifications, clearScheduleCache } from '../services/notifications';
 import { ensureNotificationChannels } from '../services/notificationChannels';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
-import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
 import { usePlannerData } from '../contexts/domains/PlannerContext';
 import { useTheme } from "../contexts/ThemeContext";
@@ -211,8 +210,7 @@ export default function NotificationPreferencesComponent() {
   const { colors, isDark } = useTheme();
   const s = makeStyles(colors, isDark);
   const navigation = useNavigation<any>();
-  const { tasks, habitLogs, allHabits } = useCoreData();
-  const { waterLogs, sleepLogs } = useWellnessData();
+  const { tasks } = useCoreData();
   const { attendance, attendanceLogs, assignments, holidays } = useAcademicData();
   const { customEvents } = usePlannerData();
 
@@ -224,17 +222,13 @@ export default function NotificationPreferencesComponent() {
         customEvents,
         attendance,
         attendanceLogs,
-        habitLogs,
-        allHabits,
         assignments,
-        waterLogs,
-        sleepLogs,
         holidays,
       }).catch(console.warn);
     });
   }, [
     tasks, customEvents, attendance, attendanceLogs,
-    habitLogs, allHabits, assignments, waterLogs, sleepLogs, holidays,
+    assignments, holidays,
   ]);
 
   // Module toggles

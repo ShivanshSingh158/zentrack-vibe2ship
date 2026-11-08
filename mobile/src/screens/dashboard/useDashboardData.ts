@@ -17,7 +17,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
-import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { usePlannerData } from '../../contexts/domains/PlannerContext';
 import { BRUTAL_QUOTES, getDailyQuote, QuotePersonality } from '../../data/brutalQuotes';
 import { LayoutItem } from '../../components/Dashboard/DashboardLayoutSheet';
@@ -51,18 +50,9 @@ const DASH_STORAGE_KEYS = [
 export function useDashboardData() {
   // ── Granular domain hooks (replaces useMobileData() monolith) ─────────────
   // Dashboard only re-renders when these specific slices change.
-  const { user, tasks, habitLogs, allHabits, tasksReady, optimisticUpdateTask } = useCoreData();
+  const { user, tasks, tasksReady, optimisticUpdateTask } = useCoreData();
   const { attendance, attendanceLogs, assignments, holidays, optimisticUpdateAssignment } = useAcademicData();
-  const { waterLogs, ensureSubscribed: ensureWellnessSubscribed } = useWellnessData();
   const { customEvents } = usePlannerData();
-
-  // Ensure Wellness real-time subscriptions (water_logs, gym_logs, user_gym_plans) are open on Dashboard
-  useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      ensureWellnessSubscribed?.();
-    });
-    return () => handle.cancel();
-  }, [ensureWellnessSubscribed]);
 
   // ── UI State (Seeded synchronously from L1 Cache for 0.00ms cold paint) ──────
   const initialManifest = getBootManifestSync();
@@ -313,11 +303,11 @@ export function useDashboardData() {
   const avatarLetter = user?.displayName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'A';
 
   const appStreak = useMemo(() => {
-    const cacheKey = `dash_streak_${generateDatasetFingerprint(tasks)}_${generateDatasetFingerprint(habitLogs)}`;
+    const cacheKey = `dash_streak_${generateDatasetFingerprint(tasks)}`;
     return computeOrGetHotCache(cacheKey, () => {
-      return calculateAppStreak(tasks, habitLogs);
+      return calculateAppStreak(tasks, []);
     });
-  }, [tasks, habitLogs]);
+  }, [tasks]);
 
   // ── Today's Class & Overall Attendance Stats (Hot-Cached) ─────────────────
   const { classesAttendedToday, classesTotalToday, overallAttendancePct } = useMemo(() => {
@@ -350,8 +340,8 @@ export function useDashboardData() {
 
   return {
     // Data
-    user, tasks, habitLogs, allHabits,
-    attendance, attendanceLogs, assignments, holidays, waterLogs, customEvents,
+    user, tasks,
+    attendance, attendanceLogs, assignments, holidays, customEvents,
     // Derived
     todayStr, timeGreeting, avatarLetter, hour,
     nowDate, nextClass, appStreak,

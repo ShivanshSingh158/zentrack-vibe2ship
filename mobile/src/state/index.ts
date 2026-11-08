@@ -5,7 +5,6 @@
 
 export * from '../contexts/domains/CoreDataContext';
 export * from '../contexts/domains/PlannerContext';
-export * from '../contexts/domains/WellnessContext';
 export * from '../contexts/domains/AcademicContext';
 export * from '../contexts/domains/CreativeContext';
 export * from '../contexts/PomodoroContext';

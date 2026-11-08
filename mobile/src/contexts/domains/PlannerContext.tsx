@@ -130,34 +130,6 @@ export function PlannerProvider({
       },
       scheduleListenerRestart("customEvents")
     ));
-
-    unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.GOALS), where("userId", "==", uid)),
-      snap => {
-        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
-        unstable_batchedUpdates(() => {
-          const fresh = applyPendingQueueOverlay(COLLECTION.GOALS, snap.docs.map(d => parseGoal(d.data(), d.id)));
-          setGoals(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-          updateL1Cache('goals', fresh);
-          InteractionManager.runAfterInteractions(() => writePlannerCache({ goals: fresh }, false));
-        });
-      },
-      scheduleListenerRestart("goals")
-    ));
-
-    unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.WEEKLY_REVIEWS), where("userId", "==", uid)),
-      snap => {
-        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
-        unstable_batchedUpdates(() => {
-          const fresh = applyPendingQueueOverlay(COLLECTION.WEEKLY_REVIEWS, snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview)));
-          setWeeklyReviews(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-          updateL1Cache('weeklyReviews', fresh);
-          InteractionManager.runAfterInteractions(() => writePlannerCache({ weeklyReviews: fresh }, false));
-        });
-      },
-      scheduleListenerRestart("weeklyReviews")
-    ));
   }, [scheduleListenerRestart]);
 
   useEffect(() => {

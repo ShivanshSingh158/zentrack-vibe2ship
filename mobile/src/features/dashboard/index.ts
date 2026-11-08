@@ -5,7 +5,6 @@
 
 // --- Screens ---
 export { default as DashboardScreen } from '../../screens/DashboardScreen';
-export { default as XPConstellationScreen } from '../../screens/XPConstellationScreen';
 
 // --- Components & Widgets ---
 export { default as UnifiedLifeWidget } from '../../components/Dashboard/UnifiedLifeWidget';

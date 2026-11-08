@@ -67,7 +67,7 @@ const DEFAULT_CORE_DATA: CoreDataContextType = {
   tasksReady: false,
   pendingTaskCount: 0,
   todayHabits: [],
-  pinnedModules: ["Tasks", "Gym", "Calendar", "Attendance"],
+  pinnedModules: ["Tasks", "Calendar", "Attendance", "Notes"],
   setPinnedModules: () => {},
   googleAccessToken: null,
   refreshCoreData: async () => {},
@@ -319,48 +319,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       scheduleListenerRestart("tasks")
     ));
 
-    // 2. Habits Listener
-    unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
-      snap => {
-        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) {
-          setFirestoreReady(true);
-          return;
-        }
-        unstable_batchedUpdates(() => {
-          const fresh = applyPendingQueueOverlay(COLLECTION.HABITS, snap.docs.map(d => parseHabit(d.data(), d.id)));
-          setHabits(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-          setFirestoreReady(true);
-          hasCachedDataRef.current = true;
-          updateL1Cache('habits', fresh);
-          InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ habits: fresh }, false));
-        });
-      },
-      scheduleListenerRestart("habits")
-    ));
-
-    // 3. Habit Logs Listener (Rolling 90-day window prevents dropping newest logs due to ASCII doc-ID ordering)
-    const habitCutoffDateStr = offsetDateStr(formatLocalDateStr(new Date()), -90);
-    unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid), where("date", ">=", habitCutoffDateStr)),
-      snap => {
-        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) {
-          setFirestoreReady(true);
-          return;
-        }
-        unstable_batchedUpdates(() => {
-          const fresh = applyPendingQueueOverlay(COLLECTION.HABIT_LOGS, snap.docs.map(d => parseHabitLog(d.data(), d.id)));
-          setHabitLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-          setFirestoreReady(true);
-          hasCachedDataRef.current = true;
-          updateL1Cache('habitLogs', fresh);
-          InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ habitLogs: fresh }, false));
-        });
-      },
-      scheduleListenerRestart("habitLogs")
-    ));
-
-    // 4. User Profile (XP, Saved Places, Gym Geofence & Pinned Modules Sync) Listener
+    // 2. User Profile (XP, Saved Places & Pinned Modules Sync) Listener
     unsubsRef.current.push(onSnapshot(
       doc(db, COLLECTION.USER_PROFILES, uid),
       snap => {
