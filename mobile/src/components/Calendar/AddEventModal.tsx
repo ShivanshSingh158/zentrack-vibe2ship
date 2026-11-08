@@ -168,6 +168,75 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
     return null;
   }, [startTime, endTime, targetDate, attendance, customEvents, existingEvent]);
 
+  // Smart Free Slot suggestions for the selected day
+  const freeSlots = useMemo(() => {
+    if (!targetDate) return [];
+    const busy: [number, number][] = [];
+
+    (customEvents || []).forEach(e => {
+      if (e.date === targetDate && e.id !== existingEvent?.id) {
+        const s = parseTimeToMinutes(e.startTime);
+        const en = parseTimeToMinutes(e.endTime);
+        if (s !== null && en !== null && en > s) {
+          busy.push([s, en]);
+        }
+      }
+    });
+
+    const [y, m, d] = targetDate.split('-').map(Number);
+    if (y && m && d) {
+      const dayOfWeek = new Date(y, m - 1, d).getDay();
+      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const dayName = dayNames[dayOfWeek];
+      (attendance || []).forEach(subj => {
+        const sched = subj.schedule?.[dayName] || (subj as any).daySchedule?.[dayName];
+        if (sched && Array.isArray(sched.classes)) {
+          sched.classes.forEach((c: any) => {
+            const cs = parseTimeToMinutes(c.time);
+            if (cs !== null) {
+              busy.push([cs, cs + 60]);
+            }
+          });
+        }
+      });
+    }
+
+    busy.sort((a, b) => a[0] - b[0]);
+
+    const merged: [number, number][] = [];
+    for (const interval of busy) {
+      if (merged.length === 0 || merged[merged.length - 1][1] < interval[0]) {
+        merged.push(interval);
+      } else {
+        merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], interval[1]);
+      }
+    }
+
+    const workStart = 9 * 60; // 9:00 AM
+    const workEnd = 18 * 60;  // 6:00 PM
+    const slots: { start: string; end: string }[] = [];
+    let cur = workStart;
+
+    for (const [bStart, bEnd] of merged) {
+      if (bStart > cur && (bStart - cur) >= 45) {
+        slots.push({
+          start: `${String(Math.floor(cur / 60)).padStart(2, '0')}:${String(cur % 60).padStart(2, '0')}`,
+          end: `${String(Math.floor(Math.min(cur + 60, bStart) / 60)).padStart(2, '0')}:${String(Math.min(cur + 60, bStart) % 60).padStart(2, '0')}`,
+        });
+      }
+      cur = Math.max(cur, bEnd);
+    }
+
+    if (workEnd > cur && (workEnd - cur) >= 45) {
+      slots.push({
+        start: `${String(Math.floor(cur / 60)).padStart(2, '0')}:${String(cur % 60).padStart(2, '0')}`,
+        end: `${String(Math.floor(Math.min(cur + 60, workEnd) / 60)).padStart(2, '0')}:${String(Math.min(cur + 60, workEnd) % 60).padStart(2, '0')}`,
+      });
+    }
+
+    return slots.slice(0, 3);
+  }, [targetDate, customEvents, attendance, existingEvent?.id]);
+
   const handleApplyPreset = (preset: typeof ACADEMIC_PRESETS[0]) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setTitle(preset.label);
@@ -377,6 +446,44 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
               </Text>
             </View>
           </View>
+
+          {/* Smart Free Slot Suggestions */}
+          {freeSlots.length > 0 && !startTime && (
+            <View style={{ marginBottom: SPACE.md }}>
+              <Text style={[styles.label, { fontSize: 11, color: colors.accentPrimary }]}>
+                ✨ Available Free Slots
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
+                {freeSlots.map((slot, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={{
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: colors.accentPrimary + '40',
+                      backgroundColor: colors.accentPrimary + '15',
+                      marginRight: 8,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setStartTime(slot.start);
+                      setEndTime(slot.end);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="sparkles-outline" size={12} color={colors.accentPrimary} style={{ marginRight: 4 }} />
+                    <Text style={{ fontSize: 12, color: colors.accentPrimary, fontFamily: FONT_FAMILY.medium }}>
+                      {slot.start} – {slot.end}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
 
           {/* Time Pickers */}
           <View style={{ flexDirection: 'row', gap: SPACE.md, marginBottom: conflictMessage ? SPACE.sm : SPACE.lg }}>

@@ -49,6 +49,7 @@ import BottomSheet from '../components/ui/BottomSheet';
 
 // ── Lazy-loaded Alternate Task Views: Skips parsing ~800 LOC until user switches view ──
 const TimelineView = React.lazy(() => import('../components/Tasks/TimelineView'));
+const MatrixView = React.lazy(() => import('../components/Tasks/MatrixView'));
 const KanbanView = React.lazy(() => import('../components/Tasks/KanbanView'));
 
 // ── Lazy-loaded Heavy Modals & Sheets: Defers parsing ~5,066 LOC on cold boot ──
@@ -132,8 +133,8 @@ export default function TasksScreen() {
     transform: [{ rotate: `${viewRotate.value}deg` }],
   }));
 
-  // Direction-aware view cycle: list → timeline → kanban → list
-  const VIEW_ORDER = ['list', 'timeline', 'kanban'] as const;
+  // Direction-aware view cycle: list → timeline → matrix → kanban → list
+  const VIEW_ORDER = ['list', 'timeline', 'matrix', 'kanban'] as const;
   const prevViewRef = useRef(viewMode);
 
   const handleToggleView = useCallback(() => {
@@ -459,9 +460,9 @@ export default function TasksScreen() {
               </AnimatedPressable>
               <AnimatedPressable style={styles.iconBtn} onPress={handleToggleView}>
                 <Animated.View style={animViewRotateStyle}>
-                  <Ionicons name={viewMode === 'list' ? 'time-outline' : viewMode === 'timeline' ? 'git-branch-outline' : 'list'} size={20} color={colors.textPrimary} />
+                  <Ionicons name={viewMode === 'list' ? 'time-outline' : viewMode === 'timeline' ? 'grid-outline' : viewMode === 'matrix' ? 'apps-outline' : 'list'} size={20} color={colors.textPrimary} />
                 </Animated.View>
-                <Text style={styles.headerBtnText}>View</Text>
+                <Text style={styles.headerBtnText}>{viewMode === 'list' ? 'Timeline' : viewMode === 'timeline' ? 'Matrix' : viewMode === 'matrix' ? 'Kanban' : 'List'}</Text>
               </AnimatedPressable>
               <AnimatedPressable style={styles.iconBtn} onPress={() => setIsNewTaskOpen(true)}>
                 <Ionicons name="add" size={22} color={colors.textPrimary} />
@@ -570,6 +571,15 @@ export default function TasksScreen() {
                 colors={colors}
                 isDark={isDark}
                 selectedDate={selectedDate}
+              />
+            </Suspense>
+          </Animated.View>
+        ) : viewMode === 'matrix' ? (
+          <Animated.View key="matrix" entering={SlideInRight.duration(200).easing(Easing.out(Easing.exp))} exiting={FadeOut.duration(140)} style={{ flex: 1 }}>
+            <Suspense fallback={<TasksSkeleton />}>
+              <MatrixView
+                tasks={tasks}
+                onTaskPress={(t) => setEditingTask(t)}
               />
             </Suspense>
           </Animated.View>

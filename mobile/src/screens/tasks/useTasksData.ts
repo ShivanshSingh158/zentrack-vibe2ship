@@ -10,7 +10,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import { Task } from '../../contexts/MobileDataContext';
 import { getToday, parseTimeFloat } from './taskConstants';
 
-export type ViewMode = 'list' | 'timeline' | 'kanban';
+export type ViewMode = 'list' | 'timeline' | 'matrix' | 'kanban';
 export type SortBy = 'default' | 'priority';
 
 export interface TasksUIState {

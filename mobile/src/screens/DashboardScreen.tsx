@@ -483,6 +483,64 @@ export default function DashboardScreen() {
                     userId={data.user?.uid}
                     onToggleTask={handleToggleTask}
                   />
+                  {data.recentDocument && (
+                    <AnimatedPressable
+                      style={{
+                        backgroundColor: colors.surface,
+                        borderColor: colors.border,
+                        borderWidth: 1,
+                        borderRadius: 16,
+                        padding: 14,
+                        marginTop: 12,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        navigation.navigate('Notes');
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }}>
+                        <View style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 10,
+                          backgroundColor: isDark ? 'rgba(255, 214, 10, 0.15)' : 'rgba(217, 119, 6, 0.1)',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          marginRight: 12,
+                        }}>
+                          <Ionicons
+                            name={data.recentDocument.type === 'note' ? 'document-text' : 'document'}
+                            size={18}
+                            color={isDark ? '#FFD60A' : '#D97706'}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{
+                            fontSize: 10,
+                            fontFamily: FONT_FAMILY.mono,
+                            color: colors.textSecondary,
+                            textTransform: 'uppercase',
+                            letterSpacing: 0.8,
+                            marginBottom: 2,
+                          }}>
+                            Recent in Vault
+                          </Text>
+                          <Text style={{
+                            fontSize: 13,
+                            fontFamily: FONT_FAMILY.bold,
+                            color: colors.textPrimary,
+                          }} numberOfLines={1}>
+                            {data.recentDocument.name || 'Untitled Document'}
+                          </Text>
+                        </View>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+                    </AnimatedPressable>
+                  )}
                 </Animated.View>
               );
             }
