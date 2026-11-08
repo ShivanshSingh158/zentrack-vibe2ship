@@ -44,6 +44,22 @@ export const DOMAIN_CACHE_KEYS = {
 } as const;
 
 type CacheKey = typeof DOMAIN_CACHE_KEYS[keyof typeof DOMAIN_CACHE_KEYS];
+export type DomainCategory = 'wellness' | 'academic' | 'planner' | 'creative';
+
+// Inverted key map cache to eliminate O(N) Object.keys().find() inside read loop
+const _invertedKeyMaps = new WeakMap<Record<string, CacheKey>, Record<string, string>>();
+
+function getInvertedKeyMap(keyMap: Record<string, CacheKey>): Record<string, string> {
+  let inverted = _invertedKeyMaps.get(keyMap);
+  if (!inverted) {
+    inverted = {};
+    for (const [field, cacheKey] of Object.entries(keyMap)) {
+      inverted[cacheKey] = field;
+    }
+    _invertedKeyMaps.set(keyMap, inverted);
+  }
+  return inverted;
+}
 
 // ─── Generic read helper — reads multiple keys in one multiGet call ───────────
 export async function readDomainCache<T extends Record<string, any>>(
@@ -52,11 +68,12 @@ export async function readDomainCache<T extends Record<string, any>>(
   try {
     const keys = Object.values(keyMap) as string[];
     const pairs = await AsyncStorage.multiGet(keys);
+    const inverted = getInvertedKeyMap(keyMap);
     const result: any = {};
     for (const [key, raw] of pairs) {
       if (!raw) continue;
       try {
-        const fieldName = Object.keys(keyMap).find(k => keyMap[k] === key);
+        const fieldName = inverted[key];
         if (fieldName) result[fieldName] = JSON.parse(raw);
       } catch { /* ignore individual parse errors */ }
     }
@@ -92,23 +109,13 @@ export async function flushDomainCache(domainKey?: string): Promise<void> {
   }
 }
 
-function getCanonicalDomain(keyMap: Record<string, CacheKey>): string {
-  const vals = Object.values(keyMap);
-  if (vals.some(v => v.includes('gym') || v.includes('water') || v.includes('sleep') || v.includes('weight'))) return 'wellness';
-  if (vals.some(v => v.includes('attendance') || v.includes('assignment') || v.includes('sem'))) return 'academic';
-  if (vals.some(v => v.includes('event') || v.includes('goal') || v.includes('review'))) return 'planner';
-  if (vals.some(v => v.includes('storage') || v.includes('topic') || v.includes('job') || v.includes('content'))) return 'creative';
-  return vals.sort().join('|');
-}
-
 // ─── Generic write helper — immediate=true for user writes, false for snapshot writes ───
 export async function writeDomainCache(
   data: Partial<Record<string, any>>,
   keyMap: Record<string, CacheKey>,
-  immediate = false // Default FALSE — snapshot writes are always background
+  immediate = false, // Default FALSE — snapshot writes are always background
+  domainKey: DomainCategory = 'wellness'
 ): Promise<void> {
-  const domainKey = getCanonicalDomain(keyMap);
-
   const existing = _pendingWrites.get(domainKey);
   _pendingWrites.set(domainKey, {
     data: { ...(existing?.data || {}), ...data },
@@ -146,7 +153,7 @@ export interface WellnessCache {
 }
 
 export const readWellnessCache  = () => readDomainCache<WellnessCache>(WELLNESS_KEY_MAP);
-export const writeWellnessCache = (data: Partial<WellnessCache>, immediate = false) => writeDomainCache(data, WELLNESS_KEY_MAP, immediate);
+export const writeWellnessCache = (data: Partial<WellnessCache>, immediate = false) => writeDomainCache(data, WELLNESS_KEY_MAP, immediate, 'wellness');
 
 // ── Academic ─────────────────────────────────────────────────────────────────
 const ACADEMIC_KEY_MAP = {
@@ -168,7 +175,7 @@ export interface AcademicCache {
 }
 
 export const readAcademicCache  = () => readDomainCache<AcademicCache>(ACADEMIC_KEY_MAP);
-export const writeAcademicCache = (data: Partial<AcademicCache>, immediate = false) => writeDomainCache(data, ACADEMIC_KEY_MAP, immediate);
+export const writeAcademicCache = (data: Partial<AcademicCache>, immediate = false) => writeDomainCache(data, ACADEMIC_KEY_MAP, immediate, 'academic');
 
 // ── Planner ───────────────────────────────────────────────────────────────────
 const PLANNER_KEY_MAP = {
@@ -184,7 +191,7 @@ export interface PlannerCache {
 }
 
 export const readPlannerCache  = () => readDomainCache<PlannerCache>(PLANNER_KEY_MAP);
-export const writePlannerCache = (data: Partial<PlannerCache>, immediate = false) => writeDomainCache(data, PLANNER_KEY_MAP, immediate);
+export const writePlannerCache = (data: Partial<PlannerCache>, immediate = false) => writeDomainCache(data, PLANNER_KEY_MAP, immediate, 'planner');
 
 // ── Creative ──────────────────────────────────────────────────────────────────
 const CREATIVE_KEY_MAP = {
@@ -202,7 +209,7 @@ export interface CreativeCache {
 }
 
 export const readCreativeCache  = () => readDomainCache<CreativeCache>(CREATIVE_KEY_MAP);
-export const writeCreativeCache = (data: Partial<CreativeCache>, immediate = false) => writeDomainCache(data, CREATIVE_KEY_MAP, immediate);
+export const writeCreativeCache = (data: Partial<CreativeCache>, immediate = false) => writeDomainCache(data, CREATIVE_KEY_MAP, immediate, 'creative');
 
 export async function clearAllDomainCaches(): Promise<void> {
   for (const timer of _writeTimers.values()) {

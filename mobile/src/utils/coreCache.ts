@@ -67,7 +67,7 @@ export async function flushCoreCache(): Promise<void> {
 }
 
 // ── Write — immediate=true for user-triggered writes, false for background snapshot writes ──
-export async function writeCoreCacheMulti(data: Partial<CoreCache>, immediate = true): Promise<void> {
+export async function writeCoreCacheMulti(data: Partial<CoreCache>, immediate = false): Promise<void> {
   _pendingCoreData = { ..._pendingCoreData, ...data };
   if (immediate) {
     // User-triggered write (optimistic update, logout): flush now.

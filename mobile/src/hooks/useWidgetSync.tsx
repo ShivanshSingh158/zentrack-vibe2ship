@@ -11,7 +11,7 @@ import {
   updateTodayAgendaWidget,
 } from '../services/widgetSyncService';
 import type { Task, AttendanceSubject, AttendanceLog } from '../contexts/MobileDataContext';
-import { formatLocalDateStr } from '../utils/dateUtils';
+import { formatLocalDateStr } from '../utils/dateFormatters';
 
 interface UseWidgetSyncParams {
   tasks?: Task[];
@@ -36,34 +36,34 @@ export function useWidgetSync({
   useEffect(() => {
     if (Platform.OS !== 'android') return;
 
-    const now = new Date();
-    const dateStr = formatLocalDateStr(now);
-
-    // Fast O(N) single-pass extraction without array allocation if empty
-    let todayLogs = '';
-    if (attendanceLogs.length > 0) {
-      const todayArr: string[] = [];
-      for (let i = 0; i < attendanceLogs.length; i++) {
-        const l = attendanceLogs[i];
-        if ((l.date || '').slice(0, 10) === dateStr) {
-          todayArr.push(`${l.id || l.subjectId}_${(l as any).idx ?? (l as any).sessionIdx ?? 0}_${l.action}`);
-        }
-      }
-      todayLogs = todayArr.sort().join('|');
-    }
-    const isHoliday = (holidays || []).some(h => (typeof h === 'string' ? h.trim().slice(0, 10) : (h as any)?.date?.trim()?.slice(0, 10)) === dateStr);
-
-    const currentFingerprint = `${tasks.length}_${subjects.length}_${todayLogs}_${isHoliday}_${Math.round(zenScore)}_${streak}`;
-    if (currentFingerprint === lastFingerprintRef.current) {
-      return; // Data has not changed; skip 100% of background work
-    }
-    lastFingerprintRef.current = currentFingerprint;
-
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
 
     debounceTimer.current = setTimeout(() => {
+      const now = new Date();
+      const dateStr = formatLocalDateStr(now);
+
+      // Fast O(N) single-pass extraction without array allocation if empty
+      let todayLogs = '';
+      if (attendanceLogs.length > 0) {
+        const todayArr: string[] = [];
+        for (let i = 0; i < attendanceLogs.length; i++) {
+          const l = attendanceLogs[i];
+          if ((l.date || '').slice(0, 10) === dateStr) {
+            todayArr.push(`${l.id || l.subjectId}_${(l as any).idx ?? (l as any).sessionIdx ?? 0}_${l.action}`);
+          }
+        }
+        todayLogs = todayArr.sort().join('|');
+      }
+      const isHoliday = (holidays || []).some(h => (typeof h === 'string' ? h.trim().slice(0, 10) : (h as any)?.date?.trim()?.slice(0, 10)) === dateStr);
+
+      const currentFingerprint = `${tasks.length}_${subjects.length}_${todayLogs}_${isHoliday}_${Math.round(zenScore)}_${streak}`;
+      if (currentFingerprint === lastFingerprintRef.current) {
+        return; // Data has not changed; skip 100% of background work
+      }
+      lastFingerprintRef.current = currentFingerprint;
+
       InteractionManager.runAfterInteractions(async () => {
         try {
           const agendaData = buildTodayAgendaData({

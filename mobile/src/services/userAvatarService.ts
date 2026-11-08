@@ -18,6 +18,12 @@ const ASYNC_STORAGE_SOURCE_URL_PREFIX = '@zentrack_avatar_source_url_';
 // In-memory cache for 0ms synchronous access
 const MEMORY_AVATAR_CACHE = new Map<string, string>();
 
+export function seedAvatarMemoryCache(uid: string, localPath: string): void {
+  if (uid && localPath) {
+    MEMORY_AVATAR_CACHE.set(uid, localPath);
+  }
+}
+
 // Subscribed listeners for cache updates (e.g., when a background download finishes)
 type AvatarChangeListener = (uid: string, localUri: string) => void;
 const listeners = new Set<AvatarChangeListener>();
@@ -176,6 +182,7 @@ export async function cacheUserAvatar(uid: string, remoteUrl: string): Promise<s
           await Promise.all([
             AsyncStorage.setItem(`${ASYNC_STORAGE_PREFIX}${uid}`, localPath),
             AsyncStorage.setItem(`${ASYNC_STORAGE_SOURCE_URL_PREFIX}${uid}`, remoteUrl),
+            AsyncStorage.setItem('@zentrack_avatar_disk_path', localPath),
           ]);
           notifyAvatarChange(uid, localPath);
           return localPath;
@@ -221,6 +228,7 @@ export async function clearAvatarCache(uid?: string | null): Promise<void> {
     await Promise.all([
       AsyncStorage.removeItem(`${ASYNC_STORAGE_PREFIX}${uid}`),
       AsyncStorage.removeItem(`${ASYNC_STORAGE_SOURCE_URL_PREFIX}${uid}`),
+      AsyncStorage.removeItem('@zentrack_avatar_disk_path'),
     ]);
   } catch (err) {
     console.warn('[UserAvatarService] Error clearing avatar cache:', err);

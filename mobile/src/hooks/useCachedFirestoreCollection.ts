@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { InteractionManager } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   Query,
   onSnapshot,
   QuerySnapshot,
   DocumentData,
 } from 'firebase/firestore';
-import { readCache, writeCache } from '../lib/cache/asyncCache';
 
 export interface UseCachedFirestoreCollectionOptions<T> {
   cacheKey: string;
@@ -46,11 +46,15 @@ export function useCachedFirestoreCollection<T>({
   useEffect(() => {
     let cancelled = false;
     setIsHydrating(true);
-    readCache<T>(cacheKey)
-      .then((cached) => {
+    AsyncStorage.getItem(cacheKey)
+      .then((raw) => {
         if (cancelled) return;
-        if (cached !== null) {
-          setData(cached);
+        if (raw) {
+          try {
+            setData(JSON.parse(raw));
+          } catch {
+            setData(null);
+          }
         } else {
           setData(null);
         }
@@ -79,7 +83,7 @@ export function useCachedFirestoreCollection<T>({
           setData(mapped);
           setError(null);
           setIsLive(true);
-          writeCache(cacheKey, mapped);
+          AsyncStorage.setItem(cacheKey, JSON.stringify(mapped)).catch(() => {});
         },
         (err) => {
           if (!isCancelled()) setError(err as Error);

@@ -3,6 +3,7 @@ import { InteractionManager, DeviceEventEmitter } from 'react-native';
 import { User } from 'firebase/auth';
 import type { Task, Habit, HabitLog } from '../contexts/MobileDataContext';
 import { LayoutItem } from '../components/Dashboard/DashboardLayoutSheet';
+import { seedAvatarMemoryCache } from '../services/userAvatarService';
 
 export const BOOT_KEYS = {
   NAV_ROUTE:          '@zentrack_last_route',
@@ -25,7 +26,7 @@ export const BOOT_KEYS = {
   SEMESTERS:          '@zentrack_cache_semesters',
   SEM_SUBJECTS:       '@zentrack_cache_sem_subjects',
   HOLIDAYS:           '@zentrack_cache_holidays',
-      WATER_LOGS:         '@zentrack_cache_water_logs',
+  WATER_LOGS:         '@zentrack_cache_water_logs',
   SLEEP_LOGS:         '@zentrack_cache_sleep_logs',
   WEIGHT_LOGS:        '@zentrack_cache_weight_logs',
   CUSTOM_EVENTS:      '@zentrack_cache_custom_events',
@@ -36,6 +37,7 @@ export const BOOT_KEYS = {
   JOBS:               '@zentrack_cache_jobs',
   CONTENT_LOGS:       '@zentrack_cache_content_logs',
   NOTIF_FINGERPRINT:  '@zentrack_notif_fingerprint',
+  AVATAR_DISK_PATH:   '@zentrack_avatar_disk_path',
 } as const;
 
 // Tier-0 keys required for Frame-0 Auth, Theme, Navigation & Dashboard paint (<5ms)
@@ -59,6 +61,7 @@ const TIER_0_KEYS = [
   BOOT_KEYS.HOLIDAYS,
   BOOT_KEYS.WATER_LOGS,
   BOOT_KEYS.NOTIF_FINGERPRINT,
+  BOOT_KEYS.AVATAR_DISK_PATH,
 ] as const;
 
 // Tier-1 heavy secondary domain caches hydrated after Frame 0 settles
@@ -107,6 +110,7 @@ export interface BootManifest {
   jobs: any[];
   contentLogs: any[];
   notifFingerprint: string | null;
+  avatarDiskPath: string | null;
 }
 
 const DEFAULT_PINNED = ['Tasks', 'Calendar', 'Attendance', 'Notes'];
@@ -193,6 +197,10 @@ export async function loadBootManifest(): Promise<BootManifest> {
       const waterLogs = parseJsonArray(map.get(BOOT_KEYS.WATER_LOGS));
 
       const notifFingerprint = map.get(BOOT_KEYS.NOTIF_FINGERPRINT) || null;
+      const avatarDiskPath = map.get(BOOT_KEYS.AVATAR_DISK_PATH) || null;
+      if (optimisticUser?.uid && avatarDiskPath) {
+        seedAvatarMemoryCache(optimisticUser.uid, avatarDiskPath);
+      }
 
       const manifest: BootManifest = {
         lastRoute,
@@ -224,6 +232,7 @@ export async function loadBootManifest(): Promise<BootManifest> {
         jobs: [],
         contentLogs: [],
         notifFingerprint,
+        avatarDiskPath,
       };
 
       _memoryBootCache = manifest;
@@ -266,6 +275,7 @@ export async function loadBootManifest(): Promise<BootManifest> {
         jobs: [],
         contentLogs: [],
         notifFingerprint: null,
+        avatarDiskPath: null,
       };
       _memoryBootCache = fallback;
       return fallback;

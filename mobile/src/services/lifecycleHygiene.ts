@@ -9,6 +9,8 @@
 import { AppState, AppStateStatus, DeviceEventEmitter } from 'react-native';
 import { syncOfflineQueue } from './offlineSync';
 import { flushPendingXPCloudSync } from './xpSystem';
+import { flushDomainCache } from '../utils/domainCache';
+import { flushCoreCache } from '../utils/coreCache';
 
 export function setupLifecycleHygiene(): () => void {
   let lastState = AppState.currentState;
@@ -23,7 +25,11 @@ export function setupLifecycleHygiene(): () => void {
         flushPendingXPCloudSync();
       } catch {}
 
-      // 3. Stop active SARA mic if listening to protect OS battery:
+      // 3. Flush pending domain and core disk caches so 1s debounces are never lost:
+      flushDomainCache().catch(() => {});
+      flushCoreCache().catch(() => {});
+
+      // 4. Stop active SARA mic if listening to protect OS battery:
       DeviceEventEmitter.emit('agent-stop-conversation-command');
     }
 
