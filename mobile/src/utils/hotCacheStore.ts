@@ -34,32 +34,11 @@ const _HOT_CACHE = new Map<string, CacheEntry<any>>();
 export function generateDatasetFingerprint(items: Array<any> | null | undefined, extraTag: string = ''): string {
   if (!items || items.length === 0) return `empty_${extraTag}`;
   const len = items.length;
-  if (len === 1) {
-    const item = items[0] || {};
-    return `1_${item.id || ''}_${item.updatedAt || item.lastUpdated || item.timestamp || 0}_${extraTag}`;
-  }
-
-  // Sample maximum 8 equidistant stride points across the dataset (strict O(1))
-  let xorHash = len;
-  let sumHash = 0;
-  const step = Math.max(1, Math.floor(len / 8));
-
-  for (let i = 0; i < len; i += step) {
-    const item = items[i];
-    if (!item) continue;
-    const ts = (item.updatedAt || item.lastUpdated || item.timestamp || item.completedAt || 0);
-    const id = item.id ? String(item.id).charCodeAt(0) : 0;
-    const status = item.completed ? 1 : item.status === 'completed' ? 2 : 0;
-    const h = (id * 31 + ts * 17 + status) >>> 0;
-    xorHash ^= h;
-    sumHash = (sumHash + h) >>> 0;
-  }
-
-  // Always bind the last item to immediately detect newly appended items
-  const lastItem = items[len - 1] || {};
-  const lastTs = (lastItem.updatedAt || lastItem.lastUpdated || lastItem.timestamp || 0);
-
-  return `${len}_${xorHash}_${sumHash}_${lastTs}_${extraTag}`;
+  const first = items[0] || {};
+  const last = items[len - 1] || {};
+  const firstTs = first.updatedAt || first.lastUpdated || first.timestamp || first.completedAt || 0;
+  const lastTs = last.updatedAt || last.lastUpdated || last.timestamp || last.completedAt || 0;
+  return `${len}_${first.id || ''}_${firstTs}_${last.id || ''}_${lastTs}_${extraTag}`;
 }
 
 /**
@@ -121,7 +100,7 @@ export function invalidateDomainHotCache(prefix?: string): void {
     _HOT_CACHE.clear();
     return;
   }
-  for (const key of Array.from(_HOT_CACHE.keys())) {
+  for (const key of _HOT_CACHE.keys()) {
     if (key.startsWith(prefix)) {
       _HOT_CACHE.delete(key);
     }

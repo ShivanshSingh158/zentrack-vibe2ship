@@ -69,8 +69,9 @@ export function PlannerProvider({
 
   useEffect(() => {
     let isCancelled = false;
-    loadBootManifest().then(manifest => {
-      if (isCancelled || !manifest) return;
+
+    const applyManifest = (manifest: any) => {
+      if (!manifest) return;
       unstable_batchedUpdates(() => {
         setCustomEvents(prev => prev.length === 0 && (manifest.customEvents?.length ?? 0) > 0 ? manifest.customEvents : prev);
         setGoals(prev => prev.length === 0 && (manifest.goals?.length ?? 0) > 0 ? manifest.goals : prev);
@@ -83,8 +84,22 @@ export function PlannerProvider({
           hasCachedDataRef.current = true;
         }
       });
+    };
+
+    loadBootManifest().then(manifest => {
+      if (isCancelled) return;
+      applyManifest(manifest);
     }).catch(() => {});
-    return () => { isCancelled = true; };
+
+    const tier1Sub = DeviceEventEmitter.addListener('tier1_manifest_hydrated', (manifest) => {
+      if (isCancelled) return;
+      applyManifest(manifest);
+    });
+
+    return () => {
+      isCancelled = true;
+      tier1Sub.remove();
+    };
   }, [user?.uid]);
 
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);

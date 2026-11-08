@@ -170,11 +170,11 @@ const ALLOWED_SAVE_ROUTES = new Set([
  */
 function shallowEqual(a: any, b: any): boolean {
   if (a === b) return true;
-  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
-  const keysA = Object.keys(a);
-  const keysB = Object.keys(b);
-  if (keysA.length !== keysB.length) return false;
-  return keysA.every(k => a[k] === b[k]);
+  if (!a || !b) return false;
+  // Tab screens only receive route and navigation props from React Navigation
+  if (a.route !== undefined && b.route !== undefined && a.route !== b.route) return false;
+  if (a.navigation !== undefined && b.navigation !== undefined && a.navigation !== b.navigation) return false;
+  return true;
 }
 
 function withFocusFreeze<T extends object>(
@@ -385,6 +385,32 @@ function RootNavigator() {
 //   We ignore nulls for 3 seconds after first auth resolution to avoid flashing
 //   the login screen during a routine token refresh.
 
+// Stable linking config hoisted to module scope to avoid re-binding on re-render
+const LINKING_CONFIG = {
+  prefixes: ['zentrack://', 'exp://'],
+  config: {
+    screens: {
+      MainTabs: {
+        screens: {
+          Home: 'dashboard',
+          Tasks: 'tasks',
+          Attendance: 'attendance',
+          Calendar: 'calendar',
+          Notes: 'notes',
+          Grades: 'grades',
+          Learning: 'learning',
+        },
+      },
+      MoreStack: {
+        screens: {
+          Settings: 'settings',
+          NotificationsSettings: 'notifications-settings',
+        },
+      },
+    },
+  },
+};
+
 export default function AppNavigator() {
   // ── Synchronous Frame 0 seed from L1 cache ──────────────────────────────
   // getBootManifestSync() returns the in-memory cache populated by the
@@ -396,12 +422,10 @@ export default function AppNavigator() {
   const [appReady,   setAppReady]   = useState(_sync?.optimisticUser != null);
   const [user,       setUser]       = useState<User | null>(_sync?.optimisticUser ?? null);
   const [onboarded,  setOnboarded]  = useState(_sync?.onboarded ?? true);
-  const [initialTab, setInitialTab] = useState('Home');
 
   // Register and handle App Icon Quick Shortcuts (New Task, Attendance, Workout, Vault)
   useQuickActions();
 
-  const firstAuthAt = useRef<number>(_sync?.optimisticUser ? Date.now() : 0);
   // If we already have a cached user, mark as resolved immediately so the Firebase
   // background validation handler doesn't trigger a redundant double-boot.
   const hasResolved = useRef(_sync?.optimisticUser != null);
@@ -424,15 +448,9 @@ export default function AppNavigator() {
     const boot = async () => {
       try {
         const manifest = await loadBootManifest();
-        
-        // Cold boot: always Home (WhatsApp/Instagram standard).
-        setInitialTab('Home');
         setOnboarded(manifest.onboarded);
         
         // WhatsApp-style Optimistic Boot: If we have a cached user profile, boot instantly!
-        // NOTE: If _sync already had optimisticUser, appReady=true was set synchronously
-        // on Frame 0 (useState initializer above). We skip redundant state sets to avoid
-        // a no-op re-render, but still update the refs for the Firebase guard logic.
         if (manifest.optimisticUser) {
           if (!hasResolved.current) {
             setUser(manifest.optimisticUser);
@@ -440,12 +458,9 @@ export default function AppNavigator() {
           }
           wasLoggedInRef.current = true;
           hasResolved.current = true;
-          if (!firstAuthAt.current) firstAuthAt.current = Date.now();
-        } else if (!hasResolved.current) {
-          // No cached user — fresh install path. appReady will be set by Firebase listener.
         }
       } catch {
-        // Safe fallback: Home, onboarded=true
+        // Safe fallback
       }
     };
 
@@ -483,7 +498,6 @@ export default function AppNavigator() {
         const realUser = auth.currentUser;
 
         hasResolved.current = true;
-        firstAuthAt.current = Date.now();
         setUser(realUser);
         setAppReady(true);
         saveOptimisticUser(realUser);
@@ -503,9 +517,14 @@ export default function AppNavigator() {
         // UID Guard: Only trigger root state update if the UID changed (prevents re-rendering entire navigation tree on routine token check)
         setUser(prev => (prev?.uid === usr.uid ? prev : usr));
         saveOptimisticUser(usr);
-        const [ob1, ob2] = await AsyncStorage.multiGet(['@zentrack_onboarding_completed', 'zentrack_onboarded_v2']).catch(() => []);
-        const isOnboarded = ob1?.[1] === 'true' || ob2?.[1] === 'true';
-        setOnboarded(isOnboarded);
+        const cachedManifest = getBootManifestSync();
+        if (cachedManifest && cachedManifest.onboarded !== undefined) {
+          setOnboarded(cachedManifest.onboarded);
+        } else {
+          const [ob1, ob2] = await AsyncStorage.multiGet(['@zentrack_onboarding_completed', 'zentrack_onboarded_v2']).catch(() => []);
+          const isOnboarded = ob1?.[1] === 'true' || ob2?.[1] === 'true';
+          setOnboarded(isOnboarded);
+        }
       } else {
         // Firebase fired null. Three possible causes:
         // A) User explicitly signed out (performSignOut cleared @zentrack_optimistic_user)
@@ -657,30 +676,6 @@ export default function AppNavigator() {
   // at module level in App.tsx) until NavigationContainer.onReady() fires, so there
   // is no visible flash of unmounted/remounted content.
 
-const LINKING_CONFIG = {
-  prefixes: ['zentrack://', 'exp://'],
-  config: {
-    screens: {
-      MainTabs: {
-        screens: {
-          Home: 'dashboard',
-          Tasks: 'tasks',
-          Attendance: 'attendance',
-          Calendar: 'calendar',
-          Notes: 'notes',
-          Grades: 'grades',
-          Learning: 'learning',
-        },
-      },
-      MoreStack: {
-        screens: {
-          Settings: 'settings',
-          NotificationsSettings: 'notifications-settings',
-        },
-      },
-    },
-  },
-};
 
   const renderOnboarding = useCallback(
     () => <OnboardingScreen onComplete={() => setOnboarded(true)} />,

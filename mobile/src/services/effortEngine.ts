@@ -58,7 +58,8 @@ export function fromRIR(rir: number | null | undefined, scale: EffortScale = 'ri
 export function inferAutomaticRIR(
   currentSet: SetLike,
   exerciseSets?: SetLike[],
-  historicalMax1RM?: number | null
+  historicalMax1RM?: number | null,
+  cachedMaxWeight?: number
 ): number {
   // 1. Manual user entry takes highest priority if present
   if (currentSet.rir !== undefined && currentSet.rir !== null) {
@@ -76,9 +77,19 @@ export function inferAutomaticRIR(
 
   if (reps <= 0) return 4;
 
-  const validSets = (exerciseSets || []).filter(s => s.completed !== false && !s.isWarmup);
-  const weights = validSets.map(s => Number(s.weight) || 0);
-  const maxSessionWeight = Math.max(weight, ...weights);
+  const validSets = exerciseSets || [];
+  let maxSessionWeight = cachedMaxWeight;
+  if (maxSessionWeight === undefined) {
+    let max = weight;
+    for (let i = 0; i < validSets.length; i++) {
+      const s = validSets[i];
+      if (s.completed !== false && !s.isWarmup) {
+        const w = Number(s.weight) || 0;
+        if (w > max) max = w;
+      }
+    }
+    maxSessionWeight = max;
+  }
 
   // Bodyweight-only exercise heuristic (e.g. pullups, pushups, dips with 0kg logged)
   if (maxSessionWeight <= 0) {
@@ -180,17 +191,24 @@ export function calculateEffortSummary(
   let rirSum = 0;
   let hardCount = 0;
 
-  // Pre-calculate exercise groups once outside the loop to eliminate O(S^2) recalculations
-  const exerciseGroupMap = new Map<string, SetLike[]>();
+  // Pre-calculate exercise groups and max weights once to eliminate O(S^2) recalculations
+  interface ExerciseGroupMeta {
+    sets: SetLike[];
+    maxWeight: number;
+  }
+  const exerciseGroupMap = new Map<string, ExerciseGroupMeta>();
   for (let i = 0; i < completed.length; i++) {
     const s = completed[i];
     const groupKey = s.exerciseId || (s as any).exerciseName || 'default';
+    const w = Number(s.weight) || 0;
     let group = exerciseGroupMap.get(groupKey);
     if (!group) {
-      group = [];
+      group = { sets: [], maxWeight: w };
       exerciseGroupMap.set(groupKey, group);
+    } else if (w > group.maxWeight) {
+      group.maxWeight = w;
     }
-    group.push(s);
+    group.sets.push(s);
   }
 
   for (let i = 0; i < completed.length; i++) {
@@ -201,8 +219,10 @@ export function calculateEffortSummary(
     }
 
     const groupKey = s.exerciseId || (s as any).exerciseName || 'default';
-    const groupSets = s.exerciseSets || exerciseGroupMap.get(groupKey) || completed;
-    const rir = inferAutomaticRIR(s, groupSets);
+    const groupMeta = exerciseGroupMap.get(groupKey);
+    const groupSets = s.exerciseSets || groupMeta?.sets || completed;
+    const maxWeight = s.exerciseSets ? undefined : groupMeta?.maxWeight;
+    const rir = inferAutomaticRIR(s, groupSets, null, maxWeight);
     rirSum += rir;
     if (rir <= HARD_RIR_THRESHOLD) {
       hardCount++;

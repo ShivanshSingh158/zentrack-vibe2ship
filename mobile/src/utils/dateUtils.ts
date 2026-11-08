@@ -116,52 +116,14 @@ function parseSingleTime(hStr: string, mStr: string, pStr: string): { hh: string
   return { hh, mm, display: `${hr12}:${mm}${ampm}` };
 }
 
-export function toYMD(d: Date): string {
-  const y = d.getFullYear();
-  const m = (d.getMonth() + 1).toString().padStart(2, '0');
-  const day = d.getDate().toString().padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-export function getLocalDateString(date: Date = new Date()): string {
-  return toYMD(date);
-}
-
-export const formatLocalDateStr = getLocalDateString;
-
-export function getTodayLocalDateStr(): string {
-  return getLocalDateString(new Date());
-}
-
-/**
- * Parse a YYYY-MM-DD string safely as a LOCAL date (avoids UTC midnight shift).
- */
-export function parseLocalDate(dateStr: string): Date {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-
-/**
- * Safely adds/subtracts days to a local "YYYY-MM-DD" string without UTC shifts.
- */
-export function offsetDateStr(dateStr: string, offsetDays: number): string {
-  try {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() + offsetDays);
-    const year = dt.getFullYear();
-    const month = String(dt.getMonth() + 1).padStart(2, '0');
-    const day = String(dt.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  } catch {
-    const dt = new Date();
-    dt.setDate(dt.getDate() + offsetDays);
-    const year = dt.getFullYear();
-    const month = String(dt.getMonth() + 1).padStart(2, '0');
-    const day = String(dt.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-}
+export {
+  toYMD,
+  getLocalDateString,
+  formatLocalDateStr,
+  getTodayLocalDateStr,
+  parseLocalDate,
+  offsetDateStr,
+} from './dateFormatters';
 
 export function nextWeekday(targetDayIndex: number, forceNext = false): Date {
   const d = new Date();

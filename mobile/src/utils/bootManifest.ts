@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { InteractionManager } from 'react-native';
+import { InteractionManager, DeviceEventEmitter } from 'react-native';
 import { User } from 'firebase/auth';
 import type { Task, Habit, HabitLog } from '../contexts/MobileDataContext';
 import { LayoutItem } from '../components/Dashboard/DashboardLayoutSheet';
@@ -230,27 +230,7 @@ export async function loadBootManifest(): Promise<BootManifest> {
 
       // Hydrate Tier-1 secondary caches off the critical startup path
       InteractionManager.runAfterInteractions(() => {
-        AsyncStorage.multiGet([...TIER_1_KEYS])
-          .then(tier1Pairs => {
-            if (!_memoryBootCache) return;
-            const t1 = new Map<string, string | null>(tier1Pairs);
-            _memoryBootCache = {
-              ..._memoryBootCache,
-              assignments: _memoryBootCache.assignments.length > 0 ? _memoryBootCache.assignments : parseJsonArray(t1.get(BOOT_KEYS.ASSIGNMENTS)),
-              semesters: _memoryBootCache.semesters.length > 0 ? _memoryBootCache.semesters : parseJsonArray(t1.get(BOOT_KEYS.SEMESTERS)),
-              semesterSubjects: _memoryBootCache.semesterSubjects.length > 0 ? _memoryBootCache.semesterSubjects : parseJsonArray(t1.get(BOOT_KEYS.SEM_SUBJECTS)),
-              sleepLogs: _memoryBootCache.sleepLogs.length > 0 ? _memoryBootCache.sleepLogs : parseJsonArray(t1.get(BOOT_KEYS.SLEEP_LOGS)),
-              weightLogs: _memoryBootCache.weightLogs.length > 0 ? _memoryBootCache.weightLogs : parseJsonArray(t1.get(BOOT_KEYS.WEIGHT_LOGS)),
-              customEvents: _memoryBootCache.customEvents.length > 0 ? _memoryBootCache.customEvents : parseJsonArray(t1.get(BOOT_KEYS.CUSTOM_EVENTS)),
-              goals: _memoryBootCache.goals.length > 0 ? _memoryBootCache.goals : parseJsonArray(t1.get(BOOT_KEYS.GOALS)),
-              weeklyReviews: _memoryBootCache.weeklyReviews.length > 0 ? _memoryBootCache.weeklyReviews : parseJsonArray(t1.get(BOOT_KEYS.WEEKLY_REVIEWS)),
-              storageNodes: _memoryBootCache.storageNodes.length > 0 ? _memoryBootCache.storageNodes : parseJsonArray(t1.get(BOOT_KEYS.STORAGE_NODES)),
-              learningTopics: _memoryBootCache.learningTopics.length > 0 ? _memoryBootCache.learningTopics : parseJsonArray(t1.get(BOOT_KEYS.LEARNING_TOPICS)),
-              jobs: _memoryBootCache.jobs.length > 0 ? _memoryBootCache.jobs : parseJsonArray(t1.get(BOOT_KEYS.JOBS)),
-              contentLogs: _memoryBootCache.contentLogs.length > 0 ? _memoryBootCache.contentLogs : parseJsonArray(t1.get(BOOT_KEYS.CONTENT_LOGS)),
-            };
-          })
-          .catch(() => {});
+        loadTier1BootManifest().catch(() => {});
       });
 
       return manifest;
@@ -295,6 +275,35 @@ export async function loadBootManifest(): Promise<BootManifest> {
   })();
 
   return _bootPromise;
+}
+
+export async function loadTier1BootManifest(): Promise<BootManifest | null> {
+  if (!_memoryBootCache) return null;
+  try {
+    const tier1Pairs = await AsyncStorage.multiGet([...TIER_1_KEYS]);
+    if (!_memoryBootCache) return null;
+    const t1 = new Map<string, string | null>(tier1Pairs);
+    const updated: BootManifest = {
+      ..._memoryBootCache,
+      assignments: _memoryBootCache.assignments.length > 0 ? _memoryBootCache.assignments : parseJsonArray(t1.get(BOOT_KEYS.ASSIGNMENTS)),
+      semesters: _memoryBootCache.semesters.length > 0 ? _memoryBootCache.semesters : parseJsonArray(t1.get(BOOT_KEYS.SEMESTERS)),
+      semesterSubjects: _memoryBootCache.semesterSubjects.length > 0 ? _memoryBootCache.semesterSubjects : parseJsonArray(t1.get(BOOT_KEYS.SEM_SUBJECTS)),
+      sleepLogs: _memoryBootCache.sleepLogs.length > 0 ? _memoryBootCache.sleepLogs : parseJsonArray(t1.get(BOOT_KEYS.SLEEP_LOGS)),
+      weightLogs: _memoryBootCache.weightLogs.length > 0 ? _memoryBootCache.weightLogs : parseJsonArray(t1.get(BOOT_KEYS.WEIGHT_LOGS)),
+      customEvents: _memoryBootCache.customEvents.length > 0 ? _memoryBootCache.customEvents : parseJsonArray(t1.get(BOOT_KEYS.CUSTOM_EVENTS)),
+      goals: _memoryBootCache.goals.length > 0 ? _memoryBootCache.goals : parseJsonArray(t1.get(BOOT_KEYS.GOALS)),
+      weeklyReviews: _memoryBootCache.weeklyReviews.length > 0 ? _memoryBootCache.weeklyReviews : parseJsonArray(t1.get(BOOT_KEYS.WEEKLY_REVIEWS)),
+      storageNodes: _memoryBootCache.storageNodes.length > 0 ? _memoryBootCache.storageNodes : parseJsonArray(t1.get(BOOT_KEYS.STORAGE_NODES)),
+      learningTopics: _memoryBootCache.learningTopics.length > 0 ? _memoryBootCache.learningTopics : parseJsonArray(t1.get(BOOT_KEYS.LEARNING_TOPICS)),
+      jobs: _memoryBootCache.jobs.length > 0 ? _memoryBootCache.jobs : parseJsonArray(t1.get(BOOT_KEYS.JOBS)),
+      contentLogs: _memoryBootCache.contentLogs.length > 0 ? _memoryBootCache.contentLogs : parseJsonArray(t1.get(BOOT_KEYS.CONTENT_LOGS)),
+    };
+    _memoryBootCache = updated;
+    DeviceEventEmitter.emit('tier1_manifest_hydrated', updated);
+    return updated;
+  } catch {
+    return _memoryBootCache;
+  }
 }
 
 export function getBootManifestSync(): BootManifest | null {

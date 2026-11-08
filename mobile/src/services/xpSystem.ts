@@ -169,39 +169,28 @@ export async function syncXPWithFirestore(firestoreXP: number): Promise<void> {
 
 // ─── Core Functions ───────────────────────────────────────────────────────────
 
-/** Get current total XP — in-memory first, local cache second, Firestore fallback */
+/** Get current total XP — in-memory first, boot manifest second, local cache third */
 export async function getXP(): Promise<number> {
   if (_inMemoryXP !== null) return _inMemoryXP;
+
+  const bootXp = getBootManifestSync()?.xp;
+  if (typeof bootXp === 'number' && !isNaN(bootXp)) {
+    _inMemoryXP = bootXp;
+    return bootXp;
+  }
 
   try {
     const stored = await AsyncStorage.getItem(XP_KEY);
     if (stored !== null) {
       _inMemoryXP = parseInt(stored, 10) || 0;
       updateL1Cache('xp', _inMemoryXP);
-      
       return _inMemoryXP;
     }
+  } catch {}
 
-    // No local cache (fresh install or reinstall) — load from Firestore
-    const uid = auth.currentUser?.uid;
-    if (uid) {
-      const snap = await getDoc(doc(db, COLLECTION.USER_PROFILES, uid));
-      if (snap.exists()) {
-        const firestoreXP = snap.data()?.xp ?? 0;
-        _inMemoryXP = firestoreXP;
-        updateL1Cache('xp', firestoreXP);
-        // Seed local cache so future reads are instant
-        await AsyncStorage.setItem(XP_KEY, String(firestoreXP));
-        return firestoreXP;
-      }
-    }
-    _inMemoryXP = 0;
-    updateL1Cache('xp', 0);
-    return 0;
-  } catch {
-    _inMemoryXP = 0;
-    return 0;
-  }
+  _inMemoryXP = 0;
+  updateL1Cache('xp', 0);
+  return 0;
 }
 
 /** Calculate level and title from raw XP number */

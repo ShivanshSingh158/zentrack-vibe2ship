@@ -44,6 +44,7 @@ export interface CoreDataContextType {
   loading: boolean;
   tasksReady: boolean;   // true once Firestore has confirmed tasks (or confirmed empty)
   pendingTaskCount: number;
+  todayPendingTaskCount: number;
   todayHabits: Habit[];
   pinnedModules: string[];
   setPinnedModules: (modules: string[]) => void;
@@ -71,6 +72,7 @@ const DEFAULT_CORE_DATA: CoreDataContextType = {
   loading: false,
   tasksReady: false,
   pendingTaskCount: 0,
+  todayPendingTaskCount: 0,
   todayHabits: [],
   pinnedModules: ["Tasks", "Calendar", "Attendance", "Notes"],
   setPinnedModules: () => {},
@@ -449,6 +451,15 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const activeHabits     = useMemo(() => habits.filter(h => !h.archived), [habits]);
   const todayHabits      = useMemo(() => activeHabits.slice(0, 5), [activeHabits]);
   const pendingTaskCount = useMemo(() => tasks.filter(t => t.status === "pending").length, [tasks]);
+  const todayPendingTaskCount = useMemo(() => {
+    const today = formatLocalDateStr(new Date());
+    let count = 0;
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      if (t.status === 'pending' && t.date === today) count++;
+    }
+    return count;
+  }, [tasks]);
 
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
@@ -543,7 +554,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(() => ({
     user, tasks, habits: activeHabits, allHabits: habits, habitLogs,
-    loading, tasksReady: firestoreReady, pendingTaskCount, todayHabits,
+    loading, tasksReady: firestoreReady, pendingTaskCount, todayPendingTaskCount, todayHabits,
     pinnedModules, setPinnedModules, googleAccessToken,
     refreshCoreData,
     optimisticAddTask, optimisticUpdateTask, optimisticDeleteTask,
@@ -551,7 +562,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     optimisticAddHabitLog, optimisticUpdateHabitLog, optimisticRemoveHabitLog
   }), [
     user?.uid, tasks, activeHabits, habits, habitLogs,
-    loading, firestoreReady, pendingTaskCount, todayHabits,
+    loading, firestoreReady, pendingTaskCount, todayPendingTaskCount, todayHabits,
     pinnedModules, googleAccessToken, refreshCoreData,
     optimisticAddTask, optimisticUpdateTask, optimisticDeleteTask,
     optimisticAddHabit, optimisticUpdateHabit, optimisticDeleteHabit,

@@ -133,8 +133,9 @@ export function AcademicProvider({
   // ── Offline-first boot: seed ALL academic collections using functional updaters ──
   useEffect(() => {
     let isCancelled = false;
-    loadBootManifest().then(manifest => {
-      if (isCancelled || !manifest) return;
+
+    const applyManifest = (manifest: any) => {
+      if (!manifest) return;
       unstable_batchedUpdates(() => {
         if ((manifest.attendance?.length ?? 0) > 0) {
           setAttendance(prev => prev.length === 0 ? manifest.attendance : prev);
@@ -159,8 +160,22 @@ export function AcademicProvider({
           setHolidays(prev => prev.length === 0 ? manifest.holidays : prev);
         }
       });
+    };
+
+    loadBootManifest().then(manifest => {
+      if (isCancelled) return;
+      applyManifest(manifest);
     }).catch(() => {});
-    return () => { isCancelled = true; };
+
+    const tier1Sub = DeviceEventEmitter.addListener('tier1_manifest_hydrated', (manifest) => {
+      if (isCancelled) return;
+      applyManifest(manifest);
+    });
+
+    return () => {
+      isCancelled = true;
+      tier1Sub.remove();
+    };
   }, [user?.uid]);
 
   const openSubscriptions = useCallback((uid: string) => {

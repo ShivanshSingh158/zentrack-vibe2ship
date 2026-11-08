@@ -24,6 +24,8 @@ import { deepSanitize } from './firebaseUtils';
 
 export type FirestoreOperation = 'add' | 'update' | 'delete' | 'set';
 
+const SAFE_WRITE_TIMEOUT_MS = 12000;
+
 /**
  * Executes a Firestore write safely:
  * - Online: calls firestoreFn() directly (fast path, checks isOnlineSync in 0ms)
@@ -55,7 +57,7 @@ export async function safeWrite(
 
       const onlinePromise = Promise.resolve(firestoreFn(payload));
 
-      // If it times out at 10s, we queue a fallback.
+      // If it times out at 12s, we queue a fallback.
       // If onlinePromise later succeeds in the background, we cancel/remove the queued fallback!
       onlinePromise
         .then(async () => {
@@ -69,8 +71,8 @@ export async function safeWrite(
         const timeoutPromise = new Promise<never>((_, reject) => {
           timer = setTimeout(() => {
             timedOut = true;
-            reject(new Error('Firestore write timed out (10000ms)'));
-          }, 10000);
+            reject(new Error(`Firestore write timed out (${SAFE_WRITE_TIMEOUT_MS}ms)`));
+          }, SAFE_WRITE_TIMEOUT_MS);
         });
 
         await Promise.race([
