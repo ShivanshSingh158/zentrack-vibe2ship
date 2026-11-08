@@ -188,6 +188,7 @@ export function AcademicProvider({
       query(collection(db, COLLECTION.ATTENDANCE), where("userId", "==", uid)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.ATTENDANCE, snap.docs.map(d => parseAttendanceSubject(d.data(), d.id)));
           updateL1Cache('attendance', fresh);
@@ -228,6 +229,7 @@ export function AcademicProvider({
       query(collection(db, COLLECTION.ATTENDANCE_LOGS), where("userId", "==", uid), where("date", ">=", attendanceCutoffDateStr)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
           const rawFresh = applyPendingQueueOverlay(COLLECTION.ATTENDANCE_LOGS, snap.docs.map(d => parseAttendanceLog(d.data(), d.id)));
           const seen = new Map<string, typeof rawFresh[0]>();
@@ -276,6 +278,7 @@ export function AcademicProvider({
       query(collection(db, COLLECTION.ASSIGNMENTS), where("userId", "==", uid)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.ASSIGNMENTS, snap.docs.map(d => parseAssignment(d.data(), d.id)));
           updateL1Cache('assignments', fresh);
@@ -290,6 +293,7 @@ export function AcademicProvider({
       query(collection(db, COLLECTION.SEMESTERS), where("userId", "==", uid)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.SEMESTERS, snap.docs.map(d => ({ id: d.id, ...d.data() } as Semester)));
           setSemesters(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -303,6 +307,7 @@ export function AcademicProvider({
       query(collection(db, COLLECTION.SEMESTER_SUBJECTS), where("userId", "==", uid)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.SEMESTER_SUBJECTS, snap.docs.map(d => ({ id: d.id, ...d.data() } as SemesterSubject)));
           setSemesterSubjects(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -316,6 +321,7 @@ export function AcademicProvider({
       query(collection(db, COLLECTION.ATTENDANCE_HOLIDAYS), where("userId", "==", uid)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         const fresh = snap.docs.map(d => {
           const raw = (d.data() as any).date;
           if (!raw) return '';

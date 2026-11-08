@@ -131,6 +131,9 @@ const inFlightDownloads = new Map<string, Promise<string | null>>();
 export async function cacheUserAvatar(uid: string, remoteUrl: string): Promise<string | null> {
   if (!uid || !remoteUrl) return null;
 
+  const mem = MEMORY_AVATAR_CACHE.get(uid);
+  if (mem) return mem;
+
   // Coalesce duplicate in-flight requests
   const existingPromise = inFlightDownloads.get(uid);
   if (existingPromise) {

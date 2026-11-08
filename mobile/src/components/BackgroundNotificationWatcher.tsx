@@ -63,7 +63,8 @@ export function BackgroundNotificationWatcher() {
     if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
     if (interactionHandleRef.current) interactionHandleRef.current.cancel();
 
-    const delay = isInitialBootRef.current ? 4000 : 300;
+    // Trailing 5-second debounce so rapid domain state changes and navigation never stall the JS thread
+    const delay = isInitialBootRef.current ? 5000 : 5000;
 
     notifTimerRef.current = setTimeout(() => {
       isInitialBootRef.current = false;

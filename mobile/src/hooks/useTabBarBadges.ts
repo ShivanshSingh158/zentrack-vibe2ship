@@ -35,40 +35,29 @@ export function useTabBarBadges() {
   }, []);
 
   return useMemo(() => {
-    // Create a local today string safely (YYYY-MM-DD)
     const localISOTime = todayStr;
+    let pendingTasks = 0;
+    const len = tasks?.length ?? 0;
+
+    for (let i = 0; i < len; i++) {
+      const task = tasks[i];
+      if (task.status === 'pending' && task.date === localISOTime) {
+        pendingTasks++;
+      }
+    }
+
+    const prev = prevBadgesRef.current;
+    const prevCount = prev.Tasks || 0;
+
+    if (prevCount === pendingTasks) {
+      return prev;
+    }
 
     const newBadges: Record<string, number> = {};
-
-    // --- Tasks Badge ---
-    // Count pending tasks scheduled for TODAY only (not overdue).
-    let pendingTasks = 0;
-    (tasks || []).forEach(task => {
-      if (task.status === 'pending' && task.date) {
-        if (task.date === localISOTime) {
-          pendingTasks++;
-        }
-      }
-    });
-
     if (pendingTasks > 0) {
       newBadges.Tasks = pendingTasks;
     }
-
-    // Stable reference: only produce a new object if values actually changed.
-    // This prevents TelegramTabBar from re-rendering on every task snapshot
-    // when the pending count is identical (e.g. user adds a future-dated task).
-    const prev = prevBadgesRef.current;
-    const prevKeys = Object.keys(prev);
-    const newKeys = Object.keys(newBadges);
-    const changed =
-      prevKeys.length !== newKeys.length ||
-      newKeys.some(k => prev[k] !== newBadges[k]);
-
-    if (changed) {
-      prevBadgesRef.current = newBadges;
-    }
-
-    return prevBadgesRef.current;
+    prevBadgesRef.current = newBadges;
+    return newBadges;
   }, [tasks, todayStr]);
 }

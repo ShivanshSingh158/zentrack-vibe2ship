@@ -629,9 +629,13 @@ export default function AppNavigator() {
     };
   }, []);
 
+  const lastRouteRef = useRef<string | null>(null);
   const onNavStateChange = useCallback(() => {
     const routeName = navigationRef.getCurrentRoute()?.name;
-    if (routeName) DeviceEventEmitter.emit('route_changed', routeName);
+    if (routeName && routeName !== lastRouteRef.current) {
+      lastRouteRef.current = routeName;
+      DeviceEventEmitter.emit('route_changed', routeName);
+    }
   }, []);
 
   const { isDark, colors } = useTheme();

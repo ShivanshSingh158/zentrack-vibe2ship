@@ -8,6 +8,7 @@
 
 import { AppState, AppStateStatus, DeviceEventEmitter } from 'react-native';
 import { syncOfflineQueue } from './offlineSync';
+import { flushPendingXPCloudSync } from './xpSystem';
 
 export function setupLifecycleHygiene(): () => void {
   let lastState = AppState.currentState;
@@ -17,7 +18,12 @@ export function setupLifecycleHygiene(): () => void {
       // 1. Drain pending offline write queue to Firebase immediately:
       syncOfflineQueue(true).catch(() => {});
 
-      // 2. Stop active SARA mic if listening to protect OS battery:
+      // 2. Flush pending debounced XP cloud sync to prevent loss:
+      try {
+        flushPendingXPCloudSync();
+      } catch {}
+
+      // 3. Stop active SARA mic if listening to protect OS battery:
       DeviceEventEmitter.emit('agent-stop-conversation-command');
     }
 

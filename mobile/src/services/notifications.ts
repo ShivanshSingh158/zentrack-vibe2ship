@@ -159,6 +159,14 @@ export interface ScheduleParams {
 
 // â”€â”€ Data Fingerprint Cache (Persisted to Disk) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export const NOTIF_FINGERPRINT_KEY = '@zentrack_notif_fingerprint';
+let _cachedNotifSettings: Record<string, string | null> | null = null;
+let _cachedNotifSettingsTs = 0;
+
+export function invalidateNotifSettingsCache(): void {
+  _cachedNotifSettings = null;
+  _cachedNotifSettingsTs = 0;
+}
+
 let _lastScheduleFingerprint: string | null = null;
 let _lastScheduleError: string | null = null;
 let _lastScheduledCount: number = 0;
@@ -445,9 +453,16 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         ]),
       ];
 
-      const allPairs = await AsyncStorage.multiGet([...BOOL_KEYS, ...STR_KEYS]);
-      const kv: Record<string, string | null> = {};
-      allPairs.forEach(([k, v]) => { kv[k] = v; });
+      let kv: Record<string, string | null>;
+      if (_cachedNotifSettings && Date.now() - _cachedNotifSettingsTs < 60000) {
+        kv = _cachedNotifSettings;
+      } else {
+        const allPairs = await AsyncStorage.multiGet([...BOOL_KEYS, ...STR_KEYS]);
+        kv = {};
+        allPairs.forEach(([k, v]) => { kv[k] = v; });
+        _cachedNotifSettings = kv;
+        _cachedNotifSettingsTs = Date.now();
+      }
 
       if (!_lastScheduleFingerprint) {
         const cached = getBootManifestSync()?.notifFingerprint || (await AsyncStorage.getItem(NOTIF_FINGERPRINT_KEY).catch(() => null));

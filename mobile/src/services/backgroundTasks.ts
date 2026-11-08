@@ -52,13 +52,13 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
     // Query stats for the week
     const weekStartTs = weekStart.getTime();
 
-    // 1. Tasks completed & total within week
+    // 1. Tasks completed & total within week (bounded queries)
     const [tasksSnap, habitsSnap, assignSnap] = await Promise.all([
       getDocs(query(
         collection(db, COLLECTION.TASKS),
         where('userId', '==', userId),
-        where('createdAt', '>=', weekStartTs)
-      )),
+        where('date', '>=', weekStartStr)
+      )).catch(() => getDocs(query(collection(db, COLLECTION.TASKS), where('userId', '==', userId)))),
       getDocs(query(
         collection(db, COLLECTION.HABIT_LOGS),
         where('userId', '==', userId),
@@ -66,8 +66,9 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
       )),
       getDocs(query(
         collection(db, COLLECTION.ASSIGNMENTS),
-        where('userId', '==', userId)
-      )),
+        where('userId', '==', userId),
+        where('dueDate', '>=', weekStartStr)
+      )).catch(() => getDocs(query(collection(db, COLLECTION.ASSIGNMENTS), where('userId', '==', userId)))),
     ]);
 
     let completedTasks = 0;

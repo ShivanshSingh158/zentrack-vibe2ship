@@ -30,6 +30,7 @@ import { loadBootManifest } from './src/utils/bootManifest';
 import { PortalProvider } from './src/contexts/PortalContext';
 import { unregisterBackgroundProactiveAgent } from './src/services/backgroundProactiveAgent';
 import { registerWeeklyReviewTask } from './src/services/backgroundTasks';
+import { registerStepSyncTask } from './src/services/stepCounterService';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { MobileDataProvider } from './src/contexts/MobileDataContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
@@ -63,21 +64,23 @@ LogBox.ignoreLogs([
   'Tried to register two views with the same name',
 ]);
 
-// Intercept console to completely silence Metro terminal spam for known safe warnings/errors
-const originalWarn = console.warn;
-console.warn = (...args) => {
-  if (typeof args[0] === 'string' && (
-    args[0].includes('setLayoutAnimationEnabledExperimental') ||
-    args[0].includes('[Reanimated] Property "opacity"')
-  )) return;
-  originalWarn(...args);
-};
+// Intercept console in development only to completely silence Metro terminal spam for known safe warnings/errors
+if (__DEV__) {
+  const originalWarn = console.warn;
+  console.warn = (...args) => {
+    if (typeof args[0] === 'string' && (
+      args[0].includes('setLayoutAnimationEnabledExperimental') ||
+      args[0].includes('[Reanimated] Property "opacity"')
+    )) return;
+    originalWarn(...args);
+  };
 
-const originalError = console.error;
-console.error = (...args) => {
-  if (typeof args[0] === 'string' && args[0].includes('Could not reach Cloud Firestore backend')) return;
-  originalError(...args);
-};
+  const originalError = console.error;
+  console.error = (...args) => {
+    if (typeof args[0] === 'string' && args[0].includes('Could not reach Cloud Firestore backend')) return;
+    originalError(...args);
+  };
+}
 
 
 
@@ -141,6 +144,7 @@ export default function App() {
         registerBackgroundNotificationFetch();
         unregisterBackgroundProactiveAgent().catch(() => {});
         registerWeeklyReviewTask();
+        registerStepSyncTask().catch(() => {});
         // Run attendance duplicate-log repair once per install session.
         // Uses its own AsyncStorage flag — no-op if already done.
         const uid = auth.currentUser?.uid;
@@ -366,13 +370,9 @@ export default function App() {
             const deterministicLogId = `${uid ?? 'anon'}_${habitId}_${todayDate}`;
             const habitLogRef = doc(db, COLLECTION.HABIT_LOGS, deterministicLogId);
 
-            const existingSnap = await getDocs(query(
-              collection(db, COLLECTION.HABIT_LOGS),
-              where('habitId', '==', habitId),
-              where('date', '==', todayDate)
-            )).catch(() => null);
+            const existingSnap = await getDoc(habitLogRef).catch(() => null);
 
-            if (existingSnap && !existingSnap.empty) {
+            if (existingSnap && existingSnap.exists()) {
               await Notifications.scheduleNotificationAsync({
                 content: {
                   title: 'Already Logged',

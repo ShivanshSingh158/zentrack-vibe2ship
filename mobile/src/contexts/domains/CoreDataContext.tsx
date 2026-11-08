@@ -118,24 +118,9 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
 
-  // Write-lock: after an optimistic habit update, ignore Firestore snapshots for
-  // 2 seconds to prevent the flicker cycle (optimistic → snapshot rollback → final snapshot).
-  const habitWriteLockRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const habitLogWriteLockRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isHabitLocked = useRef(false);
-  const isHabitLogLocked = useRef(false);
-
-  const lockHabits = () => {
-    isHabitLocked.current = true;
-    if (habitWriteLockRef.current) clearTimeout(habitWriteLockRef.current);
-    habitWriteLockRef.current = setTimeout(() => { isHabitLocked.current = false; }, 2000);
-  };
-  const lockHabitLogs = () => {
-    isHabitLogLocked.current = true;
-    if (habitLogWriteLockRef.current) clearTimeout(habitLogWriteLockRef.current);
-    habitLogWriteLockRef.current = setTimeout(() => { isHabitLogLocked.current = false; }, 2000);
-  };
   const { pinnedModules, setPinnedModules } = usePinnedModules();
+  const pinnedModulesRef = useRef(pinnedModules);
+  pinnedModulesRef.current = pinnedModules;
 
   // ── Listener auto-restart on error ───────────────────────────────────────
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
@@ -307,6 +292,10 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           setFirestoreReady(true);
           return;
         }
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) {
+          setFirestoreReady(true);
+          return;
+        }
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.TASKS, snap.docs.map(d => parseTask(d.data(), d.id)));
           setTasks(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -330,7 +319,11 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           }
           if (Array.isArray(data?.pinnedModules) && data.pinnedModules.length > 0) {
             const remotePinned = data.pinnedModules.slice(0, 4);
-            setPinnedModules(remotePinned);
+            const currentStr = (pinnedModulesRef.current || []).join(',');
+            const remoteStr = remotePinned.join(',');
+            if (currentStr !== remoteStr) {
+              setPinnedModules(remotePinned);
+            }
           }
           if (Array.isArray(data?.savedPlaces)) {
             AsyncStorage.setItem(STORAGE_KEYS.SAVED_PLACES || '@zentrack_saved_places', JSON.stringify(data.savedPlaces)).catch(() => {});
@@ -380,8 +373,6 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       unsubsRef.current = [];
       subscribedRef.current = false;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-      if (habitWriteLockRef.current) clearTimeout(habitWriteLockRef.current);
-      if (habitLogWriteLockRef.current) clearTimeout(habitLogWriteLockRef.current);
     };
   }, [user?.uid]);
 

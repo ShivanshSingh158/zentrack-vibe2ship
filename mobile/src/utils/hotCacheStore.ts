@@ -73,24 +73,25 @@ export function generateDatasetFingerprint(items: Array<any> | null | undefined,
 export function getCachedAnalytics<T>(cacheKey: string): T | null {
   const entry = _HOT_CACHE.get(cacheKey);
   if (!entry) return null;
-  // Promote to MRU: delete + re-insert at end of Map
-  _HOT_CACHE.delete(cacheKey);
-  _HOT_CACHE.set(cacheKey, entry);
+  entry.timestamp = Date.now();
   return entry.data as T;
 }
 
 /**
  * Stores a precalculated analytical object in memory with true LRU eviction.
- * Evicts the Least Recently Used entry (first key = oldest accessed after MRU promotions).
+ * Evicts the Least Recently Used entry based on entry.timestamp.
  */
 export function setCachedAnalytics<T>(cacheKey: string, data: T): void {
-  // If key already exists, delete first to re-insert at MRU position
-  if (_HOT_CACHE.has(cacheKey)) {
-    _HOT_CACHE.delete(cacheKey);
-  } else if (_HOT_CACHE.size >= MAX_CACHE_ENTRIES) {
-    // Evict true LRU entry (first key in Map = least recently accessed)
-    const lruKey = _HOT_CACHE.keys().next().value;
-    if (lruKey) _HOT_CACHE.delete(lruKey);
+  if (!_HOT_CACHE.has(cacheKey) && _HOT_CACHE.size >= MAX_CACHE_ENTRIES) {
+    let oldestKey: string | null = null;
+    let oldestTs = Infinity;
+    for (const [k, v] of _HOT_CACHE.entries()) {
+      if (v.timestamp < oldestTs) {
+        oldestTs = v.timestamp;
+        oldestKey = k;
+      }
+    }
+    if (oldestKey) _HOT_CACHE.delete(oldestKey);
   }
   _HOT_CACHE.set(cacheKey, {
     data,

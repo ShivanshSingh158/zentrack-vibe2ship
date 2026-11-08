@@ -45,6 +45,81 @@ export function collectActiveDates(
   return activeDates;
 }
 
+export interface StreakMetrics {
+  currentStreak: number;
+  longestStreak: number;
+  totalActiveDays: number;
+  consistencyRate: number;
+}
+
+/**
+ * Computes all 4 streak and consistency metrics in a single pass over active dates,
+ * avoiding 4 separate iterations and duplicate Date object allocations.
+ */
+export function calculateAllStreakMetrics(
+  tasks?: Task[],
+  habitLogs?: any[],
+  learningTopics?: LearningTopic[],
+  windowDays = 30
+): StreakMetrics {
+  const activeDates = collectActiveDates(tasks, habitLogs, learningTopics);
+  const now = new Date();
+
+  // 1. Current streak with Sunday recovery immunity
+  let currentStreak = 0;
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const dStr = formatLocalDateStr(d);
+    const isSunday = d.getDay() === 0;
+
+    if (activeDates.has(dStr)) {
+      currentStreak++;
+    } else if (isSunday) {
+      continue;
+    } else if (i > 0) {
+      break;
+    }
+  }
+
+  // 2. Longest streak
+  const sortedDates = Array.from(activeDates).sort();
+  let longestStreak = sortedDates.length > 0 ? 1 : 0;
+  let currentRun = 1;
+  for (let i = 1; i < sortedDates.length; i++) {
+    const prev = new Date(sortedDates[i - 1] + 'T00:00:00');
+    const curr = new Date(sortedDates[i] + 'T00:00:00');
+    const diffDays = Math.round((curr.getTime() - prev.getTime()) / 86400000);
+    if (diffDays === 1 || (diffDays === 2 && prev.getDay() === 6 && curr.getDay() === 1)) {
+      currentRun++;
+      if (currentRun > longestStreak) longestStreak = currentRun;
+    } else if (diffDays > 1) {
+      currentRun = 1;
+    }
+  }
+
+  // 3. Total active days
+  const totalActiveDays = activeDates.size;
+
+  // 4. Consistency rate over requested rolling window
+  let activeWindowDays = 0;
+  for (let i = 0; i < windowDays; i++) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    if (activeDates.has(formatLocalDateStr(d))) {
+      activeWindowDays++;
+    }
+  }
+  const consistencyRate = Math.round((activeWindowDays / windowDays) * 100);
+
+  return {
+    currentStreak,
+    longestStreak,
+    totalActiveDays,
+    consistencyRate,
+  };
+}
+
 export function calculateAppStreak(
   tasks?: Task[],
     habitLogs?: any[],

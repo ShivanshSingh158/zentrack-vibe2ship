@@ -24,15 +24,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '../../contexts/ThemeContext';
-import { usePomodoro } from '../../contexts/PomodoroContext';
+import { usePomodoro, usePomodoroUI } from '../../contexts/PomodoroContext';
 import { formatTime } from './pomodoroTimeMath';
 import { modeAccentDark, modeAccentLight, modeIconName, modeLabel } from './pomodoroStyles';
 import { feedback } from '../../utils/haptics';
 
+// Leaf component: only this tiny text node re-renders on the 1-second timeLeft tick
+const CountdownDigits = React.memo(function CountdownDigits({ color }: { color: string }) {
+  const { timeLeft } = usePomodoro();
+  return (
+    <Text style={[styles.digitsText, { color }]}>
+      {formatTime(timeLeft)}
+    </Text>
+  );
+});
+
 export default function PomodoroFloatingPill() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { status, mode, timeLeft, isSheetOpen, setIsSheetOpen } = usePomodoro();
+  const { status, mode, isSheetOpen, setIsSheetOpen } = usePomodoroUI();
 
   const accentFn = isDark ? modeAccentDark : modeAccentLight;
   const currentAccent = accentFn(mode);
@@ -93,7 +103,7 @@ export default function PomodoroFloatingPill() {
             },
           ]}
           accessibilityRole="button"
-          accessibilityLabel={`Focus timer ${isPaused ? 'paused' : 'running'}: ${formatTime(timeLeft)} remaining. Tap to expand.`}
+          accessibilityLabel={`Focus timer ${isPaused ? 'paused' : 'running'}. Tap to expand.`}
         >
           {/* Status Icon Disc with Breathing Aura */}
           <View style={styles.iconContainer}>
@@ -126,10 +136,8 @@ export default function PomodoroFloatingPill() {
             </View>
           </View>
 
-          {/* Time Left Tabular Digits */}
-          <Text style={[styles.digitsText, { color: colors.textPrimary }]}>
-            {formatTime(timeLeft)}
-          </Text>
+          {/* Time Left Tabular Digits (Leaf Component - Isolates 1s Re-Render) */}
+          <CountdownDigits color={colors.textPrimary} />
 
           {/* Status Badge */}
           <View

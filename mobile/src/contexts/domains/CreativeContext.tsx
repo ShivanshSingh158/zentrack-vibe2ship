@@ -125,6 +125,7 @@ export function CreativeProvider({
       query(collection(db, COLLECTION.STORAGE_NODES), where("userId", "==", uid)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.STORAGE_NODES, snap.docs.map(d => parseStorageNode(d.data(), d.id)));
           setStorageNodes(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -138,6 +139,7 @@ export function CreativeProvider({
       query(collection(db, COLLECTION.LEARNING_TOPICS), where("userId", "==", uid)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.LEARNING_TOPICS, snap.docs.map(d => parseLearningTopic(d.data(), d.id)));
           setLearningTopics(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -151,6 +153,7 @@ export function CreativeProvider({
       query(collection(db, COLLECTION.JOBS), where("userId", "==", uid)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.JOBS, snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication)));
           setJobs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -164,6 +167,7 @@ export function CreativeProvider({
       query(collection(db, COLLECTION.CONTENT_LOGS), where("userId", "==", uid)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.CONTENT_LOGS, snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentLog)));
           setContentLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -213,19 +217,29 @@ export function CreativeProvider({
     }
   }, [user?.uid, openSubscriptions]);
 
-  const notes = useMemo(() =>
-    storageNodes
+  const noteCacheRef = useRef<Map<string, { note: Note; updatedAt?: number }>>(new Map());
+  const notes = useMemo(() => {
+    const cache = noteCacheRef.current;
+    return storageNodes
       .filter(n => n.type === "note")
-      .map(n => ({
-        id: n.id || "",
-        title: n.name,
-        content: n.content || "",
-        tags: n.tags || [],
-        createdAt: n.createdAt,
-        userId: n.userId,
-      } as Note)),
-    [storageNodes]
-  );
+      .map(n => {
+        const id = n.id || "";
+        const cached = cache.get(id);
+        if (cached && cached.updatedAt === n.updatedAt && cached.note.title === n.name && cached.note.content === (n.content || "")) {
+          return cached.note;
+        }
+        const freshNote: Note = {
+          id,
+          title: n.name,
+          content: n.content || "",
+          tags: n.tags || [],
+          createdAt: n.createdAt,
+          userId: n.userId,
+        };
+        cache.set(id, { note: freshNote, updatedAt: n.updatedAt });
+        return freshNote;
+      });
+  }, [storageNodes]);
 
   const optimisticUpdateLearningTopic = useCallback((id: string, updates: Partial<LearningTopic>) => {
     setLearningTopics(prev => {
@@ -259,7 +273,7 @@ export function CreativeProvider({
     setStorageNodes(prev => {
       const filtered = node.id ? prev.filter(n => n.id !== node.id) : prev;
       const fresh = [node, ...filtered];
-      writeCreativeCache({ storageNodes: fresh }, true);
+      writeCreativeCache({ storageNodes: fresh }, false);
       return fresh;
     });
   }, []);
@@ -267,7 +281,7 @@ export function CreativeProvider({
   const optimisticUpdateStorageNode = useCallback((id: string, updates: Partial<StorageNode>) => {
     setStorageNodes(prev => {
       const fresh = prev.map(n => n.id === id ? { ...n, ...updates } : n);
-      writeCreativeCache({ storageNodes: fresh }, true);
+      writeCreativeCache({ storageNodes: fresh }, false);
       return fresh;
     });
   }, []);
@@ -275,7 +289,7 @@ export function CreativeProvider({
   const optimisticDeleteStorageNode = useCallback((id: string) => {
     setStorageNodes(prev => {
       const fresh = prev.filter(n => n.id !== id);
-      writeCreativeCache({ storageNodes: fresh }, true);
+      writeCreativeCache({ storageNodes: fresh }, false);
       return fresh;
     });
   }, []);
@@ -284,7 +298,7 @@ export function CreativeProvider({
     const idSet = new Set(ids);
     setStorageNodes(prev => {
       const fresh = prev.filter(n => !n.id || !idSet.has(n.id));
-      writeCreativeCache({ storageNodes: fresh }, true);
+      writeCreativeCache({ storageNodes: fresh }, false);
       return fresh;
     });
   }, []);

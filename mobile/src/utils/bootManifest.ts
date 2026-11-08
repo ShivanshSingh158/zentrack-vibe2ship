@@ -303,10 +303,7 @@ export function getBootManifestSync(): BootManifest | null {
 
 export function updateL1Cache<K extends keyof BootManifest>(key: K, value: BootManifest[K]): void {
   if (_memoryBootCache) {
-    _memoryBootCache = {
-      ..._memoryBootCache,
-      [key]: value,
-    };
+    _memoryBootCache[key] = value;
   }
 }
 

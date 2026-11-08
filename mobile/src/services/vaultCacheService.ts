@@ -8,6 +8,9 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Crypto from 'expo-crypto';
 
+// In-memory lookup map to avoid repeated native crypto and FileSystem bridge calls
+const MEMORY_PATH_CACHE = new Map<string, string>();
+
 /**
  * Dynamically resolves the base cache directory at runtime.
  * Avoids top-level null/undefined evaluation crashes.
@@ -126,11 +129,17 @@ export async function getLegacyCacheFilenameForUrl(url: string, originalFilename
 export async function getCachedFilePath(url: string, originalFilename?: string): Promise<string | null> {
   if (!url || typeof url !== 'string') return null;
 
+  const mem = MEMORY_PATH_CACHE.get(url);
+  if (mem) return mem;
+
   // If already a local file:// uri, return directly if exists
   if (url.startsWith('file://')) {
     try {
       const info = await FileSystem.getInfoAsync(url);
-      if (info.exists && info.size && info.size > 0) return url;
+      if (info.exists && info.size && info.size > 0) {
+        MEMORY_PATH_CACHE.set(url, url);
+        return url;
+      }
     } catch {
       return null;
     }
@@ -146,6 +155,7 @@ export async function getCachedFilePath(url: string, originalFilename?: string):
     const fileInfo = await FileSystem.getInfoAsync(targetPath);
 
     if (fileInfo.exists && fileInfo.size && fileInfo.size > 0) {
+      MEMORY_PATH_CACHE.set(url, targetPath);
       return targetPath;
     }
 
@@ -158,8 +168,10 @@ export async function getCachedFilePath(url: string, originalFilename?: string):
         // Transparently migrate to canonical path
         try {
           await FileSystem.copyAsync({ from: legacyPath, to: targetPath });
+          MEMORY_PATH_CACHE.set(url, targetPath);
           return targetPath;
         } catch {
+          MEMORY_PATH_CACHE.set(url, legacyPath);
           return legacyPath;
         }
       }

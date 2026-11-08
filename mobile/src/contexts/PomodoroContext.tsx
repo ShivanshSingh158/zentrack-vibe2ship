@@ -105,11 +105,15 @@ export interface PomodoroActiveTaskType {
 export interface PomodoroUIContextType {
   isSheetOpen: boolean;
   setIsSheetOpen: (open: boolean) => void;
+  status: 'idle' | 'running' | 'paused';
+  mode: PomodoroMode;
 }
 
 export const PomodoroUIContext = createContext<PomodoroUIContextType>({
   isSheetOpen: false,
   setIsSheetOpen: () => {},
+  status: 'idle',
+  mode: 'focus',
 });
 
 export const usePomodoroUI = () => useContext(PomodoroUIContext);
@@ -766,7 +770,9 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const uiValue = useMemo<PomodoroUIContextType>(() => ({
     isSheetOpen,
     setIsSheetOpen,
-  }), [isSheetOpen]);
+    status,
+    mode,
+  }), [isSheetOpen, status, mode]);
 
   return (
     <PomodoroUIContext.Provider value={uiValue}>

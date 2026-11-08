@@ -180,13 +180,29 @@ export function calculateEffortSummary(
   let rirSum = 0;
   let hardCount = 0;
 
-  for (const s of completed) {
+  // Pre-calculate exercise groups once outside the loop to eliminate O(S^2) recalculations
+  const exerciseGroupMap = new Map<string, SetLike[]>();
+  for (let i = 0; i < completed.length; i++) {
+    const s = completed[i];
+    const groupKey = s.exerciseId || (s as any).exerciseName || 'default';
+    let group = exerciseGroupMap.get(groupKey);
+    if (!group) {
+      group = [];
+      exerciseGroupMap.set(groupKey, group);
+    }
+    group.push(s);
+  }
+
+  for (let i = 0; i < completed.length; i++) {
+    const s = completed[i];
     const isManuallyRated = (s.rir !== undefined && s.rir !== null) || (s.rpe !== undefined && s.rpe !== null);
     if (isManuallyRated) {
       ratedCount++;
     }
 
-    const rir = inferAutomaticRIR(s, s.exerciseSets || completed);
+    const groupKey = s.exerciseId || (s as any).exerciseName || 'default';
+    const groupSets = s.exerciseSets || exerciseGroupMap.get(groupKey) || completed;
+    const rir = inferAutomaticRIR(s, groupSets);
     rirSum += rir;
     if (rir <= HARD_RIR_THRESHOLD) {
       hardCount++;

@@ -38,11 +38,19 @@ export function useWidgetSync({
 
     const now = new Date();
     const dateStr = formatLocalDateStr(now);
-    const todayLogs = attendanceLogs
-      .filter((l) => (l.date || '').slice(0, 10) === dateStr)
-      .map((l) => `${l.id || l.subjectId}_${(l as any).idx ?? (l as any).sessionIdx ?? 0}_${l.action}`)
-      .sort()
-      .join('|');
+
+    // Fast O(N) single-pass extraction without array allocation if empty
+    let todayLogs = '';
+    if (attendanceLogs.length > 0) {
+      const todayArr: string[] = [];
+      for (let i = 0; i < attendanceLogs.length; i++) {
+        const l = attendanceLogs[i];
+        if ((l.date || '').slice(0, 10) === dateStr) {
+          todayArr.push(`${l.id || l.subjectId}_${(l as any).idx ?? (l as any).sessionIdx ?? 0}_${l.action}`);
+        }
+      }
+      todayLogs = todayArr.sort().join('|');
+    }
     const isHoliday = (holidays || []).some(h => (typeof h === 'string' ? h.trim().slice(0, 10) : (h as any)?.date?.trim()?.slice(0, 10)) === dateStr);
 
     const currentFingerprint = `${tasks.length}_${subjects.length}_${todayLogs}_${isHoliday}_${Math.round(zenScore)}_${streak}`;

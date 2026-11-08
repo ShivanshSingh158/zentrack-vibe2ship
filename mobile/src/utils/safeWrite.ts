@@ -19,15 +19,14 @@
  *   );
  */
 
-import NetInfo from '@react-native-community/netinfo';
-import { queueWrite, removeQueuedFallback } from '../services/offlineSync';
+import { queueWrite, removeQueuedFallback, isOnlineSync } from '../services/offlineSync';
 import { deepSanitize } from './firebaseUtils';
 
 export type FirestoreOperation = 'add' | 'update' | 'delete' | 'set';
 
 /**
  * Executes a Firestore write safely:
- * - Online: calls firestoreFn() directly (fast path)
+ * - Online: calls firestoreFn() directly (fast path, checks isOnlineSync in 0ms)
  * - Offline: enqueues via queueWrite() for reliable AsyncStorage-backed deferred sync
  *
  * @returns true if online write succeeded, false if queued offline
@@ -48,8 +47,7 @@ export async function safeWrite(
   const payload = rawPayload && typeof rawPayload === 'object' ? deepSanitize(rawPayload) : rawPayload;
 
   try {
-    const state = await NetInfo.fetch();
-    const isOnline = state.isConnected === true && state.isInternetReachable !== false;
+    const isOnline = isOnlineSync();
 
     if (isOnline) {
       let timedOut = false;
@@ -57,7 +55,7 @@ export async function safeWrite(
 
       const onlinePromise = Promise.resolve(firestoreFn(payload));
 
-      // If it times out at 3.5s, we queue a fallback.
+      // If it times out at 10s, we queue a fallback.
       // If onlinePromise later succeeds in the background, we cancel/remove the queued fallback!
       onlinePromise
         .then(async () => {
@@ -71,8 +69,8 @@ export async function safeWrite(
         const timeoutPromise = new Promise<never>((_, reject) => {
           timer = setTimeout(() => {
             timedOut = true;
-            reject(new Error('Firestore write timed out (3500ms)'));
-          }, 3500);
+            reject(new Error('Firestore write timed out (10000ms)'));
+          }, 10000);
         });
 
         await Promise.race([
@@ -81,7 +79,7 @@ export async function safeWrite(
         ]);
         return true;
       } catch (onlineErr: any) {
-        // Transient network blip or socket hang even though NetInfo said online — queue as safety net
+        // Transient network blip or socket hang even though isOnline said true — queue as safety net
         console.warn(
           `[safeWrite] Online write failed or timed out for ${collectionName}/${docId ?? 'new'}, queueing fallback:`,
           onlineErr?.message,

@@ -471,16 +471,22 @@ export async function handleWidgetClickAction(
 
       // ── STEP 1: INSTANT OPTIMISTIC RE-RENDER (0ms - 20ms) ──────────
       if (currentData) {
-        currentData.tasks = currentData.tasks.map((t) =>
-          t.id === taskId ? { ...t, status: 'completed' } : t
+        const updatedTasks = currentData.tasks.map((t) =>
+          t.id === taskId ? { ...t, status: 'completed' as const } : t
         );
-        currentData.items = currentData.items.map((item) =>
+        const updatedItems = currentData.items.map((item) =>
           item.id === taskId || item.taskId === taskId
-            ? { ...item, status: 'completed' }
+            ? { ...item, status: 'completed' as const }
             : item
         );
-        currentData.doneTasks = currentData.tasks.filter((t) => t.status === 'completed').length;
-        triggerInstantAgendaUpdate(currentData);
+        const doneTasks = updatedTasks.filter((t) => t.status === 'completed').length;
+        const freshData: TodayAgendaWidgetData = {
+          ...currentData,
+          tasks: updatedTasks,
+          items: updatedItems,
+          doneTasks,
+        };
+        triggerInstantAgendaUpdate(freshData);
       }
 
       // ── STEP 2: ASYNC CLOUD & LOCAL CACHE PERSISTENCE (NON-BLOCKING) ──────
@@ -518,16 +524,22 @@ export async function handleWidgetClickAction(
 
       // ── STEP 1: INSTANT OPTIMISTIC RE-RENDER (0ms - 20ms) ──────────
       if (currentData) {
-        currentData.tasks = currentData.tasks.map((t) =>
-          t.id === taskId ? { ...t, status: 'pending' } : t
+        const updatedTasks = currentData.tasks.map((t) =>
+          t.id === taskId ? { ...t, status: 'pending' as const } : t
         );
-        currentData.items = currentData.items.map((item) =>
+        const updatedItems = currentData.items.map((item) =>
           item.id === taskId || item.taskId === taskId
-            ? { ...item, status: 'pending' }
+            ? { ...item, status: 'pending' as const }
             : item
         );
-        currentData.doneTasks = currentData.tasks.filter((t) => t.status === 'completed').length;
-        triggerInstantAgendaUpdate(currentData);
+        const doneTasks = updatedTasks.filter((t) => t.status === 'completed').length;
+        const freshData = {
+          ...currentData,
+          tasks: updatedTasks,
+          items: updatedItems,
+          doneTasks,
+        };
+        triggerInstantAgendaUpdate(freshData);
       }
 
       // ── STEP 2: ASYNC CLOUD & LOCAL CACHE PERSISTENCE (NON-BLOCKING) ──────
@@ -561,26 +573,32 @@ export async function handleWidgetClickAction(
     case 'mark_class_absent': {
       const subjectId = payload.subjectId;
       if (!subjectId) return;
-      const status = payload.action === 'mark_class_present' ? 'attended' : 'missed';
+      const status: 'attended' | 'missed' = payload.action === 'mark_class_present' ? 'attended' : 'missed';
       const sessionIdx = typeof payload.sessionIdx === 'number' ? payload.sessionIdx : 0;
       const type: 'class' | 'lab' = payload.type === 'lab' ? 'lab' : 'class';
 
       // ── STEP 1: INSTANT OPTIMISTIC RE-RENDER (0ms - 20ms) ──────────
       if (currentData) {
-        currentData.classes = currentData.classes.map((c) =>
+        const updatedClasses = currentData.classes.map((c) =>
           c.subjectId === payload.subjectId && c.type === type && c.idx === sessionIdx
             ? { ...c, status }
             : c
         );
-        currentData.attendedClasses = currentData.classes.filter((c) => c.status === 'attended').length;
-        currentData.items = currentData.items.map((item) =>
+        const attendedClasses = updatedClasses.filter((c) => c.status === 'attended').length;
+        const updatedItems = currentData.items.map((item) =>
           item.type === type &&
           item.subjectId === payload.subjectId &&
           item.sessionIdx === sessionIdx
             ? { ...item, status }
             : item
         );
-        triggerInstantAgendaUpdate(currentData);
+        const freshData: TodayAgendaWidgetData = {
+          ...currentData,
+          classes: updatedClasses,
+          items: updatedItems,
+          attendedClasses,
+        };
+        triggerInstantAgendaUpdate(freshData);
       }
 
       // ── STEP 2: ASYNC CLOUD & LOCAL CACHE PERSISTENCE (NON-BLOCKING) ──────

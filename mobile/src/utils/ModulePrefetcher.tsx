@@ -22,6 +22,28 @@ import { InteractionManager, View } from 'react-native';
 // Never cleared ΓÇö once loaded, always ready.
 const moduleCache = new Map<string, { default: ComponentType<any> }>();
 
+// In-flight import promises to coalesce concurrent requests for the same module
+const inFlightImports = new Map<string, Promise<{ default: ComponentType<any> }>>();
+
+export const loadModulePromise = (id: string, importer: Importer): Promise<{ default: ComponentType<any> }> => {
+  const cached = moduleCache.get(id);
+  if (cached) return Promise.resolve(cached);
+  const existing = inFlightImports.get(id);
+  if (existing) return existing;
+  const p = importer()
+    .then(mod => {
+      moduleCache.set(id, mod);
+      inFlightImports.delete(id);
+      return mod;
+    })
+    .catch(err => {
+      inFlightImports.delete(id);
+      throw err;
+    });
+  inFlightImports.set(id, p);
+  return p;
+};
+
 // Stable map of lazy component wrappers ΓÇö created once per id, reused forever.
 // Prevents React from re-mounting screen components on parent re-renders.
 const wrapperCache = new Map<string, ComponentType<any>>();
@@ -137,9 +159,7 @@ export const preloadNow = (id: string): void => {
   if (moduleCache.has(id)) return;
   const importer = registeredImporters.get(id);
   if (!importer) return;
-  importer().then(mod => {
-    moduleCache.set(id, mod);
-  }).catch(err => {
+  loadModulePromise(id, importer).catch(err => {
     console.warn(`[ModulePrefetcher] preloadNow failed for ${id}:`, err);
   });
 };
@@ -184,8 +204,7 @@ export const cacheAwareLazy = (
 
       let isMounted = true;
       // Not in cache yet — start loading immediately, no artificial delay.
-      importer().then(mod => {
-        moduleCache.set(id, mod);
+      loadModulePromise(id, importer).then(mod => {
         if (isMounted) setComp(() => mod.default);
       }).catch(err => {
         console.warn(`[ModulePrefetcher] Failed to load ${id}:`, err);

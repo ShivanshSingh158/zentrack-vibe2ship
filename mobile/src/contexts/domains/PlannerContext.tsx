@@ -121,6 +121,7 @@ export function PlannerProvider({
       query(collection(db, COLLECTION.CALENDAR_EVENTS), where("userId", "==", uid)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.CALENDAR_EVENTS, snap.docs.map(d => parseCustomEvent(d.data(), d.id)));
           setCustomEvents(prev => areItemsEqual(prev, fresh) ? prev : fresh);
@@ -129,6 +130,36 @@ export function PlannerProvider({
         });
       },
       scheduleListenerRestart("customEvents")
+    ));
+
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.GOALS), where("userId", "==", uid)),
+      snap => {
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
+        unstable_batchedUpdates(() => {
+          const fresh = applyPendingQueueOverlay(COLLECTION.GOALS, snap.docs.map(d => parseGoal(d.data(), d.id)));
+          setGoals(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          updateL1Cache('goals', fresh);
+          InteractionManager.runAfterInteractions(() => writePlannerCache({ goals: fresh }, false));
+        });
+      },
+      scheduleListenerRestart("goals")
+    ));
+
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.WEEKLY_REVIEWS), where("userId", "==", uid)),
+      snap => {
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
+        unstable_batchedUpdates(() => {
+          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview));
+          setWeeklyReviews(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          updateL1Cache('weeklyReviews', fresh);
+          InteractionManager.runAfterInteractions(() => writePlannerCache({ weeklyReviews: fresh }, false));
+        });
+      },
+      scheduleListenerRestart("weeklyReviews")
     ));
   }, [scheduleListenerRestart]);
 

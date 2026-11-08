@@ -46,6 +46,22 @@ export const MONTH_ALIASES: Record<string, number> = {
 
 export const ALL_MONTH_FORMS = Object.keys(MONTH_ALIASES).sort((a, b) => b.length - a.length);
 
+const _MPAT = `(${ALL_MONTH_FORMS.join('|')})`;
+const DATE_FORM_1 = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${_MPAT}(?:\\s+(\\d{4}))?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+${_MPAT}(?:\\s+(\\d{4}))?\\b`, 'i');
+const DATE_FORM_2 = new RegExp(`\\b${_MPAT}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(\\d{4}))?\\s+(?:to|-)\\s+${_MPAT}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(\\d{4}))?\\b`, 'i');
+const DATE_FORM_3 = new RegExp(`\\b${_MPAT}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'i');
+const DATE_FORM_4 = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+${_MPAT}\\b`, 'i');
+
+const WEEKDAY_LOOKUP_PATTERNS = DAY_NAMES.map((dn, di) => {
+  const ds = DAY_SHORT[di];
+  return {
+    nextPat: new RegExp(`\\bnext\\s+(${dn}|${ds})\\b`, 'i'),
+    thisPat: new RegExp(`\\bthis\\s+(${dn}|${ds})\\b`, 'i'),
+    onPat: new RegExp(`\\bon\\s+(${dn}|${ds})\\b`, 'i'),
+    plainPat: new RegExp(`\\b(${dn}|${ds})\\b`, 'i'),
+  };
+});
+
 /** A single detected token in the raw text (for inline highlighting & chips) */
 export interface NLPToken {
   type: 'date' | 'time' | 'priority' | 'recurrence' | 'tag' | 'duration' | 'reminder' | 'subtask' | 'location';
@@ -294,10 +310,6 @@ const TASK_SOV_PATTERNS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^(.+?)\s+(?:deploying|deploy)$/i, m => `deploy ${m[1]}`],
 ];
 
-const TASK_PHRASE_DEDUPE_PATTERNS = [6, 5, 4, 3, 2].map(
-  len => new RegExp(`\\b((?:[\\w'-]+\\s+){${len - 1}}[\\w'-]+)(?:\\s+\\1\\b)+`, 'gi')
-);
-
 function phraseDedupe(str: string): string {
   let s = str.trim();
   s = s.replace(/\b(?:high|medium|low)\s+priority\b/gi, '');
@@ -306,11 +318,46 @@ function phraseDedupe(str: string): string {
   s = s.replace(/\b\d{1,2}(?::\d{2})?\s*(?:to|-)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b/gi, '');
   s = s.replace(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi, '');
 
-  for (let i = 0; i < TASK_PHRASE_DEDUPE_PATTERNS.length; i++) {
-    s = s.replace(TASK_PHRASE_DEDUPE_PATTERNS[i], '$1');
+  const tokens = s.split(/\s+/);
+  if (tokens.length <= 1) return s;
+
+  // Linear token sliding window deduplication (checks 1-word, 2-word, 3-word repetitions with O(N) safety)
+  const result: string[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    // 3-word phrase duplicate
+    if (
+      i + 5 < tokens.length &&
+      tokens[i].toLowerCase() === tokens[i + 3].toLowerCase() &&
+      tokens[i + 1].toLowerCase() === tokens[i + 4].toLowerCase() &&
+      tokens[i + 2].toLowerCase() === tokens[i + 5].toLowerCase()
+    ) {
+      result.push(tokens[i], tokens[i + 1], tokens[i + 2]);
+      i += 5;
+      continue;
+    }
+    // 2-word phrase duplicate
+    if (
+      i + 3 < tokens.length &&
+      tokens[i].toLowerCase() === tokens[i + 2].toLowerCase() &&
+      tokens[i + 1].toLowerCase() === tokens[i + 3].toLowerCase()
+    ) {
+      result.push(tokens[i], tokens[i + 1]);
+      i += 3;
+      continue;
+    }
+    // 1-word repeat: "call call"
+    if (
+      i + 1 < tokens.length &&
+      tokens[i].length >= 3 &&
+      tokens[i].toLowerCase() === tokens[i + 1].toLowerCase()
+    ) {
+      result.push(tokens[i]);
+      i++;
+      continue;
+    }
+    result.push(tokens[i]);
   }
-  s = s.replace(/\b([a-zA-Z]{3,})\s+\1\b/gi, '$1');
-  return s.replace(/\s+/g, ' ').trim();
+  return result.join(' ').trim();
 }
 
 const TASK_TRAIL_SCRUBBERS: RegExp[] = [
@@ -375,7 +422,7 @@ export function cleanTaskTitle(rawTitle: string): string {
   // 2. Command Prefixes & spoken preambles
   let changed = true;
   let iterations = 0;
-  while (changed && iterations < 5) {
+  while (changed && iterations < 2) {
     changed = false;
     iterations++;
     for (let i = 0; i < TASK_COMMAND_PREFIXES.length; i++) {
@@ -443,7 +490,7 @@ export function cleanTaskTitle(rawTitle: string): string {
   // Multi-pass trailing connector, preposition & punctuation scrubber
   let trailChanged = true;
   let trailPasses = 0;
-  while (trailChanged && trailPasses < 6) {
+  while (trailChanged && trailPasses < 2) {
     trailChanged = false;
     trailPasses++;
     const prev = t;
@@ -1221,18 +1268,11 @@ export function parseNLTask(rawInput: string): ParsedTask {
   }
 
   // 5. DATE
-  const mPat = `(${ALL_MONTH_FORMS.join('|')})`;
-
   if (!dateResult) {
-    const form1 = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}(?:\\s+(\\d{4}))?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}(?:\\s+(\\d{4}))?\\b`, 'i');
-    const form2 = new RegExp(`\\b${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(\\d{4}))?\\s+(?:to|-)\\s+${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(\\d{4}))?\\b`, 'i');
-    const form3 = new RegExp(`\\b${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'i');
-    const form4 = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}\\b`, 'i');
-
-    const rm1 = text.match(form1);
-    const rm2 = text.match(form2);
-    const rm3 = text.match(form3);
-    const rm4 = text.match(form4);
+    const rm1 = text.match(DATE_FORM_1);
+    const rm2 = text.match(DATE_FORM_2);
+    const rm3 = text.match(DATE_FORM_3);
+    const rm4 = text.match(DATE_FORM_4);
 
     if (rm1) {
       const startD = resolveMonthDay(rm1[2], parseInt(rm1[1], 10));
@@ -1439,7 +1479,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
     // "1st of March" / "3rd of june"
     if (!dateResult) {
       const ordinalOfMonthRe = new RegExp(
-        `\\b(\\d{1,2})(?:st|nd|rd|th)\\s+of\\s+${mPat}\\b`, 'i'
+        `\\b(\\d{1,2})(?:st|nd|rd|th)\\s+of\\s+${_MPAT}\\b`, 'i'
       );
       const ordinalOfMonth = text.match(ordinalOfMonthRe);
       if (ordinalOfMonth) {
@@ -1470,7 +1510,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
     // First/last weekday of month: "first monday of september", "last friday of this month", "last day of august"
     if (!dateResult) {
       const ordinalPat = new RegExp(
-        `\\b(first|1st|second|2nd|third|3rd|fourth|4th|last)\\s+(${DAY_NAMES.join('|')}|${DAY_SHORT.join('|')}|day)\\s+of\\s+(?:(this|next)\\s+month|${mPat})\\b`,
+        `\\b(first|1st|second|2nd|third|3rd|fourth|4th|last)\\s+(${DAY_NAMES.join('|')}|${DAY_SHORT.join('|')}|day)\\s+of\\s+(?:(this|next)\\s+month|${_MPAT})\\b`,
         'i'
       );
       const ordM = text.match(ordinalPat);
@@ -1559,8 +1599,8 @@ export function parseNLTask(rawInput: string): ParsedTask {
         registerToken('date', m[0], `In ${n} Month${n === 1 ? '' : 's'}`);
       } else {
         // Specific Month/Day with optional Year
-        const mdYPat = new RegExp(`\\b${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(20\\d{2})\\b`, 'i');
-        const dmYPat = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}\\s+(20\\d{2})\\b`, 'i');
+        const mdYPat = new RegExp(`\\b${_MPAT}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(20\\d{2})\\b`, 'i');
+        const dmYPat = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${_MPAT}\\s+(20\\d{2})\\b`, 'i');
         const mdYM = text.match(mdYPat);
         const dmYM = text.match(dmYPat);
 
@@ -1583,8 +1623,8 @@ export function parseNLTask(rawInput: string): ParsedTask {
         }
 
         if (!dateResult) {
-          const mdPat = new RegExp(`\\b${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'i');
-          const dmPat = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}\\b`, 'i');
+          const mdPat = new RegExp(`\\b${_MPAT}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'i');
+          const dmPat = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${_MPAT}\\b`, 'i');
           const mdM = text.match(mdPat);
           const dmM = text.match(dmPat);
           if (mdM) {
@@ -1646,12 +1686,8 @@ export function parseNLTask(rawInput: string): ParsedTask {
     }
 
     if (!dateResult) {
-      for (let di = 0; di < DAY_NAMES.length; di++) {
-        const dn = DAY_NAMES[di], ds = DAY_SHORT[di];
-        const nextPat  = new RegExp(`\\bnext\\s+(${dn}|${ds})\\b`, 'i');
-        const thisPat  = new RegExp(`\\bthis\\s+(${dn}|${ds})\\b`, 'i');
-        const onPat    = new RegExp(`\\bon\\s+(${dn}|${ds})\\b`, 'i');
-        const plainPat = new RegExp(`\\b(${dn}|${ds})\\b`, 'i');
+      for (let di = 0; di < WEEKDAY_LOOKUP_PATTERNS.length; di++) {
+        const { nextPat, thisPat, onPat, plainPat } = WEEKDAY_LOOKUP_PATTERNS[di];
         let m: RegExpMatchArray | null = null, forceNext = false;
         if      ((m = text.match(nextPat)))  forceNext = true;
         else if ((m = text.match(thisPat)))  forceNext = false;

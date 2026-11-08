@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
 import { safeWrite } from '../utils/safeWrite';
+import { awardXP } from '../services/xpSystem';
 
 export const STEP_GOAL_DEFAULT = 8000;
 export const STEP_CACHE_KEY_PREFIX = '@zentrack_steps_';
@@ -52,32 +53,42 @@ function getValidMemorySteps(todayStr: string): number {
 }
 
 export async function fetch7DayStepHistory(): Promise<DayStepData[]> {
-  const result: DayStepData[] = [];
   const now = new Date();
   const todayStr = getTodayDateStrSync();
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+  const days: { dateStr: string; dayLabel: string; cacheKey: string; isToday: boolean }[] = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
     const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const dayLabel = dayNames[d.getDay()];
-    const cacheKey = `${STEP_CACHE_KEY_PREFIX}${dateStr}`;
-    const cached = await AsyncStorage.getItem(cacheKey).catch(() => null);
+    days.push({
+      dateStr,
+      dayLabel: dayNames[d.getDay()],
+      cacheKey: `${STEP_CACHE_KEY_PREFIX}${dateStr}`,
+      isToday: i === 0,
+    });
+  }
+
+  // Single batched multiGet over bridge instead of 7 sequential calls
+  const pairs = await AsyncStorage.multiGet(days.map(d => d.cacheKey)).catch(() => []);
+  const cacheMap = new Map(pairs);
+
+  return days.map(day => {
+    const cached = cacheMap.get(day.cacheKey);
     let stepCount = cached ? parseInt(cached, 10) : 0;
-    if (isNaN(stepCount) || (stepCount === 0 && i === 0)) {
+    if (isNaN(stepCount) || (stepCount === 0 && day.isToday)) {
       const memToday = getValidMemorySteps(todayStr);
-      if (i === 0 && memToday > 0) {
+      if (day.isToday && memToday > 0) {
         stepCount = memToday;
       }
     }
-    result.push({
-      dateStr,
-      dayLabel,
+    return {
+      dateStr: day.dateStr,
+      dayLabel: day.dayLabel,
       steps: Math.max(0, stepCount || 0),
-    });
-  }
-  return result;
+    };
+  });
 }
 
 export function useStepCounter() {
@@ -130,7 +141,11 @@ export function useStepCounter() {
           'set',
           payload,
           docId
-        ).catch(() => {});
+        ).then(() => {
+          if (payload.goalHit) {
+            awardXP('STEP_GOAL_HIT').catch(() => {});
+          }
+        }).catch(() => {});
       }
     }, 5000);
   }, []);
@@ -202,6 +217,9 @@ export function useStepCounter() {
       if (!perm.granted) return;
 
       lastLiveStepsRef.current = 0;
+      let lastSaveTs = 0;
+      let lastSavedSteps = 0;
+
       const sub = Pedometer.watchStepCount((result) => {
         if (!isMountedRef.current) return;
         if (result && typeof result.steps === 'number') {
@@ -211,6 +229,7 @@ export function useStepCounter() {
             memoryCachedSteps = 0;
             baselineStepsRef.current = 0;
             lastLiveStepsRef.current = result.steps;
+            lastSavedSteps = 0;
           }
           const delta = result.steps - lastLiveStepsRef.current;
           if (delta > 0) {
@@ -218,7 +237,14 @@ export function useStepCounter() {
             baselineStepsRef.current += delta;
             const updated = baselineStepsRef.current;
             setSteps(updated);
-            saveStepsToDisk(updated);
+
+            // Throttle disk persistence: at most once every 3s or when delta >= 20 steps
+            const now = Date.now();
+            if (now - lastSaveTs >= 3000 || Math.abs(updated - lastSavedSteps) >= 20) {
+              lastSaveTs = now;
+              lastSavedSteps = updated;
+              saveStepsToDisk(updated);
+            }
           }
         }
       });

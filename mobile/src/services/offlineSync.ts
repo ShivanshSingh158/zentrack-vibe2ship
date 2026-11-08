@@ -32,6 +32,18 @@ function restoreFirestoreSentinels(obj: any): any {
 
 const OFFLINE_QUEUE_KEY = '@zentrack_offline_write_queue';
 
+let _isDeviceOnline = true;
+NetInfo.fetch().then(s => {
+  _isDeviceOnline = s.isConnected === true && s.isInternetReachable !== false;
+}).catch(() => {});
+NetInfo.addEventListener(s => {
+  _isDeviceOnline = s.isConnected === true && s.isInternetReachable !== false;
+});
+
+export function isOnlineSync(): boolean {
+  return _isDeviceOnline;
+}
+
 // Synchronous In-Memory Write-Ahead Log (WAL) to prevent snapshot rollback
 let _memoryQueue: OfflineQueueItem[] | null = null;
 
@@ -65,6 +77,15 @@ export function applyPendingQueueOverlay<T extends { id?: string }>(
 ): T[] {
   const queue = _memoryQueue;
   if (!queue || queue.length === 0) return serverDocs;
+
+  let hasCollectionItems = false;
+  for (let i = 0; i < queue.length; i++) {
+    if (queue[i].collection === collectionName) {
+      hasCollectionItems = true;
+      break;
+    }
+  }
+  if (!hasCollectionItems) return serverDocs;
 
   const pendingItems = queue.filter(q => q.collection === collectionName);
   if (pendingItems.length === 0) return serverDocs;
@@ -170,10 +191,12 @@ function notifySyncComplete(syncedCount: number) {
 
 /** Returns the current number of pending offline write operations. */
 export async function getQueueCount(): Promise<number> {
+  if (_memoryQueue !== null) return _memoryQueue.length;
   try {
     const raw = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
     if (!raw) return 0;
     const queue: OfflineQueueItem[] = JSON.parse(raw);
+    _memoryQueue = queue;
     return queue.length;
   } catch {
     return 0;
@@ -197,8 +220,13 @@ export async function queueWrite(
   docId?: string
 ) {
   try {
-    const existingStr = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
-    let queue: OfflineQueueItem[] = existingStr ? JSON.parse(existingStr) : [];
+    let queue: OfflineQueueItem[];
+    if (_memoryQueue !== null) {
+      queue = [..._memoryQueue];
+    } else {
+      const existingStr = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
+      queue = existingStr ? JSON.parse(existingStr) : [];
+    }
 
     const now = Date.now();
     const currentUser = auth.currentUser;

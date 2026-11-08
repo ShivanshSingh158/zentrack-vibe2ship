@@ -26,8 +26,11 @@ Notifications.setNotificationHandler({
 
 // ── Permission setup ──────────────────────────────────────────────────────────
 
+let _channelsCreated = false;
+
 export async function ensureNotificationChannels(): Promise<void> {
-  if (Platform.OS !== 'android') return;
+  if (Platform.OS !== 'android' || _channelsCreated) return;
+  _channelsCreated = true;
   try {
     await Notifications.setNotificationChannelAsync('default', {
       name: 'ZenTrack',

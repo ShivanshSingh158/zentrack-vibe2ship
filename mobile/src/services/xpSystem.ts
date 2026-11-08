@@ -118,7 +118,7 @@ export interface XPState {
 }
 
 // ── In-Memory & Resilient Remote Sync ────────────────────────────────────────
-let _inMemoryXP: number | null = null;
+let _inMemoryXP: number | null = getBootManifestSync()?.xp ?? null;
 
 export function clearXPMemory(): void {
   _inMemoryXP = null;
@@ -179,16 +179,6 @@ export async function getXP(): Promise<number> {
       _inMemoryXP = parseInt(stored, 10) || 0;
       updateL1Cache('xp', _inMemoryXP);
       
-      // Proactively fetch Firestore in background to ensure sync if local was stale
-      const uid = auth.currentUser?.uid;
-      if (uid) {
-        getDoc(doc(db, COLLECTION.USER_PROFILES, uid)).then(snap => {
-          if (snap.exists()) {
-            const fsXP = snap.data()?.xp;
-            if (typeof fsXP === 'number') syncXPWithFirestore(fsXP);
-          }
-        }).catch(() => {});
-      }
       return _inMemoryXP;
     }
 
