@@ -56,7 +56,6 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
   const { user } = useCoreData();
   const { customEvents, optimisticAddEvent, optimisticUpdateEvent, optimisticDeleteEvent } = usePlannerData();
   const { attendance } = useAcademicData();
-  const { gymLogs } = useWellnessData();
   const [title, setTitle] = useState('');
   const [type, setType] = useState('exam');
   const [eventDate, setEventDate] = useState(selectedDate);
@@ -152,34 +151,6 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
       }
     }
 
-    // 2. Check Gym Sessions
-    if (gymLogs && gymLogs.length > 0) {
-      const todayGym = gymLogs.find((g: any) => g.date === targetDate);
-      if (todayGym && todayGym.startTime) {
-        const gymStart = parseTimeToMinutes(todayGym.startTime);
-        if (gymStart !== null) {
-          const rawEnd = parseTimeToMinutes(todayGym.endTime);
-          let gymEnd: number = rawEnd !== null ? rawEnd : (gymStart + (todayGym.workoutDurationMinutes || 60));
-          
-          if (rawEnd !== null && rawEnd <= gymStart) {
-            if ((todayGym as any).completed || (todayGym as any).status === 'completed') {
-              gymEnd = gymStart;
-            } else {
-              gymEnd = gymStart + ((todayGym as any).workoutDurationMinutes || 60);
-            }
-          }
-
-          // True overlap check
-          if (gymEnd > gymStart ? (startMin < gymEnd && endMin > gymStart) : (startMin === gymStart)) {
-            const endH = Math.floor(gymEnd / 60);
-            const endM = (gymEnd % 60).toString().padStart(2, '0');
-            const endFormatted = `${endH.toString().padStart(2, '0')}:${endM}`;
-            return `Clashes with Gym Session (${todayGym.startTime}${gymEnd > gymStart ? ' - ' + endFormatted : ''})`;
-          }
-        }
-      }
-    }
-
     // 3. Check Other Custom Events
     if (customEvents && customEvents.length > 0) {
       for (const ev of customEvents) {
@@ -196,7 +167,7 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
     }
 
     return null;
-  }, [startTime, endTime, targetDate, attendance, gymLogs, customEvents, existingEvent]);
+  }, [startTime, endTime, targetDate, attendance, customEvents, existingEvent]);
 
   const handleApplyPreset = (preset: typeof ACADEMIC_PRESETS[0]) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

@@ -6,14 +6,10 @@ import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../contexts/ThemeContext';
 import AnimatedPressable from '../AnimatedPressable';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
-import { WEEKDAY_TO_PLAN, GYM_PLAN } from '../../data/gymPlan';
-import { getCustomPlanDay } from '../../hooks/useGymLog';
 import { parseTimeToMins, getEndTimeMins, formatTimeStr } from '../../utils/timeUtils';
 
 interface AgendaWidgetProps {
   tasks: any[];
-  gymLogs: any[];
-  userGymPlan: any;
   attendance: any[];
   attendanceLogs: any[];
   todayStr: string;
@@ -29,8 +25,6 @@ interface AgendaWidgetProps {
 
 export const AgendaWidget = React.memo(function AgendaWidget({
   tasks,
-  gymLogs,
-  userGymPlan,
   attendance,
   attendanceLogs,
   todayStr,
@@ -46,7 +40,7 @@ export const AgendaWidget = React.memo(function AgendaWidget({
   // Memoized to prevent agendaItems recomputing every 60s clock tick when items haven't changed
   const nowMins = useMemo(() => nowDate.getHours() * 60 + nowDate.getMinutes(), [nowDate]);
 
-  const { todayTasks, todayClasses, todayGym, shouldShowGymInAgenda, plannedDay } = useMemo(() => {
+  const { todayTasks, todayClasses } = useMemo(() => {
     const isHoliday = holidays?.includes(todayStr) || false;
     const todayTasks = tasks.filter(t => t.date === todayStr);
     
@@ -81,28 +75,8 @@ export const AgendaWidget = React.memo(function AgendaWidget({
       }
     });
 
-    const todayGym = gymLogs?.find(g => g.date === todayStr);
-    const planDayIndex = WEEKDAY_TO_PLAN[nowDate.getDay()];
-    
-    const hasUserPlan = userGymPlan?.customDays && Object.keys(userGymPlan.customDays).length > 0;
-    const plannedDay = hasUserPlan 
-      ? getCustomPlanDay(userGymPlan.customDays, planDayIndex) 
-      : null;
-
-    // Strict Rest check: if planned day is rest or has no exercises
-    const isRestPlan = !plannedDay || plannedDay.isRest === true || plannedDay.name?.toLowerCase().includes('rest') || (Array.isArray(plannedDay.exercises) && plannedDay.exercises.length === 0);
-
-    // Has the user actually logged or started a real non-rest workout today?
-    const hasLoggedSets = Array.isArray(todayGym?.exercises) && todayGym.exercises.some((e: any) => Array.isArray(e.setsLog) && e.setsLog.some((s: any) => s.completed || (typeof s.reps === 'number' && s.reps > 0)));
-    const hasCompletedDuration = !!(todayGym?.workoutDurationMinutes && todayGym.workoutDurationMinutes > 0 && !todayGym?.isRestDay);
-    const hasActiveWorkoutInProgress = !!(todayGym?.workoutStartTime && !hasCompletedDuration && !todayGym?.isRestDay && !isRestPlan);
-    const hasRealWorkoutLog = hasLoggedSets || hasCompletedDuration || hasActiveWorkoutInProgress;
-    const isGymScheduled = !isRestPlan && !!(plannedDay && !plannedDay.isRest);
-    // Show gym in agenda ONLY IF: (1) user has a real active workout log today OR (2) today is a planned non-rest workout day
-    const shouldShowGymInAgenda = hasRealWorkoutLog || isGymScheduled;
-
-    return { todayTasks, todayClasses, todayGym, shouldShowGymInAgenda, plannedDay };
-  }, [tasks, gymLogs, userGymPlan, attendance, attendanceLogs, todayStr, nowDate, holidays]);
+    return { todayTasks, todayClasses };
+  }, [tasks, attendance, attendanceLogs, todayStr, nowDate, holidays]);
 
 
   // ── Memoized Agenda Items Generation & Sorting ───────────────────────────
@@ -111,43 +85,6 @@ export const AgendaWidget = React.memo(function AgendaWidget({
   // so this memo only re-runs when the actual data changes.
   const agendaItems = useMemo(() => {
     const items: any[] = [];
-
-    if (shouldShowGymInAgenda) {
-      const isGymCompleted = !!todayGym?.workoutDurationMinutes;
-
-      let gymTimeStr = '';
-      let gymTimeMins = 1080; // default 6:00 PM
-
-      if (plannedDay?.startTime) {
-        if (plannedDay.endTime) {
-           gymTimeStr = formatTimeStr(`${plannedDay.startTime}-${plannedDay.endTime}`);
-        } else {
-           gymTimeStr = formatTimeStr(plannedDay.startTime);
-        }
-        gymTimeMins = parseTimeToMins(plannedDay.startTime);
-      }
-
-      const gymTitle = todayGym?.workoutStartTime && !isGymCompleted
-        ? 'Gym Workout (In Progress)'
-        : isGymCompleted
-          ? 'Gym Workout (Completed)'
-          : `Gym: ${plannedDay?.name || 'Workout'}`;
-
-      if (!gymTitle.toLowerCase().includes('rest')) {
-        items.push({
-          id: 'gym-item',
-          title: gymTitle,
-          timeStr: gymTimeStr,
-          timeMins: isGymCompleted ? -1 : gymTimeMins,
-          isCompleted: isGymCompleted,
-          isMissed: false,
-          isCancelled: false,
-          icon: isGymCompleted ? 'checkmark-circle' : 'barbell-outline',
-          iconColor: isGymCompleted ? colors.accentGreen : colors.textPrimary,
-          onPress: () => navigation.navigate('Gym')
-        });
-      }
-    }
 
     todayClasses.forEach((c: any) => {
       let isMissed = c.isMissed;
@@ -237,7 +174,7 @@ export const AgendaWidget = React.memo(function AgendaWidget({
     });
 
     return items;
-  }, [shouldShowGymInAgenda, todayGym, plannedDay, todayClasses, todayTasks, nowMins, colors, navigation]);
+  }, [todayClasses, todayTasks, nowMins, colors, navigation]);
 
   if (agendaItems.length === 0) {
     return (

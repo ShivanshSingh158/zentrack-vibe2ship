@@ -58,9 +58,8 @@ function getSundayOfDate(dateStr: string): Date {
 }
 
 function generateWeekDays(sundayDate: Date, selectedDate: string, today: string, holidays: string[]): WeekDayItem[] {
-  const baseMs = sundayDate.getTime();
   return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(baseMs + i * 86400000);
+    const d = new Date(sundayDate.getFullYear(), sundayDate.getMonth(), sundayDate.getDate() + i, 12, 0, 0);
     const dateStr = getLocalDateString(d);
     const dayNum = d.getDate();
     const isSel = selectedDate === dateStr;

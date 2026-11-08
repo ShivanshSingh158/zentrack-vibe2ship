@@ -6,7 +6,6 @@
 import { collection, doc, addDoc, updateDoc, setDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 import { COLLECTION } from '../config/constants';
-import { callProxy, parseProxyResponse } from './geminiProxy';
 import { safeWrite } from '../utils/safeWrite';
 
 export interface Flashcard {
@@ -107,61 +106,29 @@ export async function generateFlashcardsFromContext(
   topicTitle: string,
   contentOrNotes: string
 ): Promise<{ question: string; answer: string; hint?: string }[]> {
-  const prompt = `You are an expert cognitive tutor using Active Recall and Spaced Repetition.
-Create 3 to 5 high-yield, conceptual flashcards based on this lecture:
-Topic: "${topicTitle}"
-Lecture: "${lectureTitle}"
-Content / Notes:
-${contentOrNotes}
+  const lines = (contentOrNotes || '').split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const cards: { question: string; answer: string; hint?: string }[] = [];
 
-Guidelines:
-1. Make questions precise, testing fundamental concepts, formulas, or "why/how" mechanisms (not trivial trivia).
-2. Keep answers concise, clear, and easy to grade in 5 seconds.
-3. Provide a brief 1-sentence hint for each question.
-
-Output strictly valid JSON with this format:
-[
-  {
-    "question": "What is the core difference between a Mutex and a Semaphore?",
-    "answer": "A Mutex provides mutual exclusion for 1 thread with ownership; a Semaphore is a signaling counter for N concurrent threads.",
-    "hint": "Think about ownership and counting limits."
+  for (let i = 0; i < lines.length && cards.length < 5; i++) {
+    const line = lines[i];
+    if (line.includes(':')) {
+      const parts = line.split(':');
+      const q = parts[0].replace(/^[-*#\s]+/, '').trim();
+      const a = parts.slice(1).join(':').trim();
+      if (q.length > 2 && a.length > 2) {
+        cards.push({ question: q, answer: a });
+      }
+    }
   }
-]`;
 
-  try {
-    const response = await callProxy({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 4096,
-        responseMimeType: 'application/json',
-      },
+  if (cards.length === 0) {
+    cards.push({
+      question: `Key takeaway from ${lectureTitle || topicTitle || 'Lecture'}`,
+      answer: lines[0] || 'Core principles covered in lecture.',
     });
-
-    const { text } = parseProxyResponse(response);
-    if (!text) return [];
-
-    let jsonStr = text.trim();
-    const firstB = jsonStr.indexOf('[');
-    const lastB = jsonStr.lastIndexOf(']');
-    if (firstB !== -1 && lastB !== -1) {
-      jsonStr = jsonStr.substring(firstB, lastB + 1);
-    }
-
-    const items = JSON.parse(jsonStr);
-    if (Array.isArray(items)) {
-      return items.map(item => ({
-        question: String(item.question || '').trim(),
-        answer: String(item.answer || '').trim(),
-        hint: item.hint ? String(item.hint).trim() : undefined,
-      }));
-    }
-  } catch (err) {
-    console.error('[FlashcardService] Generation failed:', err);
   }
 
-  return [];
+  return cards;
 }
 
 /**

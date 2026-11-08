@@ -23,19 +23,13 @@ import Animated, {
   withTiming,
   runOnJS,
 } from 'react-native-reanimated';
-import NetInfo from '@react-native-community/netinfo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, FONT_SIZE, SHADOW, SPACE, RADIUS } from '../theme/tokens';
-import { useTheme } from '../contexts/ThemeContext';
-import {
-  subscribeToQueueChanges,
-  subscribeToSyncComplete,
-} from '../services/offlineSync';
+import { subscribeToSyncComplete } from '../services/offlineSync';
 
 // ─── Spring config for butter-smooth slide ────────────────────────────────────
 const SPRING_IN  = { damping: 18, stiffness: 200, mass: 0.8 };
-const SPRING_OUT = { damping: 22, stiffness: 260, mass: 0.8 };
 
 /** Duration the green "Synced" toast stays visible before sliding away (ms) */
 const SYNC_TOAST_DURATION_MS = 3000;

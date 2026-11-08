@@ -29,8 +29,6 @@ import { db } from '../services/firebase';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { COLLECTION } from '../config/constants';
 import { useTheme } from '../contexts/ThemeContext';
-import { useSaraSurface } from '../hooks/useSaraSurface';
-import SaraHUDBanner from '../components/SARA/SaraHUDBanner';
 import { handleSyncError } from '../utils/errorUtils';
 import EmptyState from '../components/ui/EmptyState';
 import { awardXP } from '../services/xpSystem';
@@ -216,7 +214,7 @@ export default function AssignmentsScreen() {
     optimisticDeleteAssignment,
   } = useAcademicData();
   const { user, optimisticAddTask, optimisticUpdateTask, optimisticDeleteTask } = useCoreData();
-  const { optimisticAddEvent, optimisticDeleteEvent } = usePlannerData();
+  const { optimisticAddEvent, optimisticUpdateEvent, optimisticDeleteEvent } = usePlannerData();
 
   useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
@@ -224,10 +222,6 @@ export default function AssignmentsScreen() {
   }, [ensureSubscribed]);
 
   const statusConfig = useMemo(() => getStatusConfig(isDark), [isDark]);
-
-  // SARA HUD Banner surface injection (48h deadline alert)
-  const psiCtx = useMemo(() => ({ assignments: assignments as any[] }), [assignments]);
-  const { surfaceMessage, surfaceActionLabel, dismissBanner } = useSaraSurface('Assignments', psiCtx as any, user?.uid);
 
   // Filters, Radar & Search
   const [filter, setFilter] = useState<'all' | AssignmentStatus>('all');
@@ -330,11 +324,11 @@ export default function AssignmentsScreen() {
       subjectName: finalSubject,
       dueDate: dueDateStr,
       status,
-      notes: notes.trim() || undefined,
-      description: notes.trim() || undefined,
-      maxMarks: !isNaN(parsedMax as number) ? parsedMax : undefined,
-      obtainedMarks: !isNaN(parsedObtained as number) ? parsedObtained : undefined,
-      grade: parsedGrade,
+      notes: notes.trim() || (null as any),
+      description: notes.trim() || (null as any),
+      maxMarks: parsedMax !== undefined && !isNaN(parsedMax) ? parsedMax : (null as any),
+      obtainedMarks: parsedObtained !== undefined && !isNaN(parsedObtained) ? parsedObtained : (null as any),
+      grade: parsedGrade || (null as any),
       updatedAt: now,
       createdAt: existingAssignment?.createdAt || now,
     };
@@ -353,6 +347,39 @@ export default function AssignmentsScreen() {
         assignmentData,
         editingId
       ).catch(handleSyncError);
+
+      // Sync linked calendar event and task
+      const linkedEventId = `ev_${editingId}`;
+      const eventUpdates = {
+        title: `📋 ${finalTitle} (${finalSubject})`,
+        date: dueDateStr,
+        description: `Assignment Deadline: ${finalTitle} for ${finalSubject}.${notes.trim() ? '\n' + notes.trim() : ''}`,
+      };
+      optimisticUpdateEvent?.(linkedEventId, eventUpdates);
+      safeWrite(
+        () => updateDoc(doc(db, COLLECTION.CALENDAR_EVENTS, linkedEventId), eventUpdates),
+        COLLECTION.CALENDAR_EVENTS,
+        'update',
+        eventUpdates,
+        linkedEventId
+      ).catch(() => {});
+
+      const linkedTaskId = `task_${editingId}`;
+      const taskTitle = `Complete: ${finalTitle}`;
+      const taskUpdates = {
+        title: taskTitle,
+        text: taskTitle,
+        date: dueDateStr,
+        tags: ['Assignment', finalSubject],
+      };
+      optimisticUpdateTask?.(linkedTaskId, taskUpdates);
+      safeWrite(
+        () => updateDoc(doc(db, COLLECTION.TASKS, linkedTaskId), taskUpdates),
+        COLLECTION.TASKS,
+        'update',
+        taskUpdates,
+        linkedTaskId
+      ).catch(() => {});
 
       if (
         (status === 'submitted' || status === 'graded') &&
@@ -480,7 +507,15 @@ export default function AssignmentsScreen() {
     const linkedTaskId = `task_${assignment.id}`;
     const isNowDone = nextStatus === 'submitted' || nextStatus === 'graded';
     const completedAt = isNowDone ? toISODateStr(new Date()) : null;
-    optimisticUpdateTask?.(linkedTaskId, { status: isNowDone ? 'completed' : 'pending', completedAt });
+    const taskUpdates = { status: isNowDone ? ('completed' as const) : ('pending' as const), completedAt };
+    optimisticUpdateTask?.(linkedTaskId, taskUpdates);
+    safeWrite(
+      () => updateDoc(doc(db, COLLECTION.TASKS, linkedTaskId), taskUpdates),
+      COLLECTION.TASKS,
+      'update',
+      taskUpdates,
+      linkedTaskId
+    ).catch(() => {});
 
     // Only award XP once when transitioning from not_started/in_progress -> submitted
     if (nextStatus === 'submitted' && assignment.status !== 'submitted' && assignment.status !== 'graded') {
@@ -582,14 +617,6 @@ export default function AssignmentsScreen() {
   return (
     <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
       <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
-
-      {/* SARA HUD Alert Banner */}
-      <SaraHUDBanner
-        message={surfaceMessage || ''}
-        visible={!!surfaceMessage}
-        onDismiss={dismissBanner}
-        actionLabel={surfaceActionLabel || undefined}
-      />
 
       {/* Header */}
       <View style={styles.header}>

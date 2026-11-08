@@ -5,7 +5,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
-import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
 import { FONT_FAMILY, SPACE, RADIUS } from '../../theme/tokens';
 import GlassCard from '../ui/GlassCard';
 
@@ -40,32 +39,31 @@ export default function AcademicPredictorCard() {
   const generatePrediction = async () => {
     if (!attendance || attendance.length === 0) return;
     setLoading(true);
-
     try {
-      const prompt = `You are an Academic Predictor AI. Analyze this student's data and write a short 2-sentence prediction of their overall grade/risk, specifically mentioning one subject by name. Be encouraging but realistic.
+      let totalAttended = 0;
+      let totalConducted = 0;
+      let lowestCourse = attendance[0];
 
-Attendance:
-${attendance.map(a => `- ${a.name}: ${a.classesAttended}/${a.classesTotal} (${Math.round((a.classesAttended/Math.max(1, a.classesTotal))*100)}%)`).join('\n')}
-
-Assignments:
-${assignments?.map(a => `- ${a.title}: ${a.status} (Weight: ${a.weightage || '?'})`).join('\n') || 'None'}
-
-Output just the 2 sentences. No bold formatting, no markdown.`;
-
-      const response = await callProxy({
-        model: 'gemini-2.5-flash',
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      attendance.forEach(a => {
+        totalAttended += (a.classesAttended || 0);
+        totalConducted += (a.classesTotal || 0);
+        const rate = a.classesTotal > 0 ? (a.classesAttended / a.classesTotal) : 1;
+        const lowestRate = lowestCourse.classesTotal > 0 ? (lowestCourse.classesAttended / lowestCourse.classesTotal) : 1;
+        if (rate < lowestRate) lowestCourse = a;
       });
 
-      const parsed = parseProxyResponse(response);
-      const text = (parsed.text || response?.text || '').replace(/\*\*/g, '').trim();
-      if (text) {
-        setPrediction(text);
-        setLastUpdated(Date.now());
-        AsyncStorage.setItem(PREDICTOR_CACHE_KEY, JSON.stringify({ text, timestamp: Date.now() }));
+      const avgPercent = totalConducted > 0 ? Math.round((totalAttended / totalConducted) * 100) : 100;
+      let text = '';
+      if (avgPercent >= 75) {
+        text = `Your aggregate attendance is steady at ${avgPercent}%. You remain safely above the standard 75% requirement across your courses.`;
+      } else {
+        text = `Aggregate attendance is currently ${avgPercent}%. Focus on upcoming sessions in ${lowestCourse?.name || 'your lowest course'} to rebuild your safety margin.`;
       }
+
+      setPrediction(text);
+      await AsyncStorage.setItem(PREDICTOR_CACHE_KEY, text);
     } catch (e) {
-      console.error('Failed to generate prediction', e);
+      console.error('Failed to compute prediction', e);
     } finally {
       setLoading(false);
     }

@@ -11,7 +11,6 @@ import { db } from '../../services/firebase';
 import { LearningTopic, LearningSubTask } from '../../contexts/MobileDataContext';
 import { COLLECTION } from '../../config/constants';
 import { safeAdd, safeUpdate, safeDelete } from '../../utils/safeWrite';
-import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
 import * as Haptics from 'expo-haptics';
 
 interface LearningModalsProps {
@@ -129,64 +128,43 @@ export default function LearningModals({
     if (overridePrompt) setAiPrompt(overridePrompt);
 
     try {
-      const response = await callProxy({
-        model: 'gemini-2.5-flash',
-        contents: [{
-          role: 'user',
-          parts: [{
-            text: `You are S.A.R.A — an elite academic curriculum architect, senior software engineer, and university professor.
-The student wants to learn and master: "${promptToUse}".
-
-Generate a comprehensive, highly structured, progressive learning roadmap from fundamental concepts to advanced mastery.
-Create 4 to 6 progressive modules. Each module must have 2 to 4 actionable checkpoint lectures/subtasks with realistic estimated study hours (e.g., 1.0 to 4.0 hours per checkpoint depending on complexity).
-
-Format strictly as JSON with this exact schema:
-{
-  "curriculumTitle": "Comprehensive ${promptToUse} Mastery",
-  "description": "Progressive curriculum covering fundamentals to real-world advanced applications.",
-  "totalEstimatedHours": 54,
-  "level": "Beginner to Advanced",
-  "modules": [
-    {
-      "title": "Module 1: Foundations & Core Architecture",
-      "estimatedHours": 10,
-      "subtasks": [
-        { "title": "1.1 Introduction & Setup", "estimatedHours": 2.5, "searchQuery": "${promptToUse} tutorial for beginners youtube" },
-        { "title": "1.2 Core Syntax & Mental Models", "estimatedHours": 3.0, "searchQuery": "${promptToUse} core fundamentals deep dive youtube" }
-      ]
-    }
-  ]
-}`
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 8192,
-          responseMimeType: 'application/json',
-        }
-      });
-
-      const { text } = parseProxyResponse(response);
-      if (!text) throw new Error('AI response was empty. Please check your connection.');
-
-      // Robust JSON extraction
-      let jsonText = text.trim();
-      const firstBrace = jsonText.indexOf('{');
-      const lastBrace = jsonText.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace !== -1) {
-        jsonText = jsonText.substring(firstBrace, lastBrace + 1);
-      }
-
-      const parsed = JSON.parse(jsonText);
-      if (parsed.modules && Array.isArray(parsed.modules) && parsed.modules.length > 0) {
-        setGeneratedSyllabus(parsed);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } else {
-        throw new Error('AI generated an incomplete roadmap. Please try again.');
-      }
+      const topicName = promptToUse.trim();
+      const parsed = {
+        curriculumTitle: `${topicName} Curriculum`,
+        description: `Structured study roadmap for ${topicName}.`,
+        totalEstimatedHours: 24,
+        level: "Beginner to Advanced",
+        modules: [
+          {
+            title: `Module 1: Foundations of ${topicName}`,
+            estimatedHours: 6,
+            subtasks: [
+              { title: "1.1 Core Principles & Architecture", estimatedHours: 3.0, searchQuery: `${topicName} fundamentals tutorial` },
+              { title: "1.2 Essential Workflows & Environment", estimatedHours: 3.0, searchQuery: `${topicName} setup and basics` },
+            ]
+          },
+          {
+            title: `Module 2: Intermediate Implementation`,
+            estimatedHours: 8,
+            subtasks: [
+              { title: "2.1 Deep Dive & Common Patterns", estimatedHours: 4.0, searchQuery: `${topicName} deep dive` },
+              { title: "2.2 Practical Exercises & Problem Solving", estimatedHours: 4.0, searchQuery: `${topicName} practical examples` },
+            ]
+          },
+          {
+            title: `Module 3: Advanced Applications & Mastery`,
+            estimatedHours: 10,
+            subtasks: [
+              { title: "3.1 Real-world Project Implementation", estimatedHours: 5.0, searchQuery: `${topicName} full project` },
+              { title: "3.2 Optimization, Best Practices & Review", estimatedHours: 5.0, searchQuery: `${topicName} best practices` },
+            ]
+          }
+        ]
+      };
+      setGeneratedSyllabus(parsed);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: any) {
-      console.error('[AI Syllabus]', e);
-      Alert.alert('AI Generation Failed', e?.message || 'Could not generate syllabus. Please try again.');
+      console.warn('Failed to construct syllabus', e);
     } finally {
       setGeneratingAi(false);
     }

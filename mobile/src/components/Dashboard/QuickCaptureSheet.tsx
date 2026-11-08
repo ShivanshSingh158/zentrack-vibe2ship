@@ -38,9 +38,6 @@ import { parseNLTask, cleanTaskTitle, formatLocalDateStr, offsetDateStr } from '
 import { COLLECTION } from '../../config/constants';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { useTheme } from "../../contexts/ThemeContext";
-import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
-import { isSilenceOrNoise, VoiceState } from '../../services/voiceEngine';
-import { startNativeStt, stopNativeStt, abortNativeStt } from '../../services/nativeStt';
 import { Portal } from '../../contexts/PortalContext';
 import NLPTaskInput from '../Tasks/NLPTaskInput';
 import { scheduleSingleTaskReminder } from '../../services/notifications';
@@ -74,7 +71,6 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const translateY = useSharedValue(1000);
   const keyboard = useAnimatedKeyboard();
   const inputRef = useRef<TextInput>(null);
@@ -98,13 +94,11 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
       setMounted(true);
       setSaved(false);
       setText('');
-      setVoiceState('idle');
       backdropOpacity.value = withTiming(1, { duration: 180 });
       translateY.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.quad) }, (finished) => {
         if (finished) runOnJS(focusInput)();
       });
     } else if (mounted) {
-      abortNativeStt();
       backdropOpacity.value = withTiming(0, { duration: 150 });
       translateY.value = withTiming(1000, { duration: 150, easing: Easing.in(Easing.quad) }, (finished) => {
         if (finished) runOnJS(setMounted)(false);
@@ -125,40 +119,9 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
     };
   });
 
-  const handleToggleVoice = async () => {
-    if (voiceState === 'recording') {
-      stopNativeStt();
-      setVoiceState('idle');
-      return;
-    }
-
-    // Start native OS SpeechRecognizer (Gboard-level quality)
-    await startNativeStt({
-      onStateChange: (state) => {
-        if (state === 'listening') setVoiceState('recording');
-        else if (state === 'idle') setVoiceState('idle');
-        else if (state === 'error') setVoiceState('idle');
-      },
-      onResult: async (text, isFinal) => {
-        if (!text || !text.trim()) return;
-        // Show interim text live
-        setText(text);
-        if (isFinal) {
-          if (isSilenceOrNoise(text)) return;
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          await handleSave(text);
-        }
-      },
-      onError: (err) => {
-        console.log('Voice error', err);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      },
-    });
-  };
-
   const handleSave = async (overrideText?: string) => {
     const textToSave = typeof overrideText === 'string' ? overrideText : text;
-    if (!textToSave.trim() || isSilenceOrNoise(textToSave) || !user || saving) return;
+    if (!textToSave.trim() || !user || saving) return;
     setSaving(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
@@ -400,20 +363,6 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
             
             {/* Quick Actions (e.g. mic, save) */}
             <View style={s.unifiedActionsRow}>
-              <TouchableOpacity 
-                style={[s.iconBtn, voiceState === 'recording' && s.iconBtnRecording]} 
-                onPress={handleToggleVoice}
-              >
-                {voiceState === 'processing' ? (
-                  <ActivityIndicator size="small" color={colors.accentPrimary} />
-                ) : (
-                  <Ionicons 
-                    name={voiceState === 'recording' ? "stop" : "mic"} 
-                    size={20} 
-                    color={voiceState === 'recording' ? '#ff6961' : (isDark ? '#a599ff' : colors.textSecondary)} 
-                  />
-                )}
-              </TouchableOpacity>
 
               <TouchableOpacity
                 style={[s.saveBtn, (!text.trim() || saving) && s.saveBtnDisabled]}

@@ -58,7 +58,6 @@ const TaskTemplatesSheet = React.lazy(() => import('../components/Tasks/TaskTemp
 const TaskTimeLogSheet = React.lazy(() => import('../components/Tasks/TaskTimeLogSheet'));
 import EditTaskModal from './tasks/EditTaskModal';
 import NewTaskModal from './tasks/NewTaskModal';
-const VoiceDictationOverlay = React.lazy(() => import('../components/Tasks/VoiceDictationOverlay'));
 
 // Extracted Task Components
 import { TaskDateStrip } from '../components/Tasks/TaskDateStrip';
@@ -117,8 +116,6 @@ export default function TasksScreen() {
     const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => sub.remove();
   }, [isBulkEdit, setIsBulkEdit, setSelectedTaskIds]);
-
-  const [isVoiceDictationOpen, setIsVoiceDictationOpen] = useState(false);
 
   const route = useRoute<any>();
   useEffect(() => {
@@ -548,16 +545,6 @@ export default function TasksScreen() {
           listCount={selectedDateTasks.length}
         />
       )}
-      {isVoiceDictationOpen && (
-        <Suspense fallback={null}>
-          <VoiceDictationOverlay
-            visible={isVoiceDictationOpen}
-            onClose={() => setIsVoiceDictationOpen(false)}
-            selectedDate={selectedDate}
-            userId={user?.uid}
-          />
-        </Suspense>
-      )}
 
       {/* VIEWS */}
       <View style={{ flex: 1 }}>
@@ -659,14 +646,6 @@ export default function TasksScreen() {
         >
           <Ionicons name="add" size={18} color={isDark ? '#000000' : '#ffffff'} style={{ marginRight: 4 }} />
           <Text style={styles.floatingAddText}>Add task</Text>
-        </AnimatedPressable>
-        <AnimatedPressable
-          style={[styles.floatingAddBtn, styles.voiceActionBtn]}
-          variant="cta"
-          onPress={() => setIsVoiceDictationOpen(true)}
-        >
-          <Ionicons name="mic" size={18} color="#ffffff" style={{ marginRight: 4 }} />
-          <Text style={[styles.floatingAddText, { color: '#ffffff' }]}>Voice</Text>
         </AnimatedPressable>
       </View>
 

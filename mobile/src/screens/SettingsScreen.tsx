@@ -90,7 +90,7 @@ function formatMetaDate(dStr?: string | null): string {
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
   const { user, tasks, habitLogs, allHabits } = useCoreData();
-  const { gymLogs, waterLogs, sleepLogs, userGymPlan } = useWellnessData();
+  const { waterLogs, sleepLogs } = useWellnessData();
   const { attendance, assignments } = useAcademicData();
   const { customEvents } = usePlannerData();
 
@@ -180,15 +180,13 @@ export default function SettingsScreen() {
         scheduleAllNotifications({
           tasks,
           customEvents,
-          gymLogs,
           attendance,
           habitLogs,
           allHabits,
           assignments,
           waterLogs,
           sleepLogs,
-          userGymPlan,
-        }).catch(err => console.warn('[Settings] Reschedule error:', err));
+          }).catch(err => console.warn('[Settings] Reschedule error:', err));
       });
     }
   };
@@ -290,15 +288,13 @@ export default function SettingsScreen() {
               await scheduleAllNotifications({
                 tasks,
                 customEvents,
-                gymLogs,
                 attendance,
                 habitLogs,
                 allHabits,
                 assignments,
                 waterLogs,
                 sleepLogs,
-                userGymPlan,
-              });
+                });
               setIsResyncing(false);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               Alert.alert('Sync Complete', 'Local cache refreshed and alarms successfully queued.');
@@ -531,7 +527,7 @@ export default function SettingsScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.settingTitle}>Notification preferences</Text>
-              <Text style={s.settingSubtitle}>Habits, gym alarms, quiet hours & diagnostics</Text>
+              <Text style={s.settingSubtitle}>Habits, alarms, quiet hours & diagnostics</Text>
             </View>
             <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
           </AnimatedPressable>
@@ -837,8 +833,8 @@ export default function SettingsScreen() {
                   </View>
                   <View style={s.statBoxDivider} />
                   <View style={s.statBox}>
-                    <Text style={s.statValue}>{gymLogs.length}</Text>
-                    <Text style={s.statLabel}>Workouts</Text>
+                    <Text style={s.statValue}>{attendance.length}</Text>
+                    <Text style={s.statLabel}>Courses</Text>
                   </View>
                 </View>
 

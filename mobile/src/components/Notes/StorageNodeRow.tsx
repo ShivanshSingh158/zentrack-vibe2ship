@@ -112,6 +112,9 @@ function areRowPropsEqual(prev: StorageNodeRowProps, next: StorageNodeRowProps):
   if (prev.compact !== next.compact) return false;
   if (prev.onPin !== next.onPin) return false;
   if (prev.onDelete !== next.onDelete) return false;
+  if (prev.onPress !== next.onPress) return false;
+  if (prev.onLongPress !== next.onLongPress) return false;
+  if (prev.onMenuPress !== next.onMenuPress) return false;
   return true;
 }
 

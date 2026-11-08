@@ -12,7 +12,6 @@
  * Layers 2-3 here are mobile-only emergency fallbacks.
  */
 
-import { callProxy, parseProxyResponse } from './geminiProxy';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 export interface TranscriptCue {
@@ -97,66 +96,10 @@ function parseGeminiCues(text: string): TranscriptCue[] {
   return cues;
 }
 
-// ════════════════════════════════════════════════════════════════════════════════
-// CLIENT LAYER 1 (Fallback): Direct InnerTube TimedText
-// ════════════════════════════════════════════════════════════════════════════════
+
+
 async function clientLayer1_innerTube(videoId: string): Promise<TranscriptCue[] | null> {
-  const ANDROID_UA =
-    'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36';
-
-  const urls = [
-    `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&fmt=json3`,
-    `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en-US&fmt=json3`,
-    `https://www.youtube.com/api/timedtext?v=${videoId}&fmt=json3`,
-  ];
-
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, { headers: { 'User-Agent': ANDROID_UA } });
-      if (!res.ok) continue;
-      const data = await res.json();
-      const cues = parseJson3Transcript(data);
-      if (cues.length > 2) return cues;
-    } catch (_) {}
-  }
   return null;
-}
-
-// ════════════════════════════════════════════════════════════════════════════════
-// CLIENT LAYER 2 (Fallback): Gemini Multimodal via callProxy
-// ════════════════════════════════════════════════════════════════════════════════
-async function clientLayer2_gemini(videoId: string, videoTitle?: string): Promise<TranscriptCue[] | null> {
-  const prompt = `Analyze this YouTube lecture video directly using its URL.
-YouTube URL: https://www.youtube.com/watch?v=${videoId}
-Title: "${videoTitle || 'Educational Lecture'}"
-
-Watch the video and produce a comprehensive timestamped transcript with 20-35 segments.
-Include: key concepts, formulas, code shown on screen, definitions, and topic transitions.
-
-Output ONLY a raw valid JSON array (no markdown, no extra text):
-[
-  { "start": 0, "duration": 25, "text": "Introduction to the lecture topic." },
-  { "start": 45, "duration": 30, "text": "Core concept explained with example." }
-]`;
-
-  try {
-    const response = await callProxy({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 8192,
-        responseMimeType: 'application/json',
-      },
-    });
-    const { text } = parseProxyResponse(response);
-    if (!text) return null;
-    const cues = parseGeminiCues(text);
-    return cues.length > 3 ? cues : null;
-  } catch (e) {
-    console.warn('[TranscriptService:clientL2] Gemini multimodal failed:', e);
-    return null;
-  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -205,19 +148,7 @@ export async function fetchVideoTranscript(
   } catch (e) {
     console.warn('[TranscriptService] Client InnerTube failed:', e);
   }
-
-  // ── Stage 3: Client-side Gemini Multimodal ────────────────────────────────────
-  try {
-    const cues = await clientLayer2_gemini(videoId, videoTitle);
-    if (cues && cues.length > 0) {
-      return { cues, source: 'client_gemini_multimodal', latencyMs: Date.now() - t0, layersTried: 3 };
-    }
-  } catch (e) {
-    console.warn('[TranscriptService] Client Gemini multimodal failed:', e);
-  }
-
-  // ── All stages failed — return empty gracefully ───────────────────────────────
-  return { cues: [], source: 'client_gemini_ai_summary', latencyMs: Date.now() - t0, layersTried: 3 };
+  return { cues: [], source: 'server_innertube', latencyMs: Date.now() - t0, layersTried: 2 };
 }
 
 // ── Convenience: Transcript as plain text for AI context ─────────────────────

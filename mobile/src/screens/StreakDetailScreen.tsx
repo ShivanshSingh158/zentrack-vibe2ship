@@ -53,7 +53,6 @@ export default function StreakDetailScreen() {
 
   const { habitId } = route.params || {};
   const { allHabits, habitLogs, tasks } = useCoreData();
-  const { gymLogs } = useWellnessData();
   const { attendanceLogs } = useAcademicData();
 
   const habit = useMemo(() => allHabits?.find((h) => h.id === habitId), [allHabits, habitId]);
@@ -66,22 +65,22 @@ export default function StreakDetailScreen() {
 
   // ── Stats Calculations ────────────────────────────────────────────────────────
   const currentStreak = useMemo(() => {
-    if (isAppStreak) return calculateAppStreak(tasks, gymLogs, habitLogs);
+    if (isAppStreak) return calculateAppStreak(tasks, habitLogs);
     return habit?.streak || 0;
-  }, [isAppStreak, tasks, gymLogs, habitLogs, habit]);
+  }, [isAppStreak, tasks, habitLogs, habit]);
 
   const longestStreak = useMemo(() => {
-    if (isAppStreak) return calculateLongestAppStreak(tasks, gymLogs, habitLogs);
+    if (isAppStreak) return calculateLongestAppStreak(tasks, habitLogs);
     return habit?.longestStreak || currentStreak;
-  }, [isAppStreak, tasks, gymLogs, habitLogs, habit, currentStreak]);
+  }, [isAppStreak, tasks, habitLogs, habit, currentStreak]);
 
   const totalActiveDays = useMemo(() => {
-    if (isAppStreak) return calculateTotalActiveDays(tasks, gymLogs, habitLogs);
+    if (isAppStreak) return calculateTotalActiveDays(tasks, habitLogs);
     return habitLogs?.filter(l => l.habitId === habitId).length || 0;
-  }, [isAppStreak, tasks, gymLogs, habitLogs, habitId]);
+  }, [isAppStreak, tasks, habitLogs, habitId]);
 
   const consistencyRate = useMemo(() => {
-    if (isAppStreak) return calculateConsistencyRate(tasks, gymLogs, habitLogs, 30);
+    if (isAppStreak) return calculateConsistencyRate(tasks, habitLogs, 30);
     const past30HabitLogs = (habitLogs || []).filter(l => {
       if (l.habitId !== habitId) return false;
       const d = new Date(l.date + 'T00:00:00');
@@ -89,7 +88,7 @@ export default function StreakDetailScreen() {
       return diff <= 30;
     });
     return Math.round((past30HabitLogs.length / 30) * 100);
-  }, [isAppStreak, tasks, gymLogs, habitLogs, habitId]);
+  }, [isAppStreak, tasks, habitLogs, habitId]);
 
   const milestoneInfo = useMemo(() => {
     let current = STREAK_MILESTONES[0];
@@ -115,7 +114,6 @@ export default function StreakDetailScreen() {
   }, [currentStreak]);
 
   // ── Pillar Counts ─────────────────────────────────────────────────────────────
-  const gymSessionsCount = useMemo(() => (gymLogs || []).length, [gymLogs]);
   const tasksCompletedCount = useMemo(() => (tasks || []).filter(t => t.status === 'completed').length, [tasks]);
   const habitCompletionsCount = useMemo(() => (habitLogs || []).length, [habitLogs]);
   const classesAttendedCount = useMemo(() => {
@@ -126,22 +124,20 @@ export default function StreakDetailScreen() {
   const inspectedData = useMemo(() => {
     const dayTasks = (tasks || []).filter(t => t.date === inspectedDate);
     const dayTasksDone = dayTasks.filter(t => t.status === 'completed');
-    const dayGym = (gymLogs || []).find(g => g.date === inspectedDate);
     const dayHabits = (habitLogs || []).filter(l => l.date === inspectedDate);
     const dayAttendance = (attendanceLogs || []).filter(l => l.date === inspectedDate && l.action === 'attended');
 
-    const hasAny = dayTasksDone.length > 0 || !!dayGym || dayHabits.length > 0 || dayAttendance.length > 0;
+    const hasAny = dayTasksDone.length > 0  || dayHabits.length > 0 || dayAttendance.length > 0;
 
     return {
       date: inspectedDate,
       hasActivity: hasAny,
       tasksDone: dayTasksDone,
       tasksTotal: dayTasks.length,
-      gym: dayGym,
       habits: dayHabits,
       classesAttended: dayAttendance.length,
     };
-  }, [inspectedDate, tasks, gymLogs, habitLogs, attendanceLogs]);
+  }, [inspectedDate, tasks, habitLogs, attendanceLogs]);
 
   // ── Marked Dates for Calendar ─────────────────────────────────────────────────
   const markedDates = useMemo(() => {
@@ -160,9 +156,6 @@ export default function StreakDetailScreen() {
     } else {
       tasks?.forEach(t => {
         if (t.status === 'completed' && t.date) marks[t.date] = { customStyles: successStyle };
-      });
-      gymLogs?.forEach(g => {
-        if (g.date) marks[g.date] = { customStyles: successStyle };
       });
       habitLogs?.forEach(l => {
         if (l.date) marks[l.date] = { customStyles: successStyle };
@@ -198,7 +191,7 @@ export default function StreakDetailScreen() {
     }
 
     return marks;
-  }, [habitId, habitLogs, tasks, gymLogs, inspectedDate, colors.accentPrimary, colors.accentAmber, isDark]);
+  }, [habitId, habitLogs, tasks, inspectedDate, colors.accentPrimary, colors.accentAmber, isDark]);
 
   const handleMilestonePress = useCallback((m: StreakMilestone) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -424,20 +417,6 @@ export default function StreakDetailScreen() {
           <>
             <Text style={s.sectionHeader}>Activity Contribution</Text>
             <View style={s.insetCard}>
-              {/* Gym */}
-              <View style={s.tableRow}>
-                <View style={[s.tableIconSquircle, { backgroundColor: 'rgba(56,189,248,0.14)' }]}>
-                  <MaterialCommunityIcons name="arm-flex" size={17} color="#38BDF8" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.tableTitle}>Fitness & Gym Workouts</Text>
-                  <Text style={s.tableSubtitle}>Weight training and cardio logs</Text>
-                </View>
-                <Text style={s.tableValue}>{gymSessionsCount} <Text style={s.tableValueUnit}>logs</Text></Text>
-              </View>
-
-              <View style={s.tableDivider} />
-
               {/* Attendance */}
               <View style={s.tableRow}>
                 <View style={[s.tableIconSquircle, { backgroundColor: 'rgba(168,85,247,0.14)' }]}>
@@ -524,11 +503,6 @@ export default function StreakDetailScreen() {
                 {inspectedData.tasksDone.length > 0 && (
                   <Text style={s.inspectionItem}>
                     • <Text style={s.boldWhite}>{inspectedData.tasksDone.length}</Text> tasks completed
-                  </Text>
-                )}
-                {inspectedData.gym && (
-                  <Text style={s.inspectionItem}>
-                    • Gym workout completed ({inspectedData.gym.exercises?.length || 0} exercises)
                   </Text>
                 )}
                 {inspectedData.habits.length > 0 && (

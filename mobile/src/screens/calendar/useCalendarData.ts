@@ -21,8 +21,6 @@ import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
 import { safeWrite, safeUpdate } from '../../utils/safeWrite';
 import { handleSyncError } from '../../utils/errorUtils';
-import { GYM_PLAN } from '../../data/gymPlan';
-import { getCustomPlanDay, planDayIndexForDate } from '../../hooks/useGymLog';
 import { parseTimeTo24h, parseTaskTimeSlot, HOUR_HEIGHT } from './calendarUtils';
 import { useDeferredMemo } from '../../hooks/useDeferredMemo';
 import { formatLocalDateStr } from '../../utils/dateUtils';
@@ -34,8 +32,7 @@ export function useCalendarData() {
   const { customEvents, ensureSubscribed } = usePlannerData();
   const { tasks, user, googleAccessToken } = useCoreData();
   const { attendance, attendanceLogs, holidays } = useAcademicData();
-  const { gymLogs, userGymPlan, optimisticUpdateGymLog } = useWellnessData();
-
+  
   useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => ensureSubscribed?.());
     return () => handle.cancel();
@@ -55,12 +52,8 @@ export function useCalendarData() {
 
   const [showEventModal, setShowEventModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showGymModal, setShowGymModal] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<CustomEvent | null>(null);
-  const [selectedGymLog, setSelectedGymLog] = useState<any>(null);
-  const [gymStartTimeInput, setGymStartTimeInput] = useState('');
-  const [gymEndTimeInput, setGymEndTimeInput] = useState('');
-  const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
+    const [selectedEvent, setSelectedEvent] = useState<CustomEvent | null>(null);
+        const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
   const [initialTime, setInitialTime] = useState<string>('');
   const [gcalEvents, setGcalEvents] = useState<CustomEvent[]>(EMPTY_ARRAY);
 
@@ -68,24 +61,7 @@ export function useCalendarData() {
   const agendaScrollRef = useRef<ScrollView>(null);
   const [currentView, setCurrentView] = useState<'Day'|'Week'|'Month'>('Day');
 
-  const handleSaveGymTime = useCallback(async () => {
-    if (!selectedGymLog || !user) return;
-    const targetDate = selectedGymLog.date || selectedDate;
-    const docId = selectedGymLog.id || `${user.uid}_${targetDate}`;
-    const updates = { startTime: gymStartTimeInput, endTime: gymEndTimeInput, updatedAt: Date.now() };
-
-    optimisticUpdateGymLog?.(docId, updates);
-    setShowGymModal(false);
-
-    await safeWrite(
-      () => setDoc(doc(db, COLLECTION.GYM_LOGS, docId), updates, { merge: true }),
-      COLLECTION.GYM_LOGS,
-      'set',
-      updates,
-      docId
-    ).catch(handleSyncError);
-  }, [selectedGymLog, user, selectedDate, gymStartTimeInput, gymEndTimeInput, optimisticUpdateGymLog]);
-
+  
   // Google Calendar Integration (only fetches if access token present)
   useEffect(() => {
     if (!googleAccessToken) {
@@ -348,37 +324,11 @@ export function useCalendarData() {
       });
     }
 
-    const gLog = (gymLogs || []).find((g: any) => g.date === selectedDate);
-    const planIdx = planDayIndexForDate(selectedDate);
-    const gPlan = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find((d: any) => d.dayIndex === planIdx);
-    
-    const startTimeStr = gLog?.startTime || gPlan?.startTime;
-    const endTimeStr = gLog?.endTime || gPlan?.endTime;
-    
-    const gymEvts = [];
-    if (startTimeStr && (gLog?.startTime || !gPlan?.isRest)) {
-      const hasCompletedSets = gLog?.exercises?.some((ex: any) =>
-        ex.setsLog?.some((s: any) => s.completed)
-      );
-      const isCompleted = gLog?.completed || hasCompletedSets;
-      const baseTitle = gPlan?.focus ? `Workout: ${gPlan.focus}` : 'Gym Workout';
-      const gymTitle = isCompleted ? `✓ ${baseTitle}` : baseTitle;
-      gymEvts.push({
-        id: `gym-${selectedDate}`,
-        title: gymTitle,
-        type: 'gym' as any,
-        date: selectedDate,
-        startTime: startTimeStr,
-        endTime: endTimeStr || '18:00',
-        location: 'Gym',
-      });
-    }
-
     return {
-      timedDayEvents: [...events, ...timedTasks, ...timedClasses, ...gymEvts, ...gcalEvents] as CustomEvent[],
+      timedDayEvents: [...events, ...timedTasks, ...timedClasses, ...gcalEvents] as CustomEvent[],
       unscheduledDayEvents: [...holidayEvents, ...unscheduledTasks, ...unscheduledClasses, ...extraClassEvents] as CustomEvent[],
     };
-  }, [customEvents, tasks, attendance, attendanceLogs, gymLogs, userGymPlan, gcalEvents, holidays, selectedDate]);
+  }, [customEvents, tasks, attendance, attendanceLogs, gcalEvents, holidays, selectedDate]);
 
   const dayEvents = useMemo(() => {
     const sortedTimed = [...timedDayEvents].sort((a, b) => {
@@ -479,6 +429,17 @@ export function useCalendarData() {
       }
     }
 
+    const isEventOnDate = (e: any, targetDateStr: string): boolean => {
+      if (e.date === targetDateStr) return true;
+      if (!e.recurrenceRule || !e.date || e.date > targetDateStr) return false;
+      if (e.recurrenceRule === 'daily') return true;
+      const eDate = new Date(e.date + 'T00:00:00');
+      const tDate = new Date(targetDateStr + 'T00:00:00');
+      if (e.recurrenceRule === 'weekly') return eDate.getDay() === tDate.getDay();
+      if (e.recurrenceRule === 'monthly') return eDate.getDate() === tDate.getDate();
+      return false;
+    };
+
     for (let i = 0; i < 7; i++) {
       const cur = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i);
       const dateStr = [
@@ -487,18 +448,21 @@ export function useCalendarData() {
         String(cur.getDate()).padStart(2, '0')
       ].join('-');
       
-      const events = customEventsByDate[dateStr] || [];
-      const dayTasks = (tasksByDate[dateStr] || []).map((t: any) => {
-        const { startTime, endTime } = parseTaskTimeSlot(t.timeSlot);
-        return { id: t.id, title: t.title, type: 'todo', date: dateStr, startTime, endTime };
-      });
+      const events = customEvents.filter(e => isEventOnDate(e, dateStr));
+      const dayTasks = (tasksByDate[dateStr] || [])
+        .filter((t: any) => t.timeSlot && t.timeSlot.trim() !== '')
+        .map((t: any) => {
+          const { startTime, endTime } = parseTaskTimeSlot(t.timeSlot);
+          return { id: t.id, title: t.title, type: 'todo', date: dateStr, startTime, endTime };
+        });
       
       const curDayOfWeekNum = cur.getDay();
       const dayOfWeek = curDayOfWeekNum.toString();
       const dayName = DAY_NAMES[curDayOfWeekNum];
       const dayNameLower = dayName.toLowerCase();
+      const isHoliday = (holidays || []).includes(dateStr);
       
-      const classEvents = attendance?.flatMap((subj: any) => {
+      const classEvents = isHoliday ? [] : (attendance?.flatMap((subj: any) => {
         const sch = subj.schedule?.[dayOfWeek] || subj.schedule?.[curDayOfWeekNum] || subj.schedule?.[dayName] || subj.schedule?.[dayNameLower];
         if (!sch) return [];
         const evtList: any[] = [];
@@ -521,23 +485,11 @@ export function useCalendarData() {
           });
         }
         return evtList;
-      }) || [];
+      })) || [];
 
       const gcals = gcalByDate[dateStr] || [];
       
-      const gLog = (gymLogs || []).find((g: any) => g.date === dateStr);
-      const planIdx = planDayIndexForDate(dateStr);
-      const gPlan = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find((d: any) => d.dayIndex === planIdx);
-      
-      const startTimeStr = gLog?.startTime || gPlan?.startTime;
-      const endTimeStr = gLog?.endTime || gPlan?.endTime;
-      
-      const gymEvts = [];
-      if (startTimeStr && (gLog?.startTime || !gPlan?.isRest)) {
-        gymEvts.push({ id: `gym-${dateStr}`, title: gPlan?.focus ? `Workout: ${gPlan.focus}` : 'Gym Workout', type: 'gym' as any, date: dateStr, startTime: startTimeStr, endTime: endTimeStr || '18:00', location: 'Gym' });
-      }
-      
-      const dayCombined = [...events, ...dayTasks, ...classEvents, ...gymEvts, ...gcals];
+      const dayCombined = [...events, ...dayTasks, ...classEvents, ...gcals];
       
       dayCombined.forEach(event => {
         let startHour = 9, startMin = 0, endHour = 10, endMin = 0;
@@ -559,7 +511,7 @@ export function useCalendarData() {
       });
     }
     return allWeekEvents;
-  }, [currentView, selectedDate, customEvents, tasks, attendance, gymLogs, userGymPlan, gcalEvents], EMPTY_ARRAY);
+  }, [currentView, selectedDate, customEvents, tasks, attendance, gcalEvents], EMPTY_ARRAY);
 
   const { minHour, maxHour } = useMemo(() => {
     let min = 5; let max = 22;
@@ -600,35 +552,25 @@ export function useCalendarData() {
     now, selectedDate, setSelectedDate,
     showEventModal, setShowEventModal,
     showAddModal, setShowAddModal,
-    showGymModal, setShowGymModal,
-    selectedEvent, setSelectedEvent,
-    selectedGymLog, setSelectedGymLog,
-    gymStartTimeInput, setGymStartTimeInput,
-    gymEndTimeInput, setGymEndTimeInput,
-    isMonthDropdownOpen, setIsMonthDropdownOpen,
+        selectedEvent, setSelectedEvent,
+                isMonthDropdownOpen, setIsMonthDropdownOpen,
     initialTime, setInitialTime,
     scrollViewRef, agendaScrollRef,
     currentTime, currentView, setCurrentView,
     timedDayEvents, unscheduledDayEvents, dayEvents, processedEvents, weekEvents,
     minHour, maxHour, DYNAMIC_HOURS,
-    handleSaveGymTime,
-    tasks, attendance, customEvents, gymLogs, userGymPlan, holidays
+        tasks, attendance, customEvents, holidays
   }), [
     scrollToCurrentTime,
     now, selectedDate, setSelectedDate,
     showEventModal, setShowEventModal,
     showAddModal, setShowAddModal,
-    showGymModal, setShowGymModal,
-    selectedEvent, setSelectedEvent,
-    selectedGymLog, setSelectedGymLog,
-    gymStartTimeInput, setGymStartTimeInput,
-    gymEndTimeInput, setGymEndTimeInput,
-    isMonthDropdownOpen, setIsMonthDropdownOpen,
+        selectedEvent, setSelectedEvent,
+                isMonthDropdownOpen, setIsMonthDropdownOpen,
     initialTime, setInitialTime,
     currentTime, currentView, setCurrentView,
     timedDayEvents, unscheduledDayEvents, dayEvents, processedEvents, weekEvents,
     minHour, maxHour, DYNAMIC_HOURS,
-    handleSaveGymTime,
-    tasks, attendance, customEvents, gymLogs, userGymPlan, holidays
+        tasks, attendance, customEvents, holidays
   ]);
 }

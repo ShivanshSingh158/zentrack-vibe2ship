@@ -42,11 +42,10 @@ const ALL_MODULES_DEF: ModuleDef[] = [
   { id: 'Assignments', name: 'Assignments', icon: 'clipboard',        colorDark: '#A855F7', colorLight: '#7C3AED' },
   { id: 'Grades',      name: 'Grades',      icon: 'calculator',       colorDark: '#8E8E93', colorLight: '#6C5CE7' },
   { id: 'Learning',    name: 'Learning',    icon: 'library',          colorDark: '#00C7BE', colorLight: '#0284C7' },
-  { id: 'Gym',         name: 'Gym Log',     icon: 'arm-flex', iconSet: 'mci', colorDark: '#32ADE6', colorLight: '#0284C7' },
-  { id: 'Analytics',   name: 'Analytics',   icon: 'bar-chart',        colorDark: '#007AFF', colorLight: '#0284C7' },
+    { id: 'Analytics',   name: 'Analytics',   icon: 'bar-chart',        colorDark: '#007AFF', colorLight: '#0284C7' },
 ];
 
-const DEFAULT_PINNED_MODULES = ['Tasks', 'Gym', 'Calendar', 'Attendance'];
+const DEFAULT_PINNED_MODULES = ['Tasks', 'Calendar', 'Attendance', 'Habits'];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 

@@ -194,15 +194,14 @@ export default function NotificationsSettingsScreen() {
   const navigation = useNavigation<any>();
 
   const { tasks, habitLogs, allHabits, user } = useCoreData();
-  const { gymLogs, waterLogs, sleepLogs, userGymPlan } = useWellnessData();
+  const { waterLogs, sleepLogs } = useWellnessData();
   const { attendance, assignments, attendanceLogs, holidays } = useAcademicData();
   const { customEvents } = usePlannerData();
 
   // ── Core Module Toggles ──
   const [modTasks, setModTasks] = useState(true);
   const [modHabits, setModHabits] = useState(true);
-  const [modGym, setModGym] = useState(true);
-  const [modAttendance, setModAttendance] = useState(true);
+    const [modAttendance, setModAttendance] = useState(true);
 
   // ── Routine & Timing ──
   const [morningBrief, setMorningBrief] = useState(true);
@@ -266,8 +265,7 @@ export default function NotificationsSettingsScreen() {
           const keys = [
             'mod_tasks',
             'mod_habits',
-            'mod_gym',
-            'mod_attendance',
+                        'mod_attendance',
             'morning_brief',
             'morning_brief_time',
             'task_buffer',
@@ -298,8 +296,7 @@ export default function NotificationsSettingsScreen() {
 
           setModTasks(getB('mod_tasks'));
           setModHabits(getB('mod_habits'));
-          setModGym(getB('mod_gym'));
-          setModAttendance(getB('mod_attendance'));
+                    setModAttendance(getB('mod_attendance'));
 
           setMorningBrief(getB('morning_brief'));
           setMorningBriefTime(getS('morning_brief_time', '07:30'));
@@ -335,28 +332,24 @@ export default function NotificationsSettingsScreen() {
     scheduleAllNotifications({
       tasks,
       customEvents,
-      gymLogs,
       attendance,
       habitLogs,
       allHabits,
       assignments,
       waterLogs,
       sleepLogs,
-      userGymPlan,
       attendanceLogs,
       holidays,
     }).catch(console.warn);
   }, [
     tasks,
     customEvents,
-    gymLogs,
     attendance,
     habitLogs,
     allHabits,
     assignments,
     waterLogs,
     sleepLogs,
-    userGymPlan,
     attendanceLogs,
     holidays,
   ]);
@@ -419,14 +412,12 @@ export default function NotificationsSettingsScreen() {
       await scheduleAllNotifications({
         tasks,
         customEvents,
-        gymLogs,
         attendance,
         habitLogs,
         allHabits,
         assignments,
         waterLogs,
         sleepLogs,
-        userGymPlan,
         attendanceLogs,
         holidays,
       });
@@ -465,14 +456,12 @@ export default function NotificationsSettingsScreen() {
       await scheduleAllNotifications({
         tasks,
         customEvents,
-        gymLogs,
         attendance,
         habitLogs,
         allHabits,
         assignments,
         waterLogs,
         sleepLogs,
-        userGymPlan,
         attendanceLogs,
         holidays,
       }).catch(console.warn);
@@ -668,306 +657,6 @@ export default function NotificationsSettingsScreen() {
         <SectionHeader label="TASK NOTIFICATIONS" />
         <View style={s.card}>
           {/* Default reminder time */}
-          <View style={s.row}>
-            <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
-              <Ionicons name="time-outline" size={16} color={colors.accentPrimary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.rowTitle}>Default reminder time</Text>
-              <Text style={s.rowSub}>For tasks without a specific time slot</Text>
-            </View>
-            <TouchableOpacity
-              style={s.timeChip}
-              onPress={() => openPicker('defaultNotifTime', defaultNotifTime)}
-            >
-              <Text style={s.timeChipText}>{displayTime(defaultNotifTime)}</Text>
-            </TouchableOpacity>
-          </View>
-
-          <Hairline />
-
-          {/* Pre-task buffer */}
-          <View style={s.row}>
-            <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
-              <Ionicons name="hourglass-outline" size={16} color={colors.accentPrimary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.rowTitle}>Pre-task warning buffer</Text>
-              <Text style={s.rowSub}>Alert before a scheduled mission begins</Text>
-            </View>
-          </View>
-          <View style={s.chipRow}>
-            {BUFFER_OPTIONS.map(o => (
-              <TouchableOpacity
-                key={o.val}
-                style={[s.chip, taskBuffer === o.val && s.chipActive]}
-                onPress={async () => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setTaskBuffer(o.val);
-                  await saveString('task_buffer', o.val);
-                  reschedule();
-                }}
-              >
-                <Text style={[s.chipText, taskBuffer === o.val && s.chipTextActive]}>
-                  {o.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Hairline />
-
-          {/* 5-min alert toggle */}
-          <View style={s.row}>
-            <View
-              style={[
-                s.iconBox,
-                { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)' },
-              ]}
-            >
-              <Ionicons name="alarm-outline" size={16} color={colors.accentPrimary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.rowTitle}>5-minute start alert</Text>
-              <Text style={s.rowSub}>Fire an extra nudge 5 min before every timed task</Text>
-            </View>
-            <Switch
-              value={task5MinAlert}
-              onValueChange={v => toggle('task_5min_alert', v, setTask5MinAlert)}
-              trackColor={{ false: isDark ? '#2c2c30' : '#E2E1EA', true: colors.accentPrimary }}
-              thumbColor="#FFFFFF"
-              ios_backgroundColor={isDark ? '#2c2c30' : '#E2E1EA'}
-              style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
-            />
-          </View>
-
-          <Hairline />
-
-          {/* Overdue nudge toggle + time */}
-          <View style={s.row}>
-            <View
-              style={[
-                s.iconBox,
-                { backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)' },
-              ]}
-            >
-              <Ionicons name="warning-outline" size={16} color="#EF4444" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.rowTitle}>Overdue task nudge</Text>
-              <Text style={s.rowSub}>Morning reminder for yesterday's unfinished tasks</Text>
-            </View>
-            <Switch
-              value={overdueNudge}
-              onValueChange={v => toggle('overdue_nudge', v, setOverdueNudge)}
-              trackColor={{ false: isDark ? '#2c2c30' : '#E2E1EA', true: colors.accentPrimary }}
-              thumbColor="#FFFFFF"
-              ios_backgroundColor={isDark ? '#2c2c30' : '#E2E1EA'}
-              style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
-            />
-          </View>
-
-          {overdueNudge && (
-            <>
-              <Hairline />
-              <View style={s.row}>
-                <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
-                  <Ionicons name="time-outline" size={16} color={colors.accentPrimary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.rowTitle}>Nudge time</Text>
-                </View>
-                <TouchableOpacity
-                  style={s.timeChip}
-                  onPress={() => openPicker('overdueNudgeTime', overdueNudgeTime)}
-                >
-                  <Text style={s.timeChipText}>{displayTime(overdueNudgeTime)}</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-        </View>
-
-        {/* ── 3. HABIT NOTIFICATIONS ── */}
-        <SectionHeader label="HABIT NOTIFICATIONS" />
-        <View style={s.card}>
-          {/* Streak at risk */}
-          <View style={s.row}>
-            <View
-              style={[
-                s.iconBox,
-                { backgroundColor: isDark ? 'rgba(255,159,77,0.15)' : 'rgba(234,88,12,0.12)' },
-              ]}
-            >
-              <Ionicons name="flame-outline" size={16} color={isDark ? '#FF9F4D' : '#EA580C'} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.rowTitle}>Streak at-risk alert</Text>
-              <Text style={s.rowSub}>Warn before midnight when habits are unlogged</Text>
-            </View>
-            <Switch
-              value={habitStreakRisk}
-              onValueChange={v => toggle('habit_streak_risk', v, setHabitStreakRisk)}
-              trackColor={{ false: isDark ? '#2c2c30' : '#E2E1EA', true: colors.accentPrimary }}
-              thumbColor="#FFFFFF"
-              ios_backgroundColor={isDark ? '#2c2c30' : '#E2E1EA'}
-              style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
-            />
-          </View>
-
-          {habitStreakRisk && (
-            <>
-              <Hairline />
-              <View style={s.row}>
-                <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
-                  <Ionicons name="time-outline" size={16} color={colors.accentPrimary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.rowTitle}>Alert time</Text>
-                  <Text style={s.rowSub}>How early in the evening to warn you</Text>
-                </View>
-                <TouchableOpacity
-                  style={s.timeChip}
-                  onPress={() => openPicker('habitStreakTime', habitStreakTime)}
-                >
-                  <Text style={s.timeChipText}>{displayTime(habitStreakTime)}</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-        </View>
-
-        {/* ── 4. CALENDAR EVENTS ── */}
-        <SectionHeader label="CALENDAR EVENTS" />
-        <View style={s.card}>
-          <View style={s.row}>
-            <View
-              style={[
-                s.iconBox,
-                { backgroundColor: isDark ? 'rgba(56,189,248,0.15)' : 'rgba(2,132,199,0.12)' },
-              ]}
-            >
-              <Ionicons
-                name="calendar-outline"
-                size={16}
-                color={isDark ? '#38BDF8' : '#0284C7'}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.rowTitle}>Remind me before events</Text>
-              <Text style={s.rowSub}>How far in advance to alert for calendar events</Text>
-            </View>
-          </View>
-          <View style={s.chipRow}>
-            {CALENDAR_OFFSET_OPTIONS.map(o => (
-              <TouchableOpacity
-                key={o.val}
-                style={[s.chip, calendarOffset === o.val && s.chipActive]}
-                onPress={async () => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setCalendarOffset(o.val);
-                  await saveString('calendar_offset', o.val);
-                  reschedule();
-                }}
-              >
-                <Text style={[s.chipText, calendarOffset === o.val && s.chipTextActive]}>
-                  {o.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* ── 5. CHANNELS & MODULES ── */}
-        <SectionHeader label="CHANNELS & MODULES" />
-        <View style={s.card}>
-          <View style={s.row}>
-            <View
-              style={[
-                s.iconBox,
-                { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)' },
-              ]}
-            >
-              <Ionicons
-                name="checkmark-circle-outline"
-                size={16}
-                color={colors.accentPrimary}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.rowTitle}>Tasks & Deadlines</Text>
-              <Text style={s.rowSub}>Timed missions, daily targets and reminders</Text>
-            </View>
-            <Switch
-              value={modTasks}
-              onValueChange={v => toggle('mod_tasks', v, setModTasks)}
-              trackColor={{ false: isDark ? '#2c2c30' : '#E2E1EA', true: colors.accentPrimary }}
-              thumbColor="#FFFFFF"
-              ios_backgroundColor={isDark ? '#2c2c30' : '#E2E1EA'}
-              style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
-            />
-          </View>
-
-          <Hairline />
-
-          <View style={s.row}>
-            <View
-              style={[
-                s.iconBox,
-                { backgroundColor: isDark ? 'rgba(255,159,77,0.15)' : 'rgba(234,88,12,0.12)' },
-              ]}
-            >
-              <Ionicons
-                name="flame-outline"
-                size={16}
-                color={isDark ? '#FF9F4D' : '#EA580C'}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.rowTitle}>Habits & Streaks</Text>
-              <Text style={s.rowSub}>Daily check-ins and streak warnings</Text>
-            </View>
-            <Switch
-              value={modHabits}
-              onValueChange={v => toggle('mod_habits', v, setModHabits)}
-              trackColor={{ false: isDark ? '#2c2c30' : '#E2E1EA', true: colors.accentPrimary }}
-              thumbColor="#FFFFFF"
-              ios_backgroundColor={isDark ? '#2c2c30' : '#E2E1EA'}
-              style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
-            />
-          </View>
-
-          <Hairline />
-
-          <View style={s.row}>
-            <View
-              style={[
-                s.iconBox,
-                { backgroundColor: isDark ? 'rgba(94,218,158,0.15)' : 'rgba(5,150,105,0.12)' },
-              ]}
-            >
-              <Ionicons
-                name="barbell-outline"
-                size={16}
-                color={isDark ? '#5EDA9E' : '#059669'}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.rowTitle}>Gym & Workouts</Text>
-              <Text style={s.rowSub}>Planned workout times and rest day recovery</Text>
-            </View>
-            <Switch
-              value={modGym}
-              onValueChange={v => toggle('mod_gym', v, setModGym)}
-              trackColor={{ false: isDark ? '#2c2c30' : '#E2E1EA', true: colors.accentPrimary }}
-              thumbColor="#FFFFFF"
-              ios_backgroundColor={isDark ? '#2c2c30' : '#E2E1EA'}
-              style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
-            />
-          </View>
-
-          <Hairline />
-
           <View style={s.row}>
             <View
               style={[

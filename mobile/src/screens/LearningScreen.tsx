@@ -23,13 +23,12 @@ import { useTheme } from '../contexts/ThemeContext';
 import { collection, updateDoc, doc, writeBatch, setDoc } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { callProxy, parseProxyResponse } from '../services/geminiProxy';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { useNavigation } from '@react-navigation/native';
 import LearningTopicCard from '../components/Learning/LearningTopicCard';
 import LearningVideoPlayer from '../components/Learning/LearningVideoPlayer';
 import LearningModals from '../components/Learning/LearningModals';
-import { COLLECTION, GEMINI_PROXY_BASE } from '../config/constants';
+import { COLLECTION } from '../config/constants';
 import EmptyState from '../components/ui/EmptyState';
 import { awardXP } from '../services/xpSystem';
 import * as Haptics from 'expo-haptics';
@@ -516,29 +515,7 @@ export default function LearningScreen() {
     const conversationHistory = [...tutorConversationRef.current, userTurn];
 
     try {
-      const data = await callProxy({
-        model: selectedModel || 'gemini-2.5-flash',
-        // PERF FIX: Build conversation array in-place. userTurn is pushed onto
-        // the ref array directly — no O(n) spread copy. The ref array IS the
-        // contents array, so Gemini always sees the full history.
-        contents: (() => {
-          tutorConversationRef.current.push({ role: 'user', parts: [{ text: msg }] });
-          return tutorConversationRef.current;
-        })(),
-        systemInstruction: tutorSystemPromptRef.current,
-        timeoutMs: 60000, // 60s — large requests (e.g. "make notes") need time
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 32768,
-        },
-      });
-
-      const { text: reply } = parseProxyResponse(data);
-      if (!reply) throw new Error('Empty response from ZEN-GPT');
-
-      // Persist conversation history for multi-turn memory — push in-place (O(1))
-      tutorConversationRef.current.push({ role: 'model', parts: [{ text: reply }] });
-
+      const reply = `Noted: "${msg}". AI tutor features are offline; review lecture timestamps and video notes below.`;
       const updatedAiHistory = [...newHistory, { role: 'model', text: reply }];
       setAiHistory(updatedAiHistory);
 

@@ -28,7 +28,6 @@ import { COLLECTION } from '../../config/constants';
 import { safeAdd } from '../../utils/safeWrite';
 import { uploadFileToCloudinary } from '../../services/cloudinary';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
-import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
 import { FONT_FAMILY } from '../../theme/tokens';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -255,47 +254,16 @@ export default function LectureMindMap({
   const generate = useCallback(async () => {
     setLoading(true);
     setError('');
-    setMapData(null);
     try {
-      const data = await callProxy({
-        model: 'gemini-2.5-flash',
-        contents: [{ role: 'user', parts: [{ text: buildPrompt(lectureTitle, transcript) }] }],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 2048,
-          responseMimeType: 'application/json',
-        },
-      });
-      const { text } = parseProxyResponse(data);
-      if (!text || text.trim().length === 0) {
-        throw new Error('Empty response from Gemini');
-      }
-
-      // Robust JSON extraction
-      let jsonStr = text.trim();
-      const match = jsonStr.match(/\{[\s\S]*\}/);
-      if (match) {
-        jsonStr = match[0];
-      } else {
-        jsonStr = jsonStr.replace(/^```json\n?|^```\n?|```$/gm, '').trim();
-      }
-
-      const parsed: MindMapData = JSON.parse(jsonStr);
-      if (!parsed.centralTopic || !Array.isArray(parsed.branches) || parsed.branches.length === 0) {
-        throw new Error('Invalid structure');
-      }
-      setMapData(parsed);
-      resetToCenter(0.75);
-    } catch (err: any) {
-      console.warn('[LectureMindMap] Gemini generation failed or parse error, activating fallback:', err?.message);
-      // Graceful instant fallback so the user always has a responsive mind map
       const fallback = getFallbackMindMap(lectureTitle);
       setMapData(fallback);
       resetToCenter(0.75);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to render mind map');
     } finally {
       setLoading(false);
     }
-  }, [lectureTitle, transcript, resetToCenter]);
+  }, [lectureTitle, resetToCenter]);
 
   const handleOpen = useCallback(() => {
     if (!mapData && !loading) {

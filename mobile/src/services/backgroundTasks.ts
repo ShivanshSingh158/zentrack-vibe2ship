@@ -3,7 +3,6 @@ import * as BackgroundFetch from 'expo-background-fetch';
 import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { COLLECTION } from '../config/constants';
-import { callProxy, parseProxyResponse } from './geminiProxy';
 import { formatLocalDateStr } from '../utils/dateUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -54,7 +53,7 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
     const weekStartTs = weekStart.getTime();
 
     // 1. Tasks completed & total within week
-    const [tasksSnap, habitsSnap, gymSnap, assignSnap] = await Promise.all([
+    const [tasksSnap, habitsSnap, assignSnap] = await Promise.all([
       getDocs(query(
         collection(db, COLLECTION.TASKS),
         where('userId', '==', userId),
@@ -62,11 +61,6 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
       )),
       getDocs(query(
         collection(db, COLLECTION.HABIT_LOGS),
-        where('userId', '==', userId),
-        where('date', '>=', weekStartStr)
-      )),
-      getDocs(query(
-        collection(db, COLLECTION.GYM_LOGS),
         where('userId', '==', userId),
         where('date', '>=', weekStartStr)
       )),
@@ -83,68 +77,25 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
     });
 
     const habitsLogged = habitsSnap.docs.length;
-    const gymSessions = gymSnap.docs.length;
-
     let assignmentsSubmitted = 0;
     assignSnap.forEach(d => {
       const ts = d.data().submittedAt || 0;
       if (ts >= weekStartTs) assignmentsSubmitted++;
     });
 
-    const prompt = `
-      You are SARA, an AI analyzing a student's week from ${weekStartStr} to ${weekEndStr}.
-      User's week:
-      Tasks completed: ${completedTasks}/${totalTasks}
-      Habits logged: ${habitsLogged} sessions
-      Gym sessions: ${gymSessions}
-      Assignments submitted: ${assignmentsSubmitted}
-
-      Review their activity and generate a JSON weekly review.
-      Format:
-      {
-        "wentWell": "String analyzing what they did well this week.",
-        "toImprove": "String analyzing what they struggled with.",
-        "nextWeekPriorities": "String listing 3 concrete goals for next week.",
-        "gratitude": "String with an encouraging note."
-      }
-    `;
-
-    const response = await callProxy({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json' }
-    });
-
-    // Parse JSON safely using our helper
-    let cleanJson = '';
-    try {
-      const parsed = parseProxyResponse(response);
-      cleanJson = parsed.text || '';
-    } catch (e) {
-      cleanJson = (response.text || '').replace(/```json/g, '').replace(/```/g, '').trim();
-    }
-
-    let data;
-    try {
-      data = JSON.parse(cleanJson);
-    } catch (e) {
-      // simple fallback regex extraction if json fails
-      data = {
-        wentWell: cleanJson.substring(0, 100),
-        toImprove: 'Stay consistent.',
-        nextWeekPriorities: 'Keep pushing forward.',
-        gratitude: 'You got this!'
-      };
-    }
-
+    const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 100;
+    const wentWell = `Completed ${completedTasks} of ${totalTasks} tasks (${completionRate}%) and logged ${habitsLogged} habit sessions.`;
+    const toImprove = completedTasks < totalTasks ? `Follow through on ${totalTasks - completedTasks} remaining pending tasks.` : 'Maintain current daily execution velocity.';
+    const nextWeekPriorities = '1. Complete scheduled tasks\n2. Maintain consistent habit streaks\n3. Review upcoming course milestones';
+    const gratitude = 'Consistent daily execution compounds into remarkable progress!';
     await setDoc(reviewDocRef, {
       userId,
       weekStart: weekStartStr,
       weekEnd: weekEndStr,
-      wentWell: data.wentWell || 'Good job this week!',
-      toImprove: data.toImprove || 'Stay consistent.',
-      nextWeekPriorities: data.nextWeekPriorities || 'Keep pushing forward.',
-      gratitude: data.gratitude || 'You got this!',
+      wentWell,
+      toImprove,
+      nextWeekPriorities,
+      gratitude,
       createdAt: Date.now(),
       updatedAt: Date.now()
     }, { merge: true });

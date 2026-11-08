@@ -16,11 +16,9 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 
 import {
-  Task, CustomEvent, GymLog, AttendanceSubject,
+  Task, CustomEvent, AttendanceSubject,
   HabitLog, Habit, Assignment, WaterLog, AttendanceLog, SleepLog,
 } from '../contexts/MobileDataContext';
-import { UserGymPlanDoc } from '../types/gym.types';
-import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../data/gymPlan';
 import { COLLECTION } from '../config/constants';
 import { formatLocalDateStr } from '../utils/dateUtils';
 
@@ -35,9 +33,7 @@ import {
   shuffleArray,
   MORNING_BRIEF_TITLES_STANDARD,
   MORNING_BRIEF_STANDARD_POOLS,
-  MORNING_BRIEF_MISSED_GYM_TITLES,
-  MORNING_BRIEF_MISSED_GYM_POOLS,
-  OVERDUE_TASK_POOLS,
+      OVERDUE_TASK_POOLS,
   TASK_BUFFER_POOLS,
   TASK_T15_POOLS,
   TASK_DAILY_POOLS,
@@ -47,9 +43,7 @@ import {
   HABIT_DAILY_7_POOLS,
   HABIT_DAILY_1_POOLS,
   HABIT_DAILY_0_POOLS,
-  GYM_WORKOUT_POOLS,
-  GYM_REST_DAY_POOLS,
-  ATTENDANCE_CRITICAL_POOLS,
+      ATTENDANCE_CRITICAL_POOLS,
   CLASS_PRE_POOLS,
   POST_CLASS_LOG_POOLS,
   LAB_MID_POOLS,
@@ -151,7 +145,6 @@ function dateAtHM(base: Date, hours: number, minutes: number): Date {
 export interface ScheduleParams {
   tasks?: Task[];
   customEvents?: CustomEvent[];
-  gymLogs?: GymLog[];
   attendance?: AttendanceSubject[];
   habitLogs?: HabitLog[];
   allHabits?: Habit[];
@@ -159,7 +152,6 @@ export interface ScheduleParams {
   waterLogs?: WaterLog[];
   sleepLogs?: SleepLog[];
   attendanceLogs?: AttendanceLog[];
-  userGymPlan?: UserGymPlanDoc | null;
   flashcards?: Array<{ nextReviewDate: string }>;
   userName?: string;
   holidays?: string[];
@@ -255,21 +247,6 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
   const flashcardDueCount = (params.flashcards || [])
     .filter(f => f.nextReviewDate && f.nextReviewDate <= todayDateStr).length;
 
-  const gymPlanFingerprint = params.userGymPlan
-    ? `${params.userGymPlan.id || ''}_${params.userGymPlan.templateId || ''}_${params.userGymPlan.updatedAt || ''}_${params.userGymPlan.schedulePattern || ''}`
-    : '';
-
-  const gymLogContentHash = (params.gymLogs || [])
-    .map(g => {
-      const exercises = g.exercises || [];
-      const completedSets = exercises.reduce(
-        (sum: number, e: any) => sum + ((e.setsLog || []).filter((s: any) => s.completed).length),
-        0
-      );
-      return `${g.date}_${exercises.length}_${completedSets}_${g.completed ? '1' : '0'}`;
-    })
-    .join(';');
-
   const todayWaterLogs = (params.waterLogs || []).filter(
     w => (w.date || '').slice(0, 10) === todayDateStr
   );
@@ -295,10 +272,8 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     NOTIF_ENGINE_VERSION,
     taskFingerprint,
     eventFingerprint,
-    gymPlanFingerprint,
     (params.habitLogs || []).length,
     habitLogsTodayHash,
-    gymLogContentHash,
     assignmentHash,
     (params.waterLogs || []).length,
     waterTodayMl,
@@ -401,15 +376,13 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
   const {
     tasks = [],
     customEvents = [],
-    gymLogs = [],
-        attendance = [],
+    attendance = [],
         habitLogs = [],
         allHabits = [],
         assignments = [],
         waterLogs = [],
         sleepLogs = [],
         attendanceLogs = [],
-        userGymPlan = null,
         flashcards = [],
         holidays = [],
       } = currentParams;
@@ -553,7 +526,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
 
       const modTasks            = boolVal('mod_tasks');
       const modHabits           = boolVal('mod_habits');
-      const modGym              = boolVal('mod_gym');
+      const modGym = false;
       const modAttendance       = boolVal('mod_attendance');
       const modAssignments      = boolVal('mod_assignments', true);
       const habitStreakRisk     = boolVal('habit_streak_risk');
@@ -561,7 +534,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
       const assignment48h       = boolVal('assignment_48h');
       const assignment24h       = boolVal('assignment_24h');
       // FIX: gym rest day now defaults to true so users see recovery reminders
-      const gymRestDay          = boolVal('gym_rest_day', true);
+      const gymRestDay = false;
       const weeklyReview        = boolVal('weekly_review');
       const attendanceWarning   = boolVal('attendance_warning');
       const morningBriefEnabled = boolVal('morning_brief');
@@ -587,15 +560,6 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
 
       const defaultTimeStr = kv['zentrack_default_notif_time'] ?? '09:00';
       const defaultTime = parseHM(defaultTimeStr);
-
-      const gymNotifTimeStr    = kv['@gym_notification_time'] || kv['zentrack_gym_notif_time'];
-      const gymNotifEnabledStr = kv['@gym_notification_enabled'];
-      const gymNotifEnabled    = gymNotifEnabledStr !== 'false' && modGym;
-      let gymNotifHours = 18, gymNotifMinutes = 0;
-      if (gymNotifTimeStr) {
-        const [h, mm] = gymNotifTimeStr.split(':').map(Number);
-        if (!isNaN(h)) { gymNotifHours = h; gymNotifMinutes = mm || 0; }
-      }
 
       const quietStart = parseHM(quietStartStr);
       const quietEnd   = parseHM(quietEndStr);
@@ -651,12 +615,9 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
 
           const pendingCount = tasks.filter(t => t.date === dateString && t.status !== 'completed').length;
           const activeHabits = allHabits.filter(h => !h.archived).length;
-          const isGymLogged = gymLogs.some(g => g.date === dateString);
-
           const parts: string[] = [];
           if (pendingCount > 0) parts.push(`${pendingCount} task${pendingCount !== 1 ? 's' : ''}`);
           if (activeHabits > 0) parts.push(`${activeHabits} habit${activeHabits !== 1 ? 's' : ''}`);
-          if (!isGymLogged) parts.push('Gym workout');
           const summary = parts.length > 0 ? parts.join(' + ') : 'a fresh clean slate';
 
           const rawName = auth.currentUser?.displayName || kv['@zentrack_user_name'] || kv['zentrack_user_name'] || currentParams.userName || '';
@@ -664,27 +625,6 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
 
           let title = getRandomMessage(MORNING_BRIEF_TITLES_STANDARD(firstName));
           let body = getRandomMessage(MORNING_BRIEF_STANDARD_POOLS(summary, firstName));
-
-          if (dayOffset === 0 && modGym) {
-            const yesterday = new Date(now);
-            yesterday.setDate(yesterday.getDate() - 1);
-            const yyLocal = yesterday.getFullYear();
-            const ymLocal = String(yesterday.getMonth() + 1).padStart(2, '0');
-            const ydLocal = String(yesterday.getDate()).padStart(2, '0');
-            const yesterdayStr = `${yyLocal}-${ymLocal}-${ydLocal}`;
-
-            const yesterdayDayIndex = WEEKDAY_TO_PLAN[yesterday.getDay()];
-            const effectivePlanForYesterday =
-              userGymPlan?.customDays?.[yesterdayDayIndex] ||
-              GYM_PLAN.find(p => p.dayIndex === yesterdayDayIndex);
-            const wasScheduledGymDay = effectivePlanForYesterday && !effectivePlanForYesterday.isRest;
-            const missedGym = wasScheduledGymDay && !gymLogs.some(g => g.date === yesterdayStr);
-
-            if (missedGym) {
-              title = getRandomMessage(MORNING_BRIEF_MISSED_GYM_TITLES(firstName));
-              body = getRandomMessage(MORNING_BRIEF_MISSED_GYM_POOLS(summary, firstName));
-            }
-          }
 
           if (modAttendance && attendance.length > 0) {
             const THRESHOLD = 75;
@@ -1107,49 +1047,15 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         }
       }
 
-      // â”€â”€ 10. Gym & Academic Classes (2-Day Rolling) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      
+
+      // ── 10. Academic Classes (2-Day Rolling) ─────────────────────────
       for (let dayOffset = 0; dayOffset <= 1; dayOffset++) {
         const targetDate = new Date(now);
         targetDate.setDate(targetDate.getDate() + dayOffset);
         const dayOfWeek = targetDate.getDay();
         const dateStr = dayOffset === 0 ? todayStr : tomorrowStr;
 
-        const planIndex = WEEKDAY_TO_PLAN[dayOfWeek] || 7;
-        const plan = userGymPlan?.customDays?.[planIndex] || GYM_PLAN.find(p => p.dayIndex === planIndex);
-
-        if (plan && !plan.isRest && gymNotifEnabled) {
-          const hasLogged = gymLogs.some(g => g.date === dateStr);
-          if (!hasLogged) {
-            const exercises = plan.exercises || [];
-            const exerciseCount = exercises.length;
-            const top3Names = exercises.slice(0, 3).map(e => e.name).filter(Boolean);
-            const exercisePreview = top3Names.length > 0 ? top3Names.join(', ') : undefined;
-            const gymTrigger = dateAtHM(targetDate, gymNotifHours, gymNotifMinutes);
-            if (gymTrigger > now) {
-              enqueue(
-                PRIORITY.MEDIUM,
-                `Workout Reminder: ${plan.name}`,
-                getRandomMessage(GYM_WORKOUT_POOLS(plan.name, exercisePreview, exerciseCount)),
-                gymTrigger,
-                { type: 'gym', planName: plan.name },
-                'default',
-                actionableNotifs ? 'gym_reminder' : undefined
-              );
-            }
-          }
-        } else if (gymRestDay && plan?.isRest && modGym) {
-          // FIX: gymRestDay now defaults to true
-          const restTrigger = dateAtHM(targetDate, gymNotifHours, gymNotifMinutes);
-          if (restTrigger > now) {
-            enqueue(
-              PRIORITY.LOW,
-              'Rest & Recovery Day',
-              getRandomMessage(GYM_REST_DAY_POOLS()),
-              restTrigger,
-              { type: 'gym_rest' }
-            );
-          }
-        }
 
         // Academic Classes & Labs
         // If this date is marked as a holiday, skip all class and lab scheduling for this day
@@ -1394,9 +1300,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
 
         const recentTask = tasks.find(t => t.completedAt && t.completedAt >= thresholdStr);
         const recentHabit = habitLogs.find(l => l.date >= thresholdStr);
-        const recentGym = gymLogs.find(g => g.date >= thresholdStr);
-
-        if (!recentTask && !recentHabit && !recentGym) {
+        if (!recentTask && !recentHabit) {
           const trigger = dateAtHM(now, defaultTime.hours, defaultTime.minutes);
           if (trigger > now) {
             enqueue(
@@ -2092,7 +1996,6 @@ export async function scheduleSingleTaskReminder(task: Task) {
 export async function scheduleTaskReminders(
   tasks: Task[] = [],
   customEvents: CustomEvent[] = [],
-  gymLogs: GymLog[] = [],
   attendance: AttendanceSubject[] = [],
   habitLogs: HabitLog[] = [],
   allHabits: Habit[] = [],
@@ -2102,7 +2005,7 @@ export async function scheduleTaskReminders(
   attendanceLogs: AttendanceLog[] = []
 ) {
   return scheduleAllNotifications({
-    tasks, customEvents, gymLogs, attendance,
+    tasks, customEvents, attendance,
     habitLogs, allHabits, assignments,
     waterLogs, sleepLogs, attendanceLogs,
   });
@@ -2121,7 +2024,6 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_SYNC_TASK, async () => {
     await scheduleAllNotifications({
       tasks: manifest.tasks || [],
       customEvents: manifest.customEvents || [],
-      gymLogs: manifest.gymLogs || [],
       attendance: manifest.attendance || [],
       attendanceLogs: manifest.attendanceLogs || [],
       allHabits: manifest.habits || [],
@@ -2129,7 +2031,6 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_SYNC_TASK, async () => {
       assignments: manifest.assignments || [],
       waterLogs: manifest.waterLogs || [],
       sleepLogs: manifest.sleepLogs || [],
-      userGymPlan: manifest.userGymPlan || null,
       holidays: manifest.holidays || [],
     });
 

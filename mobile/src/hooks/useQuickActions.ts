@@ -24,11 +24,11 @@ export const QUICK_ACTIONS_CONFIG: QuickActions.Action[] = [
     params: { screen: 'Attendance' },
   },
   {
-    id: 'quick_workout',
-    title: 'Quick Workout',
-    subtitle: "Today's gym split",
-    icon: Platform.OS === 'ios' ? 'symbol:figure.strengthtraining.traditional' : 'shortcut_gym',
-    params: { screen: 'Gym' },
+    id: 'quick_habits',
+    title: 'Habits',
+    subtitle: 'Track consistency',
+    icon: Platform.OS === 'ios' ? 'symbol:arrow.triangle.2.circlepath' : 'shortcut_habits',
+    params: { screen: 'Habits' },
   },
   {
     id: 'quick_upload_notes',
@@ -58,9 +58,7 @@ export function handleQuickActionNavigation(action: QuickActions.Action, attempt
     });
   } else if (screen === 'Attendance') {
     (navigationRef as any).navigate('MainTabs', { screen: 'Attendance' });
-  } else if (screen === 'Gym') {
-    (navigationRef as any).navigate('MainTabs', { screen: 'Gym' });
-  } else if (screen === 'Notes') {
+  } else if (screen === 'Habits') { (navigationRef as any).navigate('MainTabs', { screen: 'Habits' }); } else if (screen === 'Notes') {
     (navigationRef as any).navigate('MainTabs', {
       screen: 'Notes',
       params: { openUpload: true, timestamp: Date.now() },

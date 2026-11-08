@@ -13,7 +13,6 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearScheduleCache } from '../../services/notifications';
 import { queueWrite } from '../../services/offlineSync';
-import { useGymProfile } from '../../hooks/useGymProfile';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { formatLocalDateStr } from '../../utils/dateUtils';
 
@@ -33,7 +32,6 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   const { colors, isDark } = useTheme();
   const s = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
-  const { gymProfile, saveGymProfile } = useGymProfile();
   const { weightLogs, logWater } = useWellnessData();
 
   const [editingTarget, setEditingTarget] = useState(false);
@@ -54,7 +52,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   const hasAutoCalculated = useRef(false);
 
   // User weight: check gymProfile first, then weightLogs
-  const userWeight = gymProfile.weightKg || (weightLogs && weightLogs.length > 0 ? ((weightLogs[0] as any).weightKg || (weightLogs[0] as any).weight) : null);
+  const userWeight = (weightLogs && weightLogs.length > 0 ? ((weightLogs[0] as any).weightKg || (weightLogs[0] as any).weight) : null);
 
   useEffect(() => { setTempTarget(String(target)); }, [target]);
   
@@ -140,7 +138,6 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   const handleSaveWeightAndCalculateGoal = async () => {
     const w = parseFloat(weightInput);
     if (!isNaN(w) && w > 0) {
-      await saveGymProfile({ weightKg: w });
       const autoGoal = Math.round(w * 40);
       onUpdateTarget(autoGoal);
       await AsyncStorage.setItem(WATER_GOAL_KEY, String(autoGoal));

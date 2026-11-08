@@ -22,7 +22,6 @@
 
 import React from "react";
 import { User } from "firebase/auth";
-import { UserGymPlanDoc, GymPlanDay } from "../types/gym.types";
 
 import { CoreDataProvider, useCoreData }     from "./domains/CoreDataContext";
 import { WellnessProvider, useWellnessData } from "./domains/WellnessContext";
@@ -155,6 +154,8 @@ export interface CustomEvent {
   id: string; title: string; date: string;
   type: "todo" | "job" | "goal" | "exam" | "assignment_due" | "holiday" | "viva" | "submission" | "gcal" | "gym";
   startTime?: string; endTime?: string; location?: string; description?: string; userId: string;
+  recurrenceRule?: string;
+  isRecurring?: boolean;
 }
 
 export interface WaterLog { id: string; userId: string; date: string; amountMl: number; timestamp?: number; createdAt?: any; }
@@ -183,16 +184,6 @@ export interface ContentLog {
 }
 export interface WeightLog { id?: string; userId: string; date: string; weightKg: number; photoUrl?: string; createdAt: number; }
 
-export interface GymLog {
-  id: string; date: string; userId: string; exercises?: any[]; cardio?: any[];
-  workoutStartTime?: number; workoutDurationMinutes?: number;
-  completed?: boolean; dayPlanIndex?: number;
-  startTime?: string; endTime?: string; updatedAt?: number;
-  notes?: string;
-  restTimerStartTime?: number | null;
-  restTimerDurationSecs?: number | null;
-  restTimerExerciseName?: string | null;
-}
 
 export interface AttendanceSubject {
   id: string; userId: string; name: string;
@@ -261,13 +252,8 @@ export interface WeeklyReview {
 interface MobileDataContextType {
   user: User | null;
   tasks: Task[]; habits: Habit[]; allHabits: Habit[]; habitLogs: HabitLog[];
-  notes: Note[]; userGymPlan: UserGymPlanDoc | null; storageNodes: StorageNode[];
-  goals: Goal[]; customEvents: CustomEvent[]; gymLogs: GymLog[];
-  /** true once the first Firestore gymLogs snapshot has resolved ΓÇö safe to read in useGymLog */
-  gymLogsReady: boolean;
-  /** Call to immediately open the Firestore gym subscriptions, bypassing the 1200ms idle delay */
-  gymEnsureSubscribed: () => void;
-  attendance: AttendanceSubject[]; attendanceLogs: AttendanceLog[]; assignments: Assignment[];
+  notes: Note[]; storageNodes: StorageNode[];
+  goals: Goal[]; customEvents: CustomEvent[]; attendance: AttendanceSubject[]; attendanceLogs: AttendanceLog[]; assignments: Assignment[];
   semesters: Semester[]; semesterSubjects: SemesterSubject[];
   learningTopics: LearningTopic[]; jobs: JobApplication[];
   waterLogs: WaterLog[]; weightLogs: WeightLog[];
@@ -277,9 +263,6 @@ interface MobileDataContextType {
   googleAccessToken: string | null; loading: boolean;
   pendingTaskCount: number; todayHabits: Habit[];
   pinnedModules: string[]; setPinnedModules: (modules: string[]) => void;
-  updateMasterPlan: (dayIndex: number, planDay: GymPlanDay) => Promise<void>;
-  updateFullMasterPlan: (newCustomDays: Record<number, GymPlanDay>) => Promise<void>;
-  applyMasterTemplate: (templateId: 'arnold' | 'ppl', schedulePattern?: 'mon_sun' | 'tue_mon' | 'wed_sun' | 'mon_fri') => Promise<Record<number, GymPlanDay> | undefined>;
   optimisticAddTask: (task: Task) => void;
   optimisticUpdateTask: (taskId: string, partial: Partial<Task>) => void;
   optimisticDeleteTask: (taskId: string) => void;
@@ -288,8 +271,6 @@ interface MobileDataContextType {
   optimisticUpdateHabitLog: (logId: string, partial: Partial<HabitLog>) => void;
   optimisticRemoveHabitLog: (habitId: string, date: string) => void;
   // Wellness
-  optimisticAddGymLog: (log: GymLog) => void;
-  optimisticUpdateGymLog: (logId: string, partial: Partial<GymLog>) => void;
   optimisticAddWaterLog: (log: WaterLog) => void;
   // Academic
   optimisticAddSubject: (subject: AttendanceSubject) => void;
@@ -319,7 +300,7 @@ const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
   loading: false,
   pendingTaskCount: 0,
   todayHabits: [],
-  pinnedModules: ["Tasks", "Gym", "Calendar", "Attendance"],
+  pinnedModules: ["Tasks", "Calendar", "Attendance", "Habits"],
   setPinnedModules: () => {},
   googleAccessToken: null,
   optimisticAddTask: () => {},
@@ -329,8 +310,6 @@ const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
   optimisticAddHabitLog: () => {},
   optimisticUpdateHabitLog: () => {},
   optimisticRemoveHabitLog: () => {},
-  optimisticAddGymLog: () => {},
-  optimisticUpdateGymLog: () => {},
   optimisticAddWaterLog: () => {},
   optimisticAddSubject: () => {},
   optimisticDeleteSubject: () => {},
@@ -345,13 +324,6 @@ const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
   optimisticDeleteEvent: () => {},
   optimisticAddGoal: () => {},
   optimisticUpdateGoal: () => {},
-  gymLogs: [],
-  gymLogsReady: false,
-  gymEnsureSubscribed: () => {},
-  userGymPlan: null,
-  updateMasterPlan: async () => {},
-  updateFullMasterPlan: async () => {},
-  applyMasterTemplate: async () => undefined,
   waterLogs: [],
   sleepLogs: [],
   weightLogs: [],

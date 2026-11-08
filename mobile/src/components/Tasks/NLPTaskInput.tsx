@@ -25,10 +25,7 @@ import * as Haptics from 'expo-haptics';
 import { parseNLTask, ParsedTask, NLPToken } from '../../utils/dateUtils';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { useTheme } from '../../contexts/ThemeContext';
-import { isSilenceOrNoise, VoiceState } from '../../services/voiceEngine';
-import { startNativeStt, stopNativeStt, abortNativeStt, isNativeSttListening } from '../../services/nativeStt';
 import { ActivityIndicator } from 'react-native';
-import VoiceMicButton from '../SARA/VoiceMicButton';
 
 // ─── Token color map ───────────────────────────────────────────────────────────
 const getTokenColors = (isDark: boolean): Record<NLPToken['type'], { bg: string; text: string; border: string }> => ({
@@ -65,6 +62,8 @@ const getTokenColors = (isDark: boolean): Record<NLPToken['type'], { bg: string;
 const PRIORITY_ICON_COLORS = { high: '#ef4444', medium: '#f97316', low: '#22c55e' };
 
 interface Props {
+  hideMic?: boolean;
+  onMicPress?: () => void;
   value: string;
   onChangeText: (text: string) => void;
   parsed: ParsedTask;
@@ -73,18 +72,15 @@ interface Props {
   placeholder?: string;
   onSubmitEditing?: () => void;
   onAutoSubmit?: (text: string) => void;
-  hideMic?: boolean;
-  onMicPress?: () => void;
 }
 
 export default function NLPTaskInput({
-  value, onChangeText, parsed, onDismissToken, autoFocus, placeholder, onSubmitEditing, onAutoSubmit, hideMic, onMicPress
+  value, onChangeText, parsed, onDismissToken, autoFocus, placeholder, onSubmitEditing, onAutoSubmit
 }: Props) {
   const { colors, isDark } = useTheme();
   const tokenColors = useMemo(() => getTokenColors(isDark), [isDark]);
   const inputRef = useRef<TextInput>(null);
   // Issue 88: chipScale SharedValue was allocated but never used — deleted
-  const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   
   // Local state to prevent keystroke dropping during heavy parent re-renders
   const [localText, setLocalText] = useState(value);
@@ -106,7 +102,6 @@ export default function NLPTaskInput({
 
   useEffect(() => {
     return () => {
-      abortNativeStt();
     };
   }, []);
 
@@ -116,39 +111,6 @@ export default function NLPTaskInput({
       inputRef.current?.focus();
     }
   }, [autoFocus]);
-
-  const handleToggleVoice = async () => {
-    if (voiceState === 'recording') {
-      // Stop native STT — will finalize and fire the final result
-      stopNativeStt();
-      setVoiceState('idle');
-      return;
-    }
-
-    // Start native OS SpeechRecognizer (Gboard-level quality)
-    await startNativeStt({
-      onStateChange: (state) => {
-        if (state === 'listening') setVoiceState('recording');
-        else if (state === 'idle') setVoiceState('idle');
-        else if (state === 'error') setVoiceState('idle');
-      },
-      onResult: (text, isFinal) => {
-        if (!text || !text.trim()) return;
-        // Show interim text live as user speaks
-        handleLocalChangeText(text);
-        if (isFinal) {
-          // Final result — auto-submit
-          if (isSilenceOrNoise(text)) return;
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          if (onAutoSubmit) onAutoSubmit(text);
-        }
-      },
-      onError: (err) => {
-        console.log('Voice error', err);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      },
-    });
-  };
 
   // ─── Chips row below input ────────────────────────────────────────────────
   const visibleTokens = parsed.tokens.filter(
@@ -162,13 +124,13 @@ export default function NLPTaskInput({
         {/* ── Crisp, single-rendered TextInput ─────────────────────────────── */}
         <TextInput
           ref={inputRef}
-          style={[styles.input, { color: colors.textPrimary, paddingRight: hideMic ? 16 : 48 }]}
+          style={[styles.input, { color: colors.textPrimary, paddingRight: 16 }]}
           value={localText}
           onChangeText={handleLocalChangeText}
-          placeholder={voiceState === 'recording' ? 'Listening...' : (placeholder || "Add a task... try 'report friday 3pm high'")}
-          placeholderTextColor={voiceState === 'recording' ? colors.accentPrimary : colors.textMuted}
+          placeholder={placeholder || "Add a task... try 'report friday 3pm high'"}
+          placeholderTextColor={colors.textMuted}
           autoFocus={autoFocus}
-          editable={voiceState !== 'recording' && voiceState !== 'processing'}
+          editable={true}
           // Issue 66: pass onSubmitEditing and set returnKeyType/blurOnSubmit so parent handlers fire
           onSubmitEditing={onSubmitEditing}
           returnKeyType="done"
@@ -178,17 +140,6 @@ export default function NLPTaskInput({
           spellCheck={false}
           autoCapitalize="sentences"
         />
-        
-        {!hideMic && (
-          <View style={styles.micBtnContainer}>
-            <VoiceMicButton 
-              onToggleRecord={onMicPress || handleToggleVoice}
-              isRecording={voiceState === 'recording'}
-              isProcessing={voiceState === 'processing'}
-              disabled={voiceState === 'processing'}
-            />
-          </View>
-        )}
       </View>
 
       {/* ── Parsed token chips ───────────────────────────────────────────── */}

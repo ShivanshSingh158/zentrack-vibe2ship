@@ -124,21 +124,6 @@
               "resizeMode": "horizontal|vertical",
               "description": "Today's schedule, live classes, attendance and tasks",
               "updatePeriodMillis": 1800000
-            },
-            {
-              "name": "LiveWorkout",
-              "label": "ZenTrack Workout HUD",
-              "minWidth": "250dp",
-              "minHeight": "110dp",
-              "minResizeWidth": "180dp",
-              "minResizeHeight": "110dp",
-              "targetCellWidth": 4,
-              "targetCellHeight": 2,
-              "maxResizeWidth": "600dp",
-              "maxResizeHeight": "600dp",
-              "resizeMode": "horizontal|vertical",
-              "description": "Live active gym set logger and routine tracker",
-              "updatePeriodMillis": 1800000
             }
           ]
         }

@@ -29,7 +29,6 @@ export const SPOTIFY_TAB_CONFIG: Record<string, {
 }> = {
   Home:        { name: 'Home',   activeIcon: 'home',             inactiveIcon: 'home-outline' },
   Tasks:       { name: 'Tasks',  activeIcon: 'checkmark-circle', inactiveIcon: 'checkmark-circle-outline' },
-  Gym:         { name: 'Gym',    activeIcon: 'arm-flex',         inactiveIcon: 'arm-flex-outline', iconSet: 'mci' },
   Calendar:    { name: 'Cal',    activeIcon: 'calendar-number',  inactiveIcon: 'calendar-number-outline' },
   Habits:      { name: 'Habits', activeIcon: 'sync',             inactiveIcon: 'sync-outline' },
   Attendance:  { name: 'Attend', activeIcon: 'id-card',          inactiveIcon: 'id-card-outline' },
@@ -38,7 +37,6 @@ export const SPOTIFY_TAB_CONFIG: Record<string, {
   Learning:    { name: 'Learn',  activeIcon: 'library',          inactiveIcon: 'library-outline' },
   Notes:       { name: 'Notes',  activeIcon: 'folder',           inactiveIcon: 'folder-outline' },
   Analytics:   { name: 'Stats',  activeIcon: 'bar-chart',        inactiveIcon: 'bar-chart-outline' },
-  Sara:        { name: 'SARA',   activeIcon: 'planet',           inactiveIcon: 'planet-outline' },
   More:        { name: 'More',   activeIcon: 'apps',             inactiveIcon: 'apps-outline' },
 };
 
@@ -232,7 +230,7 @@ function PillIndicator({ activeIndex, tabCount, tabWidth, colors }: PillIndicato
       duration: 160,
       easing: Easing.bezier(0.16, 1, 0.3, 1), // Apple ease-out-expo
     });
-  }, [activeIndex, tabWidth]);
+  }, [activeIndex, tabWidth, centerOffset]);
 
   const pillStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: pillX.value }],

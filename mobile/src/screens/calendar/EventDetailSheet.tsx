@@ -16,10 +16,10 @@ import { CustomEvent } from '../../contexts/MobileDataContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
 import { usePlannerData } from '../../contexts/domains/PlannerContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
-import { collection, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
-import { safeAdd, safeUpdate, safeDelete } from '../../utils/safeWrite';
+import { safeWrite, safeAdd, safeUpdate, safeDelete } from '../../utils/safeWrite';
 import { handleSyncError } from '../../utils/errorUtils';
 
 interface EventDetailSheetProps {
@@ -84,13 +84,20 @@ export function EventDetailSheet({
     return { attended, total, pct, isLab };
   }, [subject, selectedEvent]);
 
-  // Check if already logged for this date
+  // Check if already logged for this date and session slot
   const existingLog = useMemo(() => {
     if (!subject) return null;
+    const targetType = selectedEvent?.sessionType || selectedEvent?.type || 'class';
+    const targetIdx = selectedEvent?.sessionIdx ?? 0;
     return (attendanceLogs || []).find(
-      l => l.subjectId === subject.id && l.date === selectedDate
+      l =>
+        (l.subjectId === subject.id || l.subjectName === subject.name) &&
+        (l.date || '').slice(0, 10) === selectedDate &&
+        !l.isExtra &&
+        (l.type || 'class') === targetType &&
+        (l.idx ?? 0) === targetIdx
     );
-  }, [subject, attendanceLogs, selectedDate]);
+  }, [subject, attendanceLogs, selectedDate, selectedEvent]);
 
   const handleLogAttendance = async (action: 'attended' | 'missed' | 'cancelled') => {
     if (!subject || !user) return;
@@ -99,6 +106,8 @@ export function EventDetailSheet({
     const isLab = selectedEvent?.sessionType === 'lab' || selectedEvent?.type === 'lab';
     const isAttended = action === 'attended';
     const isMissed = action === 'missed';
+    const sessionIdx = selectedEvent?.sessionIdx ?? 0;
+    const type = isLab ? ('lab' as const) : ('class' as const);
 
     // 1. Optimistic update
     const deltaTotal = (isAttended || isMissed) ? 1 : 0;
@@ -116,14 +125,16 @@ export function EventDetailSheet({
 
     optimisticUpdateAttendance(subject.id!, partialUpdate);
 
+    const logId = `${user.uid}_${subject.id}_${selectedDate}_${type}_${sessionIdx}`;
     const logPayload = {
-      id: `local-${Date.now()}`,
+      id: logId,
       userId: user.uid,
       subjectId: subject.id!,
       subjectName: subject.name,
       date: selectedDate,
       action,
-      type: isLab ? ('lab' as const) : ('class' as const),
+      type,
+      idx: sessionIdx,
       isExtra: false,
       timestamp: Date.now(),
       createdAt: Date.now(),
@@ -133,26 +144,20 @@ export function EventDetailSheet({
     onClose();
 
     // 2. Persist to Firestore in background (queued offline via safeWrite)
-    const logData = {
-      userId: user.uid,
-      subjectId: subject.id!,
-      subjectName: subject.name,
-      date: selectedDate,
-      action,
-      type: isLab ? 'lab' : 'class',
-      createdAt: Date.now(),
-    };
-    await safeAdd(
+    await safeWrite(
+      () => setDoc(doc(db, COLLECTION.ATTENDANCE_LOGS, logId), logPayload, { merge: true }),
       COLLECTION.ATTENDANCE_LOGS,
-      logData,
-      () => addDoc(collection(db, COLLECTION.ATTENDANCE_LOGS), logData)
-    );
+      'set',
+      logPayload,
+      logId
+    ).catch(handleSyncError);
+
     await safeUpdate(
       subject.id!,
       COLLECTION.ATTENDANCE,
       partialUpdate,
       () => updateDoc(doc(db, COLLECTION.ATTENDANCE, subject.id!), partialUpdate)
-    );
+    ).catch(handleSyncError);
   };
 
   return (

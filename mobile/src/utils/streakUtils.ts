@@ -1,6 +1,5 @@
 import { Task, LearningTopic } from '../contexts/MobileDataContext';
 import { formatLocalDateStr } from './dateUtils';
-import { isValidWorkoutSession } from './gymUtils';
 
 function normalizeDateStr(raw?: string | null): string | null {
   if (!raw || typeof raw !== 'string') return null;
@@ -14,8 +13,7 @@ function normalizeDateStr(raw?: string | null): string | null {
 
 export function collectActiveDates(
   tasks?: Task[],
-  gymLogs?: any[],
-  habitLogs?: any[],
+    habitLogs?: any[],
   learningTopics?: LearningTopic[]
 ): Set<string> {
   const activeDates = new Set<string>();
@@ -27,13 +25,7 @@ export function collectActiveDates(
     }
   });
 
-  gymLogs?.forEach(g => {
-    if (g && isValidWorkoutSession(g) && g.date) {
-      const d = normalizeDateStr(g.date);
-      if (d) activeDates.add(d);
-    }
-  });
-
+  
   habitLogs?.forEach(h => {
     if (h && h.date) {
       const d = normalizeDateStr(h.date);
@@ -55,11 +47,10 @@ export function collectActiveDates(
 
 export function calculateAppStreak(
   tasks?: Task[],
-  gymLogs?: any[],
-  habitLogs?: any[],
+    habitLogs?: any[],
   learningTopics?: LearningTopic[]
 ): number {
-  const activeDates = collectActiveDates(tasks, gymLogs, habitLogs, learningTopics);
+  const activeDates = collectActiveDates(tasks, habitLogs, learningTopics);
 
   let current = 0;
   for (let i = 0; i < 365; i++) {
@@ -88,11 +79,10 @@ export function calculateAppStreak(
 
 export function calculateLongestAppStreak(
   tasks?: Task[],
-  gymLogs?: any[],
-  habitLogs?: any[],
+    habitLogs?: any[],
   learningTopics?: LearningTopic[]
 ): number {
-  const activeDatesSet = collectActiveDates(tasks, gymLogs, habitLogs, learningTopics);
+  const activeDatesSet = collectActiveDates(tasks, habitLogs, learningTopics);
 
   const sortedDates = Array.from(activeDatesSet).sort();
   if (sortedDates.length === 0) return 0;
@@ -122,21 +112,19 @@ export function calculateLongestAppStreak(
 
 export function calculateTotalActiveDays(
   tasks?: Task[],
-  gymLogs?: any[],
-  habitLogs?: any[],
+    habitLogs?: any[],
   learningTopics?: LearningTopic[]
 ): number {
-  return collectActiveDates(tasks, gymLogs, habitLogs, learningTopics).size;
+  return collectActiveDates(tasks, habitLogs, learningTopics).size;
 }
 
 export function calculateConsistencyRate(
   tasks?: Task[],
-  gymLogs?: any[],
-  habitLogs?: any[],
+    habitLogs?: any[],
   windowDays = 30,
   learningTopics?: LearningTopic[]
 ): number {
-  const activeDates = collectActiveDates(tasks, gymLogs, habitLogs, learningTopics);
+  const activeDates = collectActiveDates(tasks, habitLogs, learningTopics);
 
   let activeDays = 0;
   for (let i = 0; i < windowDays; i++) {

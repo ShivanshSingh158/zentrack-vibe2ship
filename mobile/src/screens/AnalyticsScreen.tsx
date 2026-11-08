@@ -38,7 +38,6 @@ import { useTheme } from '../contexts/ThemeContext';
 import AnalyticsSkeleton from '../components/Analytics/AnalyticsSkeleton';
 import { computeOrGetHotCache, generateDatasetFingerprint } from '../utils/hotCacheStore';
 import { formatLocalDateStr, formatDateShort, formatDateWithDay } from '../utils/dateUtils';
-import { isValidWorkoutSession } from '../utils/gymUtils';
 import { calculateAppStreak, calculateLongestAppStreak } from '../utils/streakUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -201,7 +200,6 @@ export default function AnalyticsScreen() {
   // Domain data hooks (granular subscription)
   const { tasks, habitLogs, allHabits, tasksReady } = useCoreData();
   const isInitialLoading = !tasksReady && (!tasks || tasks.length === 0);
-  const { gymLogs } = useWellnessData();
   const { attendanceLogs } = useAcademicData();
 
   const [period, setPeriod] = useState<Period>('week');
@@ -222,7 +220,7 @@ export default function AnalyticsScreen() {
 
   // ─── Computed Statistics (Hot-Cached) ────────────────────────────────────────
   const stats = useMemo(() => {
-    const cacheKey = `analytics_v4_${period}_${curStart}_${isDark ? 'dark' : 'light'}_${generateDatasetFingerprint(tasks)}_${generateDatasetFingerprint(habitLogs)}_${generateDatasetFingerprint(gymLogs)}_${generateDatasetFingerprint(attendanceLogs)}`;
+    const cacheKey = `analytics_v4_${period}_${curStart}_${isDark ? 'dark' : 'light'}_${generateDatasetFingerprint(tasks)}_${generateDatasetFingerprint(habitLogs)}_${generateDatasetFingerprint(attendanceLogs)}`;
     return computeOrGetHotCache(cacheKey, () => {
       let curTasks = 0;
       let prevTasks = 0;
@@ -243,33 +241,28 @@ export default function AnalyticsScreen() {
 
       let curHabits = 0;
       let prevHabits = 0;
+      const habitDefMap = new Map((allHabits || []).map(h => [h.id, h]));
+      const isValidHabitCompletion = (l: any) => {
+        if (!l || l.isFreeze) return false;
+        const def = habitDefMap.get(l.habitId);
+        if (def) {
+          if (def.type === 'negative') return !l.relapsed && (l.count === undefined || l.count === 0);
+          if (def.targetCount) return (Number(l.value) || l.count || 0) >= def.targetCount;
+        }
+        return l.completed !== false && !l.relapsed;
+      };
+
       for (const l of habitLogs || []) {
+        if (!isValidHabitCompletion(l)) continue;
         if (l.date >= curStart) curHabits++;
         else if (l.date >= prevStart && l.date <= prevEnd) prevHabits++;
       }
 
       let curGym = 0;
-      let prevGym = 0;
-      let curGymVolume = 0;
-      let prevGymVolume = 0;
+  let prevGym = 0;
+  let curGymVolume = 0;
+  let prevGymVolume = 0;
 
-      for (const g of gymLogs || []) {
-        if (!isValidWorkoutSession(g)) continue;
-        let vol = 0;
-        for (const ex of g.exercises || []) {
-          if (ex.skipped) continue;
-          for (const s of ex.setsLog || ex.sets || []) {
-            if (s.completed && !s.isWarmup) vol += (Number(s.weight) || 0) * (Number(s.reps) || 0);
-          }
-        }
-        if (g.date >= curStart) {
-          curGym++;
-          curGymVolume += vol;
-        } else if (g.date >= prevStart && g.date <= prevEnd) {
-          prevGym++;
-          prevGymVolume += vol;
-        }
-      }
 
       let curAttended = 0;
       let curMissed = 0;
@@ -341,8 +334,8 @@ export default function AnalyticsScreen() {
       }
       const prevZen = Math.max(0, Math.min(100, Math.round(prevTaskScore + prevGymScore + prevFocusScore + prevHabitScore + prevAttMod)));
 
-      const currentStreak = calculateAppStreak(tasks, gymLogs, habitLogs);
-      const bestStreak = Math.max(currentStreak, calculateLongestAppStreak(tasks, gymLogs, habitLogs));
+      const currentStreak = calculateAppStreak(tasks, habitLogs);
+      const bestStreak = Math.max(currentStreak, calculateLongestAppStreak(tasks, habitLogs));
 
       // Tier badge classification
       let tierTitle = 'Zen Master';
@@ -389,7 +382,7 @@ export default function AnalyticsScreen() {
         focusPillar: Math.min(100, Math.round((focusScore / 25) * 100)),
       };
     });
-  }, [tasks, habitLogs, gymLogs, attendanceLogs, period, curStart, prevStart, prevEnd, days, isDark]);
+  }, [tasks, habitLogs, attendanceLogs, period, curStart, prevStart, prevEnd, days, isDark]);
 
   // ─── Task Velocity Data ──────────────────────────────────────────────────────
   const taskChartData = useMemo(() => {
@@ -403,8 +396,8 @@ export default function AnalyticsScreen() {
       }
     }
 
-    const n = Math.min(days, 14);
-    const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
+    const numBuckets = days <= 7 ? days : 10;
+    const bucketSize = Math.max(1, Math.floor(days / numBuckets));
     const items: Array<{
       dateStr: string;
       label: string;
@@ -413,15 +406,25 @@ export default function AnalyticsScreen() {
       fullDate: string;
     }> = [];
 
-    for (let i = n - 1; i >= 0; i -= step) {
-      const d = daysAgoStr(i);
-      const data = taskMap.get(d) || { count: 0, mins: 0 };
-      const label = days <= 7 ? formatDateWithDay(d).split(',')[0].slice(0, 3) : d.slice(8);
+    for (let b = numBuckets - 1; b >= 0; b--) {
+      const endOffset = b * bucketSize;
+      const d = daysAgoStr(endOffset);
+      let count = 0;
+      let mins = 0;
+      for (let offset = 0; offset < bucketSize; offset++) {
+        const curD = daysAgoStr(endOffset + offset);
+        const data = taskMap.get(curD);
+        if (data) {
+          count += data.count;
+          mins += data.mins;
+        }
+      }
+      const label = days <= 7 ? formatDateWithDay(d).split(',')[0].slice(0, 3) : d.slice(5);
       items.push({
         dateStr: d,
         label,
-        count: data.count,
-        mins: data.mins,
+        count,
+        mins,
         fullDate: formatDateShort(d),
       });
     }
@@ -436,13 +439,24 @@ export default function AnalyticsScreen() {
   // ─── Habit Momentum Spline Area Data ─────────────────────────────────────────
   const habitWaveData = useMemo(() => {
     const habitMap = new Map<string, number>();
+    const habitDefMap = new Map((allHabits || []).map(h => [h.id, h]));
+    const isValidHabitCompletion = (l: any) => {
+      if (!l || l.isFreeze) return false;
+      const def = habitDefMap.get(l.habitId);
+      if (def) {
+        if (def.type === 'negative') return !l.relapsed && (l.count === undefined || l.count === 0);
+        if (def.targetCount) return (Number(l.value) || l.count || 0) >= def.targetCount;
+      }
+      return l.completed !== false && !l.relapsed;
+    };
+
     for (const l of habitLogs || []) {
-      if (l.date) habitMap.set(l.date, (habitMap.get(l.date) || 0) + 1);
+      if (l.date && isValidHabitCompletion(l)) habitMap.set(l.date, (habitMap.get(l.date) || 0) + 1);
     }
 
     const activeHabitCount = Math.max((allHabits || []).filter((h) => !h.archived).length, 1);
-    const n = Math.min(days, 14);
-    const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
+    const numBuckets = days <= 7 ? days : 10;
+    const bucketSize = Math.max(1, Math.floor(days / numBuckets));
     const items: Array<{
       dateStr: string;
       label: string;
@@ -450,11 +464,17 @@ export default function AnalyticsScreen() {
       fullDate: string;
     }> = [];
 
-    for (let i = n - 1; i >= 0; i -= step) {
-      const d = daysAgoStr(i);
-      const done = habitMap.get(d) || 0;
-      const pct = Math.min(100, Math.round((done / activeHabitCount) * 100));
-      const label = days <= 7 ? formatDateWithDay(d).split(',')[0].slice(0, 3) : d.slice(8);
+    for (let b = numBuckets - 1; b >= 0; b--) {
+      const endOffset = b * bucketSize;
+      const d = daysAgoStr(endOffset);
+      let totalDone = 0;
+      for (let offset = 0; offset < bucketSize; offset++) {
+        const curD = daysAgoStr(endOffset + offset);
+        totalDone += (habitMap.get(curD) || 0);
+      }
+      const avgDone = totalDone / bucketSize;
+      const pct = Math.min(100, Math.round((avgDone / activeHabitCount) * 100));
+      const label = days <= 7 ? formatDateWithDay(d).split(',')[0].slice(0, 3) : d.slice(5);
       items.push({
         dateStr: d,
         label,
@@ -469,36 +489,7 @@ export default function AnalyticsScreen() {
     ? Math.round(habitWaveData.reduce((acc, d) => acc + d.pct, 0) / habitWaveData.length)
     : 0;
 
-  // ─── Gym Volume Bar Data ─────────────────────────────────────────────────────
-  const gymChartData = useMemo(() => {
-    const gymMap = new Map<string, number>();
-    for (const g of gymLogs || []) {
-      if (!g.date) continue;
-      let vol = 0;
-      for (const ex of g.exercises || []) {
-        for (const s of ex.setsLog || ex.sets || []) {
-          if (s.completed) vol += (s.weight || 0) * (s.reps || 0);
-        }
-      }
-      gymMap.set(g.date, (gymMap.get(g.date) || 0) + vol);
-    }
-
-    const n = Math.min(days, 14);
-    const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
-    const items: Array<{ label: string; volume: number; fullDate: string }> = [];
-
-    for (let i = n - 1; i >= 0; i -= step) {
-      const d = daysAgoStr(i);
-      const volume = gymMap.get(d) || 0;
-      const label = days <= 7 ? formatDateWithDay(d).split(',')[0].slice(0, 3) : d.slice(8);
-      items.push({
-        label,
-        volume,
-        fullDate: formatDateShort(d),
-      });
-    }
-    return items;
-  }, [gymLogs, days]);
+  const gymChartData: any[] = [];
 
   const maxGymVolume = Math.max(...gymChartData.map((d) => d.volume), 1000);
 
@@ -512,7 +503,7 @@ export default function AnalyticsScreen() {
       }
     }
 
-    const gymDates = new Set((gymLogs || []).filter(isValidWorkoutSession).map((g) => g.date));
+    const gymDates = new Set<string>();
     const habitDates = new Map<string, number>();
     for (const l of habitLogs || []) {
       if (l.date) habitDates.set(l.date, (habitDates.get(l.date) || 0) + 1);
@@ -565,7 +556,7 @@ export default function AnalyticsScreen() {
     }
 
     return { weeks: weeksArr, activeDaysCount, totalDays: daysPast };
-  }, [tasks, gymLogs, habitLogs]);
+  }, [tasks, habitLogs]);
 
   const selectedDayInfo = useMemo(() => {
     if (!selectedHeatDate) return null;
@@ -719,7 +710,7 @@ export default function AnalyticsScreen() {
                     <View style={dynamicStyles.pillarHeader}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                         <Ionicons name="barbell-outline" size={13} color={isDark ? '#FF9F4D' : '#D97706'} />
-                        <Text style={dynamicStyles.pillarLabel}>Gym</Text>
+                        <Text style={dynamicStyles.pillarLabel}>Consistency</Text>
                       </View>
                       <Text style={dynamicStyles.pillarPct}>{stats.gymPillar}%</Text>
                     </View>

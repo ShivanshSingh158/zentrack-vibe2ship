@@ -35,7 +35,6 @@ export function BackgroundNotificationWatcher() {
     user: core.user,
     tasks: core.tasks,
     customEvents: planner.customEvents,
-    gymLogs: wellness.gymLogs,
     attendance: academic.attendance,
     attendanceLogs: academic.attendanceLogs,
     habitLogs: core.habitLogs,
@@ -43,7 +42,6 @@ export function BackgroundNotificationWatcher() {
     assignments: academic.assignments,
     waterLogs: wellness.waterLogs,
     sleepLogs: wellness.sleepLogs,
-    userGymPlan: wellness.userGymPlan,
     holidays: academic.holidays,
   });
 
@@ -51,7 +49,6 @@ export function BackgroundNotificationWatcher() {
     user: core.user,
     tasks: core.tasks,
     customEvents: planner.customEvents,
-    gymLogs: wellness.gymLogs,
     attendance: academic.attendance,
     attendanceLogs: academic.attendanceLogs,
     habitLogs: core.habitLogs,
@@ -59,7 +56,6 @@ export function BackgroundNotificationWatcher() {
     assignments: academic.assignments,
     waterLogs: wellness.waterLogs,
     sleepLogs: wellness.sleepLogs,
-    userGymPlan: wellness.userGymPlan,
     holidays: academic.holidays,
   };
 
@@ -119,30 +115,10 @@ export function BackgroundNotificationWatcher() {
           return;
         }
 
-        try {
-          const activeStateRaw = await AsyncStorage.getItem('@zentrack_active_workout_state');
-          if (activeStateRaw) {
-            const activeState = JSON.parse(activeStateRaw);
-            const startedAt =
-              activeState?.workoutStartTime ||
-              activeState?.startedAt ||
-              activeState?.updatedAt ||
-              0;
-            const isFresh = startedAt > 0 && Date.now() - startedAt < 3 * 60 * 60 * 1000;
-            if (activeState && !activeState.completed && isFresh) {
-              console.log('[BackgroundNotif] Active workout in progress (AsyncStorage) — skipping reschedule.');
-              return;
-            } else if (activeState && !activeState.completed && !isFresh) {
-              await AsyncStorage.removeItem('@zentrack_active_workout_state').catch(() => {});
-            }
-          }
-        } catch {}
-
-        const latest = dataRef.current;
+const latest = dataRef.current;
         scheduleAllNotifications({
           tasks: latest.tasks,
           customEvents: latest.customEvents,
-          gymLogs: latest.gymLogs,
           attendance: latest.attendance,
           attendanceLogs: latest.attendanceLogs,
           habitLogs: latest.habitLogs,
@@ -150,7 +126,6 @@ export function BackgroundNotificationWatcher() {
           assignments: latest.assignments,
           waterLogs: latest.waterLogs,
           sleepLogs: latest.sleepLogs,
-          userGymPlan: latest.userGymPlan,
           holidays: latest.holidays,
         }).catch(console.warn);
       });

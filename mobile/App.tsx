@@ -220,7 +220,6 @@ export default function App() {
       const notifType = (data?.type as string | undefined) ||
         (identifier.startsWith('water_') ? 'water_reminder' :
          identifier.startsWith('brief_') ? 'morning_brief' :
-         identifier.startsWith('gym_') ? 'gym' :
          identifier.startsWith('task_') ? 'task_alarm' :
          identifier.startsWith('habit_') ? 'habit_reminder' :
          identifier.startsWith('class_') ? 'class_reminder' :
@@ -249,7 +248,7 @@ export default function App() {
         // All screens registered in MainTabNavigator (both pinned + hidden ones).
         // React Navigation can navigate to any Tab.Screen even if display:none in the bar.
         const tabScreens = [
-          'Home', 'Tasks', 'Calendar', 'Habits', 'Gym', 'Attendance',
+          'Home', 'Tasks', 'Calendar', 'Habits', 'Attendance',
           'Analytics', 'Notes', 'Sara', 'Social', 'Assignments',
           'Grades', 'Learning', 'WeeklyReview', 'StudyRoom',
         ];
@@ -263,37 +262,7 @@ export default function App() {
 
 
 
-      // ── ACTION: "Snooze 15m" button on gym_reminder ────────────────────────
-      if (actionIdentifier === 'snooze_15m') {
-        const snoozeSeconds = 15 * 60;
-        const snoozeDate = new Date(Date.now() + snoozeSeconds * 1000);
-        const triggerConfig: any = Platform.OS === 'android'
-          ? {
-              type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
-              date: snoozeDate,
-              channelId: 'default',
-            }
-          : {
-              type: Notifications.SchedulableTriggerInputTypes?.DATE ?? 'date',
-              date: snoozeDate,
-            };
-
-        await Notifications.scheduleNotificationAsync({
-          identifier: `gym_snooze_${Date.now()}`,
-          content: {
-            title: 'Workout Reminder: Gym Day',
-            body: 'Snoozed 15 min. Ready to begin your workout?',
-            data: Platform.OS === 'ios' ? { type: 'gym' } : undefined,
-            categoryIdentifier: 'gym_reminder',
-            channelId: 'default',
-            ...(Platform.OS === 'ios' ? { sound: 'default' } : {}),
-            priority: Notifications.AndroidNotificationPriority?.HIGH ?? ('high' as any),
-          } as any,
-          trigger: triggerConfig,
-        });
-        return;
-      }
-
+      
       // ── ACTION: "Mark Done" button on task_reminder & location_task_reminder ─────────────────
       if (actionIdentifier === 'mark_task_done' || actionIdentifier === 'MARK_DONE') {
         const taskId    = parsedTaskId;
@@ -339,31 +308,8 @@ export default function App() {
         return;
       }
 
-      // ── ACTION: "Start Workout" button on gym_reminder & location_gym_arrival ─
-      if (actionIdentifier === 'start_workout' || actionIdentifier === 'START_WORKOUT') {
-        if (navigationRef.isReady()) {
-          navigationRef.navigate('MainTabs', { screen: 'Gym' } as any);
-          setTimeout(() => {
-            if (navigationRef.isReady()) {
-              navigationRef.navigate('ActiveLogging', { date: formatLocalDateStr(), initialIndex: 0 } as any);
-            }
-          }, 300);
-        }
-        return;
-      }
-
-      if (actionIdentifier === 'SAVE_SUMMARY') {
-        if (navigationRef.isReady()) {
-          navigationRef.navigate('MainTabs', { screen: 'Gym' } as any);
-          setTimeout(() => {
-            if (navigationRef.isReady()) {
-              navigationRef.navigate('WorkoutSummary', { date: formatLocalDateStr() } as any);
-            }
-          }, 300);
-        }
-        return;
-      }
-
+      
+      
       // ── ACTION: "Open Task" button on task_reminder & location_task_reminder ─────
       if (actionIdentifier === 'open_tasks' || actionIdentifier === 'OPEN_TASK') {
         nav('Tasks');
@@ -788,60 +734,9 @@ export default function App() {
       }
 
 
-      // ── BODY TAP: Gym Arrival / Departure Geofence ─────────────────────────
-      if (
-        notifType === 'GYM_ARRIVAL' ||
-        notifType === 'location_gym_arrival' ||
-        notification.request.content.title?.includes('Arrived at')
-      ) {
-        if (navigationRef.isReady()) {
-          navigationRef.navigate('MainTabs', { screen: 'Gym' } as any);
-          setTimeout(() => {
-            if (navigationRef.isReady()) {
-              navigationRef.navigate('ActiveLogging', { date: formatLocalDateStr(), initialIndex: 0 } as any);
-            }
-          }, 400);
-        }
-        return;
-      }
-
-      if (
-        notifType === 'GYM_DEPARTURE' ||
-        notifType === 'location_gym_departure' ||
-        notification.request.content.title?.includes('Finished at') ||
-        notification.request.content.title?.includes('Workout Saved')
-      ) {
-        if (navigationRef.isReady()) {
-          navigationRef.navigate('MainTabs', { screen: 'Gym' } as any);
-          setTimeout(() => {
-            if (navigationRef.isReady()) {
-              navigationRef.navigate('WorkoutSummary', { date: formatLocalDateStr() } as any);
-            }
-          }, 400);
-        }
-        return;
-      }
-
-      // ── BODY TAP: "Rest is over" notification ──────────────────────────────
-      // Navigates into the GymStack's ActiveLogging screen for today's workout.
-      if (
-        notifType === 'rest_over' ||
-        notification.request.content.title?.includes('Rest is over') ||
-        notification.request.content.title?.includes('⏱️')
-      ) {
-        if (navigationRef.isReady()) {
-          // Step 1: focus the Gym tab (mounts GymStack)
-          navigationRef.navigate('MainTabs', { screen: 'Gym' } as any);
-          // Step 2: navigate inside GymStack after it mounts
-          setTimeout(() => {
-            if (navigationRef.isReady()) {
-              navigationRef.navigate('ActiveLogging', { date: formatLocalDateStr() } as any);
-            }
-          }, 400);
-        }
-        return;
-      }
-
+      
+      
+      
       // ── BODY TAP: Task reminder ("taskId" in data, or type = overdue_nudge) ─
       if (data?.taskId || notifType === 'overdue_nudge' || notifType === 'task_reminder' || categoryId === 'task_reminder') {
         nav('Tasks');
@@ -874,18 +769,8 @@ export default function App() {
         return;
       }
 
-      // ── BODY TAP: Gym reminder (workout day) ───────────────────────────────
-      if (notifType === 'gym' || notifType === 'gym_reminder' || categoryId === 'gym_reminder') {
-        nav('Gym');
-        return;
-      }
-
-      // ── BODY TAP: Gym rest day ─────────────────────────────────────────────
-      if (notifType === 'gym_rest') {
-        nav('Gym');
-        return;
-      }
-
+      
+      
       // ── BODY TAP: Hydration reminder ────────────────────────────────────────
       if (notifType === 'water_reminder' || categoryId === 'water_reminder') {
         nav('Home');

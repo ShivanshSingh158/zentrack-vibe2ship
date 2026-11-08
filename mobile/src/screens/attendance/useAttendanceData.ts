@@ -4,7 +4,7 @@
  * and derived computed values for the Attendance module.
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { InteractionManager } from 'react-native';
+import { InteractionManager, AppState } from 'react-native';
 import { collection, query, where, onSnapshot, writeBatch, doc, limit } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
@@ -136,8 +136,22 @@ export function useAttendanceData() {
   subjectsRef.current = subjects;
 
   const selectedDayOfWeek = useMemo(() => new Date(selectedDate + 'T00:00:00').getDay().toString(), [selectedDate]);
-  const isSelectedHoliday = useMemo(() => holidays.includes(selectedDate), [holidays, selectedDate]);
-  const today             = useMemo(() => getLocalDateString(new Date()), []);
+  const isSelectedHoliday = useMemo(() => (holidays || []).includes(selectedDate), [holidays, selectedDate]);
+  const [today, setToday] = useState(() => getLocalDateString(new Date()));
+  useEffect(() => {
+    const checkDate = () => {
+      const nowStr = getLocalDateString(new Date());
+      setToday(prev => (prev !== nowStr ? nowStr : prev));
+    };
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') checkDate();
+    });
+    const interval = setInterval(checkDate, 60000);
+    return () => {
+      sub.remove();
+      clearInterval(interval);
+    };
+  }, []);
   const weekDates         = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
 
   // ── Past Logs Filter (date < today) ──

@@ -29,12 +29,7 @@ interface CalendarDayViewProps {
   setInitialTime: (time: string) => void;
   setSelectedEvent: (evt: any) => void;
   setShowAddModal: (show: boolean) => void;
-  setSelectedGymLog: (log: any) => void;
-  setGymStartTimeInput: (time: string) => void;
-  setGymEndTimeInput: (time: string) => void;
-  setShowGymModal: (show: boolean) => void;
-  setShowEventModal: (show: boolean) => void;
-  gymLogs: any[];
+          setShowEventModal: (show: boolean) => void;
   /** Current time in minutes since midnight for past-event fading */
   currentTimeMins?: number;
 }
@@ -52,8 +47,7 @@ export const CalendarDayView = React.memo(function CalendarDayView({
   styles, colors, isDark = true, unscheduledDayEvents, processedEvents, DYNAMIC_HOURS,
   minHour, maxHour, isToday, indicatorTop, scrollViewRef,
   setInitialTime, setSelectedEvent, setShowAddModal, setShowEventModal,
-  setSelectedGymLog, setGymStartTimeInput, setGymEndTimeInput, setShowGymModal, gymLogs,
-  currentTimeMins,
+    currentTimeMins,
 }: CalendarDayViewProps) {
 
   const eventColorMap = useMemo(() => getEventColors(colors, isDark), [colors, isDark]);
@@ -121,18 +115,7 @@ export const CalendarDayView = React.memo(function CalendarDayView({
                     isCancelled && { opacity: 0.5 },
                   ]}
                   onPress={() => {
-                    if (evt.type === 'gym') {
-                      const log = gymLogs?.find((g: any) => g.id === evt.id);
-                      if (log) {
-                        setSelectedGymLog(log);
-                        setGymStartTimeInput(evt.startTime || '10:00');
-                        setGymEndTimeInput(evt.endTime || '11:00');
-                        setShowGymModal(true);
-                      }
-                    } else {
-                      setSelectedEvent(evt);
-                      setShowEventModal(true);
-                    }
+                    setSelectedEvent(evt); setShowEventModal(true);
                   }}
                   activeOpacity={0.75}
                 >
@@ -242,16 +225,7 @@ export const CalendarDayView = React.memo(function CalendarDayView({
                       }
                     ]}
                     onPress={() => {
-                      if (event.type === 'gym') {
-                        const log = gymLogs?.find((g: any) => g.id === event.id || g.date === event.date) || { id: event.id || `gym_${event.date}`, date: event.date };
-                        setSelectedGymLog(log);
-                        setGymStartTimeInput(event.startTime || '10:00');
-                        setGymEndTimeInput(event.endTime || '11:00');
-                        setShowGymModal(true);
-                      } else {
-                        setSelectedEvent(event);
-                        setShowEventModal(true);
-                      }
+                      setSelectedEvent(event); setShowEventModal(true);
                     }}
                     activeOpacity={0.8}
                   >

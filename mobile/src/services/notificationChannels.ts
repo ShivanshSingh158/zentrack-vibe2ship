@@ -68,7 +68,7 @@ export async function ensureNotificationChannels(): Promise<void> {
       enableVibrate: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
-    await Notifications.setNotificationChannelAsync('sara_critical', {
+    await Notifications.setNotificationChannelAsync('critical_alerts', {
       name: 'Critical Priority Alerts',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 600, 200, 600, 200, 600],
@@ -88,16 +88,7 @@ export async function ensureNotificationChannels(): Promise<void> {
       enableVibrate: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
-    await Notifications.setNotificationChannelAsync('active_workout', {
-      name: 'Active Workout HUD & Rest Timer',
-      importance: Notifications.AndroidImportance.LOW,
-      sound: undefined,
-      enableLights: false,
-      enableVibrate: false,
-      showBadge: false,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    });
-    // ── Task Alarm: Distinct double-pulse so you never miss a task ──
+        // ── Task Alarm: Distinct double-pulse so you never miss a task ──
     await Notifications.setNotificationChannelAsync('task_alarm', {
       name: 'Task Alarms',
       importance: Notifications.AndroidImportance.MAX,

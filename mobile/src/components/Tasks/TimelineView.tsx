@@ -5,10 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, updateDoc } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 
-import { Task, AttendanceSubject, AttendanceLog, GymLog } from '../../contexts/MobileDataContext';
-import { UserGymPlanDoc, GymPlanDay } from '../../types/gym.types';
-import { getCustomPlanDay, planDayIndexForDate } from '../../hooks/useGymLog';
-import { GYM_PLAN } from '../../data/gymPlan';
+import { Task, AttendanceSubject, AttendanceLog } from '../../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { db } from '../../services/firebase';
 import { feedback } from '../../utils/haptics';
@@ -37,9 +34,7 @@ interface TimelineViewProps {
   isDark?: boolean;
   attendance?: AttendanceSubject[];
   attendanceLogs?: AttendanceLog[];
-  gymLogs?: GymLog[];
-  userGymPlan?: UserGymPlanDoc | null | undefined;
-  selectedDate?: string;
+    selectedDate?: string;
 }
 
 // •• Main TimelineView ••••••••••••••••••••••••••••••••••••••••••••••••••••••••
@@ -51,9 +46,7 @@ const TimelineView = React.memo(function TimelineView({
   isDark: propIsDark,
   attendance: propAttendance,
   attendanceLogs: propAttendanceLogs,
-  gymLogs: propGymLogs,
-  userGymPlan: propUserGymPlan,
-  selectedDate,
+      selectedDate,
 }: TimelineViewProps) {
   const theme = useTheme();
   const colors = propColors || theme.colors;
@@ -63,12 +56,9 @@ const TimelineView = React.memo(function TimelineView({
 
   // Domain context fallbacks: allows TasksScreen to avoid subscribing to Academic and Wellness contexts
   const academic = useAcademicData();
-  const wellness = useWellnessData();
-  const attendance = propAttendance ?? academic.attendance;
+    const attendance = propAttendance ?? academic.attendance;
   const attendanceLogs = propAttendanceLogs ?? academic.attendanceLogs;
-  const gymLogs = propGymLogs ?? wellness.gymLogs;
-  const userGymPlan = propUserGymPlan !== undefined ? propUserGymPlan : wellness.userGymPlan;
-
+    
   // Live time tracking for "Current Time" indicator
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
@@ -111,21 +101,11 @@ const TimelineView = React.memo(function TimelineView({
       });
     }
 
-    if (selectedDate) {
-      const gLog = (gymLogs || []).find(g => g.date === selectedDate);
-      const planIdx = planDayIndexForDate(selectedDate);
-      const gPlan = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find(d => d.dayIndex === planIdx);
-      const isRest = gPlan?.isRest ?? (planIdx === 7);
-      if (gLog?.startTime || !isRest) {
-        const f = parseTime(gLog?.startTime || gPlan?.startTime || '18:00');
-        if (f !== null && f <= END_HOUR) floats.push(f);
-      }
-    }
-
+    
     if (floats.length === 0) return DEFAULT_START_HOUR;
     const minFloat = Math.min(...floats);
     return Math.min(DEFAULT_START_HOUR, Math.max(0, Math.floor(minFloat - 0.1)));
-  }, [tasks, attendance, gymLogs, userGymPlan, selectedDate]);
+  }, [tasks, attendance, selectedDate]);
 
   const hours = useMemo(() => {
     const arr = [];
@@ -332,52 +312,6 @@ const TimelineView = React.memo(function TimelineView({
     return blocks.sort((a, b) => a.startFloat - b.startFloat);
   }, [attendance, attendanceLogs, selectedDate, START_HOUR, isToday, nowHours]);
 
-  // •• Build gym block from gymLogs and userGymPlan •••••••••••••••••••••••••••
-  const gymBlock = useMemo((): ClassBlock | null => {
-    if (!selectedDate) return null;
-    const gLog = (gymLogs || []).find(g => g.date === selectedDate);
-    const planIdx = planDayIndexForDate(selectedDate);
-    const gPlan = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find(d => d.dayIndex === planIdx);
-    
-    // Check if this day is a gym day or has a manual log
-    const isRest = gPlan?.isRest ?? (planIdx === 7);
-    if (!gLog?.startTime && isRest) return null;
-
-    // Use manual override first, then weekly schedule, then default '18:00'
-    const startTimeStr = gLog?.startTime || gPlan?.startTime || '18:00';
-    const endTimeStr = gLog?.endTime || gPlan?.endTime || (startTimeStr === '18:00' ? '19:30' : undefined);
-
-    const { startFloat, endFloat: parsedEnd } = parseTimeRange(`${startTimeStr} - ${endTimeStr || ''}`, 1.5);
-    if (startFloat === null || startFloat > END_HOUR) return null;
-    
-    const endFloat = Math.min(END_HOUR, parsedEnd ?? (startFloat + 1.5));
-    const top = (startFloat - START_HOUR) * HOUR_HEIGHT;
-    const height = (endFloat - startFloat) * HOUR_HEIGHT;
-
-    const hasCompletedSets = (gLog?.exercises || []).some(
-      (ex: any) => (ex.setsLog || []).some((s: any) => s.completed)
-    );
-    const isGymDone = !!gLog?.completed || hasCompletedSets || (gLog?.workoutDurationMinutes !== undefined && gLog.workoutDurationMinutes > 0);
-    const isOngoing = isToday && nowHours >= startFloat && nowHours < endFloat && !isGymDone;
-    const logStatus: 'attended' | 'missed' | 'cancelled' | 'unlogged' = isGymDone ? 'attended' : 'unlogged';
-    
-    const workoutTitle = gPlan?.name || (gPlan?.focus ? `Workout: ${gPlan.focus}` : 'Gym Workout');
-
-    return {
-      id: `gym-${selectedDate}`,
-      title: workoutTitle,
-      type: 'gym',
-      startFloat,
-      endFloat,
-      top,
-      height: Math.max(height - 4, 38),
-      time: `${floatToTimeString(startFloat)} - ${floatToTimeString(endFloat)}`,
-      room: 'Gym',
-      logStatus,
-      isOngoing,
-    };
-  }, [gymLogs, userGymPlan, selectedDate, START_HOUR, isToday, nowHours]);
-
   // •• Calculate Free Time gaps between all events •••••••••••••••••••••••••••
   const freeTimeBlocks = useMemo(() => {
     const allBlocks: { startFloat: number; endFloat: number }[] = [];
@@ -388,10 +322,6 @@ const TimelineView = React.memo(function TimelineView({
     classBlocks.forEach(cb => {
       allBlocks.push({ startFloat: cb.startFloat, endFloat: cb.endFloat });
     });
-    if (gymBlock) {
-      allBlocks.push({ startFloat: gymBlock.startFloat, endFloat: gymBlock.endFloat });
-    }
-
     allBlocks.sort((a, b) => a.startFloat - b.startFloat);
 
     const fBlocks: { top: number; height: number }[] = [];
@@ -413,7 +343,7 @@ const TimelineView = React.memo(function TimelineView({
       });
     }
     return fBlocks;
-  }, [positionedTasks, classBlocks, gymBlock, START_HOUR]);
+  }, [positionedTasks, classBlocks, START_HOUR]);
 
   // •• Collision check •••••••••••••••••••••••••••••••••••••••••••••••••••••••
   const checkCollision = useCallback((
@@ -431,11 +361,8 @@ const TimelineView = React.memo(function TimelineView({
     for (const cb of classBlocks) {
       if (proposedStart < cb.endFloat && proposedEnd > cb.startFloat) return true;
     }
-    if (gymBlock) {
-      if (proposedStart < gymBlock.endFloat && proposedEnd > gymBlock.startFloat) return true;
-    }
     return false;
-  }, [positionedTasks, classBlocks, gymBlock, START_HOUR]);
+  }, [positionedTasks, classBlocks, START_HOUR]);
 
   // •• Save new timeSlot to Firestore & Optimistic UI ••••••••••••••••••••••••••••••
   const handleReschedule = useCallback(async (taskId: string, newTimeSlot: string) => {
@@ -506,7 +433,7 @@ const TimelineView = React.memo(function TimelineView({
         ))}
 
         {/* Class / Lab / Gym Blocks (non-draggable) */}
-        {[...classBlocks, gymBlock].filter(Boolean).map((cb: any) => {
+        {[...classBlocks].map((cb: any) => {
           const isPast = isPastDay || (isToday && cb.endFloat < nowHours);
           const isOngoing = !!cb.isOngoing;
           const isAttended = cb.logStatus === 'attended';

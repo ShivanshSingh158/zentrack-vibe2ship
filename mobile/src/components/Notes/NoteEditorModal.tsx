@@ -32,7 +32,6 @@ import type { StorageNode } from '../../contexts/MobileDataContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useCreativeData } from '../../contexts/domains/CreativeContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
-import { callGeminiProxy } from '../../services/geminiProxy';
 import { safeWrite, safeUpdate } from '../../utils/safeWrite';
 import { handleSyncError } from '../../utils/errorUtils';
 import { feedback } from '../../utils/haptics';
@@ -43,15 +42,6 @@ interface NoteEditorModalProps {
   parentId: string | null;
   onClose: () => void;
 }
-
-const AI_QUICK_ACTIONS = [
-  { label: '📚 Study Guide', prompt: 'Convert these notes into a structured study guide with headers and key definitions.' },
-  { label: '❓ Practice Questions', prompt: 'Generate 10 exam-style questions from this content with answers.' },
-  { label: '🧠 Mind Map', prompt: 'Create a hierarchical mind map outline from this content.' },
-  { label: '📝 Summary Card', prompt: 'Create a 5-bullet flashcard summary of the key points.' },
-  { label: '🔍 Gap Analysis', prompt: 'What important topics from this subject might be missing from these notes?' },
-  { label: '🗣️ ELI5', prompt: 'Explain this content in the simplest possible language for a beginner.' },
-];
 
 export const NoteEditorModal = React.memo(function NoteEditorModal({
   note,
@@ -68,12 +58,9 @@ export const NoteEditorModal = React.memo(function NoteEditorModal({
   const [title, setTitle] = useState(note?.name || '');
   const [content, setContent] = useState(note?.content || '');
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
-  const [showAi, setShowAi] = useState(false);
-  const [aiInput, setAiInput] = useState('');
   const [saving, setSaving] = useState(false);
 
   const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
-  const [aiLoading, setAiLoading] = useState(false);
 
   // Use a ref for selection instead of state to prevent re-renders on every cursor tap
   const selectionRef = useRef({ start: 0, end: 0 });
@@ -89,7 +76,6 @@ export const NoteEditorModal = React.memo(function NoteEditorModal({
       setContent('');
     }
     setViewMode('edit');
-    setShowAi(false);
     setChatHistory([]);
   }, [note]);
 
@@ -160,59 +146,12 @@ export const NoteEditorModal = React.memo(function NoteEditorModal({
     const { start, end } = selectionRef.current;
     setContent(prev => {
       const selectedText = prev.substring(start, end);
-      return prev.substring(0, start) + prefix + selectedText + suffix + prev.substring(end);
+      const nextContent = prev.substring(0, start) + prefix + selectedText + suffix + prev.substring(end);
+      const newPos = start + prefix.length + selectedText.length + suffix.length;
+      selectionRef.current = { start: newPos, end: newPos };
+      return nextContent;
     });
   }, []);
-
-  const handleAiSubmit = useCallback(async (prompt?: string) => {
-    const userPrompt = prompt || aiInput.trim();
-    if (!userPrompt) return;
-
-    setAiInput('');
-    setChatHistory(prev => [...prev, { role: 'user', text: userPrompt }]);
-    setAiLoading(true);
-
-    try {
-      const noteCtx = content ? `The current note content is:\n\n${content}\n\n` : 'The note is currently empty.';
-
-      const ctx = `You are Sara — ZenTrack's deeply personalised AI writing partner operating inside the user's private note vault.
-
-YOUR PERSONALITY:
-— You are precise, insightful, and genuinely engaged with the user's knowledge and goals.
-— You treat every request as if you're a world-class expert on the subject being discussed.
-— You write like a knowledgeable mentor who values the user's time.
-
-CRITICAL FORMATTING RULES (non-negotiable):
-1. NEVER use markdown symbols: no *, no **, no #, no ##, no ===, no ---, no backtick fences.
-2. Structure your response using NUMBERED SECTIONS and CAPITALISED SUBHEADINGS only.
-3. Use line breaks and indentation (spaces) to show hierarchy — not markdown.
-4. Bold important terms by writing them in ALL CAPS sparingly — not with asterisks.
-5. Always write in complete, detailed sentences — never bullet dumps.
-6. If listing items, write them as: "1. First item explanation...", "2. Second item..."
-7. Every response must be thorough, accurate, and contain genuine depth — not surface-level.
-8. If asked to write, draft, or expand — produce a FULL, polished version, not a skeleton.
-9. Speak directly to the user. Be personal. Reference their note content when relevant.
-10. End each response with a concise "NEXT STEPS" or "KEY TAKEAWAY" section.
-
-CURRENT NOTE CONTEXT:
-${noteCtx}
-
-Remember: Your output will be inserted directly into a note. Zero markdown symbols. Pure structured prose.`;
-
-      const text = await callGeminiProxy(
-        [{ parts: [{ text: `${ctx}\n\nUser request: ${userPrompt}` }] }],
-        {
-          maxOutputTokens: 32768,
-          temperature: 0.75,
-        }
-      );
-      setChatHistory(prev => [...prev, { role: 'model', text }]);
-    } catch (err) {
-      console.error(err);
-      setChatHistory(prev => [...prev, { role: 'model', text: 'Sorry, I encountered an error. Please try again.' }]);
-    }
-    setAiLoading(false);
-  }, [aiInput, content]);
 
   const handleExportPdf = useCallback(async () => {
     try {
@@ -249,6 +188,11 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
           else if (line.trim() === '') html += '<br>';
           else html += `<p>${processed}</p>\n`;
         }
+
+        if (inCodeBlock && codeBuffer) {
+          html += `<pre><code>${escapeHtml(codeBuffer.trim())}</code></pre>\n`;
+        }
+
         return html;
       };
 
@@ -376,13 +320,6 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
               <Ionicons name="download-outline" size={16} color={colors.accentPrimary} />
               <Text style={styles.aiToggleText}>PDF</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setShowAi(!showAi)}
-              style={[styles.aiToggleBtn, showAi && styles.aiToggleBtnActive]}
-            >
-              <Image source={require('../../../assets/images/sara-running.png')} style={{ width: 16, height: 16 }} resizeMode="contain" />
-              <Text style={[styles.aiToggleText, showAi && { color: isDark ? '#000000' : '#FFFFFF' }]}>AI</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -427,76 +364,6 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
               </ScrollView>
             )}
           </View>
-
-          {/* AI Panel */}
-          {showAi && (
-            <View style={styles.aiPanel}>
-              <View style={styles.aiPanelHeader}>
-                <Image source={require('../../../assets/images/sara-idle.png')} style={{ width: 16, height: 16 }} resizeMode="contain" />
-                <Text style={styles.aiPanelTitle}>Sara</Text>
-              </View>
-              <ScrollView style={styles.aiChatArea} contentContainerStyle={{ padding: SPACE.sm }}>
-                <View style={styles.aiMsgSystem}>
-                  <Text style={styles.aiMsgTextSystem}>
-                    I can help you write, summarize, explain, expand, rewrite, or extract insights from this note. What do you need?
-                  </Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
-                    {AI_QUICK_ACTIONS.map(action => (
-                      <TouchableOpacity
-                        key={action.label}
-                        style={styles.aiQuickBtn}
-                        onPress={() => handleAiSubmit(action.prompt)}
-                      >
-                        <Text style={styles.aiQuickBtnText}>{action.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-                {chatHistory.map((msg, idx) => (
-                  <View
-                    key={idx}
-                    style={[
-                      styles.chatBubble,
-                      msg.role === 'user'
-                        ? { alignSelf: 'flex-end', backgroundColor: isDark ? '#27272A' : colors.accentPrimary }
-                        : { alignSelf: 'flex-start', backgroundColor: isDark ? 'rgba(165,153,255,0.10)' : 'rgba(108,92,231,0.08)' },
-                    ]}
-                  >
-                    <Text style={{ color: msg.role === 'user' ? '#ffffff' : colors.textPrimary, fontSize: 13, lineHeight: 18 }}>
-                      {msg.text}
-                    </Text>
-                    {msg.role === 'model' && (
-                      <TouchableOpacity
-                        style={styles.insertBtn}
-                        onPress={() => setContent(prev => (prev ? prev + '\n\n' : '') + msg.text)}
-                      >
-                        <Ionicons name="arrow-down-circle-outline" size={14} color={colors.accentPrimary} />
-                        <Text style={{ fontSize: 11, color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold }}>Insert to Note</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                ))}
-                {aiLoading && (
-                  <View style={[styles.chatBubble, { alignSelf: 'flex-start', backgroundColor: isDark ? 'rgba(165,153,255,0.10)' : 'rgba(108,92,231,0.08)' }]}>
-                    <ActivityIndicator size="small" color={colors.accentPrimary} />
-                  </View>
-                )}
-              </ScrollView>
-              <View style={styles.aiInputArea}>
-                <TextInput
-                  style={styles.aiInput}
-                  placeholder="Ask AI..."
-                  placeholderTextColor={colors.textMuted}
-                  value={aiInput}
-                  onChangeText={setAiInput}
-                  onSubmitEditing={() => handleAiSubmit()}
-                />
-                <TouchableOpacity style={styles.aiSendBtn} onPress={() => handleAiSubmit()}>
-                  <Ionicons name="send" size={16} color={isDark ? '#000000' : '#FFFFFF'} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
         </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>

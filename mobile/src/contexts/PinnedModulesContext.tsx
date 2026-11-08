@@ -7,7 +7,7 @@ import { COLLECTION } from '../config/constants';
 import { getBootManifestSync, updateL1Cache } from '../utils/bootManifest';
 import { safeWrite } from '../utils/safeWrite';
 
-const DEFAULT_PINNED_MODULES = ['Tasks', 'Gym', 'Calendar', 'Attendance'];
+const DEFAULT_PINNED_MODULES = ['Tasks', 'Calendar', 'Attendance', 'Habits'];
 
 export interface PinnedModulesContextType {
   pinnedModules: string[];
@@ -39,7 +39,7 @@ export function PinnedModulesProvider({ children }: { children: React.ReactNode 
           try {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              const clamped = parsed.slice(0, 4);
+              const clamped = parsed.filter(m => m !== 'Gym').slice(0, 4);
               setPinnedModulesState(clamped);
               updateL1Cache('pinnedModules', clamped);
             }
@@ -62,7 +62,7 @@ export function PinnedModulesProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const setPinnedModules = useCallback((mods: string[]) => {
-    const clamped = mods.length > 0 ? mods.slice(0, 4) : DEFAULT_PINNED_MODULES;
+    const clamped = mods.filter(m => m !== 'Gym').slice(0, 4);
     setPinnedModulesState(clamped);
     updateL1Cache('pinnedModules', clamped);
     AsyncStorage.setItem('@zentrack_pinned_modules', JSON.stringify(clamped)).catch(console.warn);

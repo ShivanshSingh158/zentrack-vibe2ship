@@ -1,4 +1,5 @@
-import { useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { AppState } from 'react-native';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { formatLocalDateStr } from '../utils/dateUtils';
 
@@ -16,10 +17,26 @@ import { formatLocalDateStr } from '../utils/dateUtils';
 export function useTabBarBadges() {
   const { tasks } = useCoreData();
   const prevBadgesRef = useRef<Record<string, number>>({});
+  const [todayStr, setTodayStr] = useState(() => formatLocalDateStr(new Date()));
+
+  useEffect(() => {
+    const checkDate = () => {
+      const nowStr = formatLocalDateStr(new Date());
+      setTodayStr(prev => (prev !== nowStr ? nowStr : prev));
+    };
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') checkDate();
+    });
+    const interval = setInterval(checkDate, 60000);
+    return () => {
+      sub.remove();
+      clearInterval(interval);
+    };
+  }, []);
 
   return useMemo(() => {
     // Create a local today string safely (YYYY-MM-DD)
-    const localISOTime = formatLocalDateStr(new Date());
+    const localISOTime = todayStr;
 
     const newBadges: Record<string, number> = {};
 
@@ -53,5 +70,5 @@ export function useTabBarBadges() {
     }
 
     return prevBadgesRef.current;
-  }, [tasks]);
+  }, [tasks, todayStr]);
 }

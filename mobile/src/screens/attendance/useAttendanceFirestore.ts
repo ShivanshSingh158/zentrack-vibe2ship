@@ -532,6 +532,21 @@ export function useAttendanceFirestore({
               subjectDeltas[l.subjectId].classesTotal -= 1;
             }
           }
+
+          if (l.id) {
+            optimisticRemoveAttendanceLog(l.id);
+            safeWrite(
+              async () => {
+                const b = writeBatch(db);
+                b.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, l.id));
+                await b.commit();
+              },
+              COLLECTION.ATTENDANCE_LOGS,
+              'delete',
+              null,
+              l.id
+            ).catch(handleSyncError);
+          }
         }
 
         for (const [subId, deltas] of Object.entries(subjectDeltas)) {
@@ -676,6 +691,7 @@ export function useAttendanceFirestore({
         const subjectLogs = currentLogs.filter(l => l.subjectId === id || l.subjectName === name);
         for (let i = 0; i < subjectLogs.length; i += 400) {
           const chunk = subjectLogs.slice(i, i + 400);
+          const chunkKey = `delete_subj_logs_${id}_${i}`;
           safeWrite(
             async () => {
               const b = writeBatch(db);
@@ -687,7 +703,7 @@ export function useAttendanceFirestore({
             COLLECTION.ATTENDANCE_LOGS,
             'delete',
             null,
-            chunk[0]?.id || id
+            chunkKey
           ).catch(handleSyncError);
         }
 
@@ -721,28 +737,23 @@ export function useAttendanceFirestore({
           currentSubjects.forEach(s => {
             if (!s.id) return;
             optimisticUpdateAttendance(s.id, zeroUpdate);
-          });
-
-          for (let i = 0; i < currentSubjects.length; i += 400) {
-            const chunk = currentSubjects.slice(i, i + 400);
             safeWrite(
               async () => {
                 const b = writeBatch(db);
-                chunk.forEach(s => {
-                  if (s.id) b.set(doc(db, COLLECTION.ATTENDANCE, s.id), zeroUpdate, { merge: true });
-                });
+                b.set(doc(db, COLLECTION.ATTENDANCE, s.id!), zeroUpdate, { merge: true });
                 await b.commit();
               },
               COLLECTION.ATTENDANCE,
               'update',
               zeroUpdate,
-              chunk[0]?.id || 'reset_subjects'
+              s.id
             ).catch(handleSyncError);
-          }
+          });
 
           const currentLogs = logsRef.current;
           for (let i = 0; i < currentLogs.length; i += 400) {
             const chunk = currentLogs.slice(i, i + 400);
+            const chunkKey = `reset_logs_chunk_${i}`;
             safeWrite(
               async () => {
                 const b = writeBatch(db);
@@ -754,7 +765,7 @@ export function useAttendanceFirestore({
               COLLECTION.ATTENDANCE_LOGS,
               'delete',
               null,
-              chunk[0]?.id || 'reset_logs'
+              chunkKey
             ).catch(handleSyncError);
           }
 

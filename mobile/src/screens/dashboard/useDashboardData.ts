@@ -19,9 +19,7 @@ import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { usePlannerData } from '../../contexts/domains/PlannerContext';
-import { useSaraSurface } from '../../hooks/useSaraSurface';
 import { BRUTAL_QUOTES, getDailyQuote, QuotePersonality } from '../../data/brutalQuotes';
-import { getFingerprint } from '../../services/saraMemory';
 import { LayoutItem } from '../../components/Dashboard/DashboardLayoutSheet';
 import { NextClassData } from '../../components/Dashboard/UnifiedLifeWidget';
 import { calculateAppStreak } from '../../utils/streakUtils';
@@ -55,7 +53,7 @@ export function useDashboardData() {
   // Dashboard only re-renders when these specific slices change.
   const { user, tasks, habitLogs, allHabits, tasksReady, optimisticUpdateTask } = useCoreData();
   const { attendance, attendanceLogs, assignments, holidays, optimisticUpdateAssignment } = useAcademicData();
-  const { gymLogs, userGymPlan, waterLogs, ensureSubscribed: ensureWellnessSubscribed } = useWellnessData();
+  const { waterLogs, ensureSubscribed: ensureWellnessSubscribed } = useWellnessData();
   const { customEvents } = usePlannerData();
 
   // Ensure Wellness real-time subscriptions (water_logs, gym_logs, user_gym_plans) are open on Dashboard
@@ -85,7 +83,6 @@ export function useDashboardData() {
   // PERF FIX (Issue A): Fingerprint cache — getFingerprint(uid) does AsyncStorage.getItem
   // on every Dashboard focus. Streak personality changes at most once per day.
   // Cache it per-UID for the entire app session (cleared when user changes).
-  const fingerprintCacheRef = useRef<{ uid: string; fp: any } | null>(null);
 
   const setLayout = (newLayout: LayoutItem[]) => {
     setLayoutState(newLayout);
@@ -198,20 +195,7 @@ export function useDashboardData() {
     }
     try {
       let newQuote;
-      if (user?.uid) {
-        // PERF FIX (Issue A): Cache the fingerprint per-session.
-        // getFingerprint() does AsyncStorage.getItem on every call — now cached.
-        let fp: any;
-        if (fingerprintCacheRef.current?.uid === user.uid) {
-          fp = fingerprintCacheRef.current.fp;
-        } else {
-          fp = await getFingerprint(user.uid);
-          fingerprintCacheRef.current = { uid: user.uid, fp };
-        }
-        newQuote = await getDailyQuote(fp.streakPersonality as QuotePersonality);
-      } else {
-        newQuote = await getDailyQuote();
-      }
+      newQuote = await getDailyQuote();
       quoteCacheRef.current = { date: todayKey, quote: newQuote };
       setQuote(newQuote);
     } catch {
@@ -328,24 +312,12 @@ export function useDashboardData() {
 
   const avatarLetter = user?.displayName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'A';
 
-  // ── Sara PSI Surface ───────────────────────────────────────────────────────
-  const psiCtx = useMemo(() => ({
-    tasks: tasks as any[],
-    attendance: attendance as any[],
-    habits: [],
-    habitLogs,
-    gymLogs,
-  }), [tasks, attendance, habitLogs, gymLogs]);
-  const { surfaceMessage, surfaceActionLabel, dismissBanner } = useSaraSurface(
-    'DashboardScreen', psiCtx as any, user?.uid
-  );
-
   const appStreak = useMemo(() => {
-    const cacheKey = `dash_streak_${generateDatasetFingerprint(tasks)}_${generateDatasetFingerprint(gymLogs)}_${generateDatasetFingerprint(habitLogs)}`;
+    const cacheKey = `dash_streak_${generateDatasetFingerprint(tasks)}_${generateDatasetFingerprint(habitLogs)}`;
     return computeOrGetHotCache(cacheKey, () => {
-      return calculateAppStreak(tasks, gymLogs, habitLogs);
+      return calculateAppStreak(tasks, habitLogs);
     });
-  }, [tasks, gymLogs, habitLogs]);
+  }, [tasks, habitLogs]);
 
   // ── Today's Class & Overall Attendance Stats (Hot-Cached) ─────────────────
   const { classesAttendedToday, classesTotalToday, overallAttendancePct } = useMemo(() => {
@@ -378,7 +350,7 @@ export function useDashboardData() {
 
   return {
     // Data
-    user, tasks, gymLogs, userGymPlan, habitLogs, allHabits,
+    user, tasks, habitLogs, allHabits,
     attendance, attendanceLogs, assignments, holidays, waterLogs, customEvents,
     // Derived
     todayStr, timeGreeting, avatarLetter, hour,
@@ -388,8 +360,6 @@ export function useDashboardData() {
     tasksReady, optimisticUpdateTask, optimisticUpdateAssignment,
     quote, xp, xpGain, captureVisible, layout, layoutSheetVisible,
     waterLogVisible, waterTotal,
-    // Sara surface
-    surfaceMessage, surfaceActionLabel, dismissBanner,
     // Setters
     shuffleQuote,
     setXpGain, setCaptureVisible, setLayout, setLayoutSheetVisible,

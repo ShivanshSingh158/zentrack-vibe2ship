@@ -4,7 +4,7 @@
  * Lightweight, isolated modal for creating new folders with instant keyboard focus.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -40,6 +40,10 @@ export const NewFolderModal = React.memo(function NewFolderModal({
   isDark,
 }: NewFolderModalProps) {
   const [folderName, setFolderName] = useState('');
+
+  useEffect(() => {
+    if (!visible) setFolderName('');
+  }, [visible]);
 
   if (!visible) return null;
 

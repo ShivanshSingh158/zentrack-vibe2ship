@@ -39,9 +39,7 @@ import { db } from '../services/firebase';
 import { useTheme } from '../contexts/ThemeContext';
 import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
-import { useGymProfile } from '../hooks/useGymProfile';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
-import { callProxy } from '../services/geminiProxy';
 import { formatLocalDateStr, offsetDateStr } from '../utils/dateUtils';
 import { getBootManifestSync, updateL1Cache } from '../utils/bootManifest';
 import { queueWrite } from '../services/offlineSync';
@@ -131,11 +129,9 @@ export default function WellbeingDashboardScreen() {
   const navigation = useNavigation<any>();
 
   const { user } = useCoreData();
-  const { waterLogs, ensureSubscribed, logWater, optimisticAddWaterLog, optimisticDeleteWaterLog, gymLogs, weightLogs } = useWellnessData();
-  const { gymProfile } = useGymProfile();
-
+  const { waterLogs, ensureSubscribed, logWater, optimisticAddWaterLog, optimisticDeleteWaterLog, weightLogs } = useWellnessData();
   // User weight: check gymProfile first, then weightLogs
-  const userWeight = gymProfile?.weightKg || (weightLogs && weightLogs.length > 0 ? ((weightLogs[0] as any).weightKg || (weightLogs[0] as any).weight) : null);
+  const userWeight = (weightLogs && weightLogs.length > 0 ? ((weightLogs[0] as any).weightKg || (weightLogs[0] as any).weight) : null);
 
   // SARA AI On-Demand Coaching State
   const [aiTip, setAiTip] = useState<string | null>(null);
@@ -361,56 +357,19 @@ export default function WellbeingDashboardScreen() {
   const triggerAiAnalysis = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsAiThinking(true);
-    const cacheKey = `@zentrack_daily_tip_${todayStr}_water`;
-
     try {
-      const prompt = `You are S.A.R.A, a high-performance wellness and biohacking AI coach in ZenTrack.
-Analyze the user's hydration metrics:
-- Daily Target: ${waterGoal} ml (${(waterGoal / 1000).toFixed(1)} L)
-- Today's intake: ${todayWater} ml (${Math.round(waterProgress * 100)}%)
-- Deficit: ${deficitMl} ml
-- 7-Day average: ${waterAvg} ml/day
-- 7-Day Hit Rate: ${hitRate7d}%
-- Streak: ${streakDays} days
-- Circadian breakdown: Morning ${timeOfDayDist.morning}ml, Afternoon ${timeOfDayDist.afternoon}ml, Evening ${timeOfDayDist.evening}ml
-- Hourly pace recommendation: ${hourlyPacing.label}
-Respond with a strict single JSON object format:
-{"coaching_tip": "Your punchy, scientifically grounded 1-2 sentence biohacking hydration advice here"}
-Do NOT output markdown code fences or any other text.`;
-
-      const resp = await callProxy({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: 'application/json' },
-      });
-
-      const rawText = resp.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (rawText) {
-        let extractedTip = '';
-        try {
-          const clean = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-          const parsed = JSON.parse(clean);
-          extractedTip = parsed.coaching_tip || parsed.tip || parsed.text || clean;
-        } catch {
-          const match = rawText.match(/"coaching_tip"\s*:\s*"([^"]+)"/);
-          extractedTip = match ? match[1] : rawText.replace(/[{}"\\]/g, '').trim();
-        }
-
-        if (extractedTip) {
-          setAiTip(extractedTip);
-          await AsyncStorage.setItem(cacheKey, extractedTip).catch(() => {});
-        }
+      let tip = '';
+      if (todayWater >= waterGoal) {
+        tip = 'Daily target met! Optimal recovery and focus levels maintained.';
+      } else {
+        const remaining = waterGoal - todayWater;
+        tip = `${remaining.toLocaleString()} ml remaining to reach your optimal ${(waterGoal / 1000).toFixed(1)}L hydration target.`;
       }
-    } catch (e) {
-      console.warn('[Wellbeing] AI Analysis error:', e);
-      setAiTip(
-        todayWater >= waterGoal
-          ? '💧 Optimal cellular hydration achieved! Peak cognitive velocity unlocked.'
-          : `💧 ${(waterGoal - todayWater).toLocaleString()} ml remaining to reach your optimal ${(waterGoal / 1000).toFixed(1)}L hydration target.`
-      );
+      setAiTip(tip);
     } finally {
       setIsAiThinking(false);
     }
-  }, [todayStr, todayWater, waterAvg, waterGoal, waterProgress, deficitMl, hitRate7d, streakDays, timeOfDayDist, hourlyPacing]);
+  }, [todayWater, waterGoal]);
 
   // Chart Coordinates Calculation
   const waterPts = waterData7.map((val, i) => ({

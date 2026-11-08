@@ -2,7 +2,7 @@
  * NotificationsSettingsScreen • ZenTrack Mobile
  *
  * Full notification customization:
- *  • Per-module toggles (Tasks, Habits, Gym, Attendance, Focus, Sara)
+ *  • Per-module toggles (Tasks, Habits, Attendance, Focus)
  *  • 10 smart notification types (habit streak, overdue tasks, assignments, etc.)
  *  • Quiet hours (start + end time)
  *  • Pre-task buffer time (15/30/60/120 min)
@@ -74,12 +74,145 @@ function displayTime(hm: string) {
   return `${hr}:${m.toString().padStart(2, '0')}${ampm}`;
 }
 
+const rowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  iconBox: {
+    width: 30, height: 30, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  rowTitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    marginBottom: 1,
+  },
+  rowSub: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  hairline: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 58,
+  },
+  sectionLabel: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+    letterSpacing: 0.8,
+    marginBottom: 8,
+    marginTop: 20,
+    marginLeft: 4,
+  },
+  timeChip: {
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  timeChipText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+  },
+});
+
+const ToggleRow = React.memo(function ToggleRow({
+  icon,
+  label,
+  subtitle,
+  value,
+  onToggle,
+  iconColor,
+}: {
+  icon: string;
+  label: string;
+  subtitle?: string;
+  value: boolean;
+  onToggle: (v: boolean) => void;
+  iconColor?: string;
+}) {
+  const { colors, isDark } = useTheme();
+  const effectiveIconColor = iconColor || colors.accentPrimary;
+
+  return (
+    <View style={rowStyles.row}>
+      <View style={[rowStyles.iconBox, { backgroundColor: `${effectiveIconColor}18` }]}>
+        <Ionicons name={icon as any} size={15} color={effectiveIconColor} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[rowStyles.rowTitle, { color: colors.textPrimary }]}>{label}</Text>
+        {subtitle && <Text style={[rowStyles.rowSub, { color: colors.textMuted }]}>{subtitle}</Text>}
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onToggle}
+        trackColor={{ false: isDark ? colors.surfaceRaised : (colors.surface2 || '#e5e5ea'), true: colors.accentPrimary }}
+        thumbColor={Platform.OS === 'android' ? (value ? '#ffffff' : (isDark ? '#e0e0e0' : '#ffffff')) : undefined}
+        ios_backgroundColor={isDark ? colors.surfaceRaised : (colors.surface2 || '#e5e5ea')}
+        style={{ transform: [{ scaleX: 0.82 }, { scaleY: 0.82 }] }}
+      />
+    </View>
+  );
+});
+
+const TimeRow = React.memo(function TimeRow({
+  icon,
+  label,
+  value,
+  target,
+  onOpenPicker,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  target: TimePickerTarget;
+  onOpenPicker: (target: TimePickerTarget, val: string) => void;
+}) {
+  const { colors, isDark } = useTheme();
+  return (
+    <View style={rowStyles.row}>
+      <View style={[rowStyles.iconBox, { backgroundColor: colors.accentDim }]}>
+        <Ionicons name={icon as any} size={15} color={colors.accentPrimary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={[rowStyles.rowTitle, { color: colors.textPrimary }]}>{label}</Text>
+      </View>
+      <TouchableOpacity
+        style={[rowStyles.timeChip, { backgroundColor: isDark ? '#2c2c2e' : (colors.surface2 || '#e5e5ea') }]}
+        onPress={() => onOpenPicker(target, value)}
+      >
+        <Text style={[rowStyles.timeChipText, { color: colors.accentPrimary }]}>{displayTime(value)}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+});
+
+const SectionHeader = React.memo(function SectionHeader({ label }: { label: string }) {
+  const { colors } = useTheme();
+  return <Text style={[rowStyles.sectionLabel, { color: colors.textTertiary }]}>{label}</Text>;
+});
+
+const Hairline = React.memo(function Hairline() {
+  const { colors, isDark } = useTheme();
+  return (
+    <View
+      style={[
+        rowStyles.hairline,
+        { backgroundColor: isDark ? '#1c1c1e' : (colors.border || 'rgba(0,0,0,0.08)') },
+      ]}
+    />
+  );
+});
+
 export default function NotificationPreferencesComponent() {
-    const { colors, isDark } = useTheme();
-    const s = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const s = makeStyles(colors, isDark);
   const navigation = useNavigation<any>();
   const { tasks, habitLogs, allHabits } = useCoreData();
-  const { gymLogs, waterLogs, sleepLogs, userGymPlan } = useWellnessData();
+  const { waterLogs, sleepLogs } = useWellnessData();
   const { attendance, attendanceLogs, assignments, holidays } = useAcademicData();
   const { customEvents } = usePlannerData();
 
@@ -89,7 +222,6 @@ export default function NotificationPreferencesComponent() {
       scheduleAllNotifications({
         tasks,
         customEvents,
-        gymLogs,
         attendance,
         attendanceLogs,
         habitLogs,
@@ -97,19 +229,17 @@ export default function NotificationPreferencesComponent() {
         assignments,
         waterLogs,
         sleepLogs,
-        userGymPlan,
         holidays,
       }).catch(console.warn);
     });
   }, [
-    tasks, customEvents, gymLogs, attendance, attendanceLogs,
-    habitLogs, allHabits, assignments, waterLogs, sleepLogs, userGymPlan, holidays,
+    tasks, customEvents, attendance, attendanceLogs,
+    habitLogs, allHabits, assignments, waterLogs, sleepLogs, holidays,
   ]);
 
   // Module toggles
   const [modTasks,      setModTasks]      = useState(true);
   const [modHabits,     setModHabits]     = useState(true);
-  const [modGym,        setModGym]        = useState(true);
   const [modAttendance, setModAttendance] = useState(true);
   const [modFocus,      setModFocus]      = useState(true);
 
@@ -118,7 +248,6 @@ export default function NotificationPreferencesComponent() {
   const [overdueNudge,       setOverdueNudge]       = useState(true);
   const [assignmentAlert48h, setAssignmentAlert48h] = useState(true);
   const [assignmentAlert24h, setAssignmentAlert24h] = useState(true);
-  const [gymRestDay,         setGymRestDay]         = useState(false);
   const [weeklyReview,       setWeeklyReview]       = useState(true);
   const [attendanceWarning,  setAttendanceWarning]  = useState(true);
   const [morningBrief,       setMorningBrief]       = useState(true);
@@ -137,7 +266,7 @@ export default function NotificationPreferencesComponent() {
   const [habitStreakTime,    setHabitStreakTime]     = useState('20:00'); // 8pm
 
   // Advanced toggles
-  const [saraToneStrict, setSaraToneStrict] = useState(false);
+  const [strictTone, setStrictTone] = useState(false);
   const [locationNotifs, setLocationNotifs] = useState(false);
   const [actionableNotifs, setActionableNotifs] = useState(true);
   const [habitStackNotifs, setHabitStackNotifs] = useState(true);
@@ -154,7 +283,6 @@ export default function NotificationPreferencesComponent() {
       try {
         setModTasks(      await loadBool('mod_tasks'));
         setModHabits(     await loadBool('mod_habits'));
-        setModGym(        await loadBool('mod_gym'));
         setModAttendance( await loadBool('mod_attendance'));
         setModFocus(      await loadBool('mod_focus'));
 
@@ -162,7 +290,6 @@ export default function NotificationPreferencesComponent() {
         setOverdueNudge(       await loadBool('overdue_nudge'));
         setAssignmentAlert48h( await loadBool('assignment_48h'));
         setAssignmentAlert24h( await loadBool('assignment_24h'));
-        setGymRestDay(         await loadBool('gym_rest_day', false));
         setWeeklyReview(       await loadBool('weekly_review'));
         setAttendanceWarning(  await loadBool('attendance_warning'));
         setMorningBrief(       await loadBool('morning_brief'));
@@ -179,9 +306,9 @@ export default function NotificationPreferencesComponent() {
         setInactivityDays(    await loadString('inactivity_days', '3'));
         setHabitStreakTime(   await loadString('habit_streak_time', '20:00'));
 
-        const saraStrict = (await AsyncStorage.getItem('zentrack_notif_sara_escalation'))
+        const strictPref = (await AsyncStorage.getItem('zentrack_notif_sara_escalation'))
           ?? (await AsyncStorage.getItem('zentrack_notif_sara_tone'));
-        setSaraToneStrict(saraStrict === 'true');
+        setStrictTone(strictPref === 'true');
         setLocationNotifs(    await loadBool('location_notifs', false));
         setActionableNotifs(  await loadBool('actionable_notifs', true));
         setHabitStackNotifs(  await loadBool('habit_stack_notifs', true));
@@ -285,49 +412,7 @@ export default function NotificationPreferencesComponent() {
   const BUFFER_OPTIONS = [{ label: '15 min', val: '15' }, { label: '30 min', val: '30' }, { label: '1 hr', val: '60' }, { label: '2 hr', val: '120' }];
   const INACTIVITY_OPTIONS = [{ label: '2 days', val: '2' }, { label: '3 days', val: '3' }, { label: '5 days', val: '5' }, { label: '7 days', val: '7' }];
 
-  const ToggleRow = ({ icon, label, subtitle, value, onToggle, iconColor = colors.accentPrimary }: {
-    icon: string; label: string; subtitle?: string; value: boolean; onToggle: (v: boolean) => void; iconColor?: string;
-  }) => (
-    <View style={s.row}>
-      <View style={[s.iconBox, { backgroundColor: `${iconColor}18` }]}>
-        <Ionicons name={icon as any} size={15} color={iconColor} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={s.rowTitle}>{label}</Text>
-        {subtitle && <Text style={s.rowSub}>{subtitle}</Text>}
-      </View>
-      <Switch
-        value={value}
-        onValueChange={onToggle}
-        trackColor={{ false: colors.surfaceRaised, true: colors.accentPrimary }}
-        thumbColor={'#000000'}
-        ios_backgroundColor={colors.surfaceRaised}
-        style={{ transform: [{ scaleX: 0.82 }, { scaleY: 0.82 }] }}
-      />
-    </View>
-  );
 
-  const TimeRow = ({ icon, label, value, target }: {
-    icon: string; label: string; value: string; target: TimePickerTarget;
-  }) => (
-    <View style={s.row}>
-      <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
-        <Ionicons name={icon as any} size={15} color={colors.accentPrimary} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={s.rowTitle}>{label}</Text>
-      </View>
-      <TouchableOpacity style={s.timeChip} onPress={() => openPicker(target, value)}>
-        <Text style={s.timeChipText}>{displayTime(value)}</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  const SectionHeader = ({ label }: { label: string }) => (
-    <Text style={s.sectionLabel}>{label}</Text>
-  );
-
-  const Hairline = () => <View style={s.hairline} />;
 
   return (
     <SafeAreaView style={s.root} edges={['bottom']}>
@@ -345,64 +430,6 @@ export default function NotificationPreferencesComponent() {
         {/* MODULE TOGGLES */}
         <SectionHeader label="BY MODULE" />
         <View style={s.card}>
-          <ToggleRow icon="checkmark-circle-outline" label="Tasks" subtitle="Task warnings and overdue nudges" value={modTasks} onToggle={v => toggle('mod_tasks', v, setModTasks)} />
-          <Hairline />
-          <ToggleRow icon="flame-outline" label="Habits" subtitle="Streak risk and completion reminders" value={modHabits} onToggle={v => toggle('mod_habits', v, setModHabits)} iconColor="#ff9f4d" />
-          <Hairline />
-          <ToggleRow icon="barbell-outline" label="Gym" subtitle="Workout and rest day reminders" value={modGym} onToggle={v => toggle('mod_gym', v, setModGym)} iconColor="#5eda9e" />
-          <Hairline />
-          <ToggleRow icon="clipboard-outline" label="Attendance" subtitle="Low attendance warnings" value={modAttendance} onToggle={v => toggle('mod_attendance', v, setModAttendance)} iconColor="#ff6961" />
-          <Hairline />
-          <ToggleRow icon="timer-outline" label="Focus" subtitle="Focus session completion alerts" value={modFocus} onToggle={v => toggle('mod_focus', v, setModFocus)} iconColor="#64b5f6" />
-        </View>
-
-        {/* SMART NOTIFICATIONS */}
-        <SectionHeader label="SMART NOTIFICATIONS" />
-        <View style={s.card}>
-          <ToggleRow
-            icon="trending-up-outline"
-            label="Habit streak at risk"
-            subtitle={`Alerts at ${displayTime(habitStreakTime)} if habit unlogged`}
-            value={habitStreakAtRisk && modHabits}
-            onToggle={v => toggle('habit_streak_risk', v, setHabitStreakAtRisk)}
-            iconColor="#ff9f4d"
-          />
-          <Hairline />
-          <ToggleRow
-            icon="alert-circle-outline"
-            label="Overdue task nudge"
-            subtitle={`Sent at ${displayTime(overdueNudgeTime)} for pending tasks`}
-            value={overdueNudge && modTasks}
-            onToggle={v => toggle('overdue_nudge', v, setOverdueNudge)}
-          />
-          <Hairline />
-          <ToggleRow
-            icon="book-outline"
-            label="Assignment due in 48 hours"
-            subtitle="Early warning for upcoming deadlines"
-            value={assignmentAlert48h && modAttendance}
-            onToggle={v => toggle('assignment_48h', v, setAssignmentAlert48h)}
-            iconColor="#ff9f4d"
-          />
-          <Hairline />
-          <ToggleRow
-            icon="time-outline"
-            label="Assignment due in 24 hours"
-            subtitle="Final reminder for deadlines"
-            value={assignmentAlert24h && modAttendance}
-            onToggle={v => toggle('assignment_24h', v, setAssignmentAlert24h)}
-            iconColor="#ff6961"
-          />
-          <Hairline />
-          <ToggleRow
-            icon="walk-outline"
-            label="Gym rest day reminder"
-            subtitle="Recovery nudge on planned rest days"
-            value={gymRestDay && modGym}
-            onToggle={v => toggle('gym_rest_day', v, setGymRestDay)}
-            iconColor="#5eda9e"
-          />
-          <Hairline />
           <ToggleRow
             icon="calendar-outline"
             label="Weekly review reminder"
@@ -451,9 +478,9 @@ export default function NotificationPreferencesComponent() {
         {/* TIMING CONFIG */}
         <SectionHeader label="TIMING" />
         <View style={s.card}>
-          <TimeRow icon="sunny-outline"     label="Morning briefing time" value={morningBriefTime} target="morningBriefTime" />
+          <TimeRow icon="sunny-outline"     label="Morning briefing time" value={morningBriefTime} target="morningBriefTime" onOpenPicker={openPicker} />
           <Hairline />
-          <TimeRow icon="alert-circle-outline" label="Overdue nudge time" value={overdueNudgeTime} target="overdueNudgeTime" />
+          <TimeRow icon="alert-circle-outline" label="Overdue nudge time" value={overdueNudgeTime} target="overdueNudgeTime" onOpenPicker={openPicker} />
           <Hairline />
           <View style={s.row}>
             <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
@@ -495,9 +522,9 @@ export default function NotificationPreferencesComponent() {
           {quietHours && (
             <>
               <Hairline />
-              <TimeRow icon="moon-outline"  label="Quiet from" value={quietStart} target="quietStart" />
+              <TimeRow icon="moon-outline"  label="Quiet from" value={quietStart} target="quietStart" onOpenPicker={openPicker} />
               <Hairline />
-              <TimeRow icon="sunny-outline" label="Quiet until" value={quietEnd}   target="quietEnd"   />
+              <TimeRow icon="sunny-outline" label="Quiet until" value={quietEnd}   target="quietEnd"   onOpenPicker={openPicker} />
             </>
           )}
         </View>
@@ -548,8 +575,8 @@ export default function NotificationPreferencesComponent() {
             icon="flash-outline"
             label="Strict Accountability Tone"
             subtitle="Tone escalation for missed habits & classes"
-            value={saraToneStrict}
-            onToggle={v => toggle('sara_tone', v, setSaraToneStrict)}
+            value={strictTone}
+            onToggle={v => toggle('sara_tone', v, setStrictTone)}
           />
           <Hairline />
           <ToggleRow
@@ -597,7 +624,7 @@ export default function NotificationPreferencesComponent() {
                       borderRadius: 12,
                       backgroundColor: isSelected ? colors.accentPrimary : 'transparent',
                       borderWidth: 1,
-                      borderColor: isSelected ? colors.accentPrimary : '#2c2c2e'
+                      borderColor: isSelected ? colors.accentPrimary : (isDark ? '#2c2c2e' : (colors.border || 'rgba(0,0,0,0.1)'))
                     }}
                   >
                     <Text style={{ 
@@ -638,7 +665,7 @@ export default function NotificationPreferencesComponent() {
                   display="spinner"
                   onChange={handlePickerChange}
                   style={{ height: 200 }}
-                  textColor="#ffffff"
+                  textColor={isDark ? '#ffffff' : '#000000'}
                 />
               </View>
             </View>
@@ -656,7 +683,7 @@ export default function NotificationPreferencesComponent() {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
       root: { flex: 1, backgroundColor: colors.background },
       header: {
         flexDirection: 'row',
@@ -666,7 +693,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         paddingTop: 12,
         paddingBottom: 8,
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: '#1c1c1e',
+        borderBottomColor: isDark ? '#1c1c1e' : (colors.border || 'rgba(0,0,0,0.08)'),
       },
       backBtn: {
         width: 44, height: 44,
@@ -693,7 +720,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         backgroundColor: colors.surface,
         borderRadius: 16,
         borderWidth: 1,
-        borderColor: '#2c2c2e',
+        borderColor: isDark ? '#2c2c2e' : (colors.border || 'rgba(0,0,0,0.08)'),
         overflow: 'hidden',
       },
       row: {
@@ -719,10 +746,14 @@ const makeStyles = (colors: any) => StyleSheet.create({
         color: colors.textMuted,
         lineHeight: 15,
       },
-      hairline: { height: StyleSheet.hairlineWidth, backgroundColor: '#1c1c1e', marginLeft: 58 },
+      hairline: {
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: isDark ? '#1c1c1e' : (colors.border || 'rgba(0,0,0,0.08)'),
+        marginLeft: 58,
+      },
 
       timeChip: {
-        backgroundColor: '#2c2c2e',
+        backgroundColor: isDark ? '#2c2c2e' : (colors.surface2 || '#e5e5ea'),
         borderRadius: 8,
         paddingHorizontal: 12,
         paddingVertical: 6,
@@ -743,18 +774,18 @@ const makeStyles = (colors: any) => StyleSheet.create({
         paddingHorizontal: 14,
         paddingVertical: 7,
         borderRadius: 20,
-        backgroundColor: '#2c2c2e',
+        backgroundColor: isDark ? '#2c2c2e' : (colors.surface2 || '#e5e5ea'),
       },
       chipActive: { backgroundColor: colors.accentPrimary },
       chipText: { fontFamily: 'Inter_400Regular', fontSize: 12.5, color: colors.textMuted },
-      chipTextActive: { color: '#000000', fontFamily: 'Inter_600SemiBold' },
+      chipTextActive: { color: isDark ? '#000000' : '#ffffff', fontFamily: 'Inter_600SemiBold' },
 
       pickerModalOverlay: {
         flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
         justifyContent: 'flex-end',
       },
       pickerCard: {
-        backgroundColor: '#1c1c1e',
+        backgroundColor: isDark ? '#1c1c1e' : colors.surface,
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         paddingBottom: 34,
@@ -764,6 +795,6 @@ const makeStyles = (colors: any) => StyleSheet.create({
         justifyContent: 'space-between',
         padding: 16,
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: '#2c2c2e',
+        borderBottomColor: isDark ? '#2c2c2e' : (colors.border || 'rgba(0,0,0,0.08)'),
       },
     });

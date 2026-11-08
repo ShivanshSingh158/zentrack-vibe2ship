@@ -328,14 +328,6 @@ export async function queueWrite(
 }
 
 /**
- * Legacy wrapper for Gym logs — maintains compatibility with existing gym code.
- * Translates to the generic queueWrite.
- */
-export async function queueGymLogOffline(log: any) {
-  await queueWrite(COLLECTION.GYM_LOGS, 'set', log, log.id || `${log.userId}_${log.date}`);
-}
-
-/**
  * Removes a fallback queue item if its in-flight online request succeeded in the background.
  * Prevents double execution of increment/mutation sentinels.
  */

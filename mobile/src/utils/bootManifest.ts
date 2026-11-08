@@ -25,9 +25,7 @@ export const BOOT_KEYS = {
   SEMESTERS:          '@zentrack_cache_semesters',
   SEM_SUBJECTS:       '@zentrack_cache_sem_subjects',
   HOLIDAYS:           '@zentrack_cache_holidays',
-  GYM_LOGS:           '@zentrack_cache_gym_logs',
-  USER_GYM_PLAN:      '@zentrack_cache_user_gym_plan',
-  WATER_LOGS:         '@zentrack_cache_water_logs',
+      WATER_LOGS:         '@zentrack_cache_water_logs',
   SLEEP_LOGS:         '@zentrack_cache_sleep_logs',
   WEIGHT_LOGS:        '@zentrack_cache_weight_logs',
   CUSTOM_EVENTS:      '@zentrack_cache_custom_events',
@@ -59,8 +57,6 @@ const TIER_0_KEYS = [
   BOOT_KEYS.ATTENDANCE,
   BOOT_KEYS.ATTENDANCE_LOGS,
   BOOT_KEYS.HOLIDAYS,
-  BOOT_KEYS.GYM_LOGS,
-  BOOT_KEYS.USER_GYM_PLAN,
   BOOT_KEYS.WATER_LOGS,
   BOOT_KEYS.NOTIF_FINGERPRINT,
 ] as const;
@@ -100,8 +96,6 @@ export interface BootManifest {
   semesters: any[];
   semesterSubjects: any[];
   holidays: string[];
-  gymLogs: any[];
-  userGymPlan: any | null;
   waterLogs: any[];
   sleepLogs: any[];
   weightLogs: any[];
@@ -115,7 +109,7 @@ export interface BootManifest {
   notifFingerprint: string | null;
 }
 
-const DEFAULT_PINNED = ['Tasks', 'Gym', 'Calendar', 'Attendance'];
+const DEFAULT_PINNED = ['Tasks', 'Calendar', 'Attendance', 'Habits'];
 const DEFAULT_WATER_GOAL = 3800;
 
 let _memoryBootCache: BootManifest | null = null;
@@ -192,14 +186,7 @@ export async function loadBootManifest(): Promise<BootManifest> {
       const attendance = parseJsonArray(map.get(BOOT_KEYS.ATTENDANCE));
       const attendanceLogs = parseJsonArray(map.get(BOOT_KEYS.ATTENDANCE_LOGS));
       const holidays = parseJsonArray<string>(map.get(BOOT_KEYS.HOLIDAYS));
-      const gymLogs = parseJsonArray(map.get(BOOT_KEYS.GYM_LOGS));
       const waterLogs = parseJsonArray(map.get(BOOT_KEYS.WATER_LOGS));
-
-      let userGymPlan: any = null;
-      const gymPlanRaw = map.get(BOOT_KEYS.USER_GYM_PLAN);
-      if (gymPlanRaw) {
-        try { userGymPlan = JSON.parse(gymPlanRaw); } catch {}
-      }
 
       const notifFingerprint = map.get(BOOT_KEYS.NOTIF_FINGERPRINT) || null;
 
@@ -222,8 +209,6 @@ export async function loadBootManifest(): Promise<BootManifest> {
         semesters: [],
         semesterSubjects: [],
         holidays,
-        gymLogs,
-        userGymPlan,
         waterLogs,
         sleepLogs: [],
         weightLogs: [],
@@ -286,8 +271,6 @@ export async function loadBootManifest(): Promise<BootManifest> {
         semesters: [],
         semesterSubjects: [],
         holidays: [],
-        gymLogs: [],
-        userGymPlan: null,
         waterLogs: [],
         sleepLogs: [],
         weightLogs: [],

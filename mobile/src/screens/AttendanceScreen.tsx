@@ -598,6 +598,16 @@ const UnloggedSessionRow = React.memo(function UnloggedSessionRow({
   const isLab = item.type === 'lab';
   const dateInfo = formatAttendanceHistoryDate(item.date);
   const processingRef = useRef(false);
+  const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const armLock = useCallback(() => {
+    processingRef.current = true;
+    if (lockTimerRef.current) clearTimeout(lockTimerRef.current);
+    lockTimerRef.current = setTimeout(() => {
+      processingRef.current = false;
+      lockTimerRef.current = null;
+    }, 400);
+  }, []);
 
   const handlePressCard = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -606,24 +616,24 @@ const UnloggedSessionRow = React.memo(function UnloggedSessionRow({
 
   const handlePresent = useCallback(() => {
     if (processingRef.current) return;
-    processingRef.current = true;
+    armLock();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onLog(item.subject, item.type, 'attended', undefined, item.idx, item.date, false);
-  }, [item.subject, item.type, item.idx, item.date, onLog]);
+  }, [item.subject, item.type, item.idx, item.date, onLog, armLock]);
 
   const handleAbsent = useCallback(() => {
     if (processingRef.current) return;
-    processingRef.current = true;
+    armLock();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onLog(item.subject, item.type, 'missed', undefined, item.idx, item.date, false);
-  }, [item.subject, item.type, item.idx, item.date, onLog]);
+  }, [item.subject, item.type, item.idx, item.date, onLog, armLock]);
 
   const handleCancelled = useCallback(() => {
     if (processingRef.current) return;
-    processingRef.current = true;
+    armLock();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onLog(item.subject, item.type, 'cancelled', undefined, item.idx, item.date, false);
-  }, [item.subject, item.type, item.idx, item.date, onLog]);
+  }, [item.subject, item.type, item.idx, item.date, onLog, armLock]);
 
   return (
     <Reanimated.View
@@ -1138,7 +1148,7 @@ export default function AttendanceScreen() {
               <EmptyState
                 style={{ marginTop: 0 }}
                 mascot="idle"
-                title={isSelectedHoliday ? "Holiday ðŸŒ´" : "All clear!"}
+                title={isSelectedHoliday ? "Holiday 🌴" : "All clear!"}
                 subtitle={isSelectedHoliday ? "Enjoy your day off. No classes today." : "No classes scheduled for this day. Relax or catch up on work."}
                 action={subjects.length === 0 ? {
                   label: "Setup Timetable",
@@ -1281,7 +1291,7 @@ export default function AttendanceScreen() {
               <View style={{ flex: 1, marginRight: 10 }}>
                 <Text style={styles.sheetTitle}>Unlogged Classes & Labs</Text>
                 <Text style={{ fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
-                  {unloggedSessions.length} {unloggedSessions.length === 1 ? 'past session' : 'past sessions'} pending â€¢ Newest first
+                  {unloggedSessions.length} {unloggedSessions.length === 1 ? 'past session' : 'past sessions'} pending • Newest first
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setIsUnloggedOpen(false)} style={{ padding: 4 }}>
@@ -1296,7 +1306,7 @@ export default function AttendanceScreen() {
               >
                 <Ionicons name="checkmark-done-circle-outline" size={48} color={isDark ? '#34D399' : '#059669'} />
                 <Text style={{ fontSize: 16, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
-                  All Caught Up! ðŸŽ‰
+                  All Caught Up! 🎉
                 </Text>
                 <Text style={{ fontSize: 12, color: colors.textMuted, textAlign: 'center', paddingHorizontal: 20 }}>
                   No unlogged classes or labs found in the past 30 days. Everything is up to date.

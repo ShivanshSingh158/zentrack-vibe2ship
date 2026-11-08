@@ -10,11 +10,10 @@
 
 import {
   Task, Habit, HabitLog, StorageNode, Note, Goal, CustomEvent,
-  WaterLog, SleepLog, WeightLog, GymLog, AttendanceSubject,
+  WaterLog, SleepLog, WeightLog, AttendanceSubject,
   AttendanceLog, Assignment, Semester, SemesterSubject,
   LearningTopic, LearningSubTask, JobApplication, WeeklyReview, ContentLog
 } from '../contexts/MobileDataContext';
-import { resolveExerciseTargetMuscle } from './gymUtils';
 import { formatLocalDateStr } from './dateUtils';
 
 // ─── Helper Primitives ────────────────────────────────────────────────────────
@@ -200,85 +199,7 @@ export function parseHabitLog(docData: any, docId: string): HabitLog {
   };
 }
 
-export function parseGymLog(docData: any, docId: string): GymLog {
-  const d = docData && typeof docData === 'object' ? docData : {};
-  const id = sanitizeString(docId || d.id, 'gym_' + Date.now());
 
-  const exercises = Array.isArray(d.exercises)
-    ? d.exercises.map((ex: any, idx: number) => {
-        const name = sanitizeString(ex?.name, 'Exercise', 150);
-        const rawMuscle = ex?.muscle ? sanitizeString(ex.muscle, '', 50) : '';
-        const resolvedMuscle = resolveExerciseTargetMuscle(name, rawMuscle).targetMuscle;
-        return {
-          _idx: ex?._idx !== undefined ? sanitizeNumber(ex._idx, idx, 0) : idx,
-          id: sanitizeString(ex?.id || ex?.exerciseId, ''),
-          exerciseId: sanitizeString(ex?.exerciseId || ex?.id, ''),
-          name,
-          targetSets: sanitizeNumber(ex?.targetSets, 3, 1, 20),
-          targetReps: sanitizeString(ex?.targetReps, '10-12', 30),
-          muscle: sanitizeString(resolvedMuscle, 'Mixed', 50),
-          notes: ex?.notes ? sanitizeString(ex.notes, '', 300) : undefined,
-          videoId: ex?.videoId ? sanitizeString(ex.videoId, '', 100) : undefined,
-          supersetGroup: ex?.supersetGroup ? sanitizeString(ex.supersetGroup, undefined as any, 20) : undefined,
-          restTimeSecs: ex?.restTimeSecs !== undefined ? sanitizeNumber(ex.restTimeSecs, 90, 0, 600) : undefined,
-          skipped: Boolean(ex?.skipped),
-          lastSessionSets: Array.isArray(ex?.lastSessionSets) ? ex.lastSessionSets : undefined,
-          setsLog: Array.isArray(ex?.setsLog)
-            ? ex.setsLog.map((s: any, sIdx: number) => {
-                const rawWeight = s?.weight !== undefined ? s.weight : s?.weightKg;
-                const weight = rawWeight !== null && rawWeight !== undefined && rawWeight !== '' && !isNaN(Number(rawWeight))
-                  ? Number(rawWeight)
-                  : null;
-                const rawReps = s?.reps;
-                const reps = rawReps !== null && rawReps !== undefined && rawReps !== '' && !isNaN(Number(rawReps))
-                  ? Number(rawReps)
-                  : null;
-                return {
-                  setNumber: sanitizeNumber(s?.setNumber, sIdx + 1, 1, 99),
-                  reps,
-                  weight,
-                  weightKg: weight ?? 0,
-                  completed: Boolean(s?.completed),
-                };
-              })
-            : [],
-        };
-      })
-    : [];
-
-  const cardio = Array.isArray(d.cardio)
-    ? d.cardio.map((c: any) => ({
-        id: sanitizeString(c?.id, 'cardio_' + Date.now()),
-        type: sanitizeString(c?.type, 'Cardio', 50),
-        durationMinutes: c?.durationMinutes != null ? sanitizeNumber(c.durationMinutes, 0, 0, 600) : null,
-        calories: c?.calories != null ? sanitizeNumber(c.calories, 0, 0, 10000) : null,
-        distanceKm: c?.distanceKm != null ? sanitizeNumber(c.distanceKm, 0, 0, 200) : null,
-        speedKmh: c?.speedKmh != null ? sanitizeNumber(c.speedKmh, 0, 0, 100) : null,
-        incline: c?.incline != null ? sanitizeNumber(c.incline, 0, 0, 50) : null,
-        completed: Boolean(c?.completed),
-      }))
-    : [];
-
-  return {
-    id,
-    userId: sanitizeString(d.userId, ''),
-    date: sanitizeDateString(d.date),
-    exercises,
-
-    cardio,
-    workoutStartTime: d.workoutStartTime != null ? sanitizeNumber(d.workoutStartTime, 0, 0) : undefined,
-    workoutDurationMinutes: d.workoutDurationMinutes != null ? sanitizeNumber(d.workoutDurationMinutes, 0, 0, 600) : undefined,
-    completed: Boolean(d.completed),
-    dayPlanIndex: d.dayPlanIndex != null ? sanitizeNumber(d.dayPlanIndex, 1, 1, 7) : undefined,
-    startTime: d.startTime ? sanitizeString(d.startTime, undefined as any, 20) : undefined,
-    endTime: d.endTime ? sanitizeString(d.endTime, undefined as any, 20) : undefined,
-    updatedAt: sanitizeNumber(d.updatedAt, Date.now(), 0),
-    notes: d.notes ? sanitizeString(d.notes, '', 500) : undefined,
-    restTimerStartTime: d.restTimerStartTime !== undefined ? d.restTimerStartTime : null,
-    restTimerDurationSecs: d.restTimerDurationSecs !== undefined ? d.restTimerDurationSecs : null,
-    restTimerExerciseName: d.restTimerExerciseName !== undefined ? d.restTimerExerciseName : null,
-  };
-}
 
 export function parseAttendanceSubject(docData: any, docId: string): AttendanceSubject {
   const d = docData && typeof docData === 'object' ? docData : {};
@@ -360,7 +281,7 @@ export function parseCustomEvent(docData: any, docId: string): CustomEvent {
 
     type: sanitizeEnum<any>(
       d.type,
-      ['todo', 'job', 'goal', 'exam', 'assignment_due', 'holiday', 'viva', 'submission', 'gcal', 'gym'],
+      ['todo', 'job', 'goal', 'exam', 'assignment_due', 'holiday', 'viva', 'submission', 'gcal'],
       'todo'
     ),
     startTime: sanitizeString(d.startTime, '09:00', 10),

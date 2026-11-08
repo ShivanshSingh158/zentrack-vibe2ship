@@ -45,7 +45,6 @@ import ErrorBoundary from '../components/ErrorBoundary';
 
 // --- Lightweight Shimmer Skeletons (Instant 0ms Fallbacks for Frame 1 Tab Switches) ---
 import TasksSkeleton from '../components/Tasks/TasksSkeleton';
-import GymHomeSkeleton from '../components/Gym/GymHomeSkeleton';
 import AttendanceSkeleton from '../components/Academic/AttendanceSkeleton';
 import HabitsSkeleton from '../components/Habits/HabitsSkeleton';
 import AnalyticsSkeleton from '../components/Analytics/AnalyticsSkeleton';
@@ -60,7 +59,6 @@ import DashboardScreen from '../screens/DashboardScreen';
 const TasksScreen = cacheAwareLazy('Tasks', () => import('../screens/TasksScreen'), TasksSkeleton);
 const CalendarScreen = cacheAwareLazy('Calendar', () => import('../screens/CalendarScreen'));
 const AttendanceScreen = cacheAwareLazy('Attendance', () => import('../screens/AttendanceScreen'), AttendanceSkeleton);
-const GymStack = cacheAwareLazy('Gym', () => import('./GymStack'), GymHomeSkeleton);
 const MoreScreen = cacheAwareLazy('More', () => import('../screens/MoreScreen'));
 const HabitsScreen = cacheAwareLazy('Habits', () => import('../screens/HabitsScreen'), HabitsSkeleton);
 const NotesScreen = cacheAwareLazy('Notes', () => import('../screens/NotesScreen'));
@@ -72,7 +70,6 @@ const SettingsScreen = cacheAwareLazy('Settings', () => import('../screens/Setti
 const NotificationsSettingsScreen = cacheAwareLazy('NotificationsSettings', () => import('../screens/NotificationsSettingsScreen'));
 const XPConstellationScreen = cacheAwareLazy('XPConstellation', () => import('../screens/XPConstellationScreen'));
 const StreakDetailScreen = cacheAwareLazy('StreakDetail', () => import('../screens/StreakDetailScreen'));
-const AgentHistoryScreen = cacheAwareLazy('AgentHistory', () => import('../screens/AgentHistoryScreen'));
 const WellbeingDashboardScreen = cacheAwareLazy('WellbeingDashboard', () => import('../screens/WellbeingDashboardScreen'));
 // SARA screen hidden & completely deactivated per user directive
 const NullScreen = () => null;
@@ -160,7 +157,7 @@ function isAuthFatalError(error: any): boolean {
 }
 
 const ALLOWED_SAVE_ROUTES = new Set([
-  'Home', 'Tasks', 'Gym', 'Calendar', 'Habits',
+  'Home', 'Tasks', 'Calendar', 'Habits',
   'Attendance', 'Analytics', 'Notes', 'Grades', 'Assignments', 'Learning',
 ]);
 
@@ -220,8 +217,7 @@ function withFocusFreeze<T extends object>(
 const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
   Tasks:       withFocusFreeze(TasksScreen,       'Tasks'),
   Attendance:  withFocusFreeze(AttendanceScreen,  'Attendance'),
-  Gym:         withFocusFreeze(GymStack,          'Gym'),
-  Calendar:    withFocusFreeze(CalendarScreen,    'Calendar'),
+    Calendar:    withFocusFreeze(CalendarScreen,    'Calendar'),
   Habits:      withFocusFreeze(HabitsScreen,      'Habits'),
   Analytics:   withFocusFreeze(AnalyticsScreen,   'Analytics'),
   Notes:       withFocusFreeze(NotesScreen,       'Notes'),
@@ -267,7 +263,7 @@ function MainTabNavigator() {
 
   const pinnedKey = (Array.isArray(pinnedModules) && pinnedModules.length > 0)
     ? pinnedModules.join(',')
-    : 'Tasks,Gym,Calendar,Attendance';
+    : 'Tasks,Calendar,Attendance,Habits';
 
   const effectivePinned = useMemo(() => pinnedKey.split(','), [pinnedKey]);
 
@@ -350,11 +346,8 @@ function NestedScreens() {
       >
         <Stack.Screen name="Settings"              component={withErrorBoundary(SettingsScreen,              'Settings')} />
         <Stack.Screen name="NotificationsSettings" component={withErrorBoundary(NotificationsSettingsScreen, 'Notifications')} options={{ headerShown: false }} />
-        <Stack.Screen name="Sara"                  component={NullScreen}                                                       options={{ headerShown: false }} />
         {/* Modal-style screens lift up from bottom — more natural than a side-slide */}
         <Stack.Screen name="StreakDetail"           component={withErrorBoundary(StreakDetailScreen,          'StreakDetail')}   options={{ headerShown: false, animation: 'fade_from_bottom', animationDuration: 320 }} />
-        <Stack.Screen name="SaraModal"             component={NullScreen}                                                       options={{ headerShown: false }} />
-        <Stack.Screen name="AgentHistory"          component={withErrorBoundary(AgentHistoryScreen,          'AgentHistory')} />
         <Stack.Screen name="Assignments"           component={withErrorBoundary(AssignmentsScreen,           'Assignments')}   options={{ headerShown: false }} />
         <Stack.Screen name="WellbeingDashboard"    component={withErrorBoundary(WellbeingDashboardScreen,    'Wellbeing')}     options={{ headerShown: false, animation: 'fade_from_bottom', animationDuration: 320 }} />
         <Stack.Screen name="XPConstellation"       component={withErrorBoundary(XPConstellationScreen,       'XPConstellation')} options={{ headerShown: false, animation: 'fade_from_bottom', animationDuration: 320 }} />
@@ -364,7 +357,7 @@ function NestedScreens() {
 }
 
 // --- Root authenticated navigator + Pomodoro ---------------------------------
-function RootNavigatorWithSara() {
+function RootNavigator() {
   const { colors } = useTheme();
   const { isSheetOpen } = usePomodoro();
 
@@ -621,8 +614,6 @@ export default function AppNavigator() {
         // Defer cleanup to avoid competing with background transition animation
         setTimeout(() => {
           AsyncStorage.multiRemove([
-            'sara_chat_history',
-            'sara_memory_summary',
             'gym_chat_history',
             'gym_memory_summary',
           ]).catch(() => {});
@@ -699,9 +690,7 @@ const LINKING_CONFIG = {
         screens: {
           Settings: 'settings',
           NotificationsSettings: 'notifications-settings',
-          Sara: 'sara',
           StreakDetail: 'streak',
-          AgentHistory: 'agent-history',
           Assignments: 'assignments',
           WellbeingDashboard: 'wellbeing',
           XPConstellation: 'xp',
@@ -737,7 +726,7 @@ const LINKING_CONFIG = {
               </Stack.Navigator>
             </ErrorBoundary>
           ) : (
-            <RootNavigatorWithSara />
+            <RootNavigator />
           )
         ) : (
           <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: colors.background } }}>

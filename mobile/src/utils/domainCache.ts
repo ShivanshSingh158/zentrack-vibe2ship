@@ -22,9 +22,7 @@ import { clearDomainHotCache } from './hotCacheStore';
 // ─── Cache Keys ───────────────────────────────────────────────────────────────
 export const DOMAIN_CACHE_KEYS = {
   // Wellness
-  GYM_LOGS:         '@zentrack_cache_gym_logs',
-  USER_GYM_PLAN:    '@zentrack_cache_user_gym_plan',
-  WATER_LOGS:       '@zentrack_cache_water_logs',
+      WATER_LOGS:       '@zentrack_cache_water_logs',
   SLEEP_LOGS:       '@zentrack_cache_sleep_logs',
   WEIGHT_LOGS:      '@zentrack_cache_weight_logs',
   // Academic
@@ -136,16 +134,12 @@ export async function writeDomainCache(
 
 // ── Wellness ─────────────────────────────────────────────────────────────────
 const WELLNESS_KEY_MAP = {
-  gymLogs:     DOMAIN_CACHE_KEYS.GYM_LOGS,
-  userGymPlan: DOMAIN_CACHE_KEYS.USER_GYM_PLAN,
   waterLogs:   DOMAIN_CACHE_KEYS.WATER_LOGS,
   sleepLogs:   DOMAIN_CACHE_KEYS.SLEEP_LOGS,
   weightLogs:  DOMAIN_CACHE_KEYS.WEIGHT_LOGS,
 } as const;
 
 export interface WellnessCache {
-  gymLogs: any[];
-  userGymPlan: any | null;
   waterLogs: any[];
   sleepLogs: any[];
   weightLogs: any[];

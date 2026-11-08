@@ -90,7 +90,14 @@ export function useAttendanceExport(
         if (hasLab(s)) cols.push({ subjectId: s.id, subjectName: s.name, type: 'lab', sessionCount: labCount });
       });
 
-      const esc = (v: string) => v.includes(',') ? `"${v}"` : v;
+      const esc = (v: string) => {
+        if (!v) return '""';
+        let str = String(v);
+        if (/^[=+\-@\t\r]/.test(str)) {
+          str = `'${str}`;
+        }
+        return `"${str.replace(/"/g, '""')}"`;
+      };
       const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       const rows: string[] = [];
       const exportDate = formatDateNumeric(getLocalDateString(new Date()));
@@ -128,7 +135,7 @@ export function useAttendanceExport(
       rows.push('Legend: P = Present | A = Absent | Can = Cancelled | Hol = Holiday | - = No class');
 
       const csvContent = rows.join('\n');
-      const filename = `ZenTrack_Attendance_${new Date().toISOString().split('T')[0]}.csv`;
+      const filename = `ZenTrack_Attendance_${getLocalDateString(new Date())}.csv`;
       const fs = FileSystem as any;
       const fileUri = `${fs.cacheDirectory}${filename}`;
       await fs.writeAsStringAsync(fileUri, csvContent, { encoding: fs.EncodingType.UTF8 });

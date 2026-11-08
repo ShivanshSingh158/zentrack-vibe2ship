@@ -27,7 +27,6 @@ import { getLevel } from './dashboard/useXPLevel';
 import { UnifiedLifeWidget } from '../components/Dashboard/UnifiedLifeWidget';
 import { AgendaWidget } from '../components/Dashboard/AgendaWidget';
 import AnimatedPressable from '../components/AnimatedPressable';
-import SaraHUDBanner from '../components/SARA/SaraHUDBanner';
 import QuickCaptureSheet from '../components/Dashboard/QuickCaptureSheet';
 import DashboardLayoutSheet from '../components/Dashboard/DashboardLayoutSheet';
 import WaterLogSheet from '../components/Dashboard/WaterLogSheet';
@@ -40,7 +39,6 @@ import { useWidgetSync } from '../hooks/useWidgetSync';
 import { areItemsEqual } from '../utils/schemaGuards';
 import DashboardSkeleton from '../components/Dashboard/DashboardSkeleton';
 import { LinearGradient } from 'expo-linear-gradient';
-import VoiceDictationOverlay from '../components/Tasks/VoiceDictationOverlay';
 import UserAvatar from '../components/ui/UserAvatar';
 import BottomSheet from '../components/ui/BottomSheet';
 
@@ -59,9 +57,7 @@ export default function DashboardScreen() {
     holidays: data.holidays,
     zenScore: data.overallAttendancePct,
     streak: data.appStreak,
-    gymLogs: data.gymLogs,
-    userGymPlan: data.userGymPlan,
-  });
+          });
   const paddingBottom = insets.bottom + 80;
   const levelInfo = getLevel(data.xp);
 
@@ -69,9 +65,6 @@ export default function DashboardScreen() {
   const [dueFlashcards, setDueFlashcards] = useState<Flashcard[]>([]);
   const [flashcardModalVisible, setFlashcardModalVisible] = useState(false);
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
-
-  // ── Voice Task Dictation State (FAB replaces previous Sara button) ──
-  const [isVoiceDictationOpen, setIsVoiceDictationOpen] = useState(false);
   // ── One-time entrance animation guard — prevents FadeInDown re-firing on
   //    every Firestore update that causes a parent re-render.
   const hasAnimatedRef = useRef(false);
@@ -337,12 +330,6 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
-      <SaraHUDBanner
-        message={data.surfaceMessage || ''}
-        visible={!!data.surfaceMessage}
-        onDismiss={data.dismissBanner}
-        actionLabel={data.surfaceActionLabel || undefined}
-      />
       
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={[s.scroll, { paddingBottom }]} showsVerticalScrollIndicator={false}>
@@ -517,8 +504,6 @@ export default function DashboardScreen() {
                 <Animated.View key={layoutItem.id} entering={entering}>
                   <AgendaWidget
                     tasks={data.tasks}
-                    gymLogs={data.gymLogs}
-                    userGymPlan={data.userGymPlan}
                     attendance={data.attendance}
                     attendanceLogs={data.attendanceLogs}
                     todayStr={data.todayStr}
@@ -745,41 +730,7 @@ export default function DashboardScreen() {
         </BottomSheet>
       )}
 
-      {/* Voice Task Floating Action Button (replacing Sara button) */}
-      <AnimatedPressable
-        style={[
-          s.voiceTaskFab,
-          {
-            bottom: Math.max(84, insets.bottom + 70),
-          },
-        ]}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          setIsVoiceDictationOpen(true);
-        }}
-        accessibilityLabel="Add task by voice"
-        accessibilityRole="button"
-        haptic="medium"
-      >
-        <LinearGradient
-          colors={['#FF5252', '#FF3B30']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={s.voiceTaskFabGradient}
-        >
-          <Ionicons name="mic" size={24} color="#FFFFFF" />
-        </LinearGradient>
-      </AnimatedPressable>
-
       {/* Voice Dictation Overlay Modal for Tasks */}
-      {isVoiceDictationOpen && (
-        <VoiceDictationOverlay
-          visible={isVoiceDictationOpen}
-          onClose={() => setIsVoiceDictationOpen(false)}
-          selectedDate={data.todayStr}
-          userId={data.user?.uid}
-        />
-      )}
     </SafeAreaView>
   );
 }

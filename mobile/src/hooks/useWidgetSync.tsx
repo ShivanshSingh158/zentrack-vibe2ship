@@ -9,9 +9,6 @@ import {
   buildTodayAgendaData, 
   saveCachedWidgetData, 
   updateTodayAgendaWidget,
-  buildLiveWorkoutWidgetData,
-  saveCachedLiveWorkoutData,
-  updateLiveWorkoutWidget,
 } from '../services/widgetSyncService';
 import type { Task, AttendanceSubject, AttendanceLog } from '../contexts/MobileDataContext';
 import { formatLocalDateStr } from '../utils/dateUtils';
@@ -23,8 +20,6 @@ interface UseWidgetSyncParams {
   holidays?: string[];
   zenScore?: number;
   streak?: number;
-  gymLogs?: any[];
-  userGymPlan?: any;
 }
 
 export function useWidgetSync({
@@ -34,8 +29,6 @@ export function useWidgetSync({
   holidays = [],
   zenScore = 85,
   streak = 0,
-  gymLogs = [],
-  userGymPlan = null,
 }: UseWidgetSyncParams) {
   const debounceTimer = useRef<any>(null);
   const lastFingerprintRef = useRef<string>('');
@@ -52,24 +45,7 @@ export function useWidgetSync({
       .join('|');
     const isHoliday = (holidays || []).some(h => (typeof h === 'string' ? h.trim().slice(0, 10) : (h as any)?.date?.trim()?.slice(0, 10)) === dateStr);
 
-    const todayGym = (gymLogs || []).find((g: any) => (g.date || '').slice(0, 10) === dateStr);
-    const planFingerprint = userGymPlan ? `${userGymPlan.splitName || ''}_${userGymPlan.updatedAt || 0}` : 'no_plan';
-
-    const completedSetsCount = todayGym
-      ? (todayGym.exercises || []).reduce(
-          (sum: number, ex: any) => sum + ((ex.setsLog || []).filter((s: any) => s.completed).length),
-          0
-        )
-      : 0;
-    const gymFingerprint = todayGym
-      ? `${todayGym.completed ? '1' : '0'}_${todayGym.workoutStartTime || 0}_${todayGym.workoutDurationMinutes || 0}_${(todayGym.exercises || []).length}_${completedSetsCount}_${todayGym.updatedAt || 0}`
-      : 'no_gym';
-    const taskFp = tasks
-      .map(t => `${t.id}:${t.status}:${t.date || ''}:${t.timeSlot || ''}:${t.title || ''}`)
-      .join(',');
-
-    // Fast O(1) shallow fingerprint tracking task states, today's log actions, holiday state, zenScore, streak, and gym state
-    const currentFingerprint = `${tasks.length}_${taskFp}_${subjects.length}_${todayLogs}_${isHoliday ? '1' : '0'}_${Math.round(zenScore)}_${Math.round(streak)}_${gymFingerprint}_${planFingerprint}`;
+    const currentFingerprint = `${tasks.length}_${subjects.length}_${todayLogs}_${isHoliday}_${Math.round(zenScore)}_${streak}`;
     if (currentFingerprint === lastFingerprintRef.current) {
       return; // Data has not changed; skip 100% of background work
     }
@@ -92,14 +68,6 @@ export function useWidgetSync({
           });
           await saveCachedWidgetData(agendaData);
           await updateTodayAgendaWidget(agendaData);
-
-          const workoutData = buildLiveWorkoutWidgetData({
-            todayStr: dateStr,
-            gymLogs,
-            userGymPlan,
-          });
-          await saveCachedLiveWorkoutData(workoutData);
-          await updateLiveWorkoutWidget(workoutData);
         } catch (e) {
         }
       });
@@ -110,5 +78,5 @@ export function useWidgetSync({
         clearTimeout(debounceTimer.current);
       }
     };
-  }, [tasks, subjects, attendanceLogs, holidays, zenScore, streak, gymLogs, userGymPlan]);
+  }, [tasks, subjects, attendanceLogs, holidays, zenScore, streak]);
 }

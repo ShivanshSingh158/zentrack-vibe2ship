@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { CalendarWeekStripPager } from '../components/Calendar/CalendarWeekStripPager';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { callGeminiProxy } from '../services/geminiProxy';
 import { useTheme } from "../contexts/ThemeContext";
 import AnimatedPressable from '../components/AnimatedPressable';
 
@@ -20,7 +19,6 @@ const CalendarAgendaView = React.lazy(() => import('./calendar/CalendarAgendaVie
 // ── Lazy-loaded Modals & Month Dropdown: Defers ~1,064 LOC and react-native-calendars ──
 const AddEventModal = React.lazy(() => import('../components/Calendar/AddEventModal').then(m => ({ default: m.AddEventModal })));
 const EventDetailSheet = React.lazy(() => import('./calendar/EventDetailSheet').then(m => ({ default: m.EventDetailSheet })));
-const CalendarGymModal = React.lazy(() => import('./calendar/CalendarGymModal').then(m => ({ default: m.CalendarGymModal })));
 const MonthDropdownCalendar = React.lazy(() => import('./calendar/MonthDropdownCalendar'));
 import { makeStyles } from './calendar/calendarStyles';
 import { getEventColors, format12Hour, parseTimeTo24h, HOUR_HEIGHT } from './calendar/calendarUtils';
@@ -34,8 +32,6 @@ export default function CalendarScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
-  const [findingSlots, setFindingSlots] = useState(false);
-  const [aiSlotResult, setAiSlotResult] = useState<string | null>(null);
   const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
 
   const data = useCalendarData();
@@ -43,19 +39,14 @@ export default function CalendarScreen() {
     now, selectedDate, setSelectedDate,
     showEventModal, setShowEventModal,
     showAddModal, setShowAddModal,
-    showGymModal, setShowGymModal,
-    selectedEvent, setSelectedEvent,
-    selectedGymLog, setSelectedGymLog,
-    gymStartTimeInput, setGymStartTimeInput,
-    gymEndTimeInput, setGymEndTimeInput,
-    isMonthDropdownOpen, setIsMonthDropdownOpen,
+        selectedEvent, setSelectedEvent,
+                isMonthDropdownOpen, setIsMonthDropdownOpen,
     initialTime, setInitialTime,
     scrollViewRef, agendaScrollRef,
     currentTime, currentView, setCurrentView,
     timedDayEvents, unscheduledDayEvents, dayEvents, processedEvents, weekEvents,
     minHour, maxHour, DYNAMIC_HOURS,
-    handleSaveGymTime,
-    tasks, attendance, customEvents, gymLogs, userGymPlan, holidays,
+        tasks, attendance, customEvents,  holidays,
     scrollToCurrentTime,
   } = data;
 
@@ -162,27 +153,48 @@ export default function CalendarScreen() {
       }
     };
 
+    const isEventOnDate = (e: any, targetDateStr: string): boolean => {
+      if (e.date === targetDateStr) return true;
+      if (!e.recurrenceRule || !e.date || e.date > targetDateStr) return false;
+      if (e.recurrenceRule === 'daily') return true;
+      const eDate = new Date(e.date + 'T00:00:00');
+      const tDate = new Date(targetDateStr + 'T00:00:00');
+      if (e.recurrenceRule === 'weekly') return eDate.getDay() === tDate.getDay();
+      if (e.recurrenceRule === 'monthly') return eDate.getDate() === tDate.getDate();
+      return false;
+    };
+
+    const [yStr, mStr] = currentYearMonth.split('-');
+    const y = parseInt(yStr, 10);
+    const m = parseInt(mStr, 10) - 1;
+    const numDays = new Date(y, m + 1, 0).getDate();
+
     for (let i = 0; i < customEvents.length; i++) {
       const e = customEvents[i];
-      if (e.date) addDot(e.date, colorMap[e.type]?.border || colors.accentPrimary, e.id);
+      if (!e.date) continue;
+      const color = colorMap[e.type]?.border || colors.accentPrimary;
+      if (e.recurrenceRule) {
+        for (let d = 1; d <= numDays; d++) {
+          const dd = d < 10 ? `0${d}` : `${d}`;
+          const dateStr = `${currentYearMonth}-${dd}`;
+          if (isEventOnDate(e, dateStr)) {
+            addDot(dateStr, color, `${e.id}-${dateStr}`);
+          }
+        }
+      } else {
+        addDot(e.date, color, e.id);
+      }
     }
     for (let i = 0; i < tasks.length; i++) {
       const t = tasks[i];
       if (t.date) addDot(t.date, isDark ? '#f59e0b' : '#D97706', t.id);
-    }
-    if (gymLogs) {
-      for (let i = 0; i < gymLogs.length; i++) {
-        const g = gymLogs[i];
-        const isValid = g && (g.completed || (Array.isArray(g.exercises) && g.exercises.length > 0 && g.exercises.some((ex: any) => (ex.setsLog || []).some((s: any) => s.completed))));
-        if (g.date && isValid) addDot(g.date, isDark ? '#10b981' : '#059669', g.id);
-      }
     }
     for (let i = 0; i < monthClassDates.length; i++) {
       const dStr = monthClassDates[i];
       addDot(dStr, isDark ? '#3390ec' : '#2563EB', 'class-' + dStr);
     }
     return marks;
-  }, [customEvents, tasks, monthClassDates, gymLogs, colors, isDark]);
+  }, [customEvents, tasks, monthClassDates,  colors, isDark, currentYearMonth]);
 
   // Dynamic markedDates with selected day highlight
   const markedDates = useMemo(() => {
@@ -205,53 +217,47 @@ export default function CalendarScreen() {
     const bump = (date: string) => {
       counts[date] = (counts[date] || 0) + 1;
     };
+
+    const isEventOnDate = (e: any, targetDateStr: string): boolean => {
+      if (e.date === targetDateStr) return true;
+      if (!e.recurrenceRule || !e.date || e.date > targetDateStr) return false;
+      if (e.recurrenceRule === 'daily') return true;
+      const eDate = new Date(e.date + 'T00:00:00');
+      const tDate = new Date(targetDateStr + 'T00:00:00');
+      if (e.recurrenceRule === 'weekly') return eDate.getDay() === tDate.getDay();
+      if (e.recurrenceRule === 'monthly') return eDate.getDate() === tDate.getDate();
+      return false;
+    };
+
+    const [yStr, mStr] = currentYearMonth.split('-');
+    const y = parseInt(yStr, 10);
+    const m = parseInt(mStr, 10) - 1;
+    const numDays = new Date(y, m + 1, 0).getDate();
+
     for (let i = 0; i < customEvents.length; i++) {
-      const d = customEvents[i].date;
-      if (d) bump(d);
+      const e = customEvents[i];
+      if (!e.date) continue;
+      if (e.recurrenceRule) {
+        for (let d = 1; d <= numDays; d++) {
+          const dd = d < 10 ? `0${d}` : `${d}`;
+          const dateStr = `${currentYearMonth}-${dd}`;
+          if (isEventOnDate(e, dateStr)) bump(dateStr);
+        }
+      } else {
+        bump(e.date);
+      }
     }
     for (let i = 0; i < tasks.length; i++) {
       const d = tasks[i].date;
       if (d) bump(d);
     }
-    if (gymLogs) {
-      for (let i = 0; i < gymLogs.length; i++) {
-        const g = gymLogs[i];
-        const isValid = g && (g.completed || (Array.isArray(g.exercises) && g.exercises.length > 0 && g.exercises.some((ex: any) => (ex.setsLog || []).some((s: any) => s.completed))));
-        const d = g?.date;
-        if (d && isValid) bump(d);
-      }
-    }
     for (let i = 0; i < monthClassDates.length; i++) {
       bump(monthClassDates[i]);
     }
     return counts;
-  }, [currentView, customEvents, tasks, gymLogs, monthClassDates]);
+  }, [currentView, customEvents, tasks,  monthClassDates]);
 
   // In-memory cache for AI Free Slot results keyed by date + events fingerprint
-  const slotCacheRef = useRef<Record<string, string>>({});
-
-  const handleFindFreeSlots = useCallback(async () => {
-    const scheduleFingerprint = `${selectedDate}_${dayEvents.map(e => `${e.id}_${e.startTime}_${e.endTime}`).join(';')}`;
-    if (slotCacheRef.current[scheduleFingerprint]) {
-      setAiSlotResult(slotCacheRef.current[scheduleFingerprint]);
-      return;
-    }
-
-    setFindingSlots(true);
-    try {
-      const prompt = `Here are my events for today: ${JSON.stringify(dayEvents.map(e => ({title: e.title, start: e.startTime, end: e.endTime})))}\nFind the best 1-2 hour continuous free slot during working hours (9 AM - 6 PM). Output a brief, energetic message with the time slot and why it's the best choice.`;
-      const text = await callGeminiProxy(
-        [{ role: 'user', parts: [{ text: prompt }] }],
-        { maxOutputTokens: 250, temperature: 0.5 }
-      );
-      const resultText = text || 'No free slots found.';
-      slotCacheRef.current[scheduleFingerprint] = resultText;
-      setAiSlotResult(resultText);
-    } catch(e) {
-      setAiSlotResult('Unable to find free slots. Please try again.');
-    }
-    setFindingSlots(false);
-  }, [selectedDate, dayEvents]);
 
   const handlePrevMonth = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -284,48 +290,6 @@ export default function CalendarScreen() {
   return (
     <SafeAreaView style={styles.root}>
 
-      {/* ── AI Slot Result Bottom Sheet ── */}
-      {!!aiSlotResult && (
-        <Modal
-          visible={!!aiSlotResult}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setAiSlotResult(null)}
-        >
-          <TouchableOpacity
-            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}
-            activeOpacity={1}
-            onPress={() => setAiSlotResult(null)}
-          >
-            <View style={{
-              backgroundColor: colors.surface,
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              padding: 24,
-              paddingBottom: 40,
-              borderTopWidth: 1,
-              borderTopColor: colors.border,
-            }}>
-              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)', alignSelf: 'center', marginBottom: 20 }} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 }}>
-                <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)', alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 16 }}>✨</Text>
-                </View>
-                <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 18, color: colors.textPrimary }}>AI Free Slot</Text>
-              </View>
-              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 15, color: colors.textSecondary, lineHeight: 22 }}>
-                {aiSlotResult}
-              </Text>
-              <TouchableOpacity
-                onPress={() => setAiSlotResult(null)}
-                style={{ marginTop: 24, paddingVertical: 14, backgroundColor: colors.accentPrimary, borderRadius: 14, alignItems: 'center' }}
-              >
-                <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 15, color: isDark ? '#000000' : '#FFFFFF' }}>Got it</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </Modal>
-      )}
 
       {/* 1.5. SUB HEADER (Month + View Selector & Today) */}
       <View style={styles.subHeader}>
@@ -502,10 +466,7 @@ export default function CalendarScreen() {
             DYNAMIC_HOURS={DYNAMIC_HOURS} minHour={minHour} maxHour={maxHour}
             isToday={isToday} indicatorTop={indicatorTop} scrollViewRef={scrollViewRef}
             setInitialTime={setInitialTime} setSelectedEvent={setSelectedEvent}
-            setShowAddModal={setShowAddModal} setSelectedGymLog={setSelectedGymLog}
-            setGymStartTimeInput={setGymStartTimeInput} setGymEndTimeInput={setGymEndTimeInput}
-            setShowGymModal={setShowGymModal} setShowEventModal={setShowEventModal} gymLogs={gymLogs}
-            currentTimeMins={isToday ? currentTimeMins : undefined}
+            setShowAddModal={setShowAddModal} setShowEventModal={setShowEventModal} currentTimeMins={isToday ? currentTimeMins : undefined}
           />
         </View>
       )}
@@ -533,11 +494,8 @@ export default function CalendarScreen() {
               styles={styles} colors={colors} isDark={isDark} selectedDate={selectedDate}
               currentView={currentView}
               setSelectedDate={setSelectedDate} markedDates={markedDates}
-              dayEvents={dayEvents} setSelectedGymLog={setSelectedGymLog}
-              setGymStartTimeInput={setGymStartTimeInput} setGymEndTimeInput={setGymEndTimeInput}
-              setShowGymModal={setShowGymModal} setSelectedEvent={setSelectedEvent}
-              setShowEventModal={setShowEventModal} gymLogs={gymLogs}
-              eventCountByDate={eventCountByDate}
+              dayEvents={dayEvents} setSelectedEvent={setSelectedEvent}
+              setShowEventModal={setShowEventModal} eventCountByDate={eventCountByDate}
             />
           </Suspense>
         </View>
@@ -578,22 +536,6 @@ export default function CalendarScreen() {
             selectedDate={editingEvent?.date || selectedDate}
             initialStartTime={initialTime}
             existingEvent={editingEvent}
-          />
-        </Suspense>
-      )}
-
-      {/* Gym Modal */}
-      {showGymModal && (
-        <Suspense fallback={null}>
-          <CalendarGymModal 
-            visible={showGymModal}
-            styles={styles}
-            gymStartTimeInput={gymStartTimeInput} 
-            setGymStartTimeInput={setGymStartTimeInput} 
-            gymEndTimeInput={gymEndTimeInput} 
-            setGymEndTimeInput={setGymEndTimeInput} 
-            onClose={() => setShowGymModal(false)}
-            onSave={handleSaveGymTime} 
           />
         </Suspense>
       )}

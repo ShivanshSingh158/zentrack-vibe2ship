@@ -46,21 +46,7 @@ export const MORNING_BRIEF_STANDARD_POOLS = (summary: string, name?: string) => 
   `Day loaded: ${summary} in your queue. Tap to dive in.`,
 ];
 
-export const MORNING_BRIEF_MISSED_GYM_TITLES = (name?: string) => [
-  name ? `${name}, don't skip the gym again.` : 'Workout Missed Yesterday',
-  'Back on Track Today',
-  'Training Day',
-  'Pick Up Where You Left Off',
-];
 
-export const MORNING_BRIEF_MISSED_GYM_POOLS = (summary: string, name?: string) => [
-  name
-    ? `${name}: ${summary} plus a workout session today. Don't let two days slip.`
-    : `${summary} and a gym session today. Don't let two days slip.`,
-  `Consistency wins over intensity. Today: ${summary} and your workout.`,
-  `Reset the streak. Hit ${summary} and the gym before the day's out.`,
-  `Back at it: ${summary} and your training session are both on the list.`,
-];
 
 // ── 2. Overdue Task Nudge ─────────────────────────────────────────────────────
 
@@ -161,26 +147,9 @@ export const HABIT_DAILY_0_POOLS = (habitName: string) => [
 
 // ── 12. Gym Workout Reminder ──────────────────────────────────────────────────
 
-export const GYM_WORKOUT_POOLS = (planName: string, exercisePreview?: string, totalExercises?: number) => {
-  const previewClause = exercisePreview
-    ? `: ${exercisePreview}${totalExercises && totalExercises > 3 ? ` +${totalExercises - 3} more` : ''}`
-    : '';
-  return [
-    `Today's session: ${planName}${previewClause}. Tap to view and start tracking.`,
-    `${planName} is on the schedule${previewClause}. No excuses — tap to begin.`,
-    `Time to train. ${planName}${previewClause} is waiting.`,
-    `Workout ready: ${planName}${previewClause}. Tap to log your sets.`,
-  ];
-};
 
 // ── 13. Gym Rest Day ──────────────────────────────────────────────────────────
 
-export const GYM_REST_DAY_POOLS = () => [
-  'Scheduled rest day. Recover well — your next session depends on it.',
-  'Today is recovery. Sleep, hydrate, and let the muscles rebuild.',
-  'Active rest day. A short walk or stretch counts. Don\'t overdo it.',
-  'Rest is training too. Protect today\'s recovery for tomorrow\'s performance.',
-];
 
 // ── 14. Attendance < 75% Warning ─────────────────────────────────────────────
 

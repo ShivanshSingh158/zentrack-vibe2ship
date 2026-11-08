@@ -36,7 +36,6 @@ const RecurrencePickerModal = React.lazy(() => import('../../components/Tasks/Re
 const UniversalCalendarModal = React.lazy(() => import('../../components/UniversalCalendarModal'));
 import { scheduleSingleTaskReminder } from '../../services/notifications';
 import { parseNLTask, ParsedTask, NLPToken, cleanTaskTitle } from '../../utils/dateUtils';
-import { isSilenceOrNoise } from '../../services/voiceEngine';
 import { formatLocalDateStr } from '../../utils/dateUtils';
 import { Task } from '../../contexts/MobileDataContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
@@ -520,7 +519,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     Keyboard.dismiss();
     const isOverride = typeof overrideTitle === 'string';
     const rawText = isOverride ? overrideTitle : title;
-    if (!rawText.trim() || isSilenceOrNoise(rawText)) return;
+    if (!rawText.trim()) return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 

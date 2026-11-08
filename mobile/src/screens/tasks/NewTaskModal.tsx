@@ -27,12 +27,10 @@ import NLPTaskInput from '../../components/Tasks/NLPTaskInput';
 import AnimatedPressable from '../../components/AnimatedPressable';
 import { feedback } from '../../utils/haptics';
 
-const VoiceDictationOverlay = React.lazy(() => import('../../components/Tasks/VoiceDictationOverlay'));
 const RecurrencePickerModal = React.lazy(() => import('../../components/Tasks/RecurrencePickerModal'));
 const UniversalCalendarModal = React.lazy(() => import('../../components/UniversalCalendarModal'));
 
 import { parseNLTask, ParsedTask, NLPToken, parseLocalDate, toYMD, cleanTaskTitle, formatRecurrenceLabel } from '../../utils/dateUtils';
-import { isSilenceOrNoise } from '../../services/voiceEngine';
 import {
   TAG_STORAGE_KEY, TAG_PALETTE, tagColorFor,
   getToday, formatDisplayDate, formatTimeDisplay,
@@ -495,45 +493,6 @@ export const NewTaskModal = React.memo(function NewTaskModal({
 
   const resetAndClose = requestClose;
 
-  const [showDictationOverlay, setShowDictationOverlay] = useState(false);
-
-  const handleVoiceTasksExtracted = async (extractedTasks: any[]) => {
-    feedback.commit();
-    
-    if (extractedTasks.length > 0) {
-      const pt = extractedTasks[0];
-      
-      // Populate all extracted fields
-      if (pt.title) setTitle(pt.title);
-      if (pt.date) setTaskDate(pt.date);
-      if (pt.priority) setPriority(pt.priority);
-      if (pt.timeSlot) {
-        const timeParts = typeof pt.timeSlot === 'string'
-          ? pt.timeSlot.split(/[-–—]/).map((s: string) => s.trim()).filter(Boolean)
-          : [];
-        setStartTime(timeParts[0] || pt.timeSlot);
-        if (pt.endTimeSlot) {
-          setEndTime(pt.endTimeSlot);
-        } else if (timeParts.length > 1 && timeParts[timeParts.length - 1] !== timeParts[0]) {
-          setEndTime(timeParts[timeParts.length - 1]);
-        }
-      } else if (pt.endTimeSlot) {
-        setEndTime(pt.endTimeSlot);
-      }
-      if (pt.recurrenceRule) setRecurrenceRule(pt.recurrenceRule);
-      if (pt.tags && Array.isArray(pt.tags)) {
-        pt.tags.forEach((t: string) => addTag(t));
-      }
-      if (pt.subtasks && Array.isArray(pt.subtasks) && pt.subtasks.length > 0) {
-        const subStrings = pt.subtasks.map((s: any) => typeof s === 'string' ? s : s.title || '');
-        setSubtasks(subStrings);
-        setShowSubtasks(true);
-      }
-      if (pt.isReminder) setIsReminder(true);
-      if (pt.durationMinutes) setNlpDuration(pt.durationMinutes);
-    }
-  };
-
   const handleSave = (overrideTitle?: string) => {
     // Issue 67: prevent double-tap duplicate creation with a sync ref lock
     if (isSavingRef.current) return;
@@ -541,7 +500,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
 
     const isOverride = typeof overrideTitle === 'string';
     const rawText = isOverride ? overrideTitle : title;
-    if (!rawText.trim() || isSilenceOrNoise(rawText)) {
+    if (!rawText.trim()) {
       isSavingRef.current = false;
       return;
     }
@@ -796,7 +755,6 @@ export const NewTaskModal = React.memo(function NewTaskModal({
             placeholder="Add a task... try 'report friday 3pm high'"
             onSubmitEditing={() => handleSave()}
             onAutoSubmit={(t) => handleSave(t)}
-            onMicPress={() => setShowDictationOverlay(true)}
           />
         </View>
 
@@ -985,21 +943,6 @@ export const NewTaskModal = React.memo(function NewTaskModal({
             onClose={() => setShowRecurrenceModal(false)}
             initialRule={recurrenceRule}
             onSave={setRecurrenceRule}
-          />
-        </React.Suspense>
-      )}
-      {showDictationOverlay && (
-        <React.Suspense fallback={null}>
-          <VoiceDictationOverlay 
-            visible={showDictationOverlay}
-            onClose={() => setShowDictationOverlay(false)}
-            onTasksExtracted={handleVoiceTasksExtracted}
-            onTaskCreated={() => {
-              setShowDictationOverlay(false);
-              resetAndClose();
-            }}
-            selectedDate={taskDate || selectedDate}
-            userId={userId}
           />
         </React.Suspense>
       )}

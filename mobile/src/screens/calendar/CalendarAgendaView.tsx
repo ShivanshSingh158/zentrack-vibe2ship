@@ -31,12 +31,7 @@ interface CalendarAgendaViewProps {
   agendaScrollRef?: any;
   setSelectedEvent: (evt: any) => void;
   setShowEventModal: (show: boolean) => void;
-  setSelectedGymLog: (log: any) => void;
-  setGymStartTimeInput: (time: string) => void;
-  setGymEndTimeInput: (time: string) => void;
-  setShowGymModal: (show: boolean) => void;
-  gymLogs: any[];
-  /** event count per date string — drives heat map coloring */
+          /** event count per date string — drives heat map coloring */
   eventCountByDate?: Record<string, number>;
 }
 
@@ -124,10 +119,7 @@ const AgendaDayCell = React.memo(function AgendaDayCell({
 
 const CalendarAgendaView = React.memo(function CalendarAgendaView({
   styles, colors, isDark = true, selectedDate, currentView,
-  setSelectedDate, markedDates, dayEvents, setSelectedGymLog,
-  setGymStartTimeInput, setGymEndTimeInput, setShowGymModal,
-  setShowEventModal, setSelectedEvent, gymLogs,
-  eventCountByDate = {},
+  setSelectedDate, markedDates, dayEvents,     setShowEventModal, setSelectedEvent,   eventCountByDate = {},
 }: CalendarAgendaViewProps) {
 
   const todayStr = useMemo(() => formatLocalDateStr(new Date()), []);
@@ -170,16 +162,7 @@ const CalendarAgendaView = React.memo(function CalendarAgendaView({
         style={[styles.monthEventRow, { borderLeftColor: eventColor.border }]}
         activeOpacity={0.7}
         onPress={() => {
-          if (item.type === 'gym') {
-            const log = gymLogs?.find(g => g.id === item.id || g.date === item.date) || { id: item.id || `gym_${item.date}`, date: item.date };
-            setSelectedGymLog(log);
-            setGymStartTimeInput(item.startTime || '10:00');
-            setGymEndTimeInput(item.endTime || '11:00');
-            setShowGymModal(true);
-          } else {
-            setSelectedEvent(item);
-            setShowEventModal(true);
-          }
+          setSelectedEvent(item); setShowEventModal(true);
         }}
       >
         <Text style={[styles.monthEventTitle, { color: isDark ? eventColor.border : colors.textPrimary }]} numberOfLines={1}>
@@ -190,7 +173,7 @@ const CalendarAgendaView = React.memo(function CalendarAgendaView({
         </Text>
       </TouchableOpacity>
     );
-  }, [eventColorMap, colors.surface, colors.textPrimary, colors.accentPrimary, styles.monthEventRow, styles.monthEventTitle, styles.monthEventTime, isDark, gymLogs, setSelectedGymLog, setGymStartTimeInput, setGymEndTimeInput, setShowGymModal, setSelectedEvent, setShowEventModal]);
+  }, [eventColorMap, colors.surface, colors.textPrimary, colors.accentPrimary, styles.monthEventRow, styles.monthEventTitle, styles.monthEventTime, isDark,    setSelectedEvent, setShowEventModal]);
 
   const keyExtractor = useCallback((item: any) => item.id, []);
 

@@ -67,7 +67,6 @@ export const MoveNodeModal = React.memo(function MoveNodeModal({
   isDark,
 }: MoveNodeModalProps) {
   const isBatch = !node && batchCount > 0;
-  if (!node && !isBatch) return null;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
@@ -147,16 +146,35 @@ export const MoveNodeModal = React.memo(function MoveNodeModal({
     const buildSubtree = (
       folder: StorageNode,
       depth: number,
-      parentPath: string
+      parentPath: string,
+      visited: Set<string> = new Set()
     ): FolderTreeNode => {
       const currentPath = `${parentPath} > ${folder.name}`;
-      const childrenNodes = childrenMap.get(folder.id!) || [];
+      if (folder.id && visited.has(folder.id)) {
+        return {
+          id: folder.id,
+          name: folder.name,
+          parentId: folder.parentId ?? null,
+          depth,
+          path: currentPath,
+          hasChildren: false,
+          subfolderCount: 0,
+          isCurrentLocation: false,
+          isDisabled: true,
+          disabledReason: 'Circular folder loop',
+          children: [],
+        };
+      }
+      const nextVisited = new Set(visited);
+      if (folder.id) nextVisited.add(folder.id);
+
+      const childrenNodes = (childrenMap.get(folder.id!) || []).filter(c => !c.id || !nextVisited.has(c.id));
       const hasChildren = childrenNodes.length > 0;
       const isCurrent = folder.id === currentParentId;
       const isDisabled = disabledFolderInfo.disabledIds.has(folder.id!);
 
       const children = childrenNodes.map((child) =>
-        buildSubtree(child, depth + 1, currentPath)
+        buildSubtree(child, depth + 1, currentPath, nextVisited)
       );
 
       return {
@@ -211,7 +229,10 @@ export const MoveNodeModal = React.memo(function MoveNodeModal({
     // If searching, return flat matches with their full path displayed
     if (query) {
       const allFlat: FolderTreeNode[] = [];
+      const visitedFlat = new Set<string>();
       const collect = (n: FolderTreeNode) => {
+        if (n.id && visitedFlat.has(n.id)) return;
+        if (n.id) visitedFlat.add(n.id);
         allFlat.push(n);
         for (const child of n.children) collect(child);
       };
@@ -230,7 +251,10 @@ export const MoveNodeModal = React.memo(function MoveNodeModal({
 
     // Default: Depth-first traversal respecting collapsed states
     const result: FolderTreeNode[] = [];
+    const visitedTraverse = new Set<string>();
     const traverse = (node: FolderTreeNode) => {
+      if (node.id && visitedTraverse.has(node.id)) return;
+      if (node.id) visitedTraverse.add(node.id);
       result.push(node);
       if (node.id && collapsedIds.has(node.id)) {
         return; // Children hidden
@@ -243,6 +267,8 @@ export const MoveNodeModal = React.memo(function MoveNodeModal({
     traverse(treeData);
     return result;
   }, [treeData, collapsedIds, searchQuery]);
+
+  if (!node && !isBatch) return null;
 
   const handleSelectFolder = (folderId: string | null, isCurrentLocation: boolean, isDisabled: boolean) => {
     if (isDisabled || isCurrentLocation) {

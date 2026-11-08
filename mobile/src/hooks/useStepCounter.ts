@@ -97,6 +97,11 @@ export function useStepCounter() {
 
   const saveStepsToDisk = useCallback((count: number) => {
     const todayStr = getTodayDateStrSync();
+    if (memoryCachedDate !== todayStr) {
+      memoryCachedDate = todayStr;
+      memoryCachedSteps = 0;
+      baselineStepsRef.current = 0;
+    }
     const cacheKey = `${STEP_CACHE_KEY_PREFIX}${todayStr}`;
     memoryCachedDate = todayStr;
     memoryCachedSteps = count;
@@ -200,6 +205,13 @@ export function useStepCounter() {
       const sub = Pedometer.watchStepCount((result) => {
         if (!isMountedRef.current) return;
         if (result && typeof result.steps === 'number') {
+          const todayStr = getTodayDateStrSync();
+          if (memoryCachedDate !== todayStr) {
+            memoryCachedDate = todayStr;
+            memoryCachedSteps = 0;
+            baselineStepsRef.current = 0;
+            lastLiveStepsRef.current = result.steps;
+          }
           const delta = result.steps - lastLiveStepsRef.current;
           if (delta > 0) {
             lastLiveStepsRef.current = result.steps;
@@ -215,6 +227,17 @@ export function useStepCounter() {
       console.warn('[StepCounter] watchStepCount failed:', err);
     }
   }, [saveStepsToDisk]);
+
+  // Sync today's steps into 7-day history array
+  useEffect(() => {
+    const todayStr = getTodayDateStrSync();
+    setHistory(prev => {
+      if (!prev || prev.length === 0) return prev;
+      return prev.map(item =>
+        item.dateStr === todayStr ? { ...item, steps } : item
+      );
+    });
+  }, [steps]);
 
   const updateGoal = useCallback(async (newGoal: number) => {
     memoryCachedGoal = newGoal;
