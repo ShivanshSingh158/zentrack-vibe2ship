@@ -1,24 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { X, Calendar as CalendarIcon, Clock, MapPin, AlignLeft, Sparkles, Check, Link2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import {
+  X, Calendar as CalendarIcon, Clock, MapPin, AlignLeft,
+  Sparkles, Check, Link2, Repeat, Tag
+} from 'lucide-react';
 import { getEventColors, format12Hour } from './calendarUtils';
+import { parseNLEvent, type ParsedEvent } from '../../utils/dateUtils';
+import { auth, db } from '../../services/firebase';
+import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { addEventToGoogleCalendar } from '../../services/googleCalendar';
+import { toast } from 'sonner';
 
-interface AddEventModalProps {
+export interface AddEventModalProps {
   isOpen: boolean;
   selectedDate: string;
   initialStartTime?: string;
   isDark?: boolean;
   isGoogleConnected?: boolean;
+  existingEvent?: any;
   onClose: () => void;
-  onSave: (eventData: {
-    title: string;
-    date: string;
-    type: string;
-    startTime?: string;
-    endTime?: string;
-    location?: string;
-    description?: string;
-    syncToGCal?: boolean;
-  }) => void;
+  onEventCreated?: () => void;
 }
 
 const EVENT_TYPES = [
@@ -30,8 +31,21 @@ const EVENT_TYPES = [
   { key: 'todo', label: 'Task', icon: '✅' },
   { key: 'job', label: 'Interview', icon: '💼' },
   { key: 'goal', label: 'Goal', icon: '🎯' },
-  { key: 'gcal', label: 'Event', icon: '📅' },
 ];
+
+const ACADEMIC_PRESETS = [
+  { label: 'Internal Exam', type: 'exam', icon: '📝' },
+  { label: 'Lab Viva', type: 'viva', icon: '🎤' },
+  { label: 'Project Submission', type: 'submission', icon: '📤' },
+  { label: 'Placement Drive', type: 'job', icon: '💼' },
+];
+
+const RECURRENCE_OPTIONS = [
+  { key: 'none', label: 'Does not repeat' },
+  { key: 'daily', label: 'Daily' },
+  { key: 'weekly', label: 'Weekly' },
+  { key: 'monthly', label: 'Monthly' },
+] as const;
 
 export const AddEventModal: React.FC<AddEventModalProps> = ({
   isOpen,
@@ -39,8 +53,9 @@ export const AddEventModal: React.FC<AddEventModalProps> = ({
   initialStartTime,
   isDark = true,
   isGoogleConnected = false,
+  existingEvent,
   onClose,
-  onSave,
+  onEventCreated,
 }) => {
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(selectedDate);
@@ -49,71 +64,202 @@ export const AddEventModal: React.FC<AddEventModalProps> = ({
   const [endTime, setEndTime] = useState('10:00');
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
+  const [recurrenceRule, setRecurrenceRule] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none');
   const [syncToGCal, setSyncToGCal] = useState(isGoogleConnected);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const colorMap = getEventColors(isDark);
 
+  // Sync state on open / initialStartTime change / existingEvent change
   useEffect(() => {
-    if (selectedDate) setDate(selectedDate);
-    if (initialStartTime) {
-      setStartTime(initialStartTime);
-      const [h, m] = initialStartTime.split(':').map(Number);
-      const endH = Math.min(23, (h || 9) + 1);
-      setEndTime(`${String(endH).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`);
+    if (existingEvent) {
+      setTitle(existingEvent.title || '');
+      setDate(existingEvent.date || selectedDate);
+      setType(existingEvent.type || 'exam');
+      setStartTime(existingEvent.startTime || '09:00');
+      setEndTime(existingEvent.endTime || '10:00');
+      setLocation(existingEvent.location || '');
+      setDescription(existingEvent.description || '');
+      setRecurrenceRule(existingEvent.recurrenceRule || 'none');
+    } else {
+      setTitle('');
+      setDate(selectedDate);
+      setType('exam');
+      setStartTime(initialStartTime || '09:00');
+      if (initialStartTime) {
+        const [h, m] = initialStartTime.split(':').map(Number);
+        const endH = Math.min(23, (h || 9) + 1);
+        setEndTime(`${String(endH).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`);
+      } else {
+        setEndTime('10:00');
+      }
+      setLocation('');
+      setDescription('');
+      setRecurrenceRule('none');
     }
-  }, [selectedDate, initialStartTime]);
+  }, [selectedDate, initialStartTime, existingEvent]);
+
+  // Real-time NLP parsing
+  const parsedNLEvent: ParsedEvent | null = useMemo(() => {
+    if (existingEvent || !title.trim() || title.trim().length < 3) return null;
+    return parseNLEvent(title.trim());
+  }, [title, existingEvent]);
+
+  const handleTitleChange = (newTitle: string) => {
+    setTitle(newTitle);
+    if (!existingEvent && newTitle.trim().length >= 3) {
+      const p = parseNLEvent(newTitle.trim());
+      if (p.date) setDate(p.date);
+      if (p.startTime) setStartTime(p.startTime);
+      if (p.endTime) setEndTime(p.endTime);
+      if (p.type) setType(p.type);
+    }
+  };
+
+  const handleApplyPreset = (preset: typeof ACADEMIC_PRESETS[0]) => {
+    setTitle(preset.label);
+    setType(preset.type);
+  };
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    const user = auth.currentUser;
+    if (!user || !title.trim()) return;
 
-    onSave({
-      title: title.trim(),
-      date,
-      type,
-      startTime,
-      endTime,
-      location: location.trim() || undefined,
-      description: description.trim() || undefined,
-      syncToGCal,
-    });
-    onClose();
+    setIsSubmitting(true);
+    try {
+      const cleanTitle = parsedNLEvent?.title || title.trim();
+      const payload: any = {
+        title: cleanTitle,
+        date,
+        type,
+        startTime: startTime || undefined,
+        endTime: endTime || undefined,
+        location: location.trim() || undefined,
+        description: description.trim() || undefined,
+        recurrenceRule: recurrenceRule !== 'none' ? recurrenceRule : undefined,
+        userId: user.uid,
+        updatedAt: Date.now(),
+      };
+
+      if (existingEvent?.id) {
+        await updateDoc(doc(db, 'calendar_events', existingEvent.id), payload);
+        toast.success('Event updated');
+      } else {
+        payload.createdAt = Date.now();
+        await addDoc(collection(db, 'calendar_events'), payload);
+
+        if (syncToGCal && isGoogleConnected) {
+          try {
+            await addEventToGoogleCalendar({
+              summary: cleanTitle,
+              start: { dateTime: `${date}T${startTime || '09:00'}:00` },
+              end: { dateTime: `${date}T${endTime || '10:00'}:00` },
+              description: description || undefined,
+              location: location || undefined,
+            });
+            toast.success('Synced to Google Calendar');
+          } catch (gErr) {
+            console.warn('Google Calendar sync failed', gErr);
+          }
+        }
+        toast.success('Event added to calendar');
+      }
+
+      onEventCreated?.();
+      onClose();
+    } catch (err) {
+      console.error('Error saving calendar event:', err);
+      toast.error('Failed to save event');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="calendar-modal-overlay" onClick={onClose}>
-      <div className="calendar-modal-card" onClick={e => e.stopPropagation()}>
+    <motion.div
+      className="calendar-modal-overlay"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.16, ease: 'easeOut' }}
+      onClick={onClose}
+    >
+      <motion.div
+        className="calendar-modal-card"
+        initial={{ opacity: 0, scale: 0.96, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 10 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 380 }}
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="calendar-modal-header">
           <div className="modal-header-left">
             <CalendarIcon size={18} color="#a599ff" />
-            <h3>Create Calendar Event</h3>
+            <h3>{existingEvent ? 'Edit Calendar Event' : 'Create Calendar Event'}</h3>
           </div>
-          <button type="button" className="modal-close-btn" onClick={onClose}>
+          <button type="button" className="modal-close-btn" onClick={onClose} title="Close">
             <X size={18} />
           </button>
         </div>
 
+        {/* Academic Presets Row */}
+        {!existingEvent && (
+          <div className="calendar-academic-presets-bar">
+            <span className="presets-label">QUICK PRESETS</span>
+            <div className="presets-chips-row">
+              {ACADEMIC_PRESETS.map((p, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  className="preset-chip-btn"
+                  onClick={() => handleApplyPreset(p)}
+                >
+                  <span>{p.icon}</span>
+                  <span>{p.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="calendar-modal-form">
-          {/* Title Input */}
+          {/* Title Input with live NLP detection */}
           <div className="form-field-group">
-            <label>Event Title</label>
-            <input
-              type="text"
-              className="calendar-input title-input"
-              placeholder="e.g. Midterm Exam, Team Sync, Project Review"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              autoFocus
-              required
-            />
+            <label>Event Title & Natural Language</label>
+            <div className="calendar-input-wrapper">
+              <input
+                type="text"
+                className="calendar-input title-input"
+                placeholder='e.g. "Midterm Exam next Friday from 10am to 12pm" or "Physics Viva"'
+                value={title}
+                onChange={e => handleTitleChange(e.target.value)}
+                autoFocus
+                required
+              />
+            </div>
+
+            {/* Live NLP detected preview badge */}
+            {parsedNLEvent && (
+              <div className="calendar-nlp-live-preview">
+                <Sparkles size={13} className="nlp-sparkle-icon" />
+                <span className="nlp-preview-text">
+                  Recognized: {parsedNLEvent.date ? `📅 ${parsedNLEvent.date} ` : ''}
+                  {parsedNLEvent.startTime ? `⏰ ${format12Hour(parsedNLEvent.startTime)} ` : ''}
+                  {parsedNLEvent.typeLabel ? `• ${parsedNLEvent.typeIcon} ${parsedNLEvent.typeLabel}` : ''}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Type Selector Pills */}
           <div className="form-field-group">
-            <label>Event Category</label>
+            <label>
+              <Tag size={12} /> Event Category
+            </label>
             <div className="event-type-pills-row">
               {EVENT_TYPES.map(t => {
                 const colorSpec = colorMap[t.key] || colorMap.todo;
@@ -179,6 +325,25 @@ export const AddEventModal: React.FC<AddEventModalProps> = ({
             </div>
           </div>
 
+          {/* Recurrence Rule Row */}
+          <div className="form-field-group">
+            <label>
+              <Repeat size={12} /> Recurrence
+            </label>
+            <div className="calendar-recurrence-pills-row">
+              {RECURRENCE_OPTIONS.map(opt => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  className={`recurrence-pill-btn ${recurrenceRule === opt.key ? 'active' : ''}`}
+                  onClick={() => setRecurrenceRule(opt.key)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Location */}
           <div className="form-field-group">
             <label>
@@ -187,7 +352,7 @@ export const AddEventModal: React.FC<AddEventModalProps> = ({
             <input
               type="text"
               className="calendar-input"
-              placeholder="e.g. Hall B, Google Meet, Library 3rd Floor"
+              placeholder="e.g. Room 402, Hall B, or Google Meet"
               value={location}
               onChange={e => setLocation(e.target.value)}
             />
@@ -196,19 +361,19 @@ export const AddEventModal: React.FC<AddEventModalProps> = ({
           {/* Description */}
           <div className="form-field-group">
             <label>
-              <AlignLeft size={12} /> Description (Optional)
+              <AlignLeft size={12} /> Notes & Agenda (Optional)
             </label>
             <textarea
               className="calendar-textarea"
               rows={2}
-              placeholder="Add extra details, notes, or links..."
+              placeholder="Add extra syllabus notes, submission links, or agenda..."
               value={description}
               onChange={e => setDescription(e.target.value)}
             />
           </div>
 
           {/* Google Calendar Sync Option */}
-          {isGoogleConnected && (
+          {isGoogleConnected && !existingEvent && (
             <label className="gcal-sync-checkbox-row">
               <input
                 type="checkbox"
@@ -222,16 +387,16 @@ export const AddEventModal: React.FC<AddEventModalProps> = ({
 
           {/* Footer Actions */}
           <div className="calendar-modal-footer">
-            <button type="button" className="calendar-cancel-btn" onClick={onClose}>
+            <button type="button" className="calendar-cancel-btn" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </button>
-            <button type="submit" className="calendar-save-btn" disabled={!title.trim()}>
+            <button type="submit" className="calendar-save-btn" disabled={!title.trim() || isSubmitting}>
               <Check size={16} />
-              <span>Save Event</span>
+              <span>{isSubmitting ? 'Saving...' : existingEvent ? 'Save Changes' : 'Create Event'}</span>
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };

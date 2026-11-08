@@ -17,6 +17,12 @@ export interface MergedCalendarEvent {
   gcalEventId?: string;
   guests?: string[];
   meetLink?: string;
+  recurrenceRule?: 'none' | 'daily' | 'weekly' | 'monthly';
+  subjectId?: string;
+  subjectName?: string;
+  sessionType?: 'class' | 'lab';
+  sessionIdx?: number;
+  attendanceStatus?: 'attended' | 'missed' | 'cancelled' | null;
 }
 
 interface CalendarDayViewProps {

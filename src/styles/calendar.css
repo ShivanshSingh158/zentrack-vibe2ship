@@ -3069,3 +3069,319 @@ body.theme-light .layer-quick-action-btn.active {
   }
 }
 
+/* ==========================================================================
+   Calendar Parity Additions: Academic Presets, NLP Badges & Attendance HUD
+   ========================================================================== */
+
+/* ── Academic Presets Bar ── */
+.calendar-academic-presets-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+
+.calendar-academic-presets-bar .presets-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8e8e93;
+}
+
+.presets-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.preset-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 0.75rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #d1d1d6;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.preset-chip-btn:hover {
+  background: rgba(165, 153, 255, 0.14);
+  border-color: rgba(165, 153, 255, 0.35);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.preset-chip-btn:active {
+  transform: scale(0.97);
+}
+
+/* ── Live NLP Preview Badge ── */
+.calendar-nlp-live-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(165, 153, 255, 0.12);
+  border: 1px solid rgba(165, 153, 255, 0.28);
+  border-radius: 8px;
+  padding: 0.35rem 0.65rem;
+  margin-top: 0.3rem;
+  animation: nlpFadeIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes nlpFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.nlp-sparkle-icon {
+  color: #a599ff;
+  flex-shrink: 0;
+}
+
+.nlp-preview-text {
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #b8afff;
+  line-height: 1.3;
+}
+
+/* ── Recurrence Segmented Pills ── */
+.calendar-recurrence-pills-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.recurrence-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 0.85rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #8e8e93;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.76rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.recurrence-pill-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.recurrence-pill-btn.active {
+  background: rgba(165, 153, 255, 0.18);
+  border-color: #a599ff;
+  color: #a599ff;
+  font-weight: 600;
+}
+
+/* ── Inspector & Modal Attendance HUD Card (Mobile Parity) ── */
+.inspector-attendance-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 0.85rem;
+  box-sizing: border-box;
+}
+
+.att-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.att-card-subj-info {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  overflow: hidden;
+}
+
+.att-card-subj-name {
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.att-card-pct-badge {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid;
+  flex-shrink: 0;
+}
+
+.att-card-bunk-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  font-size: 0.74rem;
+}
+
+.att-card-bunk-pill {
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-weight: 600;
+}
+
+.att-card-counts {
+  color: #8e8e93;
+  font-family: var(--font-mono, monospace);
+}
+
+.att-logged-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  border-radius: 8px;
+}
+
+.att-logged-indicator.attended {
+  background: rgba(94, 218, 158, 0.12);
+  color: #5eda9e;
+  border: 1px solid rgba(94, 218, 158, 0.25);
+}
+
+.att-logged-indicator.missed {
+  background: rgba(255, 105, 97, 0.12);
+  color: #ff6961;
+  border: 1px solid rgba(255, 105, 97, 0.25);
+}
+
+.att-logged-indicator.cancelled {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.att-action-buttons-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
+
+.att-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 0.6rem;
+  border-radius: 8px;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #d1d1d6;
+}
+
+.att-quick-btn:hover {
+  transform: translateY(-1px);
+}
+
+.att-quick-btn:active {
+  transform: scale(0.96);
+}
+
+.att-quick-btn.present:hover,
+.att-quick-btn.present.active {
+  background: rgba(94, 218, 158, 0.18);
+  border-color: rgba(94, 218, 158, 0.4);
+  color: #5eda9e;
+}
+
+.att-quick-btn.absent:hover,
+.att-quick-btn.absent.active {
+  background: rgba(255, 105, 97, 0.18);
+  border-color: rgba(255, 105, 97, 0.4);
+  color: #ff6961;
+}
+
+.att-quick-btn.cancelled:hover,
+.att-quick-btn.cancelled.active {
+  background: rgba(251, 191, 36, 0.18);
+  border-color: rgba(251, 191, 36, 0.4);
+  color: #fbbf24;
+}
+
+/* Light Theme Overrides for Calendar Parity */
+body.theme-light .preset-chip-btn,
+body.theme-light .recurrence-pill-btn {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #4b5563;
+}
+
+body.theme-light .preset-chip-btn:hover {
+  background: rgba(108, 92, 231, 0.1);
+  border-color: rgba(108, 92, 231, 0.3);
+  color: #6c5ce7;
+}
+
+body.theme-light .recurrence-pill-btn.active {
+  background: rgba(108, 92, 231, 0.12);
+  border-color: #6c5ce7;
+  color: #6c5ce7;
+}
+
+body.theme-light .inspector-attendance-card {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+body.theme-light .att-card-subj-name {
+  color: #1c1c1e;
+}
+
+body.theme-light .att-quick-btn {
+  background: #f4f3f8;
+  color: #4b5563;
+}
+

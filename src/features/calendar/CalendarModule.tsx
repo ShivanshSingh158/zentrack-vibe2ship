@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
@@ -13,14 +14,12 @@ import { CalendarLayerToggles, type CalendarLayersState } from './CalendarLayerT
 import { CalendarInspector } from './CalendarInspector';
 import { AddEventModal } from './AddEventModal';
 import { EventDetailModal } from './EventDetailModal';
-import { AiFreeSlotModal } from './AiFreeSlotModal';
-import { callWithFallback } from '../../services/gemini/core';
 import {
   isSignedInToGoogle, addEventToGoogleCalendar, deleteGoogleCalendarEvent,
   pollGoogleCalendarChanges, getLastSyncTime,
 } from '../../services/googleCalendar';
 import {
-  Calendar as CalendarIcon, Clock, Sparkles, Plus, RefreshCw, Link2,
+  Calendar as CalendarIcon, Clock, Plus, RefreshCw, Link2,
   Check, ChevronLeft, ChevronRight, LayoutGrid, Columns, ListFilter,
   CalendarDays, AlignLeft
 } from 'lucide-react';
@@ -35,6 +34,7 @@ export const CalendarModule: React.FC = () => {
   const {
     tasks,
     attendanceSubjects,
+    attendanceLogs,
     isGoogleConnected,
     connectGoogle,
     disconnectGoogle,
@@ -70,13 +70,8 @@ export const CalendarModule: React.FC = () => {
   // Modals & Inspector
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [isAiSlotModalOpen, setIsAiSlotModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<MergedCalendarEvent | null>(null);
   const [quickAddStartTime, setQuickAddStartTime] = useState<string>('09:00');
-
-  // AI Free Slot State
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiSlotResult, setAiSlotResult] = useState<string | null>(null);
 
   // Dynamic Theme Detection (Syncs with Light / Dark mode in real time)
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -132,6 +127,7 @@ export const CalendarModule: React.FC = () => {
           endTime: d.endTime || '',
           location: d.location || '',
           description: d.description || '',
+          recurrenceRule: d.recurrenceRule || 'none',
           gcalEventId: d.gcalEventId,
           meetLink: d.meetLink,
         });
@@ -142,11 +138,43 @@ export const CalendarModule: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // ── 2. Merge All Data Sources ──
+  // ── 2. Merge All Data Sources (with Recurrence Engine & Session Linking) ──
   const allMergedEvents = useMemo(() => {
-    const merged: MergedCalendarEvent[] = [...customEvents];
+    const merged: MergedCalendarEvent[] = [];
+    const [selY, selM, selD] = selectedDate.split('-').map(Number);
+    const baseD = new Date(selY, (selM || 1) - 1, selD || 1);
 
-    // (A) Tasks with date
+    // (A) Custom Events with Recurrence Projection
+    customEvents.forEach(e => {
+      if (!e.date) return;
+      if (!e.recurrenceRule || e.recurrenceRule === 'none') {
+        merged.push(e);
+      } else {
+        // Project across the visible schedule range (-35 to +35 days)
+        for (let offset = -35; offset <= 35; offset++) {
+          const targetD = new Date(baseD);
+          targetD.setDate(baseD.getDate() + offset);
+          const targetDateStr = getLocalDateString(targetD);
+          if (targetDateStr < e.date) continue; // Event starts in the future
+
+          const origDateObj = new Date(e.date + 'T00:00:00');
+          let matches = false;
+          if (e.recurrenceRule === 'daily') matches = true;
+          else if (e.recurrenceRule === 'weekly') matches = origDateObj.getDay() === targetD.getDay();
+          else if (e.recurrenceRule === 'monthly') matches = origDateObj.getDate() === targetD.getDate();
+
+          if (matches) {
+            merged.push({
+              ...e,
+              id: `${e.id}-${targetDateStr}`,
+              date: targetDateStr,
+            });
+          }
+        }
+      }
+    });
+
+    // (B) Tasks with date
     (tasks || []).forEach(t => {
       if (!t.date) return;
       if (t.timeSlot && t.timeSlot.trim()) {
@@ -171,11 +199,9 @@ export const CalendarModule: React.FC = () => {
       }
     });
 
-    // (B) Academic Timetable (Classes & Labs)
+    // (C) Academic Timetable (Classes & Labs with Session Linking)
     if (attendanceSubjects && attendanceSubjects.length > 0) {
-      const [selY, selM, selD] = selectedDate.split('-').map(Number);
-      const baseD = new Date(selY, (selM || 1) - 1, selD || 1);
-      for (let offset = -30; offset <= 30; offset++) {
+      for (let offset = -35; offset <= 35; offset++) {
         const curD = new Date(baseD);
         curD.setDate(baseD.getDate() + offset);
         const dayOfWeekNum = curD.getDay();
@@ -200,6 +226,10 @@ export const CalendarModule: React.FC = () => {
                 startTime: c.time,
                 endTime: `${String(endH).padStart(2, '0')}:${String(sm).padStart(2, '0')}`,
                 location: c.room || '',
+                subjectId: subject.id,
+                subjectName: subject.name,
+                sessionType: 'class',
+                sessionIdx: i,
               });
             });
           }
@@ -216,6 +246,10 @@ export const CalendarModule: React.FC = () => {
                 startTime: l.time,
                 endTime: `${String(endH).padStart(2, '0')}:${String(sm).padStart(2, '0')}`,
                 location: l.room || '',
+                subjectId: subject.id,
+                subjectName: subject.name,
+                sessionType: 'lab',
+                sessionIdx: i,
               });
             });
           }
@@ -223,7 +257,7 @@ export const CalendarModule: React.FC = () => {
       }
     }
 
-    // (C) Google Calendar Sync
+    // (D) Google Calendar Sync
     gcalEvents.forEach(ge => {
       merged.push({ ...ge, fromGCal: true });
     });
@@ -287,11 +321,6 @@ export const CalendarModule: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  // ── 5. Smart Free Slot Finder (Algorithmic Schedule Interval Engine) ──
-  const handleFindFreeSlot = () => {
-    setIsAiSlotModalOpen(true);
-  };
 
   // Quick Slot creation
   const handleQuickAddAtTime = (timeStr: string) => {
@@ -398,17 +427,6 @@ export const CalendarModule: React.FC = () => {
             </button>
           </div>
 
-          {/* Free Slot Button */}
-          <button
-            type="button"
-            className="calendar-action-pill-btn ai-btn"
-            onClick={handleFindFreeSlot}
-            title="Find continuous deep work window"
-          >
-            <Sparkles size={14} color="#38bdf8" />
-            <span>Free Slots</span>
-          </button>
-
           {/* Google Calendar Connect Button */}
           <button
             type="button"
@@ -508,15 +526,18 @@ export const CalendarModule: React.FC = () => {
           <aside className="calendar-right-inspector">
             <CalendarInspector
               event={selectedEvent}
+              attendanceSubjects={attendanceSubjects}
+              attendanceLogs={attendanceLogs}
               onClose={() => setSelectedEvent(null)}
               onEdit={(evt) => {
                 setSelectedEvent(evt);
                 setIsDetailModalOpen(true);
               }}
               onDelete={async (evt) => {
+                const cleanId = evt.id.replace(/-[0-9]{4}-[0-9]{2}-[0-9]{2}$/, '');
                 if (window.confirm('Delete this event?')) {
                   try {
-                    await deleteDoc(doc(db, 'calendar_events', evt.id));
+                    await deleteDoc(doc(db, 'calendar_events', cleanId));
                     toast.success('Event deleted');
                     setSelectedEvent(null);
                   } catch (err) {
@@ -529,44 +550,46 @@ export const CalendarModule: React.FC = () => {
         )}
       </div>
 
-      {/* ── MODALS & SHEETS ── */}
-      <AddEventModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        selectedDate={selectedDate}
-        initialStartTime={quickAddStartTime}
-        onEventCreated={() => setIsAddModalOpen(false)}
-      />
+      {/* ── MODALS & SHEETS WITH FRAMER MOTION APPLE SPRING PHYSICS ── */}
+      <AnimatePresence>
+        {isAddModalOpen && (
+          <AddEventModal
+            isOpen={isAddModalOpen}
+            onClose={() => setIsAddModalOpen(false)}
+            selectedDate={selectedDate}
+            initialStartTime={quickAddStartTime}
+            isGoogleConnected={isGoogleConnected}
+            onEventCreated={() => setIsAddModalOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
-      {selectedEvent && (
-        <EventDetailModal
-          isOpen={isDetailModalOpen}
-          onClose={() => {
-            setIsDetailModalOpen(false);
-          }}
-          event={selectedEvent}
-          onEventUpdated={() => {
-            setIsDetailModalOpen(false);
-            setSelectedEvent(null);
-          }}
-          onEventDeleted={() => {
-            setIsDetailModalOpen(false);
-            setSelectedEvent(null);
-          }}
-        />
-      )}
-
-      <AiFreeSlotModal
-        isOpen={isAiSlotModalOpen}
-        onClose={() => setIsAiSlotModalOpen(false)}
-        selectedDate={selectedDate}
-        dayEvents={allMergedEvents.filter(e => e.date === selectedDate)}
-        onBookSlot={(slotStr) => {
-          setIsAiSlotModalOpen(false);
-          setQuickAddStartTime(slotStr);
-          setIsAddModalOpen(true);
-        }}
-      />
+      <AnimatePresence>
+        {isDetailModalOpen && selectedEvent && (
+          <EventDetailModal
+            isOpen={isDetailModalOpen}
+            event={selectedEvent}
+            attendanceSubjects={attendanceSubjects}
+            attendanceLogs={attendanceLogs}
+            onClose={() => setIsDetailModalOpen(false)}
+            onEventUpdated={() => {
+              setIsDetailModalOpen(false);
+              setSelectedEvent(null);
+            }}
+            onDelete={async (evt) => {
+              const cleanId = evt.id.replace(/-[0-9]{4}-[0-9]{2}-[0-9]{2}$/, '');
+              try {
+                await deleteDoc(doc(db, 'calendar_events', cleanId));
+                toast.success('Event deleted');
+                setIsDetailModalOpen(false);
+                setSelectedEvent(null);
+              } catch (err) {
+                toast.error('Failed to delete event');
+              }
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
