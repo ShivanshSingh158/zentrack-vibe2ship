@@ -144,7 +144,7 @@ export function PlannerProvider({
             if (user && !subscribedRef.current) {
               openSubscriptions(user.uid);
             }
-          }, 2500);
+          }, 8000);
         });
         deferredInteractionRef.current = handle;
         return () => {

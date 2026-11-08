@@ -344,7 +344,7 @@ export function AcademicProvider({
             if (user && !subscribedRef.current) {
               openSubscriptions(user.uid);
             }
-          }, 2500);
+          }, 4500);
         });
         return () => {
           handle.cancel();

@@ -67,7 +67,7 @@ const NotificationsSettingsScreen = cacheAwareLazy('NotificationsSettings', () =
 const NullScreen = () => null;
 import PomodoroFloatingPill from '../components/Tasks/PomodoroFloatingPill';
 import PomodoroSheet from '../components/Tasks/PomodoroSheet';
-import { usePomodoro } from '../contexts/PomodoroContext';
+import { usePomodoroUI } from '../contexts/PomodoroContext';
 import { useQuickActions } from '../hooks/useQuickActions';
 
 // --- Navigators --------------------------------------------------------------
@@ -342,7 +342,7 @@ function NestedScreens() {
 // --- Root authenticated navigator + Pomodoro ---------------------------------
 function RootNavigator() {
   const { colors } = useTheme();
-  const { isSheetOpen } = usePomodoro();
+  const { isSheetOpen } = usePomodoroUI();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>

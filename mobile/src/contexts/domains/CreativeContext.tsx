@@ -230,7 +230,7 @@ export function CreativeProvider({
   const optimisticUpdateLearningTopic = useCallback((id: string, updates: Partial<LearningTopic>) => {
     setLearningTopics(prev => {
       const fresh = prev.map(t => t.id === id ? { ...t, ...updates } : t);
-      writeCreativeCache({ learningTopics: fresh }, true);
+      writeCreativeCache({ learningTopics: fresh }, false);
       return fresh;
     });
   }, []);
@@ -250,7 +250,7 @@ export function CreativeProvider({
         });
         return { ...topic, subTasks: updatedSubs };
       });
-      writeCreativeCache({ learningTopics: fresh }, true);
+      writeCreativeCache({ learningTopics: fresh }, false);
       return fresh;
     });
   }, []);

@@ -118,10 +118,8 @@ export const startPrefetching = (pinnedModules: string[] = [], pinnedOnly = true
     return 0;
   });
 
-  if (!isPrefetching) {
-    isPrefetching = true;
-    scheduleNextStep(120);
-  }
+  // PERF FIX: Disabled background prefetch evaluation loop
+  isPrefetching = false;
 
   if (pinnedOnly) {
     if (idleTimer) clearTimeout(idleTimer);
@@ -132,14 +130,7 @@ export const startPrefetching = (pinnedModules: string[] = [], pinnedOnly = true
 };
 
 export const prefetchRemainingModules = (): void => {
-  if (idleTimer) {
-    clearTimeout(idleTimer);
-    idleTimer = null;
-  }
-  pinnedOnlyMode = false;
-  if (isPrefetching || prefetchQueue.length === 0) return;
-  isPrefetching = true;
-  scheduleNextStep(100);
+  // Safe no-op
 };
 
 export const preloadNow = (id: string): void => {

@@ -102,6 +102,18 @@ export interface PomodoroActiveTaskType {
   isPomodoroRunning: boolean;
 }
 
+export interface PomodoroUIContextType {
+  isSheetOpen: boolean;
+  setIsSheetOpen: (open: boolean) => void;
+}
+
+export const PomodoroUIContext = createContext<PomodoroUIContextType>({
+  isSheetOpen: false,
+  setIsSheetOpen: () => {},
+});
+
+export const usePomodoroUI = () => useContext(PomodoroUIContext);
+
 const PomodoroContext = createContext<PomodoroContextType | null>(null);
 const PomodoroActionsContext = createContext<PomodoroActionsType | null>(null);
 const PomodoroActiveTaskContext = createContext<PomodoroActiveTaskType>({
@@ -751,13 +763,20 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setKeepAwakeEnabled,
   ]);
 
+  const uiValue = useMemo<PomodoroUIContextType>(() => ({
+    isSheetOpen,
+    setIsSheetOpen,
+  }), [isSheetOpen]);
+
   return (
-    <PomodoroActionsContext.Provider value={actionsValue}>
-      <PomodoroActiveTaskContext.Provider value={activeTaskValue}>
-        <PomodoroContext.Provider value={contextValue}>
-          {children}
-        </PomodoroContext.Provider>
-      </PomodoroActiveTaskContext.Provider>
-    </PomodoroActionsContext.Provider>
+    <PomodoroUIContext.Provider value={uiValue}>
+      <PomodoroActionsContext.Provider value={actionsValue}>
+        <PomodoroActiveTaskContext.Provider value={activeTaskValue}>
+          <PomodoroContext.Provider value={contextValue}>
+            {children}
+          </PomodoroContext.Provider>
+        </PomodoroActiveTaskContext.Provider>
+      </PomodoroActionsContext.Provider>
+    </PomodoroUIContext.Provider>
   );
 };

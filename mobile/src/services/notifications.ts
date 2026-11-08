@@ -1,4 +1,4 @@
-﻿/**
+/**
  * notifications.ts â€” ZenTrack Mobile
  *
  * scheduleAllNotifications() â€” the single source of truth for all local notifications.
@@ -503,19 +503,10 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         return;
       }
 
-      // Fix: Explicitly cancel every individual alarm ID first so Android's AlarmManager
-      // flushes each PendingIntent immediately, then call the global cancelAll + settle 150ms
-      // for the native NotificationsService intent queue to drain. Without the per-ID sweep,
-      // orphaned PendingIntents from a previous JS bundle survive cancelAll and produce zombie alarms.
-      if (existingOsAlarms.length > 0) {
-        await Promise.all(
-          existingOsAlarms.map(alarm =>
-            Notifications.cancelScheduledNotificationAsync(alarm.identifier).catch(() => {})
-          )
-        );
-      }
-      await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
-      await new Promise(resolve => setTimeout(resolve, 150));
+      // PERF FIX (Differential Alarm Syncing):
+      // Do NOT wipe all existing alarms on every run! Wiping 60+ alarms and recreating 60+ alarms
+      // flooded the native AlarmManager IPC queue with 120+ bridge calls on every task tick.
+      // We now compute a differential sync below: cancelling only removed alarms and scheduling only new ones.
 
       const boolVal = (suffix: string, def = true) => {
         const v = kv[`zentrack_notif_${suffix}`];
@@ -1622,10 +1613,28 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         });
       }
 
+      // ── DIFFERENTIAL ALARM SYNC ──────────────────────────────────────────────
+      // Compare desired preparedList against existingOsAlarms.
+      // 1. Cancel ONLY alarms in existingOsAlarms whose identifier is NOT in preparedList
+      const desiredIdSet = new Set(preparedList.map(p => p.identifier).filter(Boolean));
+      const existingIdSet = new Set(existingOsAlarms.map((a: any) => a.identifier).filter(Boolean));
+
+      const toCancel = existingOsAlarms.filter((a: any) => a.identifier && !desiredIdSet.has(a.identifier));
+      if (toCancel.length > 0) {
+        console.log(`[Notifications] Diff sync: cancelling ${toCancel.length} removed alarms`);
+        await Promise.all(
+          toCancel.map((a: any) => Notifications.cancelScheduledNotificationAsync(a.identifier).catch(() => {}))
+        );
+      }
+
+      // 2. Schedule ONLY items in preparedList whose identifier is NOT already active in existingOsAlarms
+      const toSchedule = preparedList.filter(p => !p.identifier || !existingIdSet.has(p.identifier));
+      console.log(`[Notifications] Diff sync: scheduling ${toSchedule.length} new/changed alarms (preserved ${preparedList.length - toSchedule.length} existing alarms)`);
+
       // Schedule in concurrent batches of 6 with event loop yields between batches
       const CHUNK_SIZE = 6;
-      for (let i = 0; i < preparedList.length; i += CHUNK_SIZE) {
-        const chunk = preparedList.slice(i, i + CHUNK_SIZE);
+      for (let i = 0; i < toSchedule.length; i += CHUNK_SIZE) {
+        const chunk = toSchedule.slice(i, i + CHUNK_SIZE);
         await Promise.all(
           chunk.map(async (item) => {
             try {
@@ -1653,7 +1662,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
           })
         );
         // Yield to JS event loop so UI / touch / animation events process with 0 lag
-        if (i + CHUNK_SIZE < preparedList.length) {
+        if (i + CHUNK_SIZE < toSchedule.length) {
           await new Promise((resolve) => setTimeout(resolve, 0));
         }
       }
