@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
   X, User, Palette, Bell, ShieldCheck, 
-  LogOut, Copy, Check, CheckCircle, RefreshCw, Trash2, 
-  Save, Phone, Sun, Moon,
-  Download, Sliders
+  LogOut, Copy, Check, RefreshCw, Trash2, 
+  Sun, Moon, Download, Sliders, Volume2, Clock
 } from 'lucide-react';
 import { auth, db } from '../../services/firebase';
 import { signOut, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
-import { collection, query, where, getDocs, writeBatch, doc, setDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, writeBatch, doc, setDoc } from 'firebase/firestore';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { toast } from 'sonner';
 
@@ -54,6 +53,31 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
     return localStorage.getItem('zen_reduced_motion') === 'true';
   });
 
+  // ── Notification Preferences State (SMS Completely Removed) ─────────────
+  const [browserNotifPermission, setBrowserNotifPermission] = useState<NotificationPermission>(() => {
+    return typeof Notification !== 'undefined' ? Notification.permission : 'default';
+  });
+  const [soundEffects, setSoundEffects] = useState(() => {
+    return localStorage.getItem('zen_sound_enabled') !== 'false';
+  });
+  const [reminderLeadTime, setReminderLeadTime] = useState<'15' | '30' | '60' | '120'>(() => {
+    return (localStorage.getItem('zen_reminder_lead_time') as any) || '15';
+  });
+
+  // ── Data & Privacy State ──────────────────────────────────────────────────
+  const [wipeConfirm, setWipeConfirm] = useState('');
+  const [isWiping, setIsWiping] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Escape to close
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const handleToggleDensity = (val: 'comfortable' | 'compact') => {
     setDensity(val);
     localStorage.setItem('zen_density', val);
@@ -74,6 +98,18 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
       document.documentElement.classList.remove('reduced-motion');
     }
     toast.success(val ? 'Reduced motion enabled' : 'Smooth animations restored');
+  };
+
+  const handleToggleSoundEffects = (val: boolean) => {
+    setSoundEffects(val);
+    localStorage.setItem('zen_sound_enabled', val ? 'true' : 'false');
+    toast.success(val ? 'Audio chimes enabled' : 'Audio chimes muted');
+  };
+
+  const handleSetReminderLeadTime = (mins: '15' | '30' | '60' | '120') => {
+    setReminderLeadTime(mins);
+    localStorage.setItem('zen_reminder_lead_time', mins);
+    toast.success(`Default reminder buffer set to ${mins} mins`);
   };
 
   const handleSaveDisplayName = async () => {
@@ -123,132 +159,6 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
     }
   };
 
-  // ── Notification / SMS Settings State ─────────────────────────────────────
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [phoneLoaded, setPhoneLoaded] = useState(false);
-  const [isSavingPhone, setIsSavingPhone] = useState(false);
-  const [phoneSaved, setPhoneSaved] = useState(false);
-  const [testSmsSent, setTestSmsSent] = useState(false);
-  const [testSmsError, setTestSmsError] = useState('');
-  const [browserNotifPermission, setBrowserNotifPermission] = useState<NotificationPermission>(() => {
-    return typeof Notification !== 'undefined' ? Notification.permission : 'default';
-  });
-
-  // ── Data & Privacy State ──────────────────────────────────────────────────
-  const [wipeConfirm, setWipeConfirm] = useState('');
-  const [isWiping, setIsWiping] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-
-  // Load user profile from Firestore on mount
-  useEffect(() => {
-    const user = currentUser || auth.currentUser;
-    if (!user) return;
-    getDoc(doc(db, 'user_profiles', user.uid)).then(snap => {
-      if (snap.exists()) {
-        const d = snap.data();
-        if (d.phoneNumber) setPhoneNumber(d.phoneNumber);
-      }
-      setPhoneLoaded(true);
-    }).catch(() => setPhoneLoaded(true));
-  }, [currentUser]);
-
-  // Escape to close
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
-
-  // ── Handler: Copy User ID ─────────────────────────────────────────────────
-  const handleCopyUid = () => {
-    if (!currentUser?.uid) return;
-    navigator.clipboard.writeText(currentUser.uid).then(() => {
-      setCopiedUid(true);
-      toast.success('User ID copied to clipboard');
-      setTimeout(() => setCopiedUid(false), 2000);
-    });
-  };
-
-  // ── Handler: Trigger Logout ───────────────────────────────────────────────
-  const handleTriggerLogout = () => {
-    if (!logoutConfirmStep) {
-      setLogoutConfirmStep(true);
-      setTimeout(() => setLogoutConfirmStep(false), 4000);
-      return;
-    }
-    onClose();
-    if (onLogout) {
-      onLogout();
-    } else {
-      signOut(auth).then(() => {
-        window.location.reload();
-      });
-    }
-  };
-
-  // ── Handler: Save Phone Number (SMS) ────────────────────────────────────
-  const handleSavePhone = async () => {
-    const user = currentUser || auth.currentUser;
-    if (!user || !phoneNumber.trim()) return;
-    setIsSavingPhone(true);
-    try {
-      await setDoc(doc(db, 'user_profiles', user.uid), {
-        phoneNumber: phoneNumber.trim(),
-        updatedAt: new Date().toISOString(),
-      }, { merge: true });
-      setPhoneSaved(true);
-      toast.success('Phone number saved for high-priority SMS alerts');
-      setTimeout(() => setPhoneSaved(false), 3000);
-    } catch (e) {
-      console.error('Failed to save phone:', e);
-      toast.error('Failed to save phone number');
-    } finally {
-      setIsSavingPhone(false);
-    }
-  };
-
-  // ── Handler: Send Test SMS ───────────────────────────────────────────────
-  const handleTestSms = async () => {
-    setTestSmsSent(false);
-    setTestSmsError('');
-    const user = currentUser || auth.currentUser;
-    if (!user) {
-      setTestSmsError('Not logged in');
-      return;
-    }
-    try {
-      const idToken = await user.getIdToken();
-      const VERCEL_BASE = import.meta.env.VITE_APP_URL || 'https://myzentrack.vercel.app';
-      const resp = await fetch(`${VERCEL_BASE}/api/send-sms`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
-          message: `ZenTrack test SMS\n\nThis confirms your phone number is correctly linked.\nHigh-priority task alerts will arrive here.\n\nmyzentrack.vercel.app`,
-        }),
-      });
-      if (resp.ok) {
-        setTestSmsSent(true);
-        toast.success('Test SMS dispatched successfully!');
-        setTimeout(() => setTestSmsSent(false), 5000);
-      } else {
-        const d = await resp.json();
-        const errStr = d.error || `HTTP ${resp.status}`;
-        setTestSmsError(errStr);
-        toast.error(`SMS failed: ${errStr}`);
-      }
-    } catch (e: any) {
-      const errStr = e.message || 'Network error';
-      setTestSmsError(errStr);
-      toast.error(`SMS error: ${errStr}`);
-    }
-  };
-
-  // ── Handler: Request Browser Notification Permission ────────────────────
   const handleRequestNotifPermission = async () => {
     if (typeof Notification === 'undefined') {
       toast.error('Browser notifications are not supported on this device');
@@ -267,7 +177,31 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
     }
   };
 
-  // ── Handler: Export All Data to JSON ─────────────────────────────────────
+  const handleCopyUid = () => {
+    if (!currentUser?.uid) return;
+    navigator.clipboard.writeText(currentUser.uid).then(() => {
+      setCopiedUid(true);
+      toast.success('User ID copied to clipboard');
+      setTimeout(() => setCopiedUid(false), 2000);
+    });
+  };
+
+  const handleTriggerLogout = () => {
+    if (!logoutConfirmStep) {
+      setLogoutConfirmStep(true);
+      setTimeout(() => setLogoutConfirmStep(false), 4000);
+      return;
+    }
+    onClose();
+    if (onLogout) {
+      onLogout();
+    } else {
+      signOut(auth).then(() => {
+        window.location.reload();
+      });
+    }
+  };
+
   const handleExportDataJson = () => {
     setIsExporting(true);
     try {
@@ -308,7 +242,6 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
     }
   };
 
-  // ── Handler: Wipe Data (Danger Zone) ─────────────────────────────────────
   const handleWipeData = async () => {
     if (wipeConfirm !== 'DELETE') return;
     const user = currentUser || auth.currentUser;
@@ -403,7 +336,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
                 onClick={() => setActiveTab('notifications')}
               >
                 <Bell size={16} />
-                <span>Notifications & SMS</span>
+                <span>Notifications</span>
               </button>
 
               <button
@@ -581,7 +514,7 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
                         </div>
                         <div className="theme-card-meta">
                           <span className="theme-card-name">Obsidian Dark</span>
-                          <span className="theme-card-desc">Deep slate glassmorphism with neon accents</span>
+                          <span className="theme-card-desc">Deep slate glassmorphism with lavender accents</span>
                         </div>
                         {!isPlainTheme && <div className="theme-check-pill"><Check size={12} /> Active</div>}
                       </div>
@@ -645,101 +578,94 @@ export const SecuritySettingsModal: React.FC<SecuritySettingsModalProps> = ({
                 </div>
               )}
 
-              {/* ── TAB 3: NOTIFICATIONS & SMS ───────────────────────────── */}
+              {/* ── TAB 3: NOTIFICATIONS (SMS COMPLETELY REMOVED) ────────── */}
               {activeTab === 'notifications' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                   <div className="settings-tab-header">
-                    <h3 className="settings-tab-title">Notifications & SMS Alerts</h3>
-                    <p className="settings-tab-subtitle">Configure real-time mobile SMS delivery and browser desktop push notifications</p>
-                  </div>
-
-                  {/* Twilio SMS Alerts Section */}
-                  <div className="security-card-box">
-                    <label style={{ fontSize: '0.88rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                      <Phone size={16} /> Phone Number for High-Priority Alerts
-                    </label>
-                    <p className="security-section-desc" style={{ marginBottom: '0.75rem' }}>
-                      Include your international country code (e.g., +1 for US/Canada, +91 for India).
-                    </p>
-                    <div className="security-input-row">
-                      <input
-                        type="tel"
-                        value={phoneLoaded ? phoneNumber : 'Loading...'}
-                        onChange={e => setPhoneNumber(e.target.value)}
-                        disabled={!phoneLoaded}
-                        placeholder="+1234567890"
-                        className="security-input"
-                      />
-                      <button
-                        onClick={handleSavePhone}
-                        disabled={isSavingPhone || !phoneNumber.trim()}
-                        className={`security-btn ${phoneSaved ? 'security-btn-success' : 'security-btn-primary'}`}
-                      >
-                        {phoneSaved ? (
-                          <><CheckCircle size={15} /> Saved</>
-                        ) : isSavingPhone ? (
-                          <><RefreshCw size={15} className="animate-spin" /> Saving</>
-                        ) : (
-                          <><Save size={15} /> Save Phone</>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Test SMS Delivery Button */}
-                    <div className="settings-divider-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '0.25rem' }}>Dispatch Verification Test SMS</div>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted, #94a3b8)', marginBottom: '0.65rem' }}>
-                        Send a test SMS to confirm your device is receiving high-priority task alerts.
-                      </div>
-                      <button
-                        onClick={handleTestSms}
-                        disabled={!phoneNumber.trim() || testSmsSent}
-                        className={`security-btn ${testSmsSent ? 'security-btn-success' : 'security-btn-primary'}`}
-                      >
-                        {testSmsSent ? (
-                          <><CheckCircle size={15} /> SMS Dispatched!</>
-                        ) : (
-                          <><Bell size={15} /> Send Test SMS</>
-                        )}
-                      </button>
-                      {testSmsError && (
-                        <p style={{ margin: '0.65rem 0 0', fontSize: '0.8rem', color: '#ef4444' }}>
-                          ❌ {testSmsError}
-                        </p>
-                      )}
-                    </div>
+                    <h3 className="settings-tab-title">Notifications & Alerts</h3>
+                    <p className="settings-tab-subtitle">Configure desktop push notifications, reminders, and audible alert feedback</p>
                   </div>
 
                   {/* Browser Push Notifications */}
                   <div className="security-card-box">
-                    <h4 className="security-section-title">
-                      <Bell size={16} /> Desktop Browser Push Notifications
-                    </h4>
-                    <p className="security-section-desc">
-                      Receive instant heads-up alerts for Pomodoro timer sessions, urgent deadlines, and morning agenda summaries.
-                    </p>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                    <div className="security-card-row">
+                      <div>
+                        <h4 className="security-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', margin: 0 }}>
+                          <Bell size={16} /> Desktop Browser Push Notifications
+                        </h4>
+                        <p className="security-section-desc" style={{ marginTop: '0.3rem' }}>
+                          Receive alerts for approaching task deadlines, Pomodoro timer completion, and morning briefings.
+                        </p>
+                      </div>
+                      <div>
+                        {browserNotifPermission !== 'granted' ? (
+                          <button
+                            type="button"
+                            className="security-btn security-btn-primary"
+                            onClick={handleRequestNotifPermission}
+                          >
+                            Enable Alerts
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="security-btn"
+                            onClick={handleSendTestNotification}
+                          >
+                            <Bell size={13} />
+                            <span>Send Test Alert</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ marginTop: '0.75rem' }}>
                       <span className={`settings-status-pill ${browserNotifPermission === 'granted' ? 'connected' : 'disconnected'}`}>
                         {browserNotifPermission === 'granted' ? '● Notifications Enabled' : '○ Permission Not Granted'}
                       </span>
-                      {browserNotifPermission !== 'granted' ? (
+                    </div>
+                  </div>
+
+                  {/* Task Reminder Lead Time */}
+                  <div className="security-card-box">
+                    <h4 className="security-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                      <Clock size={16} /> Task Reminder Lead Time
+                    </h4>
+                    <p className="security-section-desc">
+                      Choose how far in advance desktop alerts should notify you before a scheduled task time.
+                    </p>
+                    <div className="settings-chips-group">
+                      {(['15', '30', '60', '120'] as const).map(mins => (
                         <button
+                          key={mins}
                           type="button"
-                          className="security-btn security-btn-primary"
-                          onClick={handleRequestNotifPermission}
+                          className={`settings-choice-chip ${reminderLeadTime === mins ? 'active' : ''}`}
+                          onClick={() => handleSetReminderLeadTime(mins)}
                         >
-                          Enable Desktop Alerts
+                          {mins === '60' ? '1 Hour' : mins === '120' ? '2 Hours' : `${mins} Minutes`}
                         </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="security-btn"
-                          onClick={handleSendTestNotification}
-                        >
-                          <Bell size={13} />
-                          <span>Send Test Alert</span>
-                        </button>
-                      )}
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Audio & Sound Effects */}
+                  <div className="security-card-box">
+                    <div className="security-card-row">
+                      <div>
+                        <h4 className="security-section-title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', margin: 0 }}>
+                          <Volume2 size={16} /> Sound Effects & Audio Chimes
+                        </h4>
+                        <p className="security-section-desc" style={{ marginTop: '0.3rem' }}>
+                          Play subtle audible chimes upon task completion, timer rings, and focus intervals.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className={`settings-toggle-switch ${soundEffects ? 'on' : 'off'}`}
+                        onClick={() => handleToggleSoundEffects(!soundEffects)}
+                        aria-label="Toggle sound effects"
+                      >
+                        <div className="toggle-switch-thumb" />
+                      </button>
                     </div>
                   </div>
                 </div>
