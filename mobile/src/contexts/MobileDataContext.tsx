@@ -23,7 +23,7 @@
 import React from "react";
 import { User } from "firebase/auth";
 
-import { CoreDataProvider, useCoreData }     from "./domains/CoreDataContext";
+import { CoreDataProvider, useCoreData, useCoreUser }     from "./domains/CoreDataContext";
 import { AcademicProvider, useAcademicData } from "./domains/AcademicContext";
 import { CreativeProvider, useCreativeData } from "./domains/CreativeContext";
 import { PlannerProvider, usePlannerData }   from "./domains/PlannerContext";
@@ -346,12 +346,18 @@ const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
  * `useCoreData`, `useWellnessData`, `useAcademicData`, `useCreativeData`, `usePlannerData`.
  */
 export function useMobileData(): MobileDataContextType {
+  if (__DEV__) {
+    console.error(
+      '[useMobileData] DEPRECATED: useMobileData() was called. Replace with fine-grained domain hooks: useCoreData, useAcademicData, useCreativeData, or usePlannerData.'
+    );
+  }
   return DEFAULT_FALLBACK_CTX;
 }
 
-// Internal bridge: reads user from CoreDataContext, passes to demand-based providers.
+// Internal bridge: reads user from CoreUserContext, passes to demand-based providers.
+// Isolates task and habit mutations in CoreDataContext from re-rendering the child domain providers!
 function _DomainProviders({ children }: { children: React.ReactNode }) {
-  const { user } = useCoreData();
+  const user = useCoreUser();
   return (
     <AcademicProvider user={user}>
       <CreativeProvider user={user}>

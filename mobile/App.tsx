@@ -1,7 +1,7 @@
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, LogBox, AppState, AppStateStatus, InteractionManager, Platform } from 'react-native';
+import { View, ActivityIndicator, LogBox, AppState, AppStateStatus, InteractionManager, Platform, DeviceEventEmitter } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -26,7 +26,7 @@ enableFreeze(true);
 import { setupNetworkListener } from './src/services/offlineSync';
 import { setupLifecycleHygiene } from './src/services/lifecycleHygiene';
 import { registerDeferredOtaSync } from './src/services/otaUpdateService';
-import { loadBootManifest } from './src/utils/bootManifest';
+import { loadBootManifest, getBootManifestSync } from './src/utils/bootManifest';
 import { PortalProvider } from './src/contexts/PortalContext';
 import { unregisterBackgroundProactiveAgent } from './src/services/backgroundProactiveAgent';
 import { registerWeeklyReviewTask } from './src/services/backgroundTasks';
@@ -135,12 +135,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Initialize notification channels & check permissions immediately on boot
-    requestNotificationPermissions().catch(console.warn);
-
     let timer: ReturnType<typeof setTimeout> | null = null;
     const handle = InteractionManager.runAfterInteractions(() => {
       timer = setTimeout(() => {
+        // PERF FIX (1.1): Move notification permission & channel checks here so Frame 0 has 0 native bridge traffic
+        requestNotificationPermissions().catch(console.warn);
         registerBackgroundNotificationFetch();
         unregisterBackgroundProactiveAgent().catch(() => {});
         registerWeeklyReviewTask();
@@ -241,26 +240,32 @@ export default function App() {
         return auth.currentUser?.uid;
       };
 
-      // Helper: navigate imperatively, works before React tree mounts with cold-start retry
-      const nav = (screen: string, params?: object, attempt = 0) => {
-        if (!navigationRef.isReady()) {
-          if (attempt < 20) {
-            setTimeout(() => nav(screen, params, attempt + 1), 150);
+      // Helper: navigate imperatively, safe before and after React tree mounts
+      const nav = (screen: string, params?: object) => {
+        const executeNav = () => {
+          if (!navigationRef.isReady()) return;
+          const tabScreens = [
+            'Home', 'Tasks', 'Calendar', 'Habits', 'Attendance',
+            'Analytics', 'Notes', 'Sara', 'Social', 'Assignments',
+            'Grades', 'Learning', 'WeeklyReview', 'StudyRoom',
+          ];
+          if (tabScreens.includes(screen)) {
+            navigationRef.navigate('MainTabs', { screen } as any);
+          } else {
+            navigationRef.navigate('MoreStack', { screen, params } as any);
           }
-          return;
-        }
-        // All screens registered in MainTabNavigator (both pinned + hidden ones).
-        // React Navigation can navigate to any Tab.Screen even if display:none in the bar.
-        const tabScreens = [
-          'Home', 'Tasks', 'Calendar', 'Habits', 'Attendance',
-          'Analytics', 'Notes', 'Sara', 'Social', 'Assignments',
-          'Grades', 'Learning', 'WeeklyReview', 'StudyRoom',
-        ];
-        if (tabScreens.includes(screen)) {
-          navigationRef.navigate('MainTabs', { screen } as any);
+        };
+
+        if (navigationRef.isReady()) {
+          executeNav();
         } else {
-          // Screens inside MoreStack (Settings, NotificationsSettings, Sara, etc.)
-          navigationRef.navigate('MoreStack', { screen, params } as any);
+          InteractionManager.runAfterInteractions(() => {
+            if (navigationRef.isReady()) {
+              executeNav();
+            } else {
+              setTimeout(executeNav, 300);
+            }
+          });
         }
       };
 
@@ -274,13 +279,14 @@ export default function App() {
         let success = false;
         if (taskId) {
           try {
-            const taskRef = doc(db, COLLECTION.TASKS, taskId);
-            const taskSnap = await getDoc(taskRef).catch(() => null);
-            if (taskSnap && taskSnap.exists() && taskSnap.data()?.status === 'completed') {
-              // Already done — silent no-op, don't re-fire confirmation
+            const manifest = getBootManifestSync();
+            const cachedTask = manifest?.tasks?.find(t => t.id === taskId);
+            if (cachedTask && cachedTask.status === 'completed') {
+              // Already done in local memory — silent no-op
               return;
             }
             const todayLocal = formatLocalDateStr();
+            const taskRef = doc(db, COLLECTION.TASKS, taskId);
             await safeWrite(
               (payload) => updateDoc(taskRef, payload),
               COLLECTION.TASKS,
@@ -288,10 +294,13 @@ export default function App() {
               { status: 'completed', completedAt: todayLocal },
               taskId,
             );
-            // BUG-04 FIX: Award XP same as in-app task completion
+            // Sync React CoreDataContext in-memory state immediately (0ms)
+            DeviceEventEmitter.emit('task_updated_from_notification', {
+              taskId,
+              partial: { status: 'completed', completedAt: todayLocal },
+            });
             await awardXP('TASK_COMPLETE').catch(() => {});
             success = true;
-
           } catch (e) {
             console.warn('[Notification] mark_task_done write failed:', e);
           }
@@ -365,14 +374,10 @@ export default function App() {
         if (habitId) {
           try {
             const todayDate = formatLocalDateStr();
+            const manifest = getBootManifestSync();
+            const alreadyLogged = manifest?.habitLogs?.some(l => l.habitId === habitId && l.date === todayDate);
 
-            const uid = await resolveNotificationUid();
-            const deterministicLogId = `${uid ?? 'anon'}_${habitId}_${todayDate}`;
-            const habitLogRef = doc(db, COLLECTION.HABIT_LOGS, deterministicLogId);
-
-            const existingSnap = await getDoc(habitLogRef).catch(() => null);
-
-            if (existingSnap && existingSnap.exists()) {
+            if (alreadyLogged) {
               await Notifications.scheduleNotificationAsync({
                 content: {
                   title: 'Already Logged',
@@ -384,6 +389,10 @@ export default function App() {
               }).catch(() => {});
               return;
             }
+
+            const uid = await resolveNotificationUid();
+            const deterministicLogId = `${uid ?? 'anon'}_${habitId}_${todayDate}`;
+            const habitLogRef = doc(db, COLLECTION.HABIT_LOGS, deterministicLogId);
 
             const logPayload = {
               habitId,
@@ -403,38 +412,45 @@ export default function App() {
             await awardXP('HABIT_LOG').catch(() => {});
 
             const habitRef = doc(db, COLLECTION.HABITS, habitId);
-            const habitSnap = await getDoc(habitRef).catch(() => null);
-            if (habitSnap && habitSnap.exists()) {
-              const habitData     = habitSnap.data();
-              const habitName     = (habitData?.name ?? 'Habit') as string;
-              const currentStreak = (habitData?.streak ?? 0) as number;
-              const longestStreak = (habitData?.longestStreak ?? 0) as number;
-              const newStreak     = currentStreak + 1;
-              await safeWrite(
-                () => updateDoc(habitRef, {
-                  streak: increment(1),
-                  longestStreak: Math.max(newStreak, longestStreak),
-                }),
-                COLLECTION.HABITS,
-                'update',
-                { streak: newStreak, longestStreak: Math.max(newStreak, longestStreak) },
-                habitId,
-              );
-              if (newStreak === 7 || newStreak % 7 === 0) {
-                await awardXP('HABIT_STREAK_7').catch(() => {});
-              }
-              if (newStreak === 30 || newStreak % 30 === 0) {
-                await awardXP('HABIT_STREAK_30').catch(() => {});
-              }
-              confirmTitle = `${habitName} Logged`;
-              confirmBody  = newStreak >= 30
-                ? `${newStreak}-day streak. Exceptional consistency.`
-                : newStreak >= 7
-                ? `${newStreak}-day streak. Keep the chain going.`
-                : newStreak >= 2
-                ? `${newStreak}-day streak. Keep it up.`
-                : 'Day 1 recorded. Consistency builds momentum.';
+            const cachedHabit = manifest?.habits?.find(h => h.id === habitId);
+            const habitName     = (cachedHabit?.name ?? 'Habit') as string;
+            const currentStreak = (cachedHabit?.streak ?? 0) as number;
+            const longestStreak = (cachedHabit?.longestStreak ?? 0) as number;
+            const newStreak     = currentStreak + 1;
+            const updatedLongest = Math.max(newStreak, longestStreak);
+
+            await safeWrite(
+              () => updateDoc(habitRef, {
+                streak: increment(1),
+                longestStreak: updatedLongest,
+              }),
+              COLLECTION.HABITS,
+              'update',
+              { streak: newStreak, longestStreak: updatedLongest },
+              habitId,
+            );
+
+            // Sync in-memory React state in 0ms!
+            DeviceEventEmitter.emit('habit_logged_from_notification', {
+              habitId,
+              log: logPayload,
+              habitUpdates: { streak: newStreak, longestStreak: updatedLongest },
+            });
+
+            if (newStreak === 7 || newStreak % 7 === 0) {
+              await awardXP('HABIT_STREAK_7').catch(() => {});
             }
+            if (newStreak === 30 || newStreak % 30 === 0) {
+              await awardXP('HABIT_STREAK_30').catch(() => {});
+            }
+            confirmTitle = `${habitName} Logged`;
+            confirmBody  = newStreak >= 30
+              ? `${newStreak}-day streak. Exceptional consistency.`
+              : newStreak >= 7
+              ? `${newStreak}-day streak. Keep the chain going.`
+              : newStreak >= 2
+              ? `${newStreak}-day streak. Keep it up.`
+              : 'Day 1 recorded. Consistency builds momentum.';
             success = true;
 
           } catch (e) {
@@ -491,22 +507,32 @@ export default function App() {
             const logRef      = doc(db, COLLECTION.ATTENDANCE_LOGS, logDocId);
             const subjRef     = doc(db, COLLECTION.ATTENDANCE, subjectId);
 
-            const existing = await getDoc(logRef).catch(() => null);
+            const manifest = getBootManifestSync();
+            const cachedLog = manifest?.attendanceLogs?.find(l => l.id === logDocId);
 
-            if (existing && existing.exists()) {
-              const oldAction = existing.data().action as string;
-              if (oldAction === 'attended') {
-                cancelClassNotificationsImmediately(subjectId, subjectName, logDate, safeSessionIdx).catch(() => {});
-                clearScheduleCache();
-                await Notifications.scheduleNotificationAsync({
-                  content: {
-                    title: 'Already Recorded',
-                    body: `${subjectName} was already marked present.`,
-                    data: { subjectId }, channelId: 'default',
-                  } as any, trigger: null,
-                }).catch(() => {});
-                return;
-              }
+            if (cachedLog && cachedLog.action === 'attended') {
+              cancelClassNotificationsImmediately(subjectId, subjectName, logDate, safeSessionIdx).catch(() => {});
+              clearScheduleCache();
+              await Notifications.scheduleNotificationAsync({
+                content: {
+                  title: 'Already Recorded',
+                  body: `${subjectName} was already marked present.`,
+                  data: { subjectId }, channelId: 'default',
+                } as any, trigger: null,
+              }).catch(() => {});
+              return;
+            }
+
+            const oldAction = cachedLog?.action;
+            const logPayload = {
+              userId: uid, subjectId, subjectName,
+              type: logType, action: 'attended' as const,
+              date: logDate.slice(0, 10),
+              isExtra: false, timestamp: Date.now(), idx: safeSessionIdx,
+              id: logDocId,
+            };
+
+            if (oldAction) {
               const totDelta = oldAction === 'cancelled' ? 1 : 0;
               const updates: Record<string, any> = {
                 [attendedKey]: increment(1),
@@ -524,24 +550,22 @@ export default function App() {
                 safeWrite(() => updateDoc(subjRef, updates), COLLECTION.ATTENDANCE, 'update', offlineUpdates, subjectId),
                 safeWrite((p) => setDoc(logRef, p, { merge: true }), COLLECTION.ATTENDANCE_LOGS, 'set', { action: 'attended', timestamp: Date.now() }, logDocId),
               ]);
+              DeviceEventEmitter.emit('attendance_logged_from_widget', { log: logPayload, subjectId, subjectUpdates: offlineUpdates });
             } else {
-              const logPayload = {
-                userId: uid, subjectId, subjectName,
-                type: logType, action: 'attended',
-                date: logDate.slice(0, 10),
-                isExtra: false, timestamp: Date.now(), idx: safeSessionIdx,
-              };
+              const updates = { [attendedKey]: increment(1), [totalKey]: increment(1), lastUpdated: Date.now() };
+              const offlineUpdates = { [attendedKey]: { __zentrackIncrement: 1 }, [totalKey]: { __zentrackIncrement: 1 }, lastUpdated: Date.now() };
               await Promise.all([
                 safeWrite(
                   () => updateDoc(subjRef, { [attendedKey]: increment(1), [totalKey]: increment(1), lastUpdated: Date.now() }),
                   COLLECTION.ATTENDANCE,
                   'update',
-                  { [attendedKey]: { __zentrackIncrement: 1 }, [totalKey]: { __zentrackIncrement: 1 }, lastUpdated: Date.now() },
+                  offlineUpdates,
                   subjectId,
                 ),
                 safeWrite((p) => setDoc(logRef, p), COLLECTION.ATTENDANCE_LOGS, 'set', logPayload, logDocId),
               ]);
               await awardXP('ATTENDANCE_LOG').catch(() => {});
+              DeviceEventEmitter.emit('attendance_logged_from_widget', { log: logPayload, subjectId, subjectUpdates: offlineUpdates });
             }
             success = true;
           } catch (e) {
@@ -585,22 +609,32 @@ export default function App() {
             const logRef      = doc(db, COLLECTION.ATTENDANCE_LOGS, logDocId);
             const subjRef     = doc(db, COLLECTION.ATTENDANCE, subjectId);
 
-            const existing = await getDoc(logRef).catch(() => null);
+            const manifest = getBootManifestSync();
+            const cachedLog = manifest?.attendanceLogs?.find(l => l.id === logDocId);
 
-            if (existing && existing.exists()) {
-              const oldAction = existing.data().action as string;
-              if (oldAction === 'missed') {
-                cancelClassNotificationsImmediately(subjectId, subjectName, logDate, safeSessionIdx).catch(() => {});
-                clearScheduleCache();
-                await Notifications.scheduleNotificationAsync({
-                  content: {
-                    title: 'Already Recorded',
-                    body: `${subjectName} was already marked absent.`,
-                    data: { subjectId }, channelId: 'default',
-                  } as any, trigger: null,
-                }).catch(() => {});
-                return;
-              }
+            if (cachedLog && cachedLog.action === 'missed') {
+              cancelClassNotificationsImmediately(subjectId, subjectName, logDate, safeSessionIdx).catch(() => {});
+              clearScheduleCache();
+              await Notifications.scheduleNotificationAsync({
+                content: {
+                  title: 'Already Recorded',
+                  body: `${subjectName} was already marked absent.`,
+                  data: { subjectId }, channelId: 'default',
+                } as any, trigger: null,
+              }).catch(() => {});
+              return;
+            }
+
+            const oldAction = cachedLog?.action;
+            const logPayload = {
+              userId: uid, subjectId, subjectName,
+              type: logType, action: 'missed' as const,
+              date: logDate.slice(0, 10),
+              isExtra: false, timestamp: Date.now(), idx: safeSessionIdx,
+              id: logDocId,
+            };
+
+            if (oldAction) {
               const attDelta = oldAction === 'attended' ? -1 : 0;
               const totDelta = oldAction === 'cancelled' ? 1 : 0;
               const updates: Record<string, any> = { lastUpdated: Date.now() };
@@ -617,24 +651,22 @@ export default function App() {
                 safeWrite(() => updateDoc(subjRef, updates), COLLECTION.ATTENDANCE, 'update', offlineUpdates, subjectId),
                 safeWrite((p) => setDoc(logRef, p, { merge: true }), COLLECTION.ATTENDANCE_LOGS, 'set', { action: 'missed', timestamp: Date.now() }, logDocId),
               ]);
+              DeviceEventEmitter.emit('attendance_logged_from_widget', { log: logPayload, subjectId, subjectUpdates: offlineUpdates });
             } else {
-              const logPayload = {
-                userId: uid, subjectId, subjectName,
-                type: logType, action: 'missed',
-                date: logDate.slice(0, 10),
-                isExtra: false, timestamp: Date.now(), idx: safeSessionIdx,
-              };
+              const updates = { [totalKey]: increment(1), lastUpdated: Date.now() };
+              const offlineUpdates = { [totalKey]: { __zentrackIncrement: 1 }, lastUpdated: Date.now() };
               await Promise.all([
                 safeWrite(
-                  () => updateDoc(subjRef, { [totalKey]: increment(1), lastUpdated: Date.now() }),
+                  () => updateDoc(subjRef, updates),
                   COLLECTION.ATTENDANCE,
                   'update',
-                  { [totalKey]: { __zentrackIncrement: 1 }, lastUpdated: Date.now() },
+                  offlineUpdates,
                   subjectId,
                 ),
                 safeWrite((p) => setDoc(logRef, p), COLLECTION.ATTENDANCE_LOGS, 'set', logPayload, logDocId),
               ]);
               await awardXP('ATTENDANCE_LOG').catch(() => {});
+              DeviceEventEmitter.emit('attendance_logged_from_widget', { log: logPayload, subjectId, subjectUpdates: offlineUpdates });
             }
             success = true;
           } catch (e) {

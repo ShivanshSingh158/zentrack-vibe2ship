@@ -129,23 +129,6 @@ export function AcademicProvider({
     }, delay);
   }, []);
 
-  // ── Widget action listener: syncs live widget logs into React state immediately ──
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('attendance_logged_from_widget', (event: any) => {
-      if (event?.log) {
-        optimisticAddAttendanceLog(event.log);
-      } else if (event?.deterministicId) {
-        // Fix #5: Widget undo sends log: null with a deterministicId.
-        // Previously this branch was never taken, leaving the undone session
-        // marked as "Present" in the React UI even though the widget deleted it.
-        optimisticRemoveAttendanceLog(event.deterministicId);
-      }
-      if (event?.subjectId && event?.subjectUpdates) {
-        optimisticUpdateAttendance(event.subjectId, event.subjectUpdates);
-      }
-    });
-    return () => sub.remove();
-  }, []);
 
   // ── Offline-first boot: seed ALL academic collections using functional updaters ──
   useEffect(() => {
@@ -212,12 +195,18 @@ export function AcademicProvider({
                   schemaVersion: fs.schemaVersion,
                 };
               });
-            fresh.forEach(fs => { if (!merged.find(ps => ps.id === fs.id)) merged.push(fs); });
+            const mergedIds = new Set(merged.map(s => s.id));
+            for (const fs of fresh) {
+              if (!mergedIds.has(fs.id)) {
+                merged.push(fs);
+                mergedIds.add(fs.id);
+              }
+            }
+            merged.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || (a.id ?? '').localeCompare(b.id ?? ''));
             return areItemsEqual(prev, merged) ? prev : merged;
           });
           setAttendanceSnapshotFired(true);
-          pendingCacheWriteRef.current?.cancel();
-          pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendance: fresh }, false));
+          InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendance: fresh }, false));
         });
       },
       scheduleListenerRestart("attendance")
@@ -267,8 +256,7 @@ export function AcademicProvider({
             if (inFlight.length === 0) return fresh;
             return [...fresh, ...inFlight];
           });
-          pendingCacheWriteRef.current?.cancel();
-          pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendanceLogs: fresh }, false));
+          InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendanceLogs: fresh }, false));
         });
       },
       scheduleListenerRestart("attendanceLogs")
@@ -522,6 +510,21 @@ export function AcademicProvider({
       return next;
     });
   }, []);
+
+  // ── Widget action listener: syncs live widget logs into React state immediately ──
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('attendance_logged_from_widget', (event: any) => {
+      if (event?.log) {
+        optimisticAddAttendanceLog(event.log);
+      } else if (event?.deterministicId) {
+        optimisticRemoveAttendanceLog(event.deterministicId);
+      }
+      if (event?.subjectId && event?.subjectUpdates) {
+        optimisticUpdateAttendance(event.subjectId, event.subjectUpdates);
+      }
+    });
+    return () => sub.remove();
+  }, [optimisticAddAttendanceLog, optimisticRemoveAttendanceLog, optimisticUpdateAttendance]);
 
   // attendanceReady: true once the first Firestore snapshot has fired (even if user has no subjects).
   const attendanceReady = attendanceSnapshotFired;

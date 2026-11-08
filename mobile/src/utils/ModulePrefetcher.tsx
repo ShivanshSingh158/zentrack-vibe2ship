@@ -80,6 +80,8 @@ const scheduleNextStep = (delayMs: number): void => {
 };
 
 
+const failedAttempts = new Map<string, number>();
+
 const processNext = (): void => {
   while (prefetchQueue.length > 0 && moduleCache.has(prefetchQueue[0].id)) {
     prefetchQueue.shift();
@@ -107,15 +109,22 @@ const processNext = (): void => {
   next.importer()
     .then(mod => {
       moduleCache.set(next.id, mod);
-      scheduleNextStep(250);
+      failedAttempts.delete(next.id);
+      scheduleNextStep(1000);
     })
     .catch(err => {
       console.warn(`[ModulePrefetcher] Failed to prefetch ${next.id}:`, err);
-      // Re-enqueue at the tail so prefetchRemainingModules / preloadNow can still resolve it
-      if (!moduleCache.has(next.id) && !prefetchQueue.some(item => item.id === next.id)) {
-        prefetchQueue.push(next);
+      const attempts = (failedAttempts.get(next.id) || 0) + 1;
+      failedAttempts.set(next.id, attempts);
+      if (attempts < 2) {
+        // Re-enqueue at the tail for one retry
+        if (!moduleCache.has(next.id) && !prefetchQueue.some(item => item.id === next.id)) {
+          prefetchQueue.push(next);
+        }
+      } else {
+        console.warn(`[ModulePrefetcher] Aborting background prefetch for ${next.id} after ${attempts} failures.`);
       }
-      scheduleNextStep(300);
+      scheduleNextStep(1000);
     });
 };
 

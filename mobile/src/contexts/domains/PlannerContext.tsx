@@ -8,6 +8,7 @@ import { writePlannerCache } from "../../utils/domainCache";
 import { loadBootManifest, getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
 import { parseCustomEvent, parseGoal, areItemsEqual } from "../../utils/schemaGuards";
 import { applyPendingQueueOverlay } from "../../services/offlineSync";
+import { formatLocalDateStr, offsetDateStr } from "../../utils/dateUtils";
 
 export interface PlannerContextType {
   customEvents: CustomEvent[];
@@ -117,13 +118,20 @@ export function PlannerProvider({
     if (subscribedRef.current) return;
     subscribedRef.current = true;
 
+    // 1. Calendar Events (Rolling 60-day window prevents unbounded historical array growth)
+    const sixtyDaysAgoStr = offsetDateStr(formatLocalDateStr(), -60);
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.CALENDAR_EVENTS), where("userId", "==", uid)),
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
-          const fresh = applyPendingQueueOverlay(COLLECTION.CALENDAR_EVENTS, snap.docs.map(d => parseCustomEvent(d.data(), d.id)));
+          const fresh = applyPendingQueueOverlay(
+            COLLECTION.CALENDAR_EVENTS,
+            snap.docs
+              .map(d => parseCustomEvent(d.data(), d.id))
+              .filter(e => !e.date || e.date >= sixtyDaysAgoStr)
+          );
           setCustomEvents(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           updateL1Cache('customEvents', fresh);
           InteractionManager.runAfterInteractions(() => writePlannerCache({ customEvents: fresh }, false));

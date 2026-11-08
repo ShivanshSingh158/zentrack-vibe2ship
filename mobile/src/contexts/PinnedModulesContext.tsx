@@ -8,24 +8,35 @@ import { getBootManifestSync, updateL1Cache } from '../utils/bootManifest';
 import { safeWrite } from '../utils/safeWrite';
 
 const DEFAULT_PINNED_MODULES = ['Tasks', 'Calendar', 'Attendance', 'Notes'];
+const PRUNED_MODULES = new Set(['Gym', 'Habits', 'Analytics', 'Assignments']);
+
+export function sanitizePinnedModules(mods: string[]): string[] {
+  if (!Array.isArray(mods)) return DEFAULT_PINNED_MODULES;
+  const filtered = mods.filter(m => typeof m === 'string' && m.trim().length > 0 && !PRUNED_MODULES.has(m));
+  return filtered.length > 0 ? filtered.slice(0, 4) : DEFAULT_PINNED_MODULES;
+}
 
 export interface PinnedModulesContextType {
   pinnedModules: string[];
   setPinnedModules: (mods: string[]) => void;
+  hydratePinnedModulesFromRemote: (mods: string[]) => void;
 }
 
 const PinnedModulesContext = createContext<PinnedModulesContextType>({
   pinnedModules: DEFAULT_PINNED_MODULES,
   setPinnedModules: () => {},
+  hydratePinnedModulesFromRemote: () => {},
 });
 
 export function PinnedModulesProvider({ children }: { children: React.ReactNode }) {
   const initialManifest = getBootManifestSync();
   const [pinnedModules, setPinnedModulesState] = useState<string[]>(
     initialManifest?.pinnedModules && initialManifest.pinnedModules.length > 0
-      ? initialManifest.pinnedModules
+      ? sanitizePinnedModules(initialManifest.pinnedModules)
       : DEFAULT_PINNED_MODULES
   );
+  const pinnedModulesRef = React.useRef(pinnedModules);
+  pinnedModulesRef.current = pinnedModules;
 
   // Hydration & external event listener
   useEffect(() => {
@@ -39,8 +50,7 @@ export function PinnedModulesProvider({ children }: { children: React.ReactNode 
           try {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              const pruned = new Set(['Gym', 'Habits', 'Analytics', 'Assignments']);
-              const clamped = parsed.filter(m => !pruned.has(m)).slice(0, 4);
+              const clamped = sanitizePinnedModules(parsed);
               setPinnedModulesState(clamped);
               updateL1Cache('pinnedModules', clamped);
             }
@@ -52,7 +62,8 @@ export function PinnedModulesProvider({ children }: { children: React.ReactNode 
     // 2. Global cross-component event listener (e.g. from Firestore sync or external setters)
     const sub = DeviceEventEmitter.addListener('pinned_modules_changed', (newMods: string[]) => {
       if (!cancelled && Array.isArray(newMods) && newMods.length > 0) {
-        setPinnedModulesState(newMods.slice(0, 4));
+        const clamped = sanitizePinnedModules(newMods);
+        setPinnedModulesState(clamped);
       }
     });
 
@@ -62,8 +73,19 @@ export function PinnedModulesProvider({ children }: { children: React.ReactNode 
     };
   }, []);
 
+  // Hydrates pinned modules from remote Firestore without writing back (breaks infinite ping-pong)
+  const hydratePinnedModulesFromRemote = useCallback((mods: string[]) => {
+    const clamped = sanitizePinnedModules(mods);
+    if (clamped.join(',') === pinnedModulesRef.current.join(',')) return;
+    setPinnedModulesState(clamped);
+    updateL1Cache('pinnedModules', clamped);
+    AsyncStorage.setItem('@zentrack_pinned_modules', JSON.stringify(clamped)).catch(() => {});
+    DeviceEventEmitter.emit('pinned_modules_changed', clamped);
+  }, []);
+
+  // User manually edits pinned modules in Settings -> writes to local and cloud
   const setPinnedModules = useCallback((mods: string[]) => {
-    const clamped = mods.filter(m => m !== 'Gym').slice(0, 4);
+    const clamped = sanitizePinnedModules(mods);
     setPinnedModulesState(clamped);
     updateL1Cache('pinnedModules', clamped);
     AsyncStorage.setItem('@zentrack_pinned_modules', JSON.stringify(clamped)).catch(console.warn);
@@ -86,8 +108,9 @@ export function PinnedModulesProvider({ children }: { children: React.ReactNode 
     () => ({
       pinnedModules,
       setPinnedModules,
+      hydratePinnedModulesFromRemote,
     }),
-    [pinnedModules, setPinnedModules]
+    [pinnedModules, setPinnedModules, hydratePinnedModulesFromRemote]
   );
 
   return (

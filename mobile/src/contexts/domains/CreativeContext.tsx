@@ -179,12 +179,28 @@ export function CreativeProvider({
   }, [scheduleListenerRestart]);
 
   const demandRequestedRef = useRef(false);
+  const deferredSubTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (user && demandRequestedRef.current) {
-      subscribedRef.current = false;
-      openSubscriptions(user.uid);
-    } else if (!user) {
+    if (user) {
+      if (demandRequestedRef.current) {
+        subscribedRef.current = false;
+        openSubscriptions(user.uid);
+      } else {
+        if (deferredSubTimerRef.current) clearTimeout(deferredSubTimerRef.current);
+        const handle = InteractionManager.runAfterInteractions(() => {
+          deferredSubTimerRef.current = setTimeout(() => {
+            if (user && !subscribedRef.current) {
+              openSubscriptions(user.uid);
+            }
+          }, 6000);
+        });
+        return () => {
+          handle.cancel();
+          if (deferredSubTimerRef.current) clearTimeout(deferredSubTimerRef.current);
+        };
+      }
+    } else {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
@@ -208,10 +224,15 @@ export function CreativeProvider({
   useEffect(() => () => {
     unsubsRef.current.forEach(u => u());
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    if (deferredSubTimerRef.current) clearTimeout(deferredSubTimerRef.current);
   }, []);
 
   const ensureSubscribed = useCallback(() => {
     demandRequestedRef.current = true;
+    if (deferredSubTimerRef.current) {
+      clearTimeout(deferredSubTimerRef.current);
+      deferredSubTimerRef.current = null;
+    }
     if (user && !subscribedRef.current) {
       openSubscriptions(user.uid);
     }

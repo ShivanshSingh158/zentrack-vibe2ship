@@ -17,7 +17,7 @@ import { doc, setDoc, addDoc, collection, serverTimestamp } from 'firebase/fires
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import { db, auth } from '../services/firebase';
-import { safeWrite } from '../utils/safeWrite';
+import { safeWrite, safeAdd } from '../utils/safeWrite';
 import { awardXP } from '../services/xpSystem';
 import { feedback } from '../utils/haptics';
 import { COLLECTION } from '../config/constants';
@@ -117,6 +117,14 @@ export const PomodoroUIContext = createContext<PomodoroUIContextType>({
 });
 
 export const usePomodoroUI = () => useContext(PomodoroUIContext);
+
+export interface PomodoroTickContextType {
+  timeLeft: number;
+}
+export const PomodoroTickContext = createContext<PomodoroTickContextType>({
+  timeLeft: DEFAULT_CONFIG.focus,
+});
+export const usePomodoroTick = () => useContext(PomodoroTickContext);
 
 const PomodoroContext = createContext<PomodoroContextType | null>(null);
 const PomodoroActionsContext = createContext<PomodoroActionsType | null>(null);
@@ -298,14 +306,19 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       if (uid) {
         try {
-          await addDoc(collection(db, COLLECTION.POMODORO_SESSIONS || 'pomodoro_sessions'), {
+          const sessionPayload = {
             userId: uid,
-            startTime: serverTimestamp(),
+            startTime: Date.now(),
             duration: sessionSecs,
             taskId: s.linkedTaskId ?? null,
-            mode: 'focus',
-          });
-          await awardXP('POMODORO_SESSION');
+            mode: 'focus' as const,
+          };
+          safeAdd(
+            COLLECTION.POMODORO_SESSIONS || 'pomodoro_sessions',
+            sessionPayload,
+            (p) => addDoc(collection(db, COLLECTION.POMODORO_SESSIONS || 'pomodoro_sessions'), { ...p, startTime: serverTimestamp() })
+          ).catch(e => console.warn('[Pomodoro] safeAdd session failed:', e));
+          awardXP('POMODORO_SESSION').catch(() => {});
         } catch { /* non-blocking */ }
       }
     }
@@ -413,7 +426,7 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setStartTime(savedState.startTime);
           setTargetEndTime(savedState.targetEndTime);
           setStatus('running');
-          setIsSheetOpen(true);
+          // Non-intrusive: Keep sheet closed on boot so navigation is smooth; floating pill indicates running timer
         }
       } else if (savedState.status === 'paused') {
         setStatus('paused');
@@ -774,15 +787,21 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     mode,
   }), [isSheetOpen, status, mode]);
 
+  const tickValue = useMemo<PomodoroTickContextType>(() => ({
+    timeLeft,
+  }), [timeLeft]);
+
   return (
-    <PomodoroUIContext.Provider value={uiValue}>
-      <PomodoroActionsContext.Provider value={actionsValue}>
-        <PomodoroActiveTaskContext.Provider value={activeTaskValue}>
-          <PomodoroContext.Provider value={contextValue}>
-            {children}
-          </PomodoroContext.Provider>
-        </PomodoroActiveTaskContext.Provider>
-      </PomodoroActionsContext.Provider>
-    </PomodoroUIContext.Provider>
+    <PomodoroTickContext.Provider value={tickValue}>
+      <PomodoroUIContext.Provider value={uiValue}>
+        <PomodoroActionsContext.Provider value={actionsValue}>
+          <PomodoroActiveTaskContext.Provider value={activeTaskValue}>
+            <PomodoroContext.Provider value={contextValue}>
+              {children}
+            </PomodoroContext.Provider>
+          </PomodoroActiveTaskContext.Provider>
+        </PomodoroActionsContext.Provider>
+      </PomodoroUIContext.Provider>
+    </PomodoroTickContext.Provider>
   );
 };

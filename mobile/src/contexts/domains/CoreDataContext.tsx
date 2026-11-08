@@ -30,6 +30,11 @@ import { usePinnedModules } from "../PinnedModulesContext";
 import { cacheUserAvatar, initAvatarCacheOnBoot, clearAvatarCache } from "../../services/userAvatarService";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
+export const CoreUserContext = createContext<User | null>(null);
+export function useCoreUser(): User | null {
+  return useContext(CoreUserContext);
+}
+
 export interface CoreDataContextType {
   user: User | null;
   tasks: Task[];
@@ -118,9 +123,17 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
 
-  const { pinnedModules, setPinnedModules } = usePinnedModules();
+  const { pinnedModules, setPinnedModules, hydratePinnedModulesFromRemote } = usePinnedModules();
   const pinnedModulesRef = useRef(pinnedModules);
   pinnedModulesRef.current = pinnedModules;
+
+  const pendingCoreWriteRef = useRef<{ cancel: () => void } | null>(null);
+  const scheduleCoreCacheWrite = useCallback((data: Parameters<typeof writeCoreCacheMulti>[0]) => {
+    pendingCoreWriteRef.current?.cancel();
+    pendingCoreWriteRef.current = InteractionManager.runAfterInteractions(() => {
+      writeCoreCacheMulti(data, false);
+    });
+  }, []);
 
   // ── Listener auto-restart on error ───────────────────────────────────────
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
@@ -282,7 +295,8 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     if (subscribedRef.current) return;
     subscribedRef.current = true;
 
-    // 1. Tasks Listener
+    // 1. Tasks Listener (Bounded: active tasks + completed within last 30 days)
+    const thirtyDaysAgoStr = offsetDateStr(formatLocalDateStr(), -30);
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
       snap => {
@@ -297,18 +311,61 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         unstable_batchedUpdates(() => {
-          const fresh = applyPendingQueueOverlay(COLLECTION.TASKS, snap.docs.map(d => parseTask(d.data(), d.id)));
+          const fresh = applyPendingQueueOverlay(
+            COLLECTION.TASKS,
+            snap.docs
+              .map(d => parseTask(d.data(), d.id))
+              .filter(t => t.status !== 'completed' || !t.completedAt || t.completedAt >= thirtyDaysAgoStr)
+          );
           setTasks(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           setFirestoreReady(true);
           hasCachedDataRef.current = true;
           updateL1Cache('tasks', fresh);
-          InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ tasks: fresh }, false));
+          scheduleCoreCacheWrite({ tasks: fresh });
         });
       },
       scheduleListenerRestart("tasks")
     ));
 
-    // 2. User Profile (XP, Saved Places & Pinned Modules Sync) Listener
+    // 2. Habits Listener
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
+      snap => {
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
+        unstable_batchedUpdates(() => {
+          const fresh = applyPendingQueueOverlay(COLLECTION.HABITS, snap.docs.map(d => parseHabit(d.data(), d.id)));
+          setHabits(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          updateL1Cache('habits', fresh);
+          scheduleCoreCacheWrite({ habits: fresh });
+        });
+      },
+      scheduleListenerRestart("habits")
+    ));
+
+    // 3. Habit Logs Listener (Rolling 60-day window)
+    const sixtyDaysAgoStr = offsetDateStr(formatLocalDateStr(), -60);
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
+      snap => {
+        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
+        unstable_batchedUpdates(() => {
+          const fresh = applyPendingQueueOverlay(
+            COLLECTION.HABIT_LOGS,
+            snap.docs
+              .map(d => parseHabitLog(d.data(), d.id))
+              .filter(l => !l.date || l.date >= sixtyDaysAgoStr)
+          );
+          setHabitLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          updateL1Cache('habitLogs', fresh);
+          scheduleCoreCacheWrite({ habitLogs: fresh });
+        });
+      },
+      scheduleListenerRestart("habitLogs")
+    ));
+
+    // 4. User Profile (XP, Saved Places & Pinned Modules Sync) Listener
     unsubsRef.current.push(onSnapshot(
       doc(db, COLLECTION.USER_PROFILES, uid),
       snap => {
@@ -322,17 +379,17 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
             const currentStr = (pinnedModulesRef.current || []).join(',');
             const remoteStr = remotePinned.join(',');
             if (currentStr !== remoteStr) {
-              setPinnedModules(remotePinned);
+              hydratePinnedModulesFromRemote(remotePinned);
             }
           }
           if (Array.isArray(data?.savedPlaces)) {
             AsyncStorage.setItem(STORAGE_KEYS.SAVED_PLACES || '@zentrack_saved_places', JSON.stringify(data.savedPlaces)).catch(() => {});
           }
-          }
+        }
       },
       scheduleListenerRestart("userProfiles")
     ));
-  }, [scheduleListenerRestart]);
+  }, [scheduleListenerRestart, scheduleCoreCacheWrite, hydratePinnedModulesFromRemote]);
 
   // ── Foreground reconnect: restart listeners on app resume ────────────────
   useEffect(() => {
@@ -393,104 +450,96 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const todayHabits      = useMemo(() => activeHabits.slice(0, 5), [activeHabits]);
   const pendingTaskCount = useMemo(() => tasks.filter(t => t.status === "pending").length, [tasks]);
 
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+  const habitsRef = useRef(habits);
+  habitsRef.current = habits;
+  const habitLogsRef = useRef(habitLogs);
+  habitLogsRef.current = habitLogs;
+
   const optimisticAddTask = useCallback((task: Task) => {
-    setTasks(prev => {
-      const next = [task, ...prev];
-      updateL1Cache('tasks', next);
-      InteractionManager.runAfterInteractions(() => {
-        writeCoreCacheMulti({ tasks: next }, false);
-      });
-      return next;
-    });
-  }, []);
+    const next = [task, ...tasksRef.current.filter(t => t.id !== task.id)];
+    updateL1Cache('tasks', next);
+    setTasks(next);
+    scheduleCoreCacheWrite({ tasks: next });
+  }, [scheduleCoreCacheWrite]);
 
   const optimisticUpdateTask = useCallback((taskId: string, partial: Partial<Task>) => {
-    setTasks(prev => {
-      const next = prev.map(t => t.id === taskId ? { ...t, ...partial } : t);
-      updateL1Cache('tasks', next);
-      InteractionManager.runAfterInteractions(() => {
-        writeCoreCacheMulti({ tasks: next }, false);
-      });
-      return next;
-    });
-  }, []);
+    const next = tasksRef.current.map(t => t.id === taskId ? { ...t, ...partial } : t);
+    updateL1Cache('tasks', next);
+    setTasks(next);
+    scheduleCoreCacheWrite({ tasks: next });
+  }, [scheduleCoreCacheWrite]);
 
   const optimisticDeleteTask = useCallback((taskId: string) => {
-    setTasks(prev => {
-      const next = prev.filter(t => t.id !== taskId);
-      updateL1Cache('tasks', next);
-      InteractionManager.runAfterInteractions(() => {
-        writeCoreCacheMulti({ tasks: next }, false);
-      });
-      return next;
-    });
-  }, []);
+    const next = tasksRef.current.filter(t => t.id !== taskId);
+    updateL1Cache('tasks', next);
+    setTasks(next);
+    scheduleCoreCacheWrite({ tasks: next });
+  }, [scheduleCoreCacheWrite]);
 
   const optimisticAddHabit = useCallback((habit: Habit) => {
-    setHabits(prev => {
-      const next = [habit, ...prev];
-      updateL1Cache('habits', next);
-      InteractionManager.runAfterInteractions(() => {
-        writeCoreCacheMulti({ habits: next }, false);
-      });
-      return next;
-    });
-  }, []);
+    const next = [habit, ...habitsRef.current.filter(h => h.id !== habit.id)];
+    updateL1Cache('habits', next);
+    setHabits(next);
+    scheduleCoreCacheWrite({ habits: next });
+  }, [scheduleCoreCacheWrite]);
 
   const optimisticUpdateHabit = useCallback((habitId: string, partial: Partial<Habit>) => {
-    setHabits(prev => {
-      const next = prev.map(h => h.id === habitId ? { ...h, ...partial } : h);
-      updateL1Cache('habits', next);
-      InteractionManager.runAfterInteractions(() => {
-        writeCoreCacheMulti({ habits: next }, false);
-      });
-      return next;
-    });
-  }, []);
+    const next = habitsRef.current.map(h => h.id === habitId ? { ...h, ...partial } : h);
+    updateL1Cache('habits', next);
+    setHabits(next);
+    scheduleCoreCacheWrite({ habits: next });
+  }, [scheduleCoreCacheWrite]);
 
   const optimisticDeleteHabit = useCallback((habitId: string) => {
-    setHabits(prev => {
-      const next = prev.filter(h => h.id !== habitId);
-      updateL1Cache('habits', next);
-      InteractionManager.runAfterInteractions(() => {
-        writeCoreCacheMulti({ habits: next }, false);
-      });
-      return next;
-    });
-  }, []);
+    const next = habitsRef.current.filter(h => h.id !== habitId);
+    updateL1Cache('habits', next);
+    setHabits(next);
+    scheduleCoreCacheWrite({ habits: next });
+  }, [scheduleCoreCacheWrite]);
 
   const optimisticAddHabitLog = useCallback((log: HabitLog) => {
-    setHabitLogs(prev => {
-      const next = [...prev, log];
-      updateL1Cache('habitLogs', next);
-      InteractionManager.runAfterInteractions(() => {
-        writeCoreCacheMulti({ habitLogs: next }, false);
-      });
-      return next;
-    });
-  }, []);
+    const next = [...habitLogsRef.current.filter(l => !(l.id === log.id || (l.habitId === log.habitId && l.date === log.date))), log];
+    updateL1Cache('habitLogs', next);
+    setHabitLogs(next);
+    scheduleCoreCacheWrite({ habitLogs: next });
+  }, [scheduleCoreCacheWrite]);
 
   const optimisticUpdateHabitLog = useCallback((logId: string, partial: Partial<HabitLog>) => {
-    setHabitLogs(prev => {
-      const next = prev.map(l => l.id === logId ? { ...l, ...partial } : l);
-      updateL1Cache('habitLogs', next);
-      InteractionManager.runAfterInteractions(() => {
-        writeCoreCacheMulti({ habitLogs: next }, false);
-      });
-      return next;
-    });
-  }, []);
+    const next = habitLogsRef.current.map(l => l.id === logId ? { ...l, ...partial } : l);
+    updateL1Cache('habitLogs', next);
+    setHabitLogs(next);
+    scheduleCoreCacheWrite({ habitLogs: next });
+  }, [scheduleCoreCacheWrite]);
 
   const optimisticRemoveHabitLog = useCallback((habitId: string, date: string) => {
-    setHabitLogs(prev => {
-      const next = prev.filter(l => !(l.habitId === habitId && l.date === date));
-      updateL1Cache('habitLogs', next);
-      InteractionManager.runAfterInteractions(() => {
-        writeCoreCacheMulti({ habitLogs: next }, false);
-      });
-      return next;
+    const next = habitLogsRef.current.filter(l => !(l.habitId === habitId && l.date === date));
+    updateL1Cache('habitLogs', next);
+    setHabitLogs(next);
+    scheduleCoreCacheWrite({ habitLogs: next });
+  }, [scheduleCoreCacheWrite]);
+
+  // Sync notification action events to React context in-memory immediately (0ms)
+  useEffect(() => {
+    const subTask = DeviceEventEmitter.addListener('task_updated_from_notification', (event: any) => {
+      if (event?.taskId && event?.partial) {
+        optimisticUpdateTask(event.taskId, event.partial);
+      }
     });
-  }, []);
+    const subHabit = DeviceEventEmitter.addListener('habit_logged_from_notification', (event: any) => {
+      if (event?.log) {
+        optimisticAddHabitLog(event.log);
+      }
+      if (event?.habitId && event?.habitUpdates) {
+        optimisticUpdateHabit(event.habitId, event.habitUpdates);
+      }
+    });
+    return () => {
+      subTask.remove();
+      subHabit.remove();
+    };
+  }, [optimisticUpdateTask, optimisticAddHabitLog, optimisticUpdateHabit]);
 
   const value = useMemo(() => ({
     user, tasks, habits: activeHabits, allHabits: habits, habitLogs,
@@ -503,13 +552,18 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   }), [
     user?.uid, tasks, activeHabits, habits, habitLogs,
     loading, firestoreReady, pendingTaskCount, todayHabits,
-    pinnedModules, googleAccessToken, refreshCoreData
+    pinnedModules, googleAccessToken, refreshCoreData,
+    optimisticAddTask, optimisticUpdateTask, optimisticDeleteTask,
+    optimisticAddHabit, optimisticUpdateHabit, optimisticDeleteHabit,
+    optimisticAddHabitLog, optimisticUpdateHabitLog, optimisticRemoveHabitLog
   ]);
 
   return (
-    <CoreDataContext.Provider value={value}>
-      {children}
-    </CoreDataContext.Provider>
+    <CoreUserContext.Provider value={user}>
+      <CoreDataContext.Provider value={value}>
+        {children}
+      </CoreDataContext.Provider>
+    </CoreUserContext.Provider>
   );
 }
 

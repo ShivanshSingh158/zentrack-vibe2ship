@@ -24,14 +24,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '../../contexts/ThemeContext';
-import { usePomodoro, usePomodoroUI } from '../../contexts/PomodoroContext';
+import { usePomodoroUI, usePomodoroTick } from '../../contexts/PomodoroContext';
 import { formatTime } from './pomodoroTimeMath';
 import { modeAccentDark, modeAccentLight, modeIconName, modeLabel } from './pomodoroStyles';
 import { feedback } from '../../utils/haptics';
 
 // Leaf component: only this tiny text node re-renders on the 1-second timeLeft tick
 const CountdownDigits = React.memo(function CountdownDigits({ color }: { color: string }) {
-  const { timeLeft } = usePomodoro();
+  const { timeLeft } = usePomodoroTick();
   return (
     <Text style={[styles.digitsText, { color }]}>
       {formatTime(timeLeft)}
