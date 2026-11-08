@@ -322,7 +322,7 @@ const DataReadyGate: React.FC<{ children: React.ReactNode; isPlainTheme?: boolea
           initial={false}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.2, ease: 'easeInOut' } }}
-          style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: isPlainTheme ? '#fcfcfc' : '#09080c' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: isPlainTheme ? '#F4F3F8' : '#000000' }}
         >
           <AppSkeletonScreen isPlainTheme={isPlainTheme} pathname={location.pathname} />
         </motion.div>
@@ -398,22 +398,22 @@ function App() {
     if (isPlainTheme) {
       document.documentElement.classList.add('theme-plain', 'theme-light');
       document.documentElement.classList.remove('theme-dark');
-      document.documentElement.style.backgroundColor = '#f6f8fa';
+      document.documentElement.style.backgroundColor = '#F4F3F8';
       document.documentElement.style.colorScheme = 'light';
       document.body.classList.add('theme-plain', 'theme-light');
       document.body.classList.remove('theme-dark');
-      document.body.style.backgroundColor = '#f6f8fa';
-      if (metaTheme) metaTheme.setAttribute('content', '#f6f8fa');
+      document.body.style.backgroundColor = '#F4F3F8';
+      if (metaTheme) metaTheme.setAttribute('content', '#F4F3F8');
       localStorage.setItem('zen_theme', 'light');
     } else {
       document.documentElement.classList.remove('theme-plain', 'theme-light');
       document.documentElement.classList.add('theme-dark');
-      document.documentElement.style.backgroundColor = '#09080c';
+      document.documentElement.style.backgroundColor = '#000000';
       document.documentElement.style.colorScheme = 'dark';
       document.body.classList.remove('theme-plain', 'theme-light');
       document.body.classList.add('theme-dark');
-      document.body.style.backgroundColor = '#09080c';
-      if (metaTheme) metaTheme.setAttribute('content', '#09080c');
+      document.body.style.backgroundColor = '#000000';
+      if (metaTheme) metaTheme.setAttribute('content', '#000000');
       localStorage.setItem('zen_theme', 'dark');
     }
   }, [isPlainTheme]);
@@ -825,7 +825,7 @@ function App() {
         <motion.div
           key="solar-skeleton"
           exit={{ opacity: 0, transition: { duration: 0 } }}
-          style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: isPlainTheme ? '#fcfcfc' : '#09080c' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: isPlainTheme ? '#F4F3F8' : '#000000' }}
         >
           <AppSkeletonScreen isPlainTheme={isPlainTheme} pathname={window.location.pathname} />
         </motion.div>
@@ -937,7 +937,7 @@ function App() {
               position: 'fixed',
               inset: 0,
               zIndex: 200,
-              background: '#030d1a',
+              background: '#000000',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',

@@ -3,42 +3,42 @@
    ========================================================================== */
 
 :root {
-  --notes-bg-base: #09090b;
-  --notes-bg-surface: #141417;
-  --notes-bg-surface-elevated: #18181b;
-  --notes-border-subtle: #27272a;
-  --notes-border-hover: #3f3f46;
+  --notes-bg-base: #000000;
+  --notes-bg-surface: #0d0d10;
+  --notes-bg-surface-elevated: #141416;
+  --notes-border-subtle: #1c1c20;
+  --notes-border-hover: rgba(255, 255, 255, 0.14);
   --notes-accent-gold: #fad7a1;
-  --notes-accent-purple: #7c3aed;
-  --notes-accent-purple-light: #a78bfa;
+  --notes-accent-purple: #a599ff;
+  --notes-accent-purple-light: #b8afff;
   --notes-accent-cyan: #38bdf8;
   --notes-accent-blue: #3b82f6;
-  --notes-text-primary: #f4f4f5;
-  --notes-text-secondary: #e4e4e7;
+  --notes-text-primary: #ffffff;
+  --notes-text-secondary: #f2f2f7;
   --notes-text-tertiary: #a1a1aa;
-  --notes-text-muted: #71717a;
-  --notes-success-green: #10b981;
-  --notes-danger-red: #ef4444;
+  --notes-text-muted: #8e8e93;
+  --notes-success-green: #5eda9e;
+  --notes-danger-red: #ff6961;
 }
 
 :root.theme-light,
 html.theme-light,
 body.theme-light,
 body.theme-plain {
-  --notes-bg-base: #f8fafc;
+  --notes-bg-base: #F4F3F8;
   --notes-bg-surface: #ffffff;
-  --notes-bg-surface-elevated: #f1f5f9;
-  --notes-border-subtle: #e2e8f0;
-  --notes-border-hover: #cbd5e1;
+  --notes-bg-surface-elevated: #F0EFF7;
+  --notes-border-subtle: #E2E1EA;
+  --notes-border-hover: #D1D0DA;
   --notes-accent-gold: #d97706;
-  --notes-accent-purple: #7c3aed;
-  --notes-accent-purple-light: #8b5cf6;
+  --notes-accent-purple: #6C5CE7;
+  --notes-accent-purple-light: #8274E8;
   --notes-accent-cyan: #0284c7;
   --notes-accent-blue: #2563eb;
-  --notes-text-primary: #0f172a;
-  --notes-text-secondary: #334155;
-  --notes-text-tertiary: #64748b;
-  --notes-text-muted: #94a3b8;
+  --notes-text-primary: #1C1C1E;
+  --notes-text-secondary: #4B5563;
+  --notes-text-tertiary: #636366;
+  --notes-text-muted: #8E8E93;
   --notes-success-green: #059669;
   --notes-danger-red: #dc2626;
 }

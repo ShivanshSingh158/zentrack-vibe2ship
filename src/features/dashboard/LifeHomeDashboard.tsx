@@ -839,11 +839,10 @@ export const LifeHomeDashboard: React.FC = () => {
   // Discipline Score Synthesis (0–100)
   const disciplineScore = useMemo(() => {
     const taskRatio = todayTasks.length > 0 ? (doneTasks.length / todayTasks.length) : 1;
-    const habitRatio = habits.length > 0 ? (completedHabitsCount / habits.length) : 1;
     const attendRatio = (attendanceStats.pct || 85) / 100;
-    const score = Math.round((taskRatio * 0.4 + habitRatio * 0.35 + attendRatio * 0.25) * 100);
+    const score = Math.round((taskRatio * 0.65 + attendRatio * 0.35) * 100);
     return Math.min(100, Math.max(0, score));
-  }, [todayTasks, doneTasks, habits, completedHabitsCount, attendanceStats]);
+  }, [todayTasks, doneTasks, attendanceStats]);
 
   // Next Scheduled Item (Excludes classes to prevent duplicate cards in Agenda)
   const nextEvent = useMemo(() => {
@@ -899,92 +898,9 @@ export const LifeHomeDashboard: React.FC = () => {
     }
   };
 
-  // Toggle Habit (Bidirectional, optimistic, syncs with habit_logs & habitLogs)
-  const toggleHabit = async (habitId: string) => {
-    if (!user) return;
-    const isDone = isHabitDone(habitId);
-    playPopSound();
-    const cleanToday = (todayStr || '').slice(0, 10);
-    const logDocId = `${habitId}_${cleanToday}`;
-
-    // Optimistically toggle immediately for instant UI tick / untick
-    setOptimisticHabits(prev => ({ ...prev, [habitId]: !isDone }));
-
-    try {
-      if (isDone) {
-        // Unmark / Undo
-        await Promise.allSettled([
-          deleteDoc(doc(db, 'habit_logs', logDocId)),
-          deleteDoc(doc(db, 'habitLogs', logDocId)),
-        ]);
-        const matched = (habitLogs || []).filter(
-          (l: any) => l.habitId === habitId && (l.date || '').slice(0, 10) === cleanToday
-        );
-        for (const m of matched) {
-          if (m.id && m.id !== logDocId) {
-            deleteDoc(doc(db, 'habit_logs', m.id)).catch(() => {});
-            deleteDoc(doc(db, 'habitLogs', m.id)).catch(() => {});
-          }
-        }
-        const habitObj = (habits || []).find((h: any) => h.id === habitId);
-        if (habitObj) {
-          await updateDoc(doc(db, 'habits', habitId), {
-            streak: Math.max(0, (habitObj.streak || 1) - 1),
-          }).catch(() => {});
-        }
-        toast.info('Habit unmarked');
-      } else {
-        // Mark Completed / Log
-        const logData = {
-          habitId,
-          userId: user.uid,
-          date: cleanToday,
-          count: 1,
-          timestamp: Date.now(),
-          createdAt: Date.now(),
-        };
-        await Promise.allSettled([
-          setDoc(doc(db, 'habit_logs', logDocId), logData),
-          setDoc(doc(db, 'habitLogs', logDocId), logData),
-        ]);
-        const habitObj = (habits || []).find((h: any) => h.id === habitId);
-        if (habitObj) {
-          const newStreak = (habitObj.streak || 0) + 1;
-          await updateDoc(doc(db, 'habits', habitId), {
-            streak: newStreak,
-            longestStreak: Math.max(newStreak, habitObj.longestStreak || 0),
-          }).catch(() => {});
-        }
-        const res = await awardXP('HABIT_LOG');
-        toast.success(`Habit logged! +${res.added} XP 🔥`);
-        if (res.leveledUp) {
-          toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
-        }
-      }
-    } catch (e) {
-      console.error('Error toggling habit:', e);
-      // Revert optimistic state on error
-      setOptimisticHabits(prev => ({ ...prev, [habitId]: isDone }));
-      toast.error('Failed to update habit');
-    }
-  };
-
   // Trigger Global Add Task Modal
   const handleTriggerAddTask = () => {
     window.dispatchEvent(new CustomEvent('open-new-task-modal', { detail: { date: todayStr } }));
-  };
-
-  // SARA Input Prompt State
-  const [saraPrompt, setSaraPrompt] = useState('');
-  const handleSaraSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!saraPrompt.trim()) return;
-    const promptText = saraPrompt.trim();
-    setSaraPrompt('');
-    window.dispatchEvent(new CustomEvent('open-sara-modal'));
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: promptText, instruction: promptText } }));
-    }, 150);
   };
 
   // Formatted date and time matching reference: "Saturday, 12 September · 3:40 PM IST"
@@ -1035,18 +951,6 @@ export const LifeHomeDashboard: React.FC = () => {
         </div>
 
         <div className="box-header-right">
-          {/* Ask SARA... Search Pill */}
-          <form onSubmit={handleSaraSubmit} className="box-sara-form">
-            <Sparkles size={14} className="box-sara-icon" />
-            <input
-              type="text"
-              value={saraPrompt}
-              onChange={e => setSaraPrompt(e.target.value)}
-              placeholder="Ask SARA..."
-              className="box-sara-input"
-            />
-          </form>
-
           {/* Flame Streak Pill */}
           <div className="box-streak-pill" title="Daily Streak">
             <Flame size={14} className="box-streak-flame" />

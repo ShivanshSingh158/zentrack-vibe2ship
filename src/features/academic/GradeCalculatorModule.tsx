@@ -35,18 +35,26 @@ export interface SemesterSubject {
   grade?: string;
 }
 
-// Standard 10-point scale
-const GRADE_OPTIONS = [
-  { label: 'A+', points: 10, color: '#5eda9e' },
-  { label: 'A', points: 9, color: '#5eda9e' },
-  { label: 'B+', points: 8, color: '#a599ff' },
-  { label: 'B', points: 7, color: '#a599ff' },
-  { label: 'C', points: 6, color: '#38bdf8' },
-  { label: 'D', points: 5, color: '#fbbf24' },
-  { label: 'F', points: 0, color: '#ff6961' },
+// Standard 10-point scale — Full 15-grade Indian University Parity (Matches Mobile)
+export const GRADE_OPTIONS = [
+  { label: 'O',  points: 10,  color: '#A599FF' },
+  { label: 'S',  points: 10,  color: '#A599FF' },
+  { label: 'A+', points: 10,  color: '#A599FF' },
+  { label: 'A',  points: 9,   color: '#5EDA9E' },
+  { label: 'A-', points: 8.5, color: '#5EDA9E' },
+  { label: 'B+', points: 8,   color: '#38BDF8' },
+  { label: 'B',  points: 7,   color: '#FBBF24' },
+  { label: 'B-', points: 6.5, color: '#FBBF24' },
+  { label: 'C+', points: 6.5, color: '#FB923C' },
+  { label: 'C',  points: 6,   color: '#FB923C' },
+  { label: 'D',  points: 5,   color: '#F87171' },
+  { label: 'E',  points: 4,   color: '#F87171' },
+  { label: 'P',  points: 4,   color: '#38BDF8' },
+  { label: 'F',  points: 0,   color: '#EF4444' },
+  { label: 'RA', points: 0,   color: '#EF4444' },
 ];
 
-const GRADE_MAP: Record<string, number> = Object.fromEntries(
+export const GRADE_MAP: Record<string, number> = Object.fromEntries(
   GRADE_OPTIONS.map(g => [g.label, g.points])
 );
 
