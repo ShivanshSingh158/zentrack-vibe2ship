@@ -14,7 +14,6 @@ import { CalendarInspector } from './CalendarInspector';
 import { AddEventModal } from './AddEventModal';
 import { EventDetailModal } from './EventDetailModal';
 import { AiFreeSlotModal } from './AiFreeSlotModal';
-import { WEEKDAY_TO_PLAN } from '../../features/gym/data/gymPlan';
 import { callWithFallback } from '../../services/gemini/core';
 import {
   isSignedInToGoogle, addEventToGoogleCalendar, deleteGoogleCalendarEvent,
@@ -36,8 +35,6 @@ export const CalendarModule: React.FC = () => {
   const {
     tasks,
     attendanceSubjects,
-    gymSchedule,
-    gymLogs,
     isGoogleConnected,
     connectGoogle,
     disconnectGoogle,
@@ -55,7 +52,6 @@ export const CalendarModule: React.FC = () => {
   const [layers, setLayers] = useState<CalendarLayersState>({
     showClasses: true,
     showGCal: true,
-    showGym: true,
     showTasks: true,
   });
 
@@ -67,7 +63,6 @@ export const CalendarModule: React.FC = () => {
     setLayers({
       showClasses: show,
       showGCal: show,
-      showGym: show,
       showTasks: show,
     });
   };
@@ -228,48 +223,19 @@ export const CalendarModule: React.FC = () => {
       }
     }
 
-    // (C) Gym Workouts
-    if (gymSchedule || gymLogs) {
-      const [selY, selM, selD] = selectedDate.split('-').map(Number);
-      const baseD = new Date(selY, (selM || 1) - 1, selD || 1);
-      for (let offset = -30; offset <= 30; offset++) {
-        const curD = new Date(baseD);
-        curD.setDate(baseD.getDate() + offset);
-        const dayOfWeekNum = curD.getDay();
-        const dateStr = getLocalDateString(curD);
-
-        const gLog = (gymLogs || []).find((g: any) => g.date === dateStr);
-        const planKey = (dayOfWeekNum === 0 ? 7 : dayOfWeekNum) as keyof typeof WEEKDAY_TO_PLAN;
-        const defaultPlan = WEEKDAY_TO_PLAN[planKey];
-
-        if (gLog || (defaultPlan && defaultPlan.name !== 'Rest')) {
-          merged.push({
-            id: `gym-${dateStr}`,
-            title: gLog?.focus ? `Workout: ${gLog.focus}` : defaultPlan?.name ? `Workout: ${defaultPlan.name}` : 'Gym Session',
-            date: dateStr,
-            type: 'gym',
-            startTime: gLog?.startTime || '18:00',
-            endTime: gLog?.endTime || '19:30',
-            location: 'Gym',
-          });
-        }
-      }
-    }
-
-    // (D) Google Calendar Sync
+    // (C) Google Calendar Sync
     gcalEvents.forEach(ge => {
       merged.push({ ...ge, fromGCal: true });
     });
 
     return merged;
-  }, [customEvents, tasks, attendanceSubjects, gymSchedule, gymLogs, gcalEvents, selectedDate]);
+  }, [customEvents, tasks, attendanceSubjects, gcalEvents, selectedDate]);
 
   // ── 3. Filter by Active Layer Toggles ──
   const filteredEvents = useMemo(() => {
     return allMergedEvents.filter(e => {
       if (e.type === 'class' || e.type === 'lab') return layers.showClasses;
       if (e.fromGCal) return layers.showGCal;
-      if (e.type === 'gym') return layers.showGym;
       if (e.type === 'todo') return layers.showTasks;
       return true;
     });
@@ -282,7 +248,6 @@ export const CalendarModule: React.FC = () => {
     return {
       classes: dayEvts.filter(e => e.type === 'class' || e.type === 'lab').length,
       gcal: dayEvts.filter(e => e.fromGCal).length,
-      gym: dayEvts.filter(e => e.type === 'gym').length,
       tasks: dayEvts.filter(e => e.type === 'todo').length,
     };
   }, [allMergedEvents, selectedDate]);

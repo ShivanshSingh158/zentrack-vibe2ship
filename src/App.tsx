@@ -18,7 +18,7 @@ import { Landing } from './features/auth/Landing';
 import { BackgroundEffects } from './components/BackgroundEffects';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { DeveloperMatrix } from './components/overlays/DeveloperMatrix';
-import { SecuritySettingsModal } from './features/integrations/SecuritySettingsModal';
+import { SecuritySettingsModal } from './components/overlays/SecuritySettingsModal';
 import { OnboardingCarousel } from './components/overlays/OnboardingCarousel';
 import { DailyBriefingOverlay } from './components/overlays/DailyBriefingOverlay';
 import { PomodoroProvider } from './contexts/PomodoroContext';
@@ -31,14 +31,11 @@ import { useClassNotifications } from './hooks/useClassNotifications';
 import { useGlobalData } from './contexts/GlobalDataContext';
 import { FloatingExtraWorks } from './features/_shared';
 import { LifeHomeDashboard } from './features/dashboard/LifeHomeDashboard';
-import { MissionReport } from './features/dashboard/MissionReport';
-import { ReportArchive } from './features/dashboard/ReportArchive';
 
 import { CommandPalette } from './app/layout/CommandPalette';
 import { Bot, ShieldAlert, Ghost, Code2, MessageSquare, Mail, Calendar, Target, Sun, Zap, CheckCircle2, AlertCircle, AlertTriangle, Info } from 'lucide-react';
 import { useDeadlineWatcher } from './hooks/useDeadlineWatcher';
 import { AppSkeletonScreen, ModuleSkeleton } from './app/layout/AppSkeletonScreen';
-import { SaraInterface } from './agent/ui/SaraInterface';
 import { BottomHeader } from './app/layout/BottomHeader';
 import { LeftSidebar } from './app/layout/LeftSidebar';
 import { DocumentTitleWatcher, ROUTE_TITLES } from './hooks/useDocumentTitle';
@@ -58,67 +55,6 @@ const ContextRemindersRunner = () => {
 
 const DeadlineWatcherRunner = () => {
   useDeadlineWatcher();
-  return null;
-};
-
-/**
- * AgentNavigator — listens for 'agent-navigate' events dispatched by toolExecutor
- * and uses React Router's useNavigate to change the route.
- * Also dispatches 'agent-open-lecture' for the Learning module to open a specific lecture.
- */
-const AgentNavigator = () => {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as {
-        route: string;
-        subView?: string;
-        lectureTopicTitle?: string;
-        lectureTitle?: string;
-        day?: string;
-      };
-
-      if (!detail?.route) return;
-
-      // Navigate to the route
-      navigate(detail.route);
-
-      // For learning module: fire a secondary event so LearningChecklistModule
-      // can find and play the specific lecture
-      if (detail.route === '/learning' && (detail.lectureTitle || detail.lectureTopicTitle)) {
-        // Small delay to let the component mount after navigation
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('agent-open-lecture', {
-            detail: {
-              topicTitle: detail.lectureTopicTitle,
-              lectureTitle: detail.lectureTitle,
-            }
-          }));
-        }, 600);
-      }
-    };
-
-    window.addEventListener('agent-navigate', handler);
-    
-    const shortcutHandler = (e: Event) => {
-      const currentPath = window.location.pathname;
-      if (currentPath !== '/' && currentPath !== '/home') {
-        // We are not on the dashboard. Route back to dashboard and re-trigger.
-        navigate('/');
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: (e as CustomEvent).detail }));
-        }, 400);
-      }
-    };
-    window.addEventListener('agent-shortcut', shortcutHandler);
-
-    return () => {
-      window.removeEventListener('agent-navigate', handler);
-      window.removeEventListener('agent-shortcut', shortcutHandler);
-    };
-  }, [navigate]);
-
   return null;
 };
 
@@ -269,16 +205,9 @@ const createPreloadableLazy = (
 const { Component: TodoListModule, preload: preloadTasks } = createPreloadableLazy('tasks', () => import('./features/tasks/TodoListModule'), 'TodoListModule');
 const { Component: CalendarModule, preload: preloadCalendar } = createPreloadableLazy('calendar', () => import('./features/calendar'), 'CalendarModule');
 const { Component: NotesModule, preload: preloadNotes } = createPreloadableLazy('notes', () => import('./features/notes'), 'NotesModule');
-const { Component: GoalsModule, preload: preloadGoals } = createPreloadableLazy('goals', () => import('./features/goals'), 'GoalsModule');
-const { Component: AnalyticsModule, preload: preloadAnalytics } = createPreloadableLazy('analytics', () => import('./features/analytics/AnalyticsModule'), 'AnalyticsModule');
-const { Component: JobTracker, preload: preloadJobs } = createPreloadableLazy('jobs', () => import('./features/jobs/JobTracker'), 'JobTracker');
-const { Component: HabitsModule, preload: preloadHabits } = createPreloadableLazy('habits', () => import('./features/habits/HabitsModule'), 'HabitsModule');
 const { Component: LearningChecklistModule, preload: preloadLearning } = createPreloadableLazy('learning', () => import('./features/learning/LearningChecklistModule'), 'LearningChecklistModule');
-const { Component: IntegrationsModule, preload: preloadIntegrations } = createPreloadableLazy('integrations', () => import('./features/integrations/IntegrationsModule'), 'IntegrationsModule');
-const { Component: WeeklyReviewModule, preload: preloadReview } = createPreloadableLazy('review', () => import('./features/review/WeeklyReviewModule'), 'WeeklyReviewModule');
 const { Component: AttendanceModule, preload: preloadAttendance } = createPreloadableLazy('attendance', () => import('./features/academic/AttendanceModule'), 'AttendanceModule');
 const { Component: GradeCalculatorModule, preload: preloadGrades } = createPreloadableLazy('grades', () => import('./features/academic/GradeCalculatorModule'), 'GradeCalculatorModule');
-const { Component: GymModule, preload: preloadGym } = createPreloadableLazy('gym', () => import('./features/gym'), 'GymModule');
 
 // Route -> Preloader mapping for hover and idle prewarming
 export const routePreloaders: Record<string, () => Promise<any>> = {
@@ -286,16 +215,9 @@ export const routePreloaders: Record<string, () => Promise<any>> = {
   '/todo': preloadTasks,
   '/calendar': preloadCalendar,
   '/notes': preloadNotes,
-  '/goals': preloadGoals,
-  '/analytics': preloadAnalytics,
-  '/jobs': preloadJobs,
-  '/habits': preloadHabits,
   '/learning': preloadLearning,
-  '/integrations': preloadIntegrations,
-  '/review': preloadReview,
   '/attendance': preloadAttendance,
   '/grades': preloadGrades,
-  '/gym': preloadGym,
 };
 
 export const prefetchRoute = (route: string) => {
@@ -369,22 +291,13 @@ const AnimatedRoutes = () => {
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Navigate to="/home" replace />} />
         <Route path="/home"        element={<PageTransition><ErrorBoundary name="LifeHome"><LifeHomeDashboard /></ErrorBoundary></PageTransition>} />
-        <Route path="/sara"        element={<Navigate to="/home" replace />} />
         <Route path="/tasks"       element={<PageTransition><ErrorBoundary name="Tasks"><Suspense fallback={<ModuleSkeleton route="/tasks" />}><TodoListModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/todo"        element={<Navigate to="/tasks" replace />} />
         <Route path="/calendar"    element={<PageTransition><ErrorBoundary name="Calendar"><Suspense fallback={<ModuleSkeleton route="/calendar" />}><CalendarModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/notes"       element={<PageTransition><ErrorBoundary name="Notes"><Suspense fallback={<ModuleSkeleton route="/notes" />}><NotesModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/goals"       element={<PageTransition><ErrorBoundary name="Goals"><Suspense fallback={<ModuleSkeleton route="/goals" />}><GoalsModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/analytics"   element={<PageTransition><ErrorBoundary name="Analytics"><Suspense fallback={<ModuleSkeleton route="/analytics" />}><AnalyticsModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/jobs"        element={<PageTransition><ErrorBoundary name="Jobs"><Suspense fallback={<ModuleSkeleton route="/jobs" />}><JobTracker /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/habits"      element={<PageTransition><ErrorBoundary name="Habits"><Suspense fallback={<ModuleSkeleton route="/habits" />}><HabitsModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/learning"    element={<PageTransition><ErrorBoundary name="Learning"><Suspense fallback={<ModuleSkeleton route="/learning" />}><LearningChecklistModule /></Suspense></ErrorBoundary></PageTransition>} />
-
-        <Route path="/integrations" element={<PageTransition><ErrorBoundary name="Integrations"><Suspense fallback={<ModuleSkeleton route="/integrations" />}><IntegrationsModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/review"      element={<PageTransition><ErrorBoundary name="Review"><Suspense fallback={<ModuleSkeleton route="/review" />}><WeeklyReviewModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/attendance"  element={<PageTransition><ErrorBoundary name="Attendance"><Suspense fallback={<ModuleSkeleton route="/attendance" />}><AttendanceModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/grades"      element={<PageTransition><ErrorBoundary name="Grades"><Suspense fallback={<ModuleSkeleton route="/grades" />}><GradeCalculatorModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/gym"         element={<PageTransition><ErrorBoundary name="Gym"><Suspense fallback={<ModuleSkeleton route="/gym" />}><GymModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/landing"     element={<PageTransition><Landing onTryNow={() => {}} /></PageTransition>} />
         <Route path="*"            element={<Navigate to="/home" replace />} />
       </Routes>
@@ -466,7 +379,6 @@ function App() {
   );
   const [showLogin, setShowLogin]     = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [showSara, setShowSara] = useState(false);
   // ✅ U2 FIX: Track panel closing animation state.
   const [showDeveloperMatrix, setShowDeveloperMatrix] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
@@ -560,20 +472,7 @@ function App() {
     return () => window.removeEventListener('zen-auth-starting', handleAuthStarting);
   }, []);
 
-  useEffect(() => {
-    const handleToggleSara = () => setShowSara(prev => !prev);
-    const handleOpenSara = () => setShowSara(true);
-    const handleCloseSara = () => setShowSara(false);
 
-    window.addEventListener('toggle-sara', handleToggleSara);
-    window.addEventListener('open-sara-modal', handleOpenSara);
-    window.addEventListener('close-sara-modal', handleCloseSara);
-    return () => {
-      window.removeEventListener('toggle-sara', handleToggleSara);
-      window.removeEventListener('open-sara-modal', handleOpenSara);
-      window.removeEventListener('close-sara-modal', handleCloseSara);
-    };
-  }, []);
 
   // ── Global Todoist Quick Add Shortcut ('q' key) and Event Handler ──
   useEffect(() => {
@@ -945,14 +844,10 @@ function App() {
         <ClassNotificationRunner />
         <ContextRemindersRunner />
         <DeadlineWatcherRunner />
-        <AgentNavigator />
         <DocumentTitleWatcher />
         <FocusModeOverlay />
         <DailyBriefingOverlay />
         <FloatingExtraWorks />
-        {/* ── Global Cinematic Agent HUD ── */}
-        <MissionReport />
-        <ReportArchive />
         <SessionEnforcer />
 
         {/* Developer Matrix Overlay */}
@@ -987,28 +882,12 @@ function App() {
           </ErrorBoundary>
         )}
 
-        <AnimatePresence>
-          {showSara && (
-            <motion.div
-              style={{ position: 'fixed', inset: 0, zIndex: 9999 }}
-              initial={{ opacity: 0, scale: 0.98, filter: 'blur(8px)' }}
-              animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, scale: 0.98, filter: 'blur(8px)' }}
-              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <SaraInterface onClose={() => setShowSara(false)} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-
         {!isPlainTheme && <BackgroundEffects />}
         <div className="app-container app-layout-sidebar">
           <LeftSidebar
             user={user}
             onLogout={() => signOut(auth)}
             onOpenSecurity={() => setShowSecurityModal(true)}
-            onOpenSara={() => setShowSara(true)}
             isPlainTheme={isPlainTheme}
             onToggleTheme={togglePlainTheme}
           />

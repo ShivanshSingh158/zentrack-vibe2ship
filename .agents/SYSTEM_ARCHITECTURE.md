@@ -8,13 +8,16 @@
 
 ## 1. Project Overview
 
-- **App**: ZenTrack — AI-powered life OS. Multi-agent productivity system with voice (Sara), autonomous email/calendar/task management, real-time 17-agent fleet (Olympus Protocol).
-- **Stack**: React 19 + TypeScript + Vite (PWA) | Firebase Firestore + Auth | Google Gemini API (direct, no backend) | Sarvam AI TTS | Google Workspace APIs (Calendar, Gmail, Drive, Docs, Meet)
+- **App**: ZenTrack — Minimalist, high-performance Life OS focused on Tasks, Calendar, Notes/Vault, Attendance & College Academics, and AI Learning Curriculum.
+- **Stack**: React 19 + TypeScript + Vite (PWA) | Firebase Firestore + Auth | Google Gemini API (direct, no backend) | Google Calendar API
 - **Styling**: Vanilla CSS + CSS Modules — NO Tailwind. Premium glassmorphism dark-mode. Framer Motion animations.
 - **Hosting**: Vercel (serverless functions in `/api/`)
 - **Entry**: `src/main.tsx` → `src/App.tsx`
 - **Dev**: `npm run dev`
 - **Build**: `npm run build` (Vite + PWA plugin, outputs to `dist/`)
+
+> [!NOTE]
+> **Module Pruning (2026-11-08)**: Goals, Habits, Weekly Review, Gym, Job Tracker, Analytics, S.A.R.A Multi-Agent Fleet, and Google Workspace Integrations were permanently pruned to produce a streamlined, blazing-fast core application. Backup preserved in branch `backup/before-module-pruning`.
 
 ### Architecture Philosophy
 The web app calls Gemini **directly** through `/api/gemini-proxy` (Vercel serverless). There is **no separate backend server**. All backend logic lives in Vercel Serverless Functions under `/api/`. The legacy Socket.IO/Render `backend/` directory has been permanently deleted (2026-07-21).

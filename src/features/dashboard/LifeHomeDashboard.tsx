@@ -51,7 +51,6 @@ import { XPConstellationModal } from './XPConstellationModal';
 import { FlashcardReviewModal } from '../learning/FlashcardReviewModal';
 import { LEVEL_THRESHOLDS, LEVEL_TITLES } from '../../services/xpSystem';
 import { resolveSubjectDaySchedule, parseTimeToMinutes, calculateBunkMath } from '../academic/AttendanceModule';
-import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../gym/data/gymPlan';
 
 const MASCOT_FILES: Record<string, string> = {
   'Seeker': '/mascots/level0.png',
@@ -999,26 +998,8 @@ export const LifeHomeDashboard: React.FC = () => {
 
   // ── Executive Life Bento: Single-Responsibility Data Pipelines ──
 
-  // 1. Today Gym Plan Split & Status
-  const todayGymSplit = useMemo(() => {
-    const dayOfWeek = new Date().getDay();
-    const planIdx = WEEKDAY_TO_PLAN[dayOfWeek] || 7;
-    const plan = GYM_PLAN.find(p => p.dayIndex === planIdx);
-    const isDone = (gymLogs || []).some((g: any) => {
-      if (!g) return false;
-      if (g.date === todayStr) return true;
-      if (g.timestamp) {
-        return getLocalDateString(new Date(g.timestamp)) === todayStr;
-      }
-      return false;
-    });
-    return {
-      name: plan?.name || (planIdx === 7 ? 'Rest & Recovery' : 'Workout'),
-      subtitle: plan?.subtitle || (planIdx === 7 ? 'Light stretch or rest day' : 'Scheduled gym routine'),
-      isRest: planIdx === 7,
-      isDone,
-    };
-  }, [gymLogs, todayStr]);
+  // 1. Today Gym Plan Split (gym module removed)
+  const todayGymSplit = null;
 
 
   // Group upcoming tasks by relative day (Tomorrow, In 2 days, etc.)
@@ -1066,21 +1047,11 @@ export const LifeHomeDashboard: React.FC = () => {
             />
           </form>
 
-          {/* SARA Voice Orb launcher button */}
-          <button
-            type="button"
-            className="box-sara-round-btn"
-            onClick={() => window.dispatchEvent(new CustomEvent('open-sara-modal'))}
-            title="Open SARA Voice & Terminal"
-          >
-            <Bot size={16} />
-          </button>
-
           {/* Flame Streak Pill */}
-          <Link to="/habits" className="box-streak-pill" title="Daily Streak">
+          <div className="box-streak-pill" title="Daily Streak">
             <Flame size={14} className="box-streak-flame" />
             <span>{appStreak} {appStreak === 1 ? 'Day' : 'Days'}</span>
-          </Link>
+          </div>
 
           {/* Theme Toggle */}
           <button
@@ -1143,64 +1114,6 @@ export const LifeHomeDashboard: React.FC = () => {
               <div className="progress-xp-sub">
                 {(levelInfo.nextXP - levelInfo.xp).toLocaleString()} XP to {levelInfo.nextLabel}
               </div>
-            </div>
-
-            {/* ── DAILY HABITS (Only Here) ── */}
-            <div className="col1-section-divider" />
-            <div className="col1-section-label">
-              <Link to="/habits" className="col1-section-label-link">Daily Habits</Link>
-            </div>
-            <div className="col1-habits-list">
-              {(habits || []).length === 0 ? (
-                <div className="col1-habits-empty">No habits yet — <Link to="/habits">add one</Link></div>
-              ) : (
-                (habits || []).slice(0, 5).map((h: any) => {
-                  const done = isHabitDone(h.id);
-                  const streak = h.streak || h.currentStreak || 0;
-                  return (
-                    <div
-                      key={h.id}
-                      className={`col1-habit-row ${done ? 'done' : ''}`}
-                      onClick={() => toggleHabit(h.id)}
-                      title={done ? 'Tap to unmark' : 'Tap to mark done'}
-                    >
-                      <button
-                        type="button"
-                        className={`col1-habit-check ${done ? 'checked' : ''}`}
-                        aria-label="Toggle habit"
-                      >
-                        {done && <Check size={9} strokeWidth={3.5} />}
-                      </button>
-                      <span className="col1-habit-name">{h.name || h.title}</span>
-                      {streak > 0 && (
-                        <span className="col1-habit-streak">{streak}d</span>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-
-              {/* Gym split row inside habits */}
-              {todayGymSplit && todayGymSplit.name && (
-                <Link
-                  to="/gym"
-                  className={`col1-habit-row col1-gym-row ${todayGymSplit.isDone ? 'done' : ''}`}
-                  title="Open Gym & Fitness Coach"
-                >
-                  <span className={`col1-habit-check ${todayGymSplit.isDone ? 'checked' : ''}`}>
-                    {todayGymSplit.isDone
-                      ? <Check size={9} strokeWidth={3.5} />
-                      : <Dumbbell size={9} strokeWidth={2.5} />
-                    }
-                  </span>
-                  <span className="col1-habit-name">
-                    {todayGymSplit.isRest ? 'Rest & Recovery' : todayGymSplit.name}
-                  </span>
-                  {todayGymSplit.isDone && (
-                    <span className="col1-habit-streak">✓</span>
-                  )}
-                </Link>
-              )}
             </div>
 
             {/* ── HYDRATION DOCK ── */}
@@ -1354,33 +1267,15 @@ export const LifeHomeDashboard: React.FC = () => {
                   <span className="classes-subhead-title">Today</span>
                 </div>
 
-                {/* Scheduled Workout for Today (Integrated into Today Schedule) */}
-                {todayGymSplit && todayGymSplit.name && !todayGymSplit.isRest && (
-                  <div className={`task-row-today scheduled-workout-row ${todayGymSplit.isDone ? 'done' : ''}`} style={{ opacity: todayGymSplit.isDone ? 0.6 : 1 }}>
-                    <Link to="/gym" className="scheduled-workout-click-area" title="Open Gym & Fitness Coach">
-                      <span className="task-row-title scheduled-workout-heading">
-                        {todayGymSplit.name}
-                      </span>
-                    </Link>
-                    <div className="task-row-badges-cluster">
-                      <span className="task-workout-sub-text">
-                        {todayGymSplit.isDone ? '✓ Completed' : (todayGymSplit.subtitle || 'Workout')}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
                 {todayTasks.length === 0 ? (
-                  !(todayGymSplit && todayGymSplit.name && !todayGymSplit.isRest) && (
-                    <div
-                      className="tasks-empty-banner"
-                      onClick={handleTriggerAddTask}
-                      title="Click to add a task for today"
-                    >
-                      <span className="tasks-empty-check">✓</span>
-                      <span>Nothing due today — good time for a focus block.</span>
-                    </div>
-                  )
+                  <div
+                    className="tasks-empty-banner"
+                    onClick={handleTriggerAddTask}
+                    title="Click to add a task for today"
+                  >
+                    <span className="tasks-empty-check">✓</span>
+                    <span>Nothing due today — good time for a focus block.</span>
+                  </div>
                 ) : (
                   <div className="tasks-list-today">
                     {todayTasks.map(task => {
@@ -1540,7 +1435,7 @@ export const LifeHomeDashboard: React.FC = () => {
           <div className="card-mini card-habits-vitality">
             <div className="card-mini-header">
               <span className="card-mini-title">Active Recall</span>
-              <Link to="/habits" className="card-link">Flashcards</Link>
+              <Link to="/learning" className="card-link">Flashcards</Link>
             </div>
 
             <div

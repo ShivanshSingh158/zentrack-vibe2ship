@@ -2,8 +2,7 @@ import React, { useMemo, useEffect, useState, useRef } from 'react';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { getLocalDateString } from '../../utils/dateUtils';
 import type { TodoItem } from '../../types';
-import { Clock, Book, FlaskConical, CheckCircle2, AlertCircle, Dumbbell, Sparkles, Navigation } from 'lucide-react';
-import { WEEKDAY_TO_PLAN } from '../../features/gym/data/gymPlan';
+import { Clock, Book, FlaskConical, CheckCircle2, AlertCircle, Sparkles, Navigation } from 'lucide-react';
 
 interface TimelineViewProps {
   tasks: TodoItem[];
@@ -34,7 +33,7 @@ function parseTime(timeStr?: string | null): number | null {
 }
 
 export const TimelineView: React.FC<TimelineViewProps> = ({ tasks, selectedDate, onTaskClick }) => {
-  const { attendanceSubjects, gymSchedule } = useGlobalData();
+  const { attendanceSubjects } = useGlobalData();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const [currentTimeFloat, setCurrentTimeFloat] = useState<number>(() => {

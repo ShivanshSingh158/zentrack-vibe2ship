@@ -87,7 +87,6 @@ interface LeftSidebarProps {
   user: User | null;
   onLogout: () => void;
   onOpenSecurity?: () => void;
-  onOpenSara?: () => void;
   isPlainTheme: boolean;
   onToggleTheme: () => void;
 }
@@ -96,7 +95,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   user,
   onLogout,
   onOpenSecurity,
-  onOpenSara,
   isPlainTheme,
   onToggleTheme,
 }) => {
@@ -300,25 +298,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   </div>
                 </button>
 
-                {/* Cloud & Integrations */}
-                <button
-                  type="button"
-                  className="user-menu-item"
-                  onMouseEnter={() => prefetchRoute('/integrations')}
-                  onPointerEnter={() => prefetchRoute('/integrations')}
-                  onTouchStart={() => prefetchRoute('/integrations')}
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    navigate('/integrations');
-                  }}
-                  title="Google Calendar & Workspace Integrations"
-                >
-                  <div className="user-menu-item-left">
-                    <Layers size={15} />
-                    <span>Integrations</span>
-                  </div>
-                </button>
-
                 <div className="user-menu-divider" />
 
                 {/* Academic & Attendance */}
@@ -357,45 +336,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     <BookOpen size={15} />
                     <span>Notes & Studio Vault</span>
                   </div>
-                </button>
-
-                {/* Weekly Review */}
-                <button
-                  type="button"
-                  className="user-menu-item"
-                  onMouseEnter={() => prefetchRoute('/review')}
-                  onPointerEnter={() => prefetchRoute('/review')}
-                  onTouchStart={() => prefetchRoute('/review')}
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    navigate('/review');
-                  }}
-                  title="Weekly Productivity Review"
-                >
-                  <div className="user-menu-item-left">
-                    <RotateCw size={15} />
-                    <span>Weekly Review</span>
-                  </div>
-                </button>
-
-                {/* Analytics */}
-                <button
-                  type="button"
-                  className="user-menu-item"
-                  onMouseEnter={() => prefetchRoute('/analytics')}
-                  onPointerEnter={() => prefetchRoute('/analytics')}
-                  onTouchStart={() => prefetchRoute('/analytics')}
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    navigate('/analytics');
-                  }}
-                  title="Analytics & Habit Reports"
-                >
-                  <div className="user-menu-item-left">
-                    <BarChart3 size={15} />
-                    <span>Analytics</span>
-                  </div>
-                  <span className="user-menu-shortcut">G then A</span>
                 </button>
 
                 <div className="user-menu-divider" />
@@ -442,16 +382,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </span>
           {!isCollapsed && <span className="add-task-label">Add task</span>}
         </button>
-        {!isCollapsed && (
-          <button
-            type="button"
-            className="todoist-add-task-side-btn"
-            onClick={() => navigate('/analytics')}
-            title="Productivity pulse & telemetry"
-          >
-            <ProductivityWaveIcon size={18} />
-          </button>
-        )}
       </div>
 
       {/* ── NAVIGATION LIST (Dashboard First, Then Inbox) ── */}
@@ -507,40 +437,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               <CalendarDays size={17} strokeWidth={1.8} />
             </span>
             {!isCollapsed && <span>Calendar</span>}
-          </div>
-        </NavLink>
-
-        {/* 5. Habits */}
-        <NavLink
-          to="/habits"
-          onMouseEnter={() => prefetchRoute('/habits')}
-          onPointerEnter={() => prefetchRoute('/habits')}
-          onTouchStart={() => prefetchRoute('/habits')}
-          className={({ isActive }) => `todoist-nav-item ${isActive ? 'active' : ''}`}
-          title="Habits"
-        >
-          <div className="todoist-nav-item-left">
-            <span className="todoist-nav-item-icon">
-              <Flame size={17} strokeWidth={1.8} />
-            </span>
-            {!isCollapsed && <span>Habits</span>}
-          </div>
-        </NavLink>
-
-        {/* 6. Analytics */}
-        <NavLink
-          to="/analytics"
-          onMouseEnter={() => prefetchRoute('/analytics')}
-          onPointerEnter={() => prefetchRoute('/analytics')}
-          onTouchStart={() => prefetchRoute('/analytics')}
-          className={({ isActive }) => `todoist-nav-item ${isActive ? 'active' : ''}`}
-          title="Analytics"
-        >
-          <div className="todoist-nav-item-left">
-            <span className="todoist-nav-item-icon">
-              <BarChart3 size={17} strokeWidth={1.8} />
-            </span>
-            {!isCollapsed && <span>Analytics</span>}
           </div>
         </NavLink>
 

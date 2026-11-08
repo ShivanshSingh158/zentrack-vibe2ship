@@ -1,10 +1,9 @@
 import React, { useMemo } from 'react';
-import { BookOpen, Calendar as CalendarIcon, Dumbbell, CheckSquare, Layers, Eye, EyeOff } from 'lucide-react';
+import { BookOpen, Calendar as CalendarIcon, CheckSquare, Layers, Eye, EyeOff } from 'lucide-react';
 
 export interface CalendarLayersState {
   showClasses: boolean;
   showGCal: boolean;
-  showGym: boolean;
   showTasks: boolean;
 }
 
@@ -15,7 +14,6 @@ interface CalendarLayerTogglesProps {
   eventCounts: {
     classes: number;
     gcal: number;
-    gym: number;
     tasks: number;
   };
 }
@@ -25,7 +23,7 @@ interface LayerItemDef {
   label: string;
   subtitle: string;
   icon: React.ReactNode;
-  colorClass: 'classes' | 'gcal' | 'gym' | 'tasks';
+  colorClass: 'classes' | 'gcal' | 'tasks';
   count: number;
 }
 
@@ -53,14 +51,6 @@ export const CalendarLayerToggles: React.FC<CalendarLayerTogglesProps> = ({
       count: eventCounts.gcal,
     },
     {
-      key: 'showGym',
-      label: 'Gym & Workouts',
-      subtitle: 'PPL Splits & Training',
-      icon: <Dumbbell size={14} strokeWidth={2.2} />,
-      colorClass: 'gym',
-      count: eventCounts.gym,
-    },
-    {
       key: 'showTasks',
       label: 'Priority Tasks',
       subtitle: 'Deadlines & Due Dates',
@@ -74,7 +64,6 @@ export const CalendarLayerToggles: React.FC<CalendarLayerTogglesProps> = ({
     let count = 0;
     if (layers.showClasses) count++;
     if (layers.showGCal) count++;
-    if (layers.showGym) count++;
     if (layers.showTasks) count++;
     return count;
   }, [layers]);
@@ -83,7 +72,6 @@ export const CalendarLayerToggles: React.FC<CalendarLayerTogglesProps> = ({
     let total = 0;
     if (layers.showClasses) total += eventCounts.classes;
     if (layers.showGCal) total += eventCounts.gcal;
-    if (layers.showGym) total += eventCounts.gym;
     if (layers.showTasks) total += eventCounts.tasks;
     return total;
   }, [layers, eventCounts]);
@@ -93,94 +81,88 @@ export const CalendarLayerToggles: React.FC<CalendarLayerTogglesProps> = ({
     if (onToggleAll) {
       onToggleAll(showAll);
     } else {
-      (['showClasses', 'showGCal', 'showGym', 'showTasks'] as (keyof CalendarLayersState)[]).forEach(k => {
+      (['showClasses', 'showGCal', 'showTasks'] as (keyof CalendarLayersState)[]).forEach(k => {
         if (layers[k] !== showAll) onToggleLayer(k);
       });
     }
   };
 
   return (
-    <div className="calendar-layers-card">
-      {/* Top Header */}
-      <div className="layers-card-header">
-        <div className="layers-header-title-wrap">
-          <Layers size={13} className="layers-header-icon" />
-          <span className="layers-title">Calendars</span>
+    <div className="cal-layers-card">
+      <div className="cal-layers-header">
+        <div className="cal-layers-title-row">
+          <div className="cal-layers-title-icon">
+            <Layers size={13} strokeWidth={2.4} />
+          </div>
+          <span className="cal-layers-title">Layers & Feeds</span>
         </div>
-        <span className="layers-active-badge">
-          {activeCount}/4 Active
-        </span>
+        <div className="cal-layers-quick-toggles">
+          <button
+            type="button"
+            className="cal-layers-quick-btn"
+            onClick={(e) => handleAllToggle(e, true)}
+            title="Turn on all layers"
+          >
+            <Eye size={11} strokeWidth={2.4} />
+            <span>All</span>
+          </button>
+          <button
+            type="button"
+            className="cal-layers-quick-btn"
+            onClick={(e) => handleAllToggle(e, false)}
+            title="Turn off all layers"
+          >
+            <EyeOff size={11} strokeWidth={2.4} />
+            <span>None</span>
+          </button>
+        </div>
       </div>
 
-      {/* Layer Bars List */}
-      <div className="layers-list">
-        {layerItems.map(item => {
+      <div className="cal-layers-list">
+        {layerItems.map((item) => {
           const isActive = layers[item.key];
           return (
-            <div
+            <button
               key={item.key}
-              className={`layer-toggle-row ${isActive ? 'active' : 'inactive'} ${item.colorClass}`}
+              type="button"
+              className={`cal-layer-item ${item.colorClass} ${isActive ? 'active' : 'inactive'}`}
               onClick={() => onToggleLayer(item.key)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === ' ' || e.key === 'Enter') {
-                  e.preventDefault();
-                  onToggleLayer(item.key);
-                }
-              }}
-              title={`Toggle ${item.label}`}
+              title={`${isActive ? 'Hide' : 'Show'} ${item.label}`}
+              aria-pressed={isActive}
             >
-              <div className={`layer-custom-indicator ${item.colorClass}`}>
-                {item.icon}
-              </div>
-
-              <div className="layer-text-wrap">
-                <span className="layer-label">{item.label}</span>
-                <span className="layer-sublabel">{item.subtitle}</span>
-              </div>
-
-              <div className="layer-meta-right">
-                <span className={`layer-count-pill ${item.colorClass} ${item.count === 0 ? 'zero' : ''}`}>
-                  {item.count}
+              <div className="cal-layer-left">
+                <span className={`cal-layer-icon-box ${item.colorClass}`}>
+                  {item.icon}
                 </span>
-                <div className={`layer-ios-switch ${isActive ? 'active' : ''} ${item.colorClass}`}>
-                  <div className="layer-ios-switch-knob" />
+                <div className="cal-layer-meta">
+                  <span className="cal-layer-name">{item.label}</span>
+                  <span className="cal-layer-sub">{item.subtitle}</span>
                 </div>
               </div>
-            </div>
+
+              <div className="cal-layer-right">
+                {item.count > 0 && (
+                  <span className="cal-layer-count-badge">
+                    {item.count}
+                  </span>
+                )}
+                <div className={`cal-layer-switch ${isActive ? 'on' : 'off'}`}>
+                  <div className="cal-layer-switch-thumb" />
+                </div>
+              </div>
+            </button>
           );
         })}
       </div>
 
-      {/* Lower Summary & Quick Actions Footer */}
-      <div className="layers-footer-card">
-        <div className="layers-footer-meta">
-          <div className="layers-footer-stat">
-            <span className="footer-stat-number">{totalEventsCount}</span>
-            <span className="footer-stat-label">Events Visible</span>
-          </div>
-          <div className="layers-footer-actions">
-            <button
-              type="button"
-              className={`layer-quick-action-btn ${activeCount === 4 ? 'active' : ''}`}
-              onClick={(e) => handleAllToggle(e, true)}
-              title="Show all calendars"
-            >
-              <Eye size={11} />
-              <span>All</span>
-            </button>
-            <button
-              type="button"
-              className={`layer-quick-action-btn ${activeCount === 0 ? 'active' : ''}`}
-              onClick={(e) => handleAllToggle(e, false)}
-              title="Hide all calendars"
-            >
-              <EyeOff size={11} />
-              <span>None</span>
-            </button>
-          </div>
-        </div>
+      <div className="cal-layers-footer">
+        <span className="cal-layers-footer-stat">
+          <strong>{activeCount}</strong>/3 Active
+        </span>
+        <span className="cal-layers-footer-bullet">•</span>
+        <span className="cal-layers-footer-stat">
+          <strong>{totalEventsCount}</strong> Visible Items
+        </span>
       </div>
     </div>
   );

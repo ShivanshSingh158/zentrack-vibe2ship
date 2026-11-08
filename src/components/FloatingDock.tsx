@@ -12,7 +12,6 @@ import type { User } from 'firebase/auth';
 import { toast } from 'sonner';
 import { GeminiAuthBadge } from './ui/GeminiAuthBadge';
 import { getKeyStatus } from '../services/userGeminiAuth';
-import { useVoice } from '../contexts/VoiceContext';
 import { prefetchRoute } from '../App';
 import '../styles/dock.css';
 
@@ -24,15 +23,6 @@ export const ALL_APPS = [
     popoverIcon: <CheckCircle2 size={24} color="#5eda9e" strokeWidth={2.2} />,
     color: '#5eda9e',
     route: '/tasks',
-    isLucide: true,
-  },
-  {
-    id: 'Habits',
-    name: 'Habits',
-    icon: <Flame size={20} color="#f59e0b" strokeWidth={2.2} />,
-    popoverIcon: <Flame size={24} color="#f59e0b" strokeWidth={2.2} />,
-    color: '#f59e0b',
-    route: '/habits',
     isLucide: true,
   },
   {
@@ -63,30 +53,12 @@ export const ALL_APPS = [
     isLucide: true,
   },
   {
-    id: 'Jobs',
-    name: 'Jobs',
-    icon: <Briefcase size={20} color="#fbbf24" strokeWidth={2.2} />,
-    popoverIcon: <Briefcase size={24} color="#fbbf24" strokeWidth={2.2} />,
-    color: '#fbbf24',
-    route: '/jobs',
-    isLucide: true,
-  },
-  {
     id: 'Grades',
     name: 'Grades',
     icon: <Award size={20} color="#c084fc" strokeWidth={2.2} />,
     popoverIcon: <Award size={24} color="#c084fc" strokeWidth={2.2} />,
     color: '#c084fc',
     route: '/grades',
-    isLucide: true,
-  },
-  {
-    id: 'Analytics',
-    name: 'Analytics',
-    icon: <BarChart3 size={20} color="#38bdf8" strokeWidth={2.2} />,
-    popoverIcon: <BarChart3 size={24} color="#38bdf8" strokeWidth={2.2} />,
-    color: '#38bdf8',
-    route: '/analytics',
     isLucide: true,
   },
   {
@@ -106,7 +78,6 @@ interface FloatingDockProps {
 }
 
 export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockProps) {
-  const { isMuted, setIsMuted, isSpeaking } = useVoice();
   const [user, setUser] = useState<User | null>(null);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -384,20 +355,6 @@ export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockP
                   <div className="dock-popover-footer">
                     <div className="system-toggles">
                       <GeminiAuthBadge />
-                      <button
-                        onClick={() => setIsMuted(!isMuted)}
-                        className="voice-toggle-btn"
-                        title={isMuted ? 'Unmute Voice' : 'Mute Voice'}
-                      >
-                        {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-                        {isSpeaking && !isMuted && (
-                          <motion.div
-                            className="voice-pulse"
-                            animate={{ scale: [1, 1.4, 1], opacity: [0.5, 1, 0.5] }}
-                            transition={{ repeat: Infinity, duration: 1.5 }}
-                          />
-                        )}
-                      </button>
                     </div>
 
                     <div className="user-section">

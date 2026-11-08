@@ -7,7 +7,6 @@ import { db, auth } from '../services/firebase';
 import { initGoogleCalendar, isSignedInToGoogle, signInWithGoogle, signOutGoogle, getTokenTimeRemaining, forceSilentRefresh, pollGoogleCalendarChanges } from '../services/googleCalendar';
 import { loadUserGeminiKey } from '../services/userGeminiAuth';
 import type { Task, CalendarEvent } from '../types/domain';
-import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../features/gym/data/gymPlan';
 import {
   syncXPWithFirestore,
   getLevel,
@@ -436,36 +435,7 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       const unsubs: (() => void)[] = [
         safeSnapshot(query(collection(db, 'todos'), where('userId', '==', uid)), makeHandler(setTasks), 'todos'),
-        safeSnapshot(
-          query(collection(db, 'habit_logs'), where('userId', '==', uid), where('date', '>=', cutoffDateStr)),
-          (docs) => {
-            mobileHabits = docs;
-            handleHabitsMerge();
-            fireHabits();
-          },
-          'habit_logs',
-          query(collection(db, 'habit_logs'), where('userId', '==', uid))
-        ),
-        safeSnapshot(
-          query(collection(db, 'habitLogs'), where('userId', '==', uid), where('date', '>=', cutoffDateStr)),
-          (docs) => {
-            legacyHabits = docs;
-            handleHabitsMerge();
-          },
-          'habitLogs',
-          query(collection(db, 'habitLogs'), where('userId', '==', uid))
-        ),
-        safeSnapshot(query(collection(db, 'habits'), where('userId', '==', uid)), makeHandler(setHabits), 'habits'),
-        safeSnapshot(query(collection(db, 'job_applications'), where('userId', '==', uid)), makeHandler(setJobs), 'jobs'),
-        safeSnapshot(query(collection(db, 'goals'), where('userId', '==', uid)), makeHandler(setGoals), 'goals'),
         safeSnapshot(query(collection(db, 'learning_topics'), where('userId', '==', uid)), makeHandler(setLearningTopics), 'learning_topics'),
-        // ✅ D2: limit to 90 days with index fallback
-        safeSnapshot(
-          query(collection(db, 'gymLogs'), where('userId', '==', uid), where('date', '>=', cutoffDateStr)),
-          makeHandler(setGymLogs),
-          'gymLogs',
-          query(collection(db, 'gymLogs'), where('userId', '==', uid))
-        ),
         // ✅ Real-time Firestore sync with mobile app water & sleep logs (both mobile snake_case and web formats)
         safeSnapshot(
           query(collection(db, 'water_logs'), where('userId', '==', uid), where('date', '>=', cutoffDateStr)),
@@ -562,11 +532,8 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
   }, []);
 
-  // Memoize gymSchedule so it only recomputes once per day
-  const gymSchedule = useMemo(
-    () => GYM_PLAN.find(p => p.dayIndex === WEEKDAY_TO_PLAN[new Date().getDay()]) || { isRest: true, name: 'Rest Day' },
-    []
-  );
+  // Gym schedule placeholder (gym module removed)
+  const gymSchedule = null;
 
   return (
     <GlobalDataContext.Provider value={{
