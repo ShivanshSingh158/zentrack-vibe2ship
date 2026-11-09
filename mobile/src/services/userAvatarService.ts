@@ -170,7 +170,10 @@ export async function cacheUserAvatar(uid: string, remoteUrl: string): Promise<s
       const tempPath = `${dir}temp_avatar_${getCleanUid(uid)}_${Date.now()}.jpg`;
       const downloadRes = await FileSystem.downloadAsync(remoteUrl, tempPath);
 
-      if (downloadRes && downloadRes.status >= 200 && downloadRes.status < 300) {
+      const contentType = (downloadRes?.headers?.['content-type'] || downloadRes?.headers?.['Content-Type'] || '').toLowerCase();
+      const isImage = !contentType || contentType.includes('image/') || contentType.includes('octet-stream');
+
+      if (downloadRes && downloadRes.status >= 200 && downloadRes.status < 300 && isImage) {
         try {
           const existingInfo = await FileSystem.getInfoAsync(localPath);
           if (existingInfo.exists) {

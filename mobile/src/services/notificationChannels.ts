@@ -86,6 +86,16 @@ export async function ensureNotificationChannels(): Promise<void> {
       enableVibrate: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
+    await Notifications.setNotificationChannelAsync('sara_critical', {
+      name: 'S.A.R.A Critical Priority Alerts',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 600, 200, 600, 200, 600],
+      lightColor: '#ff3b30',
+      sound: 'default',
+      enableLights: true,
+      enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
     await Notifications.setNotificationChannelAsync('wellness', {
       name: 'Hydration & Health Reminders',
       importance: Notifications.AndroidImportance.HIGH,

@@ -110,9 +110,9 @@ export function PlannerProvider({
     if (retryTimerRef.current) return;
     retryTimerRef.current = setTimeout(() => {
       retryTimerRef.current = null;
-      subscribedRef.current = false;
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
+      subscribedRef.current = false;
       setSubscriptionVersion(v => v + 1);
     }, 5000);
   }, []);
@@ -188,8 +188,10 @@ export function PlannerProvider({
 
   useEffect(() => {
     if (user) {
-      subscribedRef.current = false;
       if (demandRequestedRef.current) {
+        unsubsRef.current.forEach(u => u());
+        unsubsRef.current = [];
+        subscribedRef.current = false;
         openSubscriptions(user.uid);
       } else {
         if (deferredSubTimerRef.current) clearTimeout(deferredSubTimerRef.current);

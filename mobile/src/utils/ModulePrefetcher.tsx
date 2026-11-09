@@ -92,15 +92,16 @@ const processNext = (): void => {
     return;
   }
 
+  let nextIndex = 0;
   if (pinnedOnlyMode) {
-    const nextId = prefetchQueue[0].id;
-    if (!pinnedModulesList.includes(nextId)) {
+    nextIndex = prefetchQueue.findIndex(item => pinnedModulesList.includes(item.id));
+    if (nextIndex === -1) {
       isPrefetching = false;
       return;
     }
   }
 
-  const next = prefetchQueue.shift();
+  const [next] = prefetchQueue.splice(nextIndex, 1);
   if (!next) {
     isPrefetching = false;
     return;

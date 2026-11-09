@@ -199,27 +199,9 @@ export function getLastScheduleStatus() {
   };
 }
 
-// ── Firestore Cross-Device Fingerprint Sync ────────────────────────────────────
-// Collection: notification_schedules / {userId}
-// Both devices write/read this doc. When device A reschedules and saves a new
-// fingerprint to Firestore, device B will pull it on next run, see its local
-// cache is stale, and reschedule at the SAME absolute timestamps — eliminating
-// the 4–5 minute gap caused by each device scheduling independently.
-
-const _NOTIF_SCHEDULE_COLLECTION = 'notification_schedules';
-const _CLOUD_SYNC_TIMEOUT_MS = 3000;
-
-async function _pullFingerprintFromFirestore(_userId: string): Promise<string | null> {
-  return null; // Local device OS alarms are isolated to this hardware
-}
-
-async function _pushFingerprintToFirestore(_userId: string, _fingerprint: string): Promise<void> {
-  // Local device OS alarms are isolated to this hardware; do not push to cloud
-}
-
 // Bump this string whenever the scheduling logic changes — forces a full wipe+reschedule
 // on every device that has a stale fingerprint from an older JS bundle.
-const NOTIF_ENGINE_VERSION = 'v7_all_deterministic_slot_ids_2026_10_17';
+const NOTIF_ENGINE_VERSION = 'v8_deterministic_double_underscore_slots_2026_11';
 
 function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | null>): string {
   const todayDateStr = formatLocalDateStr(new Date());
@@ -235,6 +217,11 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
 
   const eventFingerprint = (params.customEvents || [])
     .map(e => `${e.id}_${e.title || ''}_${e.date}_${e.startTime || ''}`)
+    .join(';');
+
+  const habitFingerprint = (params.allHabits || [])
+    .map(h => `${h.id}_${h.name || ''}_${h.frequency || ''}_${(h as any).targetDaysPerWeek || h.weeklyTargetCount || ''}_${h.archived ? 1 : 0}`)
+    .sort()
     .join(';');
 
   const attendanceLogFingerprint = (params.attendanceLogs || [])
@@ -280,6 +267,7 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
     NOTIF_ENGINE_VERSION,
     taskFingerprint,
     eventFingerprint,
+    habitFingerprint,
     (params.habitLogs || []).length,
     habitLogsTodayHash,
     assignmentHash,
@@ -297,12 +285,13 @@ function _buildFingerprint(params: ScheduleParams, kv?: Record<string, string | 
   ].join('|');
 }
 
+let _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let _activeSchedulingPromise: Promise<void> | null = null;
 let _pendingResolveList: (() => void)[] = [];
 let _pendingRejectList: ((err: any) => void)[] = [];
 let _latestParams: ScheduleParams | null = null;
 
-// â”€â”€ Priority Queue Entry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Priority Queue Entry ───────────────────────────────────────────────────
 
 interface PendingNotif {
   title: string;
@@ -314,44 +303,43 @@ interface PendingNotif {
   priority: number; // 1 = highest, use PRIORITY.* constants
 }
 
-// â”€â”€ scheduleAllNotifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── scheduleAllNotifications (with 1500ms trailing debounce) ───────────────
 
 export function scheduleAllNotifications(params: ScheduleParams): Promise<void> {
   _latestParams = params;
 
-  // If a scheduling run is already in flight, return a Promise that will resolve
-  // only when the entire queue (including this latest request) has fully finished scheduling into the OS.
-  if (_activeSchedulingPromise) {
-    return new Promise<void>((resolve, reject) => {
-      _pendingResolveList.push(resolve);
-      _pendingRejectList.push(reject);
-    });
-  }
+  return new Promise<void>((resolve, reject) => {
+    _pendingResolveList.push(resolve);
+    _pendingRejectList.push(reject);
 
-  _activeSchedulingPromise = (async () => {
-    try {
-      await ensureNotificationChannels();
-      while (_latestParams) {
-        const currentParams = _latestParams;
-        _latestParams = null;
-        await _executeScheduleLoop(currentParams);
-      }
-      const resolvers = [..._pendingResolveList];
-      _pendingResolveList = [];
-      _pendingRejectList = [];
-      resolvers.forEach(r => r());
-    } catch (err) {
-      const rejecters = [..._pendingRejectList];
-      _pendingResolveList = [];
-      _pendingRejectList = [];
-      rejecters.forEach(rj => rj(err));
-      throw err;
-    } finally {
-      _activeSchedulingPromise = null;
-    }
-  })();
+    if (_debounceTimer) clearTimeout(_debounceTimer);
+    _debounceTimer = setTimeout(() => {
+      _debounceTimer = null;
+      if (_activeSchedulingPromise) return;
 
-  return _activeSchedulingPromise;
+      _activeSchedulingPromise = (async () => {
+        try {
+          await ensureNotificationChannels();
+          while (_latestParams) {
+            const currentParams = _latestParams;
+            _latestParams = null;
+            await _executeScheduleLoop(currentParams);
+          }
+          const resolvers = [..._pendingResolveList];
+          _pendingResolveList = [];
+          _pendingRejectList = [];
+          resolvers.forEach(r => r());
+        } catch (err) {
+          const rejecters = [..._pendingRejectList];
+          _pendingResolveList = [];
+          _pendingRejectList = [];
+          rejecters.forEach(rj => rj(err));
+        } finally {
+          _activeSchedulingPromise = null;
+        }
+      })();
+    }, 1500);
+  });
 }
 
 async function _executeScheduleLoop(currentParams: ScheduleParams) {
@@ -442,6 +430,10 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         '@zentrack_water_reminder_freq', '@zentrack_last_water_notif_ts', '@zentrack_sleep_reminders_enabled',
         '@zentrack_sleep_reminder_night', '@zentrack_sleep_reminder_morning',
         'zentrack_water_goal_ml', '@zentrack_user_name', 'zentrack_user_name',
+        ...allHabits.flatMap(h => [
+          `@habit_notif_enabled_${h.id}`,
+          `@habit_notif_time_${h.id}`,
+        ]),
         ...attendance.flatMap(s => [
           `@class_notif_enabled_${s.id}`,
           `@class_notif_offset_${s.id}`,
@@ -1383,7 +1375,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         const goalL = (waterGoalMl / 1000).toFixed(1);
         const lastWaterNotifTs = parseInt(kv['@zentrack_last_water_notif_ts'] || '0', 10);
 
-        for (let dayOffset = 0; dayOffset <= 6; dayOffset++) {
+        for (let dayOffset = 0; dayOffset <= 1; dayOffset++) {
           if (dayOffset === 0 && waterGoalMet) continue;
 
           const baseDay = new Date(now);
@@ -1480,13 +1472,10 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         modAttendance: boolVal('mod_attendance'),
       })).catch(() => {});
 
-      interface ScheduledItem {
-        keyId: string;
-        triggerMs: number;
-      }
-      const scheduledItems: ScheduledItem[] = [];
+      const scheduledItemsMap = new Map<string, number[]>();
       let scheduledCount = 0;
       let droppedCount = 0;
+      let quietStaggerMinutes = 0;
 
       interface PreparedNotif {
         identifier?: string;
@@ -1509,20 +1498,21 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
 
         let finalTrigger = notif.trigger;
 
-        // Quiet hours: sara_critical and reminders always ignore, others are deferred to quiet end
-        if (isQuiet(finalTrigger) && notif.channel !== 'sara_critical' && notif.channel !== 'reminders') {
+        // Quiet hours: sara_critical / critical_alerts and reminders always ignore, others are deferred to quiet end
+        if (isQuiet(finalTrigger) && notif.channel !== 'sara_critical' && notif.channel !== 'critical_alerts' && notif.channel !== 'reminders') {
           // NEVER clamp water reminders to 07:00 AM — drop them if they fall in quiet hours
           if (notif.channel === 'wellness' || notif.data?.type === 'WATER_REMINDER' || notif.data?.type === 'water_reminder') {
             continue;
           }
           const catchUp = new Date(finalTrigger);
-          catchUp.setHours(quietEnd.hours, quietEnd.minutes, 0, 0);
+          catchUp.setHours(quietEnd.hours, quietEnd.minutes + quietStaggerMinutes, 0, 0);
+          quietStaggerMinutes += 2;
           if (catchUp <= now) catchUp.setDate(catchUp.getDate() + 1);
           finalTrigger = catchUp;
         }
 
         // Weekend mode: only reminders, critical, and wellness hydration pass through
-        if (weekendMode && isWeekend && notif.channel !== 'reminders' && notif.channel !== 'sara_critical' && notif.channel !== 'wellness') {
+        if (weekendMode && isWeekend && notif.channel !== 'reminders' && notif.channel !== 'sara_critical' && notif.channel !== 'critical_alerts' && notif.channel !== 'wellness') {
           continue;
         }
 
@@ -1543,16 +1533,18 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
           ? 45 * 60 * 1000
           : 10 * 60 * 1000;
 
-        const isDuplicate = scheduledItems.some(
-          item => item.keyId === keyId && Math.abs(item.triggerMs - candidateMs) < minGapMs
-        );
-        if (isDuplicate) {
+        const existingTimes = scheduledItemsMap.get(keyId);
+        if (existingTimes && existingTimes.some(t => Math.abs(t - candidateMs) < minGapMs)) {
           continue;
         }
-        scheduledItems.push({ keyId, triggerMs: candidateMs });
+        if (!existingTimes) {
+          scheduledItemsMap.set(keyId, [candidateMs]);
+        } else {
+          existingTimes.push(candidateMs);
+        }
 
         const delaySeconds = Math.max(3, Math.round((finalTrigger.getTime() - Date.now()) / 1000));
-        const notifPriority = (notif.channel === 'reminders' || notif.channel === 'sara_critical' || notif.channel === 'wellness' || notif.channel === 'task_alarm')
+        const notifPriority = (notif.channel === 'reminders' || notif.channel === 'sara_critical' || notif.channel === 'critical_alerts' || notif.channel === 'wellness' || notif.channel === 'task_alarm')
           ? (Notifications.AndroidNotificationPriority?.MAX ?? ('max' as any))
           : (Notifications.AndroidNotificationPriority?.HIGH ?? ('high' as any));
 
@@ -1573,9 +1565,7 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
             };
 
         // Deterministic, timestamp-free slot IDs for ALL 14 notification types.
-        // A Unix-second suffix is unique per scheduling run — AlarmManager creates a NEW
-        // PendingIntent instead of overwriting the existing one, causing zombie double-fires.
-        // Entity + date + slot-type IDs are stable across reschedules for the same logical alarm.
+        // Uses clean double-underscore '__' segment delimiter so entity IDs with single underscores never corrupt parsing.
         const fireDateKey = formatLocalDateStr(targetFireTime);
         const fireHM = `${targetFireTime.getHours()}_${targetFireTime.getMinutes()}`;
         let notifId: string;
@@ -1585,32 +1575,32 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
           const subType = notif.title.startsWith('Upcoming:') ? 'buf'
             : notif.title.startsWith('5 minutes:') ? '5m'
             : 'exact';
-          notifId = `task_${notif.data.taskId}_${subType}_${fireDateKey}`;
+          notifId = `task__${notif.data.taskId}__${subType}__${fireDateKey}`;
         } else if (notif.data?.habitId) {
           const hType = notif.data?.type === 'habit_streak' ? 'risk' : 'daily';
-          notifId = `habit_${notif.data.habitId}_${hType}_${fireDateKey}`;
+          notifId = `habit__${notif.data.habitId}__${hType}__${fireDateKey}`;
         } else if (notif.data?.subjectId) {
           const sIdx = typeof notif.data.sessionIdx === 'number' ? notif.data.sessionIdx : 0;
           const cType = notif.data.type || 'class';
-          notifId = `class_${notif.data.subjectId}_${sIdx}_${cType}_${fireDateKey}_${fireHM}`;
+          notifId = `class__${notif.data.subjectId}__${sIdx}__${cType}__${fireDateKey}__${fireHM}`;
         } else if (notif.data?.eventId) {
-          notifId = `event_${notif.data.eventId}_${fireDateKey}`;
+          notifId = `event__${notif.data.eventId}__${fireDateKey}`;
         } else if (notif.data?.asnId) {
-          notifId = `asn_${notif.data.asnId}_${notif.data.type}_${fireDateKey}`;
+          notifId = `asn__${notif.data.asnId}__${notif.data.type}__${fireDateKey}`;
         } else if (notif.data?.type === 'water_reminder') {
           notifId = notif.data?.slotKey
-            ? `water_${notif.data.slotKey}`
-            : `water_${fireDateKey}_h${targetFireTime.getHours()}_m${targetFireTime.getMinutes()}`;
+            ? `water__${notif.data.slotKey}`
+            : `water__${fireDateKey}__h${targetFireTime.getHours()}_m${targetFireTime.getMinutes()}`;
         } else if (notif.data?.type === 'morning_brief') {
-          notifId = `brief_${notif.data?.date || fireDateKey}`;
+          notifId = `brief__${notif.data?.date || fireDateKey}`;
         } else if (notif.data?.type === 'gym' || notif.data?.type === 'gym_rest') {
-          notifId = `gym_${notif.data.type}_${fireDateKey}`;
+          notifId = `gym__${notif.data.type}__${fireDateKey}`;
         } else if (notif.data?.type) {
           // All other typed system notifications (overdue_nudge, attendance_warning, sleep, etc.)
-          notifId = `sys_${notif.data.type}_${fireDateKey}_${fireHM}`;
+          notifId = `sys__${notif.data.type}__${fireDateKey}__${fireHM}`;
         } else {
           // Catch-all: channel + date + slot time (inbox_nudge, weekly_review, inactivity, etc.)
-          notifId = `gen_${notif.channel}_${fireDateKey}_${fireHM}`;
+          notifId = `gen__${notif.channel}__${fireDateKey}__${fireHM}`;
         }
 
         preparedList.push({
@@ -1692,10 +1682,6 @@ async function _executeScheduleLoop(currentParams: ScheduleParams) {
         _lastScheduleError = null;
         AsyncStorage.setItem(NOTIF_FINGERPRINT_KEY, fingerprint).catch(() => {});
         updateL1Cache('notifFingerprint', fingerprint);
-        // Push to Firestore so the other device (tablet/phone) picks up the same
-        // fingerprint on its next run and reschedules at identical absolute times.
-        const uid = auth.currentUser?.uid;
-        if (uid) _pushFingerprintToFirestore(uid, fingerprint);
       } else if (pendingQueue.length > 0) {
         console.warn(`[Notifications] 0 of ${pendingQueue.length} notifications scheduled! Last error: ${_lastScheduleError}`);
       }
@@ -2139,7 +2125,7 @@ export async function cancelAllClassNotificationsForDate(dateStr?: string): Prom
       const data = (notif.content?.data || {}) as any;
 
       // Class/lab notification identification
-      const isClassIdentifier = id.startsWith('class_') || id.startsWith('lab_');
+      const isClassIdentifier = id.startsWith('class_') || id.startsWith('class__') || id.startsWith('lab_') || id.startsWith('lab__');
       const isClassData =
         data.type === 'class_pre' ||
         data.type === 'class_log' ||
@@ -2162,13 +2148,18 @@ export async function cancelAllClassNotificationsForDate(dateStr?: string): Prom
       } else if (data.date && String(data.date).slice(0, 10) === targetDateStr) {
         matchesDate = true;
       } else if (isClassIdentifier) {
-        // Fallback: identifier format class_{subjectId}_{sessionIdx}_{unixSec}
-        const parts = id.split('_');
-        if (parts.length >= 4) {
-          const sec = parseInt(parts[parts.length - 1], 10);
-          if (!isNaN(sec) && sec > 0) {
-            const fireDateStr = formatLocalDateStr(new Date(sec * 1000));
-            if (fireDateStr === targetDateStr) matchesDate = true;
+        if (id.includes('__')) {
+          const parts = id.split('__');
+          if (parts[4] === targetDateStr) matchesDate = true;
+        } else {
+          // Fallback: identifier format class_{subjectId}_{sessionIdx}_{unixSec}
+          const parts = id.split('_');
+          if (parts.length >= 4) {
+            const sec = parseInt(parts[parts.length - 1], 10);
+            if (!isNaN(sec) && sec > 0) {
+              const fireDateStr = formatLocalDateStr(new Date(sec * 1000));
+              if (fireDateStr === targetDateStr) matchesDate = true;
+            }
           }
         }
       }
@@ -2219,13 +2210,13 @@ export async function cancelClassNotificationsImmediately(
 
       // Is this a class/lab notification?
       // Strategy 1 (Android + iOS): identifier prefix
-      const isClassIdentifier = id.startsWith(`class_`) || id.startsWith(`lab_`);
+      const isClassIdentifier = id.startsWith('class_') || id.startsWith('class__') || id.startsWith('lab_') || id.startsWith('lab__');
       // Strategy 2 (iOS only): data.type since data is available on iOS
       const isClassData =
-        data.type === `class_pre` ||
-        data.type === `class_log` ||
-        data.type === `lab_mid` ||
-        data.type === `lab_log`;
+        data.type === 'class_pre' ||
+        data.type === 'class_log' ||
+        data.type === 'lab_mid' ||
+        data.type === 'lab_log';
 
       if (!isClassIdentifier && !isClassData) continue;
 
@@ -2233,11 +2224,19 @@ export async function cancelClassNotificationsImmediately(
       let matchesSubject = false;
 
       if (isClassIdentifier) {
-        // identifier: class_{subjectId}_{sessionIdx}_{unixSec}
-        const parts = id.split(`_`);
-        const idSubjId = parts.length >= 4 ? parts.slice(1, -2).join('_') : (parts.length >= 2 ? parts[1] : undefined);
-        if (subjectId && idSubjId === subjectId) {
-          matchesSubject = true;
+        if (id.includes('__')) {
+          const parts = id.split('__');
+          const idSubjId = parts[1];
+          if (subjectId && idSubjId === subjectId) {
+            matchesSubject = true;
+          }
+        } else {
+          // identifier: class_{subjectId}_{sessionIdx}_{unixSec}
+          const parts = id.split('_');
+          const idSubjId = parts.length >= 4 ? parts.slice(1, -2).join('_') : (parts.length >= 2 ? parts[1] : undefined);
+          if (subjectId && idSubjId === subjectId) {
+            matchesSubject = true;
+          }
         }
         // Title fallback
         if (!matchesSubject && subjectName && title.includes(subjectName)) {
@@ -2272,6 +2271,9 @@ export async function cancelClassNotificationsImmediately(
         }
       } else if (isClassData && data.date && data.date !== targetDateStr) {
         continue;
+      } else if (isClassIdentifier && id.includes('__')) {
+        const parts = id.split('__');
+        if (parts[4] && parts[4] !== targetDateStr) continue;
       }
 
       // Session index matching
@@ -2279,13 +2281,19 @@ export async function cancelClassNotificationsImmediately(
         let notifSessionIdx: number | undefined = undefined;
 
         if (isClassIdentifier) {
-          const parts = id.split(`_`);
-          if (parts.length >= 4) {
-            const parsed = parseInt(parts[parts.length - 2], 10);
+          if (id.includes('__')) {
+            const parts = id.split('__');
+            const parsed = parseInt(parts[2], 10);
             if (!isNaN(parsed)) notifSessionIdx = parsed;
+          } else {
+            const parts = id.split('_');
+            if (parts.length >= 4) {
+              const parsed = parseInt(parts[parts.length - 2], 10);
+              if (!isNaN(parsed)) notifSessionIdx = parsed;
+            }
           }
         }
-        if (notifSessionIdx === undefined && typeof data.sessionIdx === `number`) {
+        if (notifSessionIdx === undefined && typeof data.sessionIdx === 'number') {
           notifSessionIdx = data.sessionIdx;
         }
 

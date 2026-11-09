@@ -9,8 +9,26 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 // In-memory lookup map to avoid repeated native FileSystem bridge calls
 const MEMORY_PATH_CACHE = new Map<string, string>();
+const _inFlightDownloads = new Map<string, Promise<{ localUri: string; fromCache: boolean }>>();
 let _dirFilesSet: Set<string> | null = null;
 let _dirFilesPromise: Promise<Set<string>> | null = null;
+
+function sanitizeUrlForCacheKey(url: string): string {
+  try {
+    const [base, queryAndHash] = url.split('?');
+    if (!queryAndHash) return base.split('#')[0];
+    const [queryString] = queryAndHash.split('#');
+    // Keep critical identifying parameters like id=, file=, doc=, path=
+    // Strip ephemeral tokens like token=, signature=, auth=, expires=, timestamp=
+    const params = queryString.split('&').filter(p => {
+      const key = p.split('=')[0].toLowerCase();
+      return !['token', 'sig', 'signature', 'expires', 'auth', 'x-amz-signature', 'x-amz-credential', 't', 'timestamp'].includes(key);
+    });
+    return params.length > 0 ? `${base}?${params.sort().join('&')}` : base;
+  } catch {
+    return url;
+  }
+}
 
 function fnv1a64(str: string): string {
   let h1 = 0x811c9dc5;
@@ -88,7 +106,7 @@ async function getDirFilesSet(): Promise<Set<string>> {
 export async function getCacheFilenameForUrl(url: string, originalFilename?: string): Promise<string> {
   if (!url) return 'file_fallback.dat';
   try {
-    const cleanUrl = url.split('?')[0].split('#')[0] || url;
+    const cleanUrl = sanitizeUrlForCacheKey(url);
     const shortHash = fnv1a64(cleanUrl).substring(0, 24);
 
     let ext = '';
@@ -217,62 +235,75 @@ export async function downloadAndCacheFile(
 ): Promise<{ localUri: string; fromCache: boolean }> {
   if (!url) throw new Error('Cannot download empty URL');
 
-  // Check if already in cache
-  const existingPath = await getCachedFilePath(url, originalFilename);
-  if (existingPath) {
-    onProgress?.(100);
-    return { localUri: existingPath, fromCache: true };
+  // Check in-flight download promise to coalesce parallel requests
+  const existingPromise = _inFlightDownloads.get(url);
+  if (existingPromise) {
+    return existingPromise;
   }
 
-  const dir = await ensureVaultCacheDir();
-  if (!dir) {
-    // If cache directory is unavailable, return remote URL as fallback
-    return { localUri: url, fromCache: false };
-  }
-
-  const filename = await getCacheFilenameForUrl(url, originalFilename);
-  const targetPath = `${dir}${filename}`;
-  const tempPath = `${targetPath}.tmp_${Date.now()}`;
-
-  try {
-    const downloadResumable = FileSystem.createDownloadResumable(
-      url,
-      tempPath,
-      {},
-      (downloadProgress) => {
-        if (downloadProgress.totalBytesExpectedToWrite > 0 && onProgress) {
-          const percent = Math.round(
-            (downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite) * 100
-          );
-          onProgress(Math.min(100, Math.max(0, percent)));
-        }
-      }
-    );
-
-    const result = await downloadResumable.downloadAsync();
-    if (!result || !result.status || result.status < 200 || result.status >= 300) {
-      try {
-        await FileSystem.deleteAsync(tempPath, { idempotent: true });
-      } catch {}
-      throw new Error(`Download failed with HTTP status ${result?.status ?? 'unknown'}`);
-    }
-
-    // Atomic move from temp to final destination
-    await FileSystem.moveAsync({ from: tempPath, to: targetPath });
-    _dirFilesSet?.add(filename);
-    MEMORY_PATH_CACHE.set(url, targetPath);
-    onProgress?.(100);
-    return { localUri: targetPath, fromCache: false };
-  } catch (err) {
-    // Clean up temporary file on failure
+  const downloadPromise = (async () => {
     try {
-      const info = await FileSystem.getInfoAsync(tempPath);
-      if (info.exists) {
-        await FileSystem.deleteAsync(tempPath, { idempotent: true });
+      // Check if already in cache
+      const existingPath = await getCachedFilePath(url, originalFilename);
+      if (existingPath) {
+        onProgress?.(100);
+        return { localUri: existingPath, fromCache: true };
       }
-    } catch {}
-    throw err;
-  }
+
+      const dir = await ensureVaultCacheDir();
+      if (!dir) {
+        return { localUri: url, fromCache: false };
+      }
+
+      const filename = await getCacheFilenameForUrl(url, originalFilename);
+      const targetPath = `${dir}${filename}`;
+      const tempPath = `${targetPath}.tmp_${Date.now()}`;
+
+      try {
+        const downloadResumable = FileSystem.createDownloadResumable(
+          url,
+          tempPath,
+          {},
+          (downloadProgress) => {
+            if (downloadProgress.totalBytesExpectedToWrite > 0 && onProgress) {
+              const percent = Math.round(
+                (downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite) * 100
+              );
+              onProgress(Math.min(100, Math.max(0, percent)));
+            }
+          }
+        );
+
+        const result = await downloadResumable.downloadAsync();
+        if (!result || !result.status || result.status < 200 || result.status >= 300) {
+          try {
+            await FileSystem.deleteAsync(tempPath, { idempotent: true });
+          } catch {}
+          throw new Error(`Download failed with HTTP status ${result?.status ?? 'unknown'}`);
+        }
+
+        // Atomic move from temp to final destination
+        await FileSystem.moveAsync({ from: tempPath, to: targetPath });
+        _dirFilesSet?.add(filename);
+        MEMORY_PATH_CACHE.set(url, targetPath);
+        onProgress?.(100);
+        return { localUri: targetPath, fromCache: false };
+      } catch (err) {
+        try {
+          const info = await FileSystem.getInfoAsync(tempPath);
+          if (info.exists) {
+            await FileSystem.deleteAsync(tempPath, { idempotent: true });
+          }
+        } catch {}
+        throw err;
+      }
+    } finally {
+      _inFlightDownloads.delete(url);
+    }
+  })();
+
+  _inFlightDownloads.set(url, downloadPromise);
+  return downloadPromise;
 }
 
 /**

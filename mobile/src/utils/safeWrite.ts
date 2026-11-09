@@ -43,8 +43,8 @@ export async function safeWrite(
   const now = Date.now();
   const rawPayload = data && typeof data === 'object' ? { ...data } : data;
   if (rawPayload && typeof rawPayload === 'object' && operation !== 'delete') {
-    if (!rawPayload.updatedAt) rawPayload.updatedAt = now;
-    rawPayload.clientUpdatedAt = now;
+    if (rawPayload.updatedAt === undefined) rawPayload.updatedAt = now;
+    if (rawPayload.clientUpdatedAt === undefined) rawPayload.clientUpdatedAt = now;
   }
   const payload = rawPayload && typeof rawPayload === 'object' ? deepSanitize(rawPayload) : rawPayload;
 

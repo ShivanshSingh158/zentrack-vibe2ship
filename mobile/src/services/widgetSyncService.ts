@@ -18,14 +18,15 @@ import type { Task, AttendanceSubject, AttendanceLog } from '../contexts/MobileD
 import { safeUpdate, safeAdd, safeWrite } from '../utils/safeWrite';
 import { db, auth } from './firebase';
 import { COLLECTION } from '../config/constants';
-import { doc, updateDoc, collection, addDoc, writeBatch, setDoc, increment } from 'firebase/firestore';
+import { doc, updateDoc, writeBatch, setDoc, increment } from 'firebase/firestore';
 import { getScheduledAttendanceLogDocId } from '../screens/attendance/attendanceConstants';
-import { readAcademicCache, writeAcademicCache, readWellnessCache, writeWellnessCache } from '../utils/domainCache';
+import { readAcademicCache, writeAcademicCache } from '../utils/domainCache';
 import { formatLocalDateStr } from '../utils/dateFormatters';
 import { readCoreCacheMulti, writeCoreCacheMulti } from '../utils/coreCache';
 import { updateL1Cache, getBootManifestSync } from '../utils/bootManifest';
 import { awardXP } from './xpSystem';
 import { cancelClassNotificationsImmediately, clearScheduleCache } from './notifications';
+import * as Notifications from 'expo-notifications';
 
 const WIDGET_STORAGE_KEY = '@zentrack_widget_agenda_data';
 
@@ -145,15 +146,13 @@ export function buildTodayAgendaData({
   const tomorrowStr = formatLocalDateStr(tomorrow);
 
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const DAYS_SHORT_CAP = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const MONTHS_SHORT_CAP = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const dayIdx = now.getDay();
   const dayOfWeek = dayNames[dayIdx];
   const dayOfWeekNum = dayIdx.toString();
 
-  const displayDate = now.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
+  const displayDate = `${DAYS_SHORT_CAP[dayIdx]}, ${MONTHS_SHORT_CAP[now.getMonth()]} ${now.getDate()}`;
 
   // 1. Build today's classes (supports both { classes: [], labs: [] } object schema and flat array schema)
   // If today is marked as a holiday, omit all classes from widget
@@ -475,8 +474,9 @@ export async function handleWidgetClickAction(
           })
         );
       } catch {}
+    } else {
+      updateTodayAgendaWidget(data).catch(() => {});
     }
-    updateTodayAgendaWidget(data).catch(() => {});
   };
 
   switch (payload.action) {
@@ -503,6 +503,12 @@ export async function handleWidgetClickAction(
         };
         triggerInstantAgendaUpdate(freshData);
       }
+
+      DeviceEventEmitter.emit('task_updated_from_widget', { taskId, partial: { status: 'completed' } });
+      Notifications.cancelScheduledNotificationAsync(`task__${taskId}__exact`).catch(() => {});
+      Notifications.cancelScheduledNotificationAsync(`task__${taskId}__5m`).catch(() => {});
+      Notifications.cancelScheduledNotificationAsync(`task__${taskId}__buf`).catch(() => {});
+      Notifications.cancelScheduledNotificationAsync(`task_${taskId}`).catch(() => {});
 
       // ── STEP 2: ASYNC CLOUD & LOCAL CACHE PERSISTENCE (NON-BLOCKING) ──────
       (async () => {
@@ -556,6 +562,8 @@ export async function handleWidgetClickAction(
         };
         triggerInstantAgendaUpdate(freshData);
       }
+
+      DeviceEventEmitter.emit('task_updated_from_widget', { taskId, partial: { status: 'pending' } });
 
       // ── STEP 2: ASYNC CLOUD & LOCAL CACHE PERSISTENCE (NON-BLOCKING) ──────
       (async () => {

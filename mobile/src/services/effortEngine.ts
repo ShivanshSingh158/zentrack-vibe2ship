@@ -160,15 +160,16 @@ export function isHardSet(
   exerciseSets?: SetLike[],
   scale: EffortScale = 'rir'
 ): boolean {
+  if (setOrRir === null || setOrRir === undefined) return false;
   if (typeof setOrRir === 'number') {
     const rir = toRIR(setOrRir, scale);
     return rir !== null && rir <= HARD_RIR_THRESHOLD;
   }
-  if (setOrRir && typeof setOrRir === 'object') {
+  if (typeof setOrRir === 'object') {
     const rir = inferAutomaticRIR(setOrRir, exerciseSets);
     return rir <= HARD_RIR_THRESHOLD;
   }
-  return true;
+  return false;
 }
 
 export interface EffortSummary {
@@ -230,9 +231,20 @@ export function calculateEffortSummary(
   }
 
   const effectiveCount = completed.length;
-  const avgRIR = effectiveCount > 0 ? Math.round((rirSum / effectiveCount) * 10) / 10 : 2;
+  if (effectiveCount === 0) {
+    return {
+      totalSets: 0,
+      ratedSets: 0,
+      hardSets: 0,
+      averageRIR: null,
+      averageRPE: null,
+      hardSetPercentage: 0,
+    };
+  }
+
+  const avgRIR = Math.round((rirSum / effectiveCount) * 10) / 10;
   const avgRPE = Math.round((10 - avgRIR) * 10) / 10;
-  const hardPct = effectiveCount > 0 ? Math.round((hardCount / effectiveCount) * 100) : 100;
+  const hardPct = Math.round((hardCount / effectiveCount) * 100);
 
   return {
     totalSets: completed.length,

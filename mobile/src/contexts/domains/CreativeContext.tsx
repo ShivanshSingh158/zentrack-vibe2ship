@@ -5,7 +5,7 @@ import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { StorageNode, Note, LearningTopic, JobApplication, ContentLog } from "../MobileDataContext";
 import { writeCreativeCache } from "../../utils/domainCache";
-import { loadBootManifest, getBootManifestSync } from "../../utils/bootManifest";
+import { loadBootManifest, getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
 import { parseStorageNode, parseLearningTopic, areItemsEqual } from "../../utils/schemaGuards";
 import { formatLocalDateStr } from "../../utils/dateUtils";
 import { applyPendingQueueOverlay } from "../../services/offlineSync";
@@ -143,6 +143,7 @@ export function CreativeProvider({
         if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.STORAGE_NODES, snap.docs.map(d => parseStorageNode(d.data(), d.id)));
+          updateL1Cache('storageNodes', fresh);
           setStorageNodes(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           InteractionManager.runAfterInteractions(() => writeCreativeCache({ storageNodes: fresh }));
         });
@@ -157,6 +158,7 @@ export function CreativeProvider({
         if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.LEARNING_TOPICS, snap.docs.map(d => parseLearningTopic(d.data(), d.id)));
+          updateL1Cache('learningTopics', fresh);
           setLearningTopics(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           InteractionManager.runAfterInteractions(() => writeCreativeCache({ learningTopics: fresh }));
         });
@@ -171,6 +173,7 @@ export function CreativeProvider({
         if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.JOBS, snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication)));
+          updateL1Cache('jobs', fresh);
           setJobs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           InteractionManager.runAfterInteractions(() => writeCreativeCache({ jobs: fresh }));
         });
@@ -280,6 +283,7 @@ export function CreativeProvider({
   const optimisticUpdateLearningTopic = useCallback((id: string, updates: Partial<LearningTopic>) => {
     setLearningTopics(prev => {
       const fresh = prev.map(t => t.id === id ? { ...t, ...updates } : t);
+      updateL1Cache('learningTopics', fresh);
       writeCreativeCache({ learningTopics: fresh }, false);
       return fresh;
     });
@@ -300,6 +304,7 @@ export function CreativeProvider({
         });
         return { ...topic, subTasks: updatedSubs };
       });
+      updateL1Cache('learningTopics', fresh);
       writeCreativeCache({ learningTopics: fresh }, false);
       return fresh;
     });
@@ -309,6 +314,7 @@ export function CreativeProvider({
     setStorageNodes(prev => {
       const filtered = node.id ? prev.filter(n => n.id !== node.id) : prev;
       const fresh = [node, ...filtered];
+      updateL1Cache('storageNodes', fresh);
       writeCreativeCache({ storageNodes: fresh }, false);
       return fresh;
     });
@@ -317,6 +323,7 @@ export function CreativeProvider({
   const optimisticUpdateStorageNode = useCallback((id: string, updates: Partial<StorageNode>) => {
     setStorageNodes(prev => {
       const fresh = prev.map(n => n.id === id ? { ...n, ...updates } : n);
+      updateL1Cache('storageNodes', fresh);
       writeCreativeCache({ storageNodes: fresh }, false);
       return fresh;
     });
@@ -325,6 +332,7 @@ export function CreativeProvider({
   const optimisticDeleteStorageNode = useCallback((id: string) => {
     setStorageNodes(prev => {
       const fresh = prev.filter(n => n.id !== id);
+      updateL1Cache('storageNodes', fresh);
       writeCreativeCache({ storageNodes: fresh }, false);
       return fresh;
     });
@@ -334,6 +342,7 @@ export function CreativeProvider({
     const idSet = new Set(ids);
     setStorageNodes(prev => {
       const fresh = prev.filter(n => !n.id || !idSet.has(n.id));
+      updateL1Cache('storageNodes', fresh);
       writeCreativeCache({ storageNodes: fresh }, false);
       return fresh;
     });

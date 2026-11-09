@@ -169,6 +169,13 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [linkedTaskTitle, setLinkedTaskTitle] = useState<string | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState<boolean>(false);
   const [keepAwakeEnabled, setKeepAwakeEnabledState] = useState<boolean>(true);
+  const baseFocusDurationRef = useRef<number>(DEFAULT_CONFIG.focus);
+
+  useEffect(() => {
+    if (!linkedTaskId) {
+      baseFocusDurationRef.current = config.focus;
+    }
+  }, [config.focus, linkedTaskId]);
 
   // Load saved keep-awake preference (defaults to true)
   useEffect(() => {
@@ -546,13 +553,15 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     feedback.tap();
     const s = stateRef.current;
     const next = s.timeLeft + seconds;
+    const nextTotal = s.totalDuration + seconds;
     setTimeLeft(next);
+    setTotalDuration(nextTotal);
     if (s.status === 'running' && s.targetEndTime) {
       const newTarget = s.targetEndTime + seconds * 1000;
       setTargetEndTime(newTarget);
-      persistState({ timeLeft: next, targetEndTime: newTarget });
+      persistState({ timeLeft: next, totalDuration: nextTotal, targetEndTime: newTarget });
     } else {
-      persistState({ timeLeft: next });
+      persistState({ timeLeft: next, totalDuration: nextTotal });
     }
   }, [persistState]);
 
@@ -590,7 +599,6 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLinkedTaskId(taskId);
     setLinkedTaskTitle(taskTitle || null);
     if (taskId && customDurationSecs && customDurationSecs > 0) {
-      setConfig(prev => ({ ...prev, focus: customDurationSecs }));
       if (s.mode === 'focus' && s.status === 'idle') {
         setTimeLeft(customDurationSecs);
         setTotalDuration(customDurationSecs);
@@ -607,10 +615,10 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLinkedTaskId(null);
     setLinkedTaskTitle(null);
     feedback.tap();
-    setConfig(prev => ({ ...prev, focus: DEFAULT_CONFIG.focus }));
+    const baseFocus = baseFocusDurationRef.current || DEFAULT_CONFIG.focus;
     if (s.mode === 'focus' && s.status === 'idle') {
-      setTimeLeft(DEFAULT_CONFIG.focus);
-      setTotalDuration(DEFAULT_CONFIG.focus);
+      setTimeLeft(baseFocus);
+      setTotalDuration(baseFocus);
     }
     persistState({
       linkedTaskId: null,
@@ -624,7 +632,6 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (taskTitle) setLinkedTaskTitle(taskTitle);
       if (durationMinutes && durationMinutes > 0) {
         const durSecs = durationMinutes * 60;
-        setConfig(prev => ({ ...prev, focus: durSecs }));
         if (stateRef.current.status === 'idle') {
           setTimeLeft(durSecs);
           setTotalDuration(durSecs);

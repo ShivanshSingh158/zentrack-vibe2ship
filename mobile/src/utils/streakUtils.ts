@@ -195,8 +195,27 @@ export const STREAK_MILESTONES: StreakMilestone[] = [
 ];
 
 export function getNextMilestone(currentStreak: number): { current: StreakMilestone; next: StreakMilestone; progress: number; remaining: number } {
-  let current = STREAK_MILESTONES[0];
-  let next = STREAK_MILESTONES[1];
+  const lastMilestone = STREAK_MILESTONES[STREAK_MILESTONES.length - 1];
+  if (currentStreak >= lastMilestone.days) {
+    const nextDays = Math.max(lastMilestone.days + 30, Math.ceil((currentStreak + 1) / 30) * 30);
+    const dynamicNext: StreakMilestone = {
+      days: nextDays,
+      label: `Transcendent ${nextDays}`,
+      badge: '✨',
+      badgeIcon: 'sparkles',
+      color: '#C084FC',
+      gradient: ['#C084FC', '#E879F9'],
+      desc: `${nextDays}-day transcendent streak`,
+    };
+    const span = dynamicNext.days - lastMilestone.days;
+    const earned = currentStreak - lastMilestone.days;
+    const progress = span > 0 ? Math.min(1, Math.max(0, earned / span)) : 1;
+    const remaining = Math.max(0, dynamicNext.days - currentStreak);
+    return { current: lastMilestone, next: dynamicNext, progress, remaining };
+  }
+
+  let current: StreakMilestone = { days: 0, label: 'Initiate', badge: '🌱', color: '#a599ff' };
+  let next = STREAK_MILESTONES[0];
 
   for (let i = 0; i < STREAK_MILESTONES.length; i++) {
     if (currentStreak >= STREAK_MILESTONES[i].days) {

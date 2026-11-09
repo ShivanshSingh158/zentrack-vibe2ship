@@ -58,7 +58,7 @@ const WEEKDAY_LOOKUP_PATTERNS = DAY_NAMES.map((dn, di) => {
     nextPat: new RegExp(`\\bnext\\s+(${dn}|${ds})\\b`, 'i'),
     thisPat: new RegExp(`\\bthis\\s+(${dn}|${ds})\\b`, 'i'),
     onPat: new RegExp(`\\bon\\s+(${dn}|${ds})\\b`, 'i'),
-    plainPat: new RegExp(`\\b(${dn}|${ds})\\b`, 'i'),
+    plainPat: new RegExp(`\\b${dn}\\b`, 'i'),
   };
 });
 
@@ -285,7 +285,6 @@ function phraseDedupe(str: string): string {
   let s = str.trim();
   s = s.replace(/\b(?:high|medium|low)\s+priority\b/gi, '');
   s = s.replace(/\bpriority\s+(?:high|medium|low|urgent|p[123])\b/gi, '');
-  s = s.replace(/\b(?:today|tomorrow|tommorow|tomorow|tommorrow|tmrw|tmr|tonight|yesterday)\b/gi, '');
   s = s.replace(/\b\d{1,2}(?::\d{2})?\s*(?:to|-)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b/gi, '');
   s = s.replace(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi, '');
 
@@ -316,11 +315,12 @@ function phraseDedupe(str: string): string {
       i += 3;
       continue;
     }
-    // 1-word repeat: "call call"
+    // 1-word repeat: "call call" (preserve legitimate grammatically repeated words like "had had", "that that")
     if (
       i + 1 < tokens.length &&
       tokens[i].length >= 3 &&
-      tokens[i].toLowerCase() === tokens[i + 1].toLowerCase()
+      tokens[i].toLowerCase() === tokens[i + 1].toLowerCase() &&
+      !['had', 'that'].includes(tokens[i].toLowerCase())
     ) {
       result.push(tokens[i]);
       i++;
@@ -478,7 +478,7 @@ export function cleanTaskTitle(rawTitle: string): string {
   const formattedWords = words.map((w, idx) => {
     const cleanWord = w.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (TASK_ACRONYMS[cleanWord]) {
-      return w.replace(cleanWord, TASK_ACRONYMS[cleanWord]);
+      return w.replace(new RegExp(cleanWord, 'i'), TASK_ACRONYMS[cleanWord]);
     }
     if (/^\d/.test(w)) return w;
     if (w.length > 0 && (idx === 0 || !TASK_MINOR_WORDS.has(w.toLowerCase()))) {
@@ -614,13 +614,17 @@ export function parseNLTask(rawInput: string): ParsedTask {
   // Spoken Tags ("tag work", "label gym", "hashtag study")
   {
     const spokenTagRe = /\b(?:tags?|labels?|hashtag)\s*[:\-]?\s*([a-zA-Z][a-zA-Z0-9_-]*(?:\s*,\s*[a-zA-Z][a-zA-Z0-9_-]*)*)\b/gi;
+    const spokenTagMatches: Array<{ full: string; list: string[] }> = [];
     let stm: RegExpExecArray | null;
     while ((stm = spokenTagRe.exec(text)) !== null) {
       const tagList = stm[1].split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-      for (const t of tagList) {
+      spokenTagMatches.push({ full: stm[0], list: tagList });
+    }
+    for (const sm of spokenTagMatches) {
+      for (const t of sm.list) {
         if (!extractedTags.includes(t)) extractedTags.push(t);
       }
-      registerToken('tag', stm[0], tagList.map(t => `#${t}`).join(' '));
+      registerToken('tag', sm.full, sm.list.map(t => `#${t}`).join(' '));
     }
   }
 
@@ -707,9 +711,9 @@ export function parseNLTask(rawInput: string): ParsedTask {
     [/\b(important|p2|kinda\s+important|semi.?urgent|normal\s+priority)\b/i,             'medium', 'Medium'],
     [/\b(p3|someday|whenever|not\s+urgent|low\s+key|no\s+rush|chill|when\s+free)\b/i,     'low',    'Low'],
     // Natural language direct priority identifiers (e.g. "task high", "study medium", "reading low")
-    [/\b(?:is\s+|in\s+|with\s+|keep\s+|make\s+)?high\b(?!\s+(?:school|court|jump|beam|pressure|profile|def|definition|resolution|tech|technology|rise|tide|gear|noon|yield|key|voltage|frequency|pass|speed|temp|temperature|range|end|ground|level\s+of))\b/i, 'high', 'High'],
+    [/\b(?:is\s+|in\s+|with\s+|keep\s+|make\s+)?high\b(?!\s+(?:school|court|jump|beam|pressure|profile|def|definition|resolution|tech|technology|rise|tide|gear|noon|yield|key|voltage|frequency|pass|speed|temp|temperature|range|end|ground|level\s+of|sodium|salt|sugar|cholesterol|protein|fiber|intensity|calorie|calories|energy|volume|yield|pitch))\b/i, 'high', 'High'],
     [/\b(?:is\s+|in\s+|with\s+|keep\s+|make\s+)?(?:medium|med|moderate)\b(?!\s+(?:rare|size|sized|wave|format|length|term|density|frequency|voltage|risk|level\s+of))\b/i, 'medium', 'Medium'],
-    [/\b(?:is\s+|in\s+|with\s+|keep\s+|make\s+)?low\b(?!\s+(?:battery|carb|calories|calorie|fat|income|profile|res|resolution|key|pass|speed|temp|temperature|voltage|frequency|latency|tide|cost|price|risk|end|level\s+of))\b/i, 'low', 'Low'],
+    [/\b(?:is\s+|in\s+|with\s+|keep\s+|make\s+)?low\b(?!\s+(?:battery|carb|calories|calorie|fat|income|profile|res|resolution|key|pass|speed|temp|temperature|voltage|frequency|latency|tide|cost|price|risk|end|level\s+of|sodium|salt|sugar|cholesterol|pressure|iron|oil|cal|power|light|beam|flow|gear|grade|pitch|volume|density|yield))\b/i, 'low', 'Low'],
   ];
   for (const [pat, pri, label] of priorityPatterns) {
     const m = text.match(pat);
@@ -729,7 +733,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
     [/\ba\s+couple\s+(?:of\s+)?hours?\b/i,                                _ => 120],
     [/\bcouple\s+(?:of\s+)?hours?\b/i,                                    _ => 120],
     [/\ba\s+few\s+hours?\b/i,                                              _ => 180],
-    [/\ban?\s+hour\s*(?:block|session|pomodoro|pomo)?\b/i,                _ => 60],
+    [/(?<!\bin\s+)\ban?\s+hour\s*(?:block|session|pomodoro|pomo)?\b/i,    _ => 60],
     [/\ba\s+few\s+minutes?\b/i,                                           _ => 10],
     [/\b(\d+(?:\.\d+)?)\s*h(?:(?:ou)?rs?)?\s*(?:block|time\s*block|time|session|pomodoro|pomo)?\b/i, m => Math.round(parseFloat(m[1]) * 60)],
     [/\b(\d+)\s*(?:hours?|hrs?|hr)\s*(?:block|time\s*block|time|session|pomodoro|pomo)?\b/i,          m => parseInt(m[1], 10) * 60],
@@ -1465,7 +1469,7 @@ export function parseNLTask(rawInput: string): ParsedTask {
 
     // "on the 5th" / "by the 12th" — ordinal-only (current or next month)
     if (!dateResult) {
-      const ordinalOnly = text.match(/\b(?:on\s+|by\s+)?(?:the\s+)?(\d{1,2})(st|nd|rd|th)\b(?!\s+of)/i);
+      const ordinalOnly = text.match(/\b(?:on\s+|by\s+)?(?:the\s+)?(\d{1,2})(st|nd|rd|th)\b(?!\s+(?:of|avenue|ave|street|st|floor|chapter|grade|rank|place|edition|step|phase|round|quarter|half|sem|semester|year|period|leg|base|row|column|line|item|level|class|page|paragraph|lesson|attempt|run|test))/i);
       if (ordinalOnly) {
         const dayNum = parseInt(ordinalOnly[1], 10);
         if (dayNum >= 1 && dayNum <= 31) {
@@ -1618,7 +1622,8 @@ export function parseNLTask(rawInput: string): ParsedTask {
         // Numeric date formats
         if (!dateResult) {
           const numericLong = text.match(/\b(\d{1,2})[\/-](\d{1,2})[\/-](20\d{2})\b/);
-          const numericShort = text.match(/\b(\d{1,2})[\/.](\d{1,2})\b/);
+          // Restrict short numeric dates to slash / (excluding decimal dots and score/fraction prefixes)
+          const numericShort = text.match(/(?<!\b(?:v|version|ver|chapter|ch|score|rating|step)\s*)\b(\d{1,2})\/(\d{1,2})\b(?!\s*\/\s*\d)/i);
 
           if (numericLong) {
             const day = parseInt(numericLong[1], 10);

@@ -188,11 +188,16 @@ function withFocusFreeze<T extends object>(
       </ErrorBoundary>
     ),
     (prev, next) => {
-      // Tab is going into or staying in background: freeze all re-renders.
-      if (!next.isFocused) return true;
+      // Tab is going into or staying in background: freeze all re-renders UNLESS route params changed.
+      if (!next.isFocused) {
+        const prevParams = (prev.passthroughProps as any)?.route?.params;
+        const nextParams = (next.passthroughProps as any)?.route?.params;
+        if (prevParams !== nextParams) return false;
+        return true;
+      }
       // Tab is focused: re-render only if meaningful props actually changed.
-      // This prevents irrelevant context updates (e.g. gymLogs array ref changing
-      // during a workout on the Gym tab) from cascading to every other focused screen.
+      // This prevents irrelevant context updates (e.g. domain array refs changing)
+      // from cascading to every other focused screen.
       return shallowEqual(prev.passthroughProps, next.passthroughProps) && prev.isFocused === next.isFocused;
     }
   );
@@ -241,6 +246,19 @@ const SafeMore      = withFocusFreeze(MoreScreen,      'More');
 
 const TabBarNullButton = () => null;
 
+const HIDDEN_TAB_OPTION = {
+  lazy: true,
+  tabBarItemStyle: { display: 'none' as const },
+  tabBarButton: TabBarNullButton,
+};
+
+const VISIBLE_TAB_OPTION = {
+  lazy: true,
+  tabBarItemStyle: { paddingVertical: 10 },
+};
+
+const HOME_TAB_OPTION = { lazy: false };
+
 // --- Main Tab Navigator ------------------------------------------------------
 //
 // WHATSAPP / INSTAGRAM ARCHITECTURE:
@@ -255,21 +273,29 @@ function MainTabNavigator() {
 
   const effectivePinned = useMemo(() => pinnedKey.split(','), [pinnedKey]);
 
-  // PERF FIX: Throttle AsyncStorage saves
-  const lastTabSaveRef = useRef<number>(0);
+  // Trailing debounce (1000ms) for route saving so final destination is always persisted
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onTabFocus = useCallback((routeName: string) => {
     // When user taps or focuses More, warm the remaining 13 modules immediately
     if (routeName === 'More') {
       prefetchRemainingModules();
     }
     if (!ALLOWED_SAVE_ROUTES.has(routeName)) return;
-    const now = Date.now();
-    if (now - lastTabSaveRef.current < 10000) return; // max once per 10s
-    lastTabSaveRef.current = now;
-    AsyncStorage.setItem(NAV_ROUTE_KEY, routeName).catch(() => {});
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      AsyncStorage.setItem(NAV_ROUTE_KEY, routeName).catch(() => {});
+    }, 1000);
   }, []);
 
   const renderTabBar = useCallback((props: any) => <TelegramTabBar {...props} />, []);
+
+  const screenOptions = useMemo(() => ({
+    headerShown: false,
+    animation: 'none' as const,
+    sceneStyle:  { backgroundColor: colors.background },
+    lazy: true,
+    freezeOnBlur: true,
+  }), [colors.background]);
 
   return (
     <Tab.Navigator
@@ -279,16 +305,10 @@ function MainTabNavigator() {
         focus: () => onTabFocus(route.name),
       })}
       detachInactiveScreens={false}
-      screenOptions={{
-        headerShown: false,
-        animation: 'none',
-        sceneStyle:  { backgroundColor: colors.background },
-        lazy: true,
-        freezeOnBlur: true,
-      }}
+      screenOptions={screenOptions}
       backBehavior="history"
     >
-      <Tab.Screen name="Home" component={SafeDashboard} options={{ lazy: false }} />
+      <Tab.Screen name="Home" component={SafeDashboard} options={HOME_TAB_OPTION} />
       {ALL_NAV_MODULE_IDS.map((modId) => {
         const isPinned = effectivePinned.includes(modId);
         return (
@@ -296,15 +316,7 @@ function MainTabNavigator() {
             key={modId}
             name={modId}
             component={COMPONENT_MAP[modId]}
-            options={{
-              lazy: true,
-              ...(!isPinned ? {
-                tabBarItemStyle: { display: 'none' },
-                tabBarButton:    TabBarNullButton,
-              } : {
-                tabBarItemStyle: { paddingVertical: 10 },
-              }),
-            }}
+            options={isPinned ? VISIBLE_TAB_OPTION : HIDDEN_TAB_OPTION}
           />
         );
       })}
@@ -473,6 +485,7 @@ export default function AppNavigator() {
           uid: u.uid,
           email: u.email,
           displayName: u.displayName,
+          photoURL: u.photoURL ?? null,
         })).catch(() => {});
       } else {
         AsyncStorage.removeItem('@zentrack_optimistic_user').catch(() => {});
@@ -613,15 +626,16 @@ export default function AppNavigator() {
         }, 3500);
       } else if (nextState === 'background' || nextState === 'inactive') {
         lastBackgroundTimestamp = Date.now();
-        // Defer cleanup to avoid competing with background transition animation
-        setTimeout(() => {
-          AsyncStorage.multiRemove([
-            'gym_chat_history',
-            'gym_memory_summary',
-          ]).catch(() => {});
-        }, 500);
       }
     };
+
+    // One-time cleanup of obsolete storage keys on boot after interactions settle
+    InteractionManager.runAfterInteractions(() => {
+      AsyncStorage.multiRemove([
+        'gym_chat_history',
+        'gym_memory_summary',
+      ]).catch(() => {});
+    });
 
     const appStateSub = AppState.addEventListener('change', handleAppStateChange);
     const resetOnboardingSub = DeviceEventEmitter.addListener('reset_onboarding', () => {

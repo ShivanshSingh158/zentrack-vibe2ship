@@ -116,11 +116,16 @@ export interface BootManifest {
   avatarDiskPath: string | null;
 }
 
+export const VALID_PINNABLE_MODULES = new Set([
+  'Tasks', 'Calendar', 'Attendance', 'Notes', 'Grades', 'Learning',
+]);
+
 const DEFAULT_PINNED = ['Tasks', 'Calendar', 'Attendance', 'Notes'];
 const DEFAULT_WATER_GOAL = 3800;
 
 let _memoryBootCache: BootManifest | null = null;
 let _bootPromise: Promise<BootManifest> | null = null;
+let _bootGeneration = 0;
 
 function parseJsonArray<T = any>(raw: string | null | undefined): T[] {
   if (!raw) return [];
@@ -135,6 +140,8 @@ function parseJsonArray<T = any>(raw: string | null | undefined): T[] {
 export async function loadBootManifest(): Promise<BootManifest> {
   if (_memoryBootCache) return _memoryBootCache;
   if (_bootPromise) return _bootPromise;
+
+  const currentGen = ++_bootGeneration;
 
   _bootPromise = (async () => {
     try {
@@ -161,8 +168,7 @@ export async function loadBootManifest(): Promise<BootManifest> {
         try {
           const parsed = JSON.parse(pinnedRaw);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            const pruned = new Set(['Gym', 'Habits', 'Analytics', 'Assignments']);
-            const filtered = parsed.filter(m => !pruned.has(m)).slice(0, 4);
+            const filtered = parsed.filter(m => VALID_PINNABLE_MODULES.has(m)).slice(0, 4);
             if (filtered.length > 0) pinnedModules = filtered;
           }
         } catch {}
@@ -248,6 +254,7 @@ export async function loadBootManifest(): Promise<BootManifest> {
         avatarDiskPath,
       };
 
+      if (currentGen !== _bootGeneration) return manifest;
       _memoryBootCache = manifest;
 
       // Hydrate Tier-1 secondary caches off the critical startup path
@@ -290,10 +297,14 @@ export async function loadBootManifest(): Promise<BootManifest> {
         notifFingerprint: null,
         avatarDiskPath: null,
       };
-      _memoryBootCache = fallback;
+      if (currentGen === _bootGeneration) {
+        _memoryBootCache = fallback;
+      }
       return fallback;
     } finally {
-      _bootPromise = null;
+      if (currentGen === _bootGeneration) {
+        _bootPromise = null;
+      }
     }
   })();
 
@@ -340,6 +351,7 @@ export function updateL1Cache<K extends keyof BootManifest>(key: K, value: BootM
 }
 
 export function clearBootManifest(): void {
+  _bootGeneration++;
   _memoryBootCache = null;
   _bootPromise = null;
 }

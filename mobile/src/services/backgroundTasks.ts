@@ -88,8 +88,15 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
     const habitsLogged = habitsSnap.docs.length;
     let assignmentsSubmitted = 0;
     assignSnap.forEach(d => {
-      const ts = d.data().submittedAt || 0;
-      if (ts >= weekStartTs) assignmentsSubmitted++;
+      const data = d.data();
+      const ts = data.submittedAt;
+      if (typeof ts === 'number') {
+        if (ts >= weekStartTs) assignmentsSubmitted++;
+      } else if (typeof ts === 'string') {
+        if (ts.slice(0, 10) >= weekStartStr) assignmentsSubmitted++;
+      } else if (ts && typeof ts.toMillis === 'function') {
+        if (ts.toMillis() >= weekStartTs) assignmentsSubmitted++;
+      }
     });
 
     const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 100;

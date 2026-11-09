@@ -51,25 +51,25 @@ export const LEVEL_THRESHOLDS = [
 
 export const LEVEL_TITLES = [
   'Seeker',       // 0
-  'Warden',       // 500
-  'Sentinel',     // 1200
-  'Guardian',     // 2500
-  'Vanguard',     // 4200
-  'Luminary',     // 6500
-  'Legend',       // 9500
-  'Mythic',       // 13500
-  'Paragon',      // 18000
-  'Titan',        // 23000
-  'Ascendant',    // 29000
-  'Exalted',      // 36000
-  'Sovereign',    // 44000
-  'Archon',       // 53000
-  'Celestial',    // 63500
-  'Ethereal',     // 75500
-  'Empyrean',     // 89000
-  'Astral',       // 104000
-  'Zenith',       // 121000
-  'Apex',         // 140000
+  'Warden',       // 1000
+  'Sentinel',     // 3000
+  'Guardian',     // 7000
+  'Vanguard',     // 14000
+  'Luminary',     // 27000
+  'Legend',       // 59500
+  'Mythic',       // 110000
+  'Paragon',      // 180000
+  'Titan',        // 270000
+  'Ascendant',    // 390000
+  'Exalted',      // 550000
+  'Sovereign',    // 760000
+  'Archon',       // 1030000
+  'Celestial',    // 1380000
+  'Ethereal',     // 1820000
+  'Empyrean',     // 2380000
+  'Astral',       // 3080000
+  'Zenith',       // 3950000
+  'Apex',         // 5000000
 ];
 
 // ─── XP Sources — Base amounts before variable modifier ──────────────────────
@@ -142,7 +142,7 @@ export async function syncXPWithFirestore(firestoreXP: number): Promise<void> {
 
   const currentLocal = _inMemoryXP ?? 0;
 
-  if (firestoreXP >= currentLocal) {
+  if (firestoreXP > currentLocal) {
     _inMemoryXP = firestoreXP;
     updateL1Cache('xp', firestoreXP);
     AsyncStorage.setItem(XP_KEY, String(firestoreXP)).catch(() => {});

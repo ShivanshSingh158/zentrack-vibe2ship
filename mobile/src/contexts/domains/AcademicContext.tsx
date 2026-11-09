@@ -110,9 +110,14 @@ export function AcademicProvider({
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingCacheWriteRef = useRef<{ cancel: () => void } | null>(null);
+  const attendanceLogsIndexFailedRef = useRef(false);
 
   const scheduleListenerRestart = useCallback((context: string) => (err: Error) => {
     const isBuilding = err.message.includes('currently building');
+    const isIndexErr = err.message.includes('index') || err.message.includes('precondition');
+    if (context === 'attendanceLogs' && isIndexErr) {
+      attendanceLogsIndexFailedRef.current = true;
+    }
     if (isBuilding) {
       console.info(`[Academic] ${context} index is currently building in Cloud Firestore. Auto-retrying in 15s...`);
     } else {
@@ -193,7 +198,7 @@ export function AcademicProvider({
           setAttendance(prev => {
             const freshMap = new Map(fresh.map(s => [s.id!, s]));
             const merged = prev
-              .filter(ps => freshMap.has(ps.id!) || (Date.now() - (ps.lastUpdated || 0) < 5000))
+              .filter(ps => freshMap.has(ps.id!))
               .map(ps => {
                 const fs = freshMap.get(ps.id!);
                 if (!fs) return ps;
@@ -227,15 +232,24 @@ export function AcademicProvider({
       scheduleListenerRestart("attendance")
     ));
 
-    // Attendance Logs Listener (Rolling 150-day semester window prevents dropping newest logs due to ASCII doc-ID ordering)
+    // Attendance Logs Listener (Rolling 150-day semester window with client-side index fallback)
     const attendanceCutoffDateStr = offsetDateStr(formatLocalDateStr(new Date()), -150);
+    const logsQuery = attendanceLogsIndexFailedRef.current
+      ? query(collection(db, COLLECTION.ATTENDANCE_LOGS), where("userId", "==", uid))
+      : query(collection(db, COLLECTION.ATTENDANCE_LOGS), where("userId", "==", uid), where("date", ">=", attendanceCutoffDateStr));
+
     unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.ATTENDANCE_LOGS), where("userId", "==", uid), where("date", ">=", attendanceCutoffDateStr)),
+      logsQuery,
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
         unstable_batchedUpdates(() => {
-          const rawFresh = applyPendingQueueOverlay(COLLECTION.ATTENDANCE_LOGS, snap.docs.map(d => parseAttendanceLog(d.data(), d.id)));
+          const rawFresh = applyPendingQueueOverlay(
+            COLLECTION.ATTENDANCE_LOGS,
+            snap.docs
+              .map(d => parseAttendanceLog(d.data(), d.id))
+              .filter(l => !l.date || l.date >= attendanceCutoffDateStr)
+          );
           const seen = new Map<string, typeof rawFresh[0]>();
           rawFresh.forEach(l => {
             if (l.isExtra) return;
@@ -263,14 +277,7 @@ export function AcademicProvider({
           const fresh = [...Array.from(seen.values()), ...extraLogs];
           updateL1Cache('attendanceLogs', fresh);
 
-          setAttendanceLogs(prev => {
-            if (areItemsEqual(prev, fresh)) return prev;
-            const now = Date.now();
-            const freshIds = new Set(fresh.map(l => l.id).filter(Boolean));
-            const inFlight = prev.filter(l => l.id && !freshIds.has(l.id) && (now - (l.timestamp || 0) < 5000));
-            if (inFlight.length === 0) return fresh;
-            return [...fresh, ...inFlight];
-          });
+          setAttendanceLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
           InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendanceLogs: fresh }, false));
         });
       },
@@ -325,12 +332,14 @@ export function AcademicProvider({
       snap => {
         if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
         if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
-        const fresh = snap.docs.map(d => {
-          const raw = (d.data() as any).date;
+        const rawDocs = applyPendingQueueOverlay(COLLECTION.ATTENDANCE_HOLIDAYS, snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        const fresh = rawDocs.map(d => {
+          const raw = (d as any).date;
           if (!raw) return '';
           if (typeof raw === 'string') return raw.trim().slice(0, 10);
           return String(raw).slice(0, 10);
         }).filter(Boolean);
+        updateL1Cache('holidays', fresh);
         setHolidays(prev => areItemsEqual(prev, fresh) ? prev : fresh);
         InteractionManager.runAfterInteractions(() => writeAcademicCache({ holidays: fresh }, false));
       },
@@ -485,7 +494,7 @@ export function AcademicProvider({
   const optimisticUpdateAttendanceLog = useCallback((logId: string, partial: Partial<AttendanceLog>) => {
     pendingCacheWriteRef.current?.cancel();
     setAttendanceLogs(prev => {
-      const next = prev.map(l => l.id === logId ? { ...l, ...partial } : l);
+      const next = prev.map(l => l.id === logId ? { ...l, ...partial, timestamp: Date.now() } : l);
       updateL1Cache('attendanceLogs', next);
       pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendanceLogs: next }, false));
       return next;
@@ -521,6 +530,7 @@ export function AcademicProvider({
       const next = isHoliday
         ? (prev.some(d => d.slice(0, 10) === cleanDate) ? prev : [...prev, cleanDate])
         : prev.filter(d => d.slice(0, 10) !== cleanDate);
+      updateL1Cache('holidays', next);
       pendingCacheWriteRef.current = InteractionManager.runAfterInteractions(() => writeAcademicCache({ holidays: next }, false));
       return next;
     });

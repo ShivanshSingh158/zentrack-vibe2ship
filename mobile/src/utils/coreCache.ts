@@ -12,6 +12,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Task, Habit, HabitLog } from '../contexts/MobileDataContext';
+import { getBootManifestSync } from './bootManifest';
 
 // ── Cache Keys ────────────────────────────────────────────────────────────────
 const KEYS = {
@@ -29,6 +30,15 @@ export interface CoreCache {
 
 // ── Read — single multiGet call (~5ms, no network) ────────────────────────────
 export async function readCoreCacheMulti(): Promise<Partial<CoreCache>> {
+  const manifest = getBootManifestSync();
+  if (manifest?.tasks || manifest?.habits || manifest?.habitLogs) {
+    return {
+      tasks: manifest.tasks ?? [],
+      habits: manifest.habits ?? [],
+      habitLogs: manifest.habitLogs ?? [],
+    };
+  }
+
   try {
     const pairs = await AsyncStorage.multiGet([KEYS.TASKS, KEYS.HABITS, KEYS.HABIT_LOGS]);
     const result: Partial<CoreCache> = {};

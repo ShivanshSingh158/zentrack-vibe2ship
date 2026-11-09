@@ -1,9 +1,32 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, setDoc, addDoc, updateDoc, deleteDoc, collection, serverTimestamp, writeBatch, increment } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { db, auth } from './firebase';
 import NetInfo from '@react-native-community/netinfo';
 import { COLLECTION } from '../config/constants';
+import { updateL1Cache } from '../utils/bootManifest';
+
+function expandDotNotation(obj: any): any {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (key.includes('.')) {
+      const parts = key.split('.');
+      let current = result;
+      for (let i = 0; i < parts.length - 1; i++) {
+        const p = parts[i];
+        if (!current[p] || typeof current[p] !== 'object' || Array.isArray(current[p])) {
+          current[p] = {};
+        }
+        current = current[p];
+      }
+      current[parts[parts.length - 1]] = value;
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
 
 function restoreFirestoreSentinels(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
@@ -100,6 +123,7 @@ export function applyPendingQueueOverlay<T extends { id?: string }>(
   if (!pendingItems || pendingItems.length === 0) return serverDocs;
 
   const result = [...serverDocs];
+  const itemsToPrepend: T[] = [];
 
   const applyFieldsToDoc = (baseDoc: Record<string, any>, patch: Record<string, any>) => {
     const merged = { ...baseDoc };
@@ -136,9 +160,13 @@ export function applyPendingQueueOverlay<T extends { id?: string }>(
       if (idx !== -1) {
         result[idx] = applyFieldsToDoc(result[idx] as any, itemData) as T;
       } else {
-        result.unshift(applyFieldsToDoc({ id: item.docId }, itemData) as T);
+        itemsToPrepend.push(applyFieldsToDoc({ id: item.docId }, itemData) as T);
       }
     }
+  }
+
+  if (itemsToPrepend.length > 0) {
+    return [...itemsToPrepend, ...result];
   }
 
   return result;
@@ -356,7 +384,7 @@ export async function queueWrite(
     await notifyQueueChange();
 
     // Attempt to sync immediately if online & authenticated (no-op if offline/guest)
-    if (auth.currentUser) {
+    if (auth.currentUser && _isDeviceOnline) {
       syncOfflineQueue(true);
     }
   } catch (e) {
@@ -447,7 +475,6 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
     // Auto-promote guest_* users to real Firebase anonymous credentials before draining
     if ((!auth.currentUser || (uid && uid.startsWith('guest_'))) && state.isConnected) {
       try {
-        const { signInAnonymously } = await import('firebase/auth');
         const cred = await signInAnonymously(auth);
         const realUid = cred.user.uid;
         const oldGuestUid = uid;
@@ -460,7 +487,6 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
           displayName: 'Guest User',
         };
         await AsyncStorage.setItem('@zentrack_optimistic_user', JSON.stringify(updatedOptimistic));
-        const { updateL1Cache } = await import('../utils/bootManifest');
         updateL1Cache('optimisticUser', cred.user);
 
         if (oldGuestUid && oldGuestUid.startsWith('guest_')) {
@@ -500,8 +526,9 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
               const newDocRef = item.docId ? doc(db, item.collection, item.docId) : doc(collection(db, item.collection));
               batch.set(newDocRef, dataToWrite, { merge: true });
             } else if ((item.operation === 'set' || item.operation === 'update') && item.docId) {
-              // Use set with merge: true so a missing doc doesn't abort the entire 400-op batch
-              batch.set(doc(db, item.collection, item.docId), dataToWrite, { merge: true });
+              // Expand dot notation so nested fields merge correctly without creating literal dot keys
+              const safeData = expandDotNotation(dataToWrite);
+              batch.set(doc(db, item.collection, item.docId), safeData, { merge: true });
             } else if (item.operation === 'delete' && item.docId) {
               batch.delete(doc(db, item.collection, item.docId));
             }
@@ -648,15 +675,6 @@ export function setupNetworkListener(): () => void {
       syncOfflineQueue(true);
     }
   });
-
-  // On boot: drain silently if already online and authenticated
-  const bootDrain = async () => {
-    const state = await NetInfo.fetch();
-    if (state.isConnected && auth.currentUser) {
-      await syncOfflineQueue(true);
-    }
-  };
-  bootDrain();
 
   return () => {
     netUnsubscribe();

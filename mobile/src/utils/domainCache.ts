@@ -18,6 +18,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearDomainHotCache } from './hotCacheStore';
+import { getBootManifestSync } from './bootManifest';
 
 // ─── Cache Keys ───────────────────────────────────────────────────────────────
 export const DOMAIN_CACHE_KEYS = {
@@ -174,7 +175,20 @@ export interface AcademicCache {
   holidays: string[];
 }
 
-export const readAcademicCache  = () => readDomainCache<AcademicCache>(ACADEMIC_KEY_MAP);
+export const readAcademicCache = async (): Promise<Partial<AcademicCache>> => {
+  const manifest = getBootManifestSync();
+  if (manifest?.attendance || manifest?.attendanceLogs) {
+    return {
+      attendance: manifest.attendance ?? [],
+      attendanceLogs: manifest.attendanceLogs ?? [],
+      assignments: manifest.assignments ?? [],
+      semesters: manifest.semesters ?? [],
+      semesterSubjects: manifest.semesterSubjects ?? [],
+      holidays: manifest.holidays ?? [],
+    };
+  }
+  return readDomainCache<AcademicCache>(ACADEMIC_KEY_MAP);
+};
 export const writeAcademicCache = (data: Partial<AcademicCache>, immediate = false) => writeDomainCache(data, ACADEMIC_KEY_MAP, immediate, 'academic');
 
 // ── Planner ───────────────────────────────────────────────────────────────────

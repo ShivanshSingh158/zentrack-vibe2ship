@@ -137,6 +137,8 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const lastSavedPlacesJsonRef = useRef<string>('');
+
   // ── Listener auto-restart on error ───────────────────────────────────────
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -240,11 +242,9 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           });
           if (!firstAuthAtRef.current) firstAuthAtRef.current = Date.now();
         } else {
-          const msSinceFirstAuth = firstAuthAtRef.current
-            ? Date.now() - firstAuthAtRef.current
-            : 0;
           AsyncStorage.getItem('@zentrack_optimistic_user').then(raw => {
-            if (!cancelled && !raw && msSinceFirstAuth > 5000) {
+            // If @zentrack_optimistic_user was removed, user explicitly signed out
+            if (!cancelled && !raw) {
               hasCachedDataRef.current = false;
               unstable_batchedUpdates(() => {
                 setUser(null);
@@ -271,22 +271,27 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Register push notifications on login — guarded by AsyncStorage cache.
+  // Register push notifications on login — guarded by AsyncStorage cache and synced UID.
   const PUSH_TOKEN_CACHE_KEY = '@zentrack_push_token_cached';
+  const PUSH_TOKEN_SYNCED_UID_KEY = '@zentrack_push_token_synced_uid';
   useEffect(() => {
     if (!user) return;
     const uid = user.uid;
     (async () => {
       try {
-        const cached = await AsyncStorage.getItem(PUSH_TOKEN_CACHE_KEY);
-        if (cached) {
-          setDoc(doc(db, COLLECTION.USER_PROFILES, uid), { pushToken: cached }, { merge: true }).catch(handleSyncError);
+        const [cached, syncedUid] = await Promise.all([
+          AsyncStorage.getItem(PUSH_TOKEN_CACHE_KEY),
+          AsyncStorage.getItem(PUSH_TOKEN_SYNCED_UID_KEY),
+        ]);
+        if (cached && syncedUid === uid) {
+          // Already synced to Firestore for this user — zero write overhead
           return;
         }
-        const token = await registerForPushNotificationsAsync();
+        const token = cached || await registerForPushNotificationsAsync();
         if (token) {
           await AsyncStorage.setItem(PUSH_TOKEN_CACHE_KEY, token);
-          setDoc(doc(db, COLLECTION.USER_PROFILES, uid), { pushToken: token }, { merge: true }).catch(handleSyncError);
+          await setDoc(doc(db, COLLECTION.USER_PROFILES, uid), { pushToken: token }, { merge: true }).catch(handleSyncError);
+          await AsyncStorage.setItem(PUSH_TOKEN_SYNCED_UID_KEY, uid);
         }
       } catch { /* ignore — non-critical */ }
     })();
@@ -385,7 +390,11 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
             }
           }
           if (Array.isArray(data?.savedPlaces)) {
-            AsyncStorage.setItem(STORAGE_KEYS.SAVED_PLACES || '@zentrack_saved_places', JSON.stringify(data.savedPlaces)).catch(() => {});
+            const rawPlaces = JSON.stringify(data.savedPlaces);
+            if (rawPlaces !== lastSavedPlacesJsonRef.current) {
+              lastSavedPlacesJsonRef.current = rawPlaces;
+              AsyncStorage.setItem(STORAGE_KEYS.SAVED_PLACES || '@zentrack_saved_places', rawPlaces).catch(() => {});
+            }
           }
         }
       },
@@ -531,9 +540,14 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     scheduleCoreCacheWrite({ habitLogs: next });
   }, [scheduleCoreCacheWrite]);
 
-  // Sync notification action events to React context in-memory immediately (0ms)
+  // Sync notification and widget action events to React context in-memory immediately (0ms)
   useEffect(() => {
     const subTask = DeviceEventEmitter.addListener('task_updated_from_notification', (event: any) => {
+      if (event?.taskId && event?.partial) {
+        optimisticUpdateTask(event.taskId, event.partial);
+      }
+    });
+    const subWidgetTask = DeviceEventEmitter.addListener('task_updated_from_widget', (event: any) => {
       if (event?.taskId && event?.partial) {
         optimisticUpdateTask(event.taskId, event.partial);
       }
@@ -548,6 +562,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     });
     return () => {
       subTask.remove();
+      subWidgetTask.remove();
       subHabit.remove();
     };
   }, [optimisticUpdateTask, optimisticAddHabitLog, optimisticUpdateHabit]);
@@ -561,7 +576,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     optimisticAddHabit, optimisticUpdateHabit, optimisticDeleteHabit,
     optimisticAddHabitLog, optimisticUpdateHabitLog, optimisticRemoveHabitLog
   }), [
-    user?.uid, tasks, activeHabits, habits, habitLogs,
+    user?.uid, user?.displayName, user?.photoURL, tasks, activeHabits, habits, habitLogs,
     loading, firestoreReady, pendingTaskCount, todayPendingTaskCount, todayHabits,
     pinnedModules, googleAccessToken, refreshCoreData,
     optimisticAddTask, optimisticUpdateTask, optimisticDeleteTask,
@@ -592,6 +607,9 @@ export async function performSignOut() {
   try {
     const currentUid = auth.currentUser?.uid;
 
+    // Sign out from auth first to disconnect active listeners cleanly
+    await auth.signOut();
+
     await AsyncStorage.multiRemove([
       '@zentrack_optimistic_user',
       '@zentrack_offline_write_queue',
@@ -599,8 +617,8 @@ export async function performSignOut() {
       'zentrack_xp_streak',
       '@zentrack_onboarding_completed',
       'zentrack_onboarded_v2',
+      '@zentrack_push_token_synced_uid',
     ]);
-    await auth.signOut();
     clearXPMemory();
     await clearCoreCache();
     await clearAllDomainCaches();

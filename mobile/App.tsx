@@ -26,7 +26,7 @@ enableFreeze(true);
 import { setupNetworkListener } from './src/services/offlineSync';
 import { setupLifecycleHygiene } from './src/services/lifecycleHygiene';
 import { registerDeferredOtaSync } from './src/services/otaUpdateService';
-import { loadBootManifest, getBootManifestSync } from './src/utils/bootManifest';
+import { loadBootManifest, getBootManifestSync, updateL1Cache } from './src/utils/bootManifest';
 import { PortalProvider } from './src/contexts/PortalContext';
 import { registerWeeklyReviewTask } from './src/services/backgroundTasks';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
@@ -154,6 +154,11 @@ export default function App() {
     };
   }, []);
 
+  // Ensure custom font is fully loaded before rendering tree to prevent layout jitter
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
+
 
 
 
@@ -192,36 +197,53 @@ export default function App() {
       const categoryId = notification.request.content.categoryIdentifier;
       const identifier = notification.request.identifier || '';
 
-      // Safely extract IDs even when taskId / habitId / subjectId contains underscores
+      // Safely extract IDs even when taskId / habitId / subjectId contains underscores.
       // Formats created by notifications.ts:
-      //   task_${taskId}_${unixSec}  OR  task_${taskId}_snooze  OR  task_${taskId}
-      //   habit_${habitId}_${unixSec}
-      //   class_${subjectId}_${sessionIdx}_${unixSec}
-      const parseEntityIdFromIdentifier = (idStr: string, prefix: string, trailingSegments = 1): string | undefined => {
+      //   Modern double-underscore: task__${taskId}__${subType}__${fireDateKey}
+      //   Legacy / snooze: task_${taskId}_exact_${date} OR task_${taskId}_snooze OR task_${taskId}
+      const parseEntityIdFromIdentifier = (idStr: string, prefix: string): string | undefined => {
+        if (!idStr) return undefined;
+        if (idStr.includes('__')) {
+          const parts = idStr.split('__');
+          const cleanPrefix = prefix.replace(/_+$/, '');
+          if (parts[0] === cleanPrefix && parts[1]) {
+            return parts[1];
+          }
+        }
         if (!idStr.startsWith(prefix)) return undefined;
         const rest = idStr.slice(prefix.length);
-        const parts = rest.split('_');
-        if (parts.length <= trailingSegments) return rest || undefined;
-        const lastPart = parts[parts.length - 1];
-        const isTimestampOrSnooze = /^\d{9,}$/.test(lastPart) || lastPart === 'snooze';
-        if (!isTimestampOrSnooze) return rest;
-        return parts.slice(0, parts.length - trailingSegments).join('_') || undefined;
+        if (rest.endsWith('_snooze')) {
+          return rest.slice(0, -'_snooze'.length) || undefined;
+        }
+        const dateMatch = rest.match(/^(.*)_(?:buf|5m|exact|risk|daily)_\d{4}-\d{2}-\d{2}$/);
+        if (dateMatch) {
+          return dateMatch[1] || undefined;
+        }
+        const classMatch = rest.match(/^(.*)_\d+_(?:class|class_pre|class_log|lab_mid|lab_log)_\d{4}-\d{2}-\d{2}_\d+_\d+$/);
+        if (classMatch) {
+          return classMatch[1] || undefined;
+        }
+        const tsMatch = rest.match(/^(.*)_\d{9,}$/);
+        if (tsMatch) {
+          return tsMatch[1] || undefined;
+        }
+        return rest || undefined;
       };
 
       const parsedTaskId = (data?.taskId as string | undefined) ||
-        parseEntityIdFromIdentifier(identifier, 'task_', 1);
+        parseEntityIdFromIdentifier(identifier, 'task_');
       const parsedHabitId = (data?.habitId as string | undefined) ||
-        parseEntityIdFromIdentifier(identifier, 'habit_', 1);
+        parseEntityIdFromIdentifier(identifier, 'habit_');
       const parsedSubjectId = (data?.subjectId as string | undefined) ||
-        parseEntityIdFromIdentifier(identifier, 'class_', 2) ||
-        parseEntityIdFromIdentifier(identifier, 'lab_', 2);
+        parseEntityIdFromIdentifier(identifier, 'class_') ||
+        parseEntityIdFromIdentifier(identifier, 'lab_');
 
       const notifType = (data?.type as string | undefined) ||
         (identifier.startsWith('water_') ? 'water_reminder' :
          identifier.startsWith('brief_') ? 'morning_brief' :
-         identifier.startsWith('task_') ? 'task_alarm' :
-         identifier.startsWith('habit_') ? 'habit_reminder' :
-         identifier.startsWith('class_') ? 'class_reminder' :
+         (identifier.startsWith('task_') || identifier.startsWith('task__')) ? 'task_alarm' :
+         (identifier.startsWith('habit_') || identifier.startsWith('habit__')) ? 'habit_reminder' :
+         (identifier.startsWith('class_') || identifier.startsWith('class__')) ? 'class_reminder' :
          categoryId);
 
       const resolveNotificationUid = async (): Promise<string | undefined> => {
@@ -281,19 +303,19 @@ export default function App() {
               // Already done in local memory — silent no-op
               return;
             }
-            const todayLocal = formatLocalDateStr();
+            const nowIso = new Date().toISOString();
             const taskRef = doc(db, COLLECTION.TASKS, taskId);
             await safeWrite(
               (payload) => updateDoc(taskRef, payload),
               COLLECTION.TASKS,
               'update',
-              { status: 'completed', completedAt: todayLocal },
+              { status: 'completed', completedAt: nowIso },
               taskId,
             );
             // Sync React CoreDataContext in-memory state immediately (0ms)
             DeviceEventEmitter.emit('task_updated_from_notification', {
               taskId,
-              partial: { status: 'completed', completedAt: todayLocal },
+              partial: { status: 'completed', completedAt: nowIso },
             });
             await awardXP('TASK_COMPLETE').catch(() => {});
             success = true;
@@ -432,6 +454,9 @@ export default function App() {
               log: logPayload,
               habitUpdates: { streak: newStreak, longestStreak: updatedLongest },
             });
+            if (manifest?.habitLogs) {
+              updateL1Cache('habitLogs', [...manifest.habitLogs, logPayload as any]);
+            }
 
             if (newStreak === 7 || newStreak % 7 === 0) {
               await awardXP('HABIT_STREAK_7').catch(() => {});
@@ -476,6 +501,27 @@ export default function App() {
         return;
       }
 
+      const parseSessionIdx = (idStr: string, dataObj?: any): number => {
+        if (typeof dataObj?.sessionIdx === 'number') return dataObj.sessionIdx;
+        if (!idStr) return 0;
+        if (idStr.includes('__')) {
+          const parts = idStr.split('__');
+          const idxNum = parseInt(parts[2], 10);
+          return isNaN(idxNum) ? 0 : idxNum;
+        }
+        const classMatch = idStr.match(/^class_.*_(\d+)_(?:class|class_pre|class_log|lab_mid|lab_log)_/);
+        if (classMatch) {
+          const idxNum = parseInt(classMatch[1], 10);
+          return isNaN(idxNum) ? 0 : idxNum;
+        }
+        const idParts = idStr.split('_');
+        if (idParts.length >= 4) {
+          const num = parseInt(idParts[idParts.length - 2], 10);
+          if (!isNaN(num) && num < 24) return num;
+        }
+        return 0;
+      };
+
       // ── ACTION: "Present" button on class_reminder ──────────────────────────
       // IDEMPOTENCY: Uses the same deterministic doc ID as useAttendanceFirestore.
       // getDoc first → if already logged as 'attended': no-op.
@@ -487,11 +533,7 @@ export default function App() {
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
         const logDate     = (data?.date || formatLocalDateStr()) as string;
-        const idParts     = identifier.split('_');
-        const rawIdx      = typeof data?.sessionIdx === 'number'
-          ? data.sessionIdx
-          : (idParts.length >= 4 ? parseInt(idParts[idParts.length - 2], 10) : 0);
-        const safeSessionIdx = isNaN(rawIdx) ? 0 : rawIdx;
+        const safeSessionIdx = parseSessionIdx(identifier, data);
         const uid         = await resolveNotificationUid();
         let success = false;
         if (subjectId && uid) {
@@ -589,11 +631,7 @@ export default function App() {
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
         const logDate     = (data?.date || formatLocalDateStr()) as string;
-        const idParts     = identifier.split('_');
-        const rawIdx      = typeof data?.sessionIdx === 'number'
-          ? data.sessionIdx
-          : (idParts.length >= 4 ? parseInt(idParts[idParts.length - 2], 10) : 0);
-        const safeSessionIdx = isNaN(rawIdx) ? 0 : rawIdx;
+        const safeSessionIdx = parseSessionIdx(identifier, data);
         const uid         = await resolveNotificationUid();
         let success = false;
         if (subjectId && uid) {
@@ -691,11 +729,7 @@ export default function App() {
         const subjectName = (data?.subject || 'Class') as string;
         const isLab       = !!data?.isLab;
         const logDate     = (data?.date || formatLocalDateStr()) as string;
-        const idParts     = identifier.split('_');
-        const rawIdx      = typeof data?.sessionIdx === 'number'
-          ? data.sessionIdx
-          : (idParts.length >= 4 ? parseInt(idParts[idParts.length - 2], 10) : 0);
-        const safeSessionIdx = isNaN(rawIdx) ? 0 : rawIdx;
+        const safeSessionIdx = parseSessionIdx(identifier, data);
         const uid         = await resolveNotificationUid();
         let success = false;
         if (subjectId && uid) {
@@ -761,12 +795,17 @@ export default function App() {
         return;
       }
 
-
-      
-      
-      
       // ── BODY TAP: Task reminder ("taskId" in data, or type = overdue_nudge) ─
-      if (data?.taskId || notifType === 'overdue_nudge' || notifType === 'task_reminder' || categoryId === 'task_reminder') {
+      if (
+        data?.taskId ||
+        parsedTaskId ||
+        identifier.startsWith('task_') ||
+        identifier.startsWith('task__') ||
+        notifType === 'overdue_nudge' ||
+        notifType === 'task_reminder' ||
+        notifType === 'task_alarm' ||
+        categoryId === 'task_reminder'
+      ) {
         nav('Tasks');
         return;
       }
