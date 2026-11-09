@@ -52,13 +52,13 @@ import LandingScreen from '../screens/LandingScreen';
 import AuthScreen from '../screens/AuthScreen';
 import OnboardingScreen, { ONBOARDING_KEY } from '../screens/OnboardingScreen';
 import DashboardScreen from '../screens/DashboardScreen';
+import TasksScreen from '../screens/TasksScreen';
+import CalendarScreen from '../screens/CalendarScreen';
+import AttendanceScreen from '../screens/AttendanceScreen';
+import MoreScreen from '../screens/MoreScreen';
+import NotesScreen from '../screens/NotesScreen';
 
-// --- Lazy Loaded Screens with Pixel-Matched Shimmer Fallbacks ------------------
-const TasksScreen = cacheAwareLazy('Tasks', () => import('../screens/TasksScreen'), TasksSkeleton);
-const CalendarScreen = cacheAwareLazy('Calendar', () => import('../screens/CalendarScreen'));
-const AttendanceScreen = cacheAwareLazy('Attendance', () => import('../screens/AttendanceScreen'), AttendanceSkeleton);
-const MoreScreen = cacheAwareLazy('More', () => import('../screens/MoreScreen'));
-const NotesScreen = cacheAwareLazy('Notes', () => import('../screens/NotesScreen'));
+// --- Secondary Screens (Lazy Loaded) ------------------
 const GradesScreen = cacheAwareLazy('Grades', () => import('../screens/GradesScreen'));
 const LearningScreen = cacheAwareLazy('Learning', () => import('../screens/LearningScreen'));
 const SettingsScreen = cacheAwareLazy('Settings', () => import('../screens/SettingsScreen'));

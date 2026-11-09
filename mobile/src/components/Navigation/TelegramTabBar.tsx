@@ -86,20 +86,12 @@ const TabItem = React.memo(function TabItem({
     }
 
     if (isFocused) {
-      // Overshoot → settle: 1.0 → 1.18 (80ms) → spring to 1.1
-      scale.value = withSequence(
-        withTiming(1.18, { duration: 80, easing: Easing.out(Easing.quad) }),
-        withSpring(1.1, { damping: 14, stiffness: 320, mass: 0.6 }),
-      );
-      // Micro pop upward then spring back
-      iconTransY.value = withSequence(
-        withTiming(-4, { duration: 80, easing: Easing.out(Easing.quad) }),
-        withSpring(0, { damping: 16, stiffness: 280, mass: 0.5 }),
-      );
-      labelOpacity.value = withTiming(1, { duration: 150, easing: Easing.out(Easing.quad) });
+      scale.value = withTiming(1.08, { duration: 120, easing: Easing.out(Easing.quad) });
+      iconTransY.value = withTiming(-2, { duration: 120, easing: Easing.out(Easing.quad) });
+      labelOpacity.value = withTiming(1, { duration: 120, easing: Easing.out(Easing.quad) });
     } else {
-      scale.value        = withSpring(1, { damping: 18, stiffness: 350, mass: 0.5 });
-      iconTransY.value   = withTiming(0, { duration: 120, easing: Easing.out(Easing.quad) });
+      scale.value = withTiming(1, { duration: 120, easing: Easing.out(Easing.quad) });
+      iconTransY.value = withTiming(0, { duration: 120, easing: Easing.out(Easing.quad) });
       labelOpacity.value = withTiming(0.78, { duration: 120, easing: Easing.out(Easing.quad) });
     }
   }, [isFocused]);

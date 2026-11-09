@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Image, Pressable, StyleSheet, TouchableOpacity, BackHandler, InteractionManager } from 'react-native';
 import Animated, {
+  FadeIn,
   FadeInDown,
   useSharedValue,
   useAnimatedStyle,
@@ -402,16 +403,9 @@ export default function DashboardScreen() {
             // One-time entrance animation: only animate on the very first mount.
             // Prevents FadeInDown re-firing every time a Firestore update causes
             // a parent re-render (tasks, waterLogs, habitLogs, etc.).
-            // Stagger: each visible widget enters 55ms after the previous one.
-            // springify() adds Apple-grade spring physics to the Reanimated
-            // entering animation instead of a flat linear fade.
+            // Crisp, instantaneous entrance (120ms fade) on Frame 0
             const entering = !hasAnimatedRef.current
-              ? FadeInDown
-                  .delay(layoutIndex * 55)
-                  .duration(400)
-                  .springify()
-                  .damping(22)
-                  .stiffness(200)
+              ? FadeIn.duration(120)
               : undefined;
 
             if (layoutItem.id === 'quote') {

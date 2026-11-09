@@ -175,10 +175,10 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
     if (currentStreak > 0) {
       streakPulse.value = withRepeat(
         withSequence(
-          withTiming(1.14, { duration: 850, easing: Easing.inOut(Easing.sin) }),
-          withTiming(1.0,  { duration: 850, easing: Easing.inOut(Easing.sin) }),
+          withTiming(1.12, { duration: 400, easing: Easing.inOut(Easing.sin) }),
+          withTiming(1.0,  { duration: 400, easing: Easing.inOut(Easing.sin) }),
         ),
-        -1,   // infinite
+        2, // Pulse twice on mount, then idle to keep UI thread at 0%
         false,
       );
     } else {
