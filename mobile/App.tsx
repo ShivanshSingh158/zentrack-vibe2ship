@@ -30,7 +30,6 @@ import { loadBootManifest, getBootManifestSync } from './src/utils/bootManifest'
 import { PortalProvider } from './src/contexts/PortalContext';
 import { unregisterBackgroundProactiveAgent } from './src/services/backgroundProactiveAgent';
 import { registerWeeklyReviewTask } from './src/services/backgroundTasks';
-import { registerStepSyncTask } from './src/services/stepCounterService';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { MobileDataProvider } from './src/contexts/MobileDataContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
@@ -143,7 +142,6 @@ export default function App() {
         registerBackgroundNotificationFetch();
         unregisterBackgroundProactiveAgent().catch(() => {});
         registerWeeklyReviewTask();
-        registerStepSyncTask().catch(() => {});
         // Run attendance duplicate-log repair once per install session.
         // Uses its own AsyncStorage flag — no-op if already done.
         const uid = auth.currentUser?.uid;

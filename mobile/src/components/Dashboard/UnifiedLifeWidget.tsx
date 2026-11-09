@@ -59,8 +59,6 @@ interface UnifiedLifeWidgetProps {
   habitsTotal: number;
   waterCompleted: number;
   waterTotal: number;
-  steps?: number;        // kept for prop-compat (ignored — attendance shown instead)
-  stepGoal?: number;     // kept for prop-compat (ignored)
   classesAttendedToday?: number;
   classesTotalToday?: number;
   overallAttendancePct?: number;
@@ -78,7 +76,6 @@ interface UnifiedLifeWidgetProps {
   onPressStreak: () => void;
   onPressHabits: () => void;
   onPressWater: () => void;
-  onPressSteps?: () => void;   // kept for prop-compat (not used — attendance shown instead)
   onPressAttendance?: () => void;
   onPressXP?: () => void;
   onPressRing?: () => void;
@@ -110,8 +107,6 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
   habitsTotal,
   waterCompleted,
   waterTotal,
-  steps = 0,
-  stepGoal = 10000,
   classesAttendedToday = 0,
   classesTotalToday = 0,
   overallAttendancePct = 0,
@@ -129,7 +124,6 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
   onPressStreak,
   onPressHabits,
   onPressWater,
-  onPressSteps,
   onPressAttendance,
   onPressXP,
   onPressRing,
