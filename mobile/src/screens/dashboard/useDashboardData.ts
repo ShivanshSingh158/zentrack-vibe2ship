@@ -18,7 +18,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
 import { usePlannerData } from '../../contexts/domains/PlannerContext';
-import { useCreativeData } from '../../contexts/domains/CreativeContext';
 import { BRUTAL_QUOTES, getDailyQuote, QuotePersonality } from '../../data/brutalQuotes';
 import { LayoutItem } from '../../components/Dashboard/DashboardLayoutSheet';
 import { NextClassData } from '../../components/Dashboard/UnifiedLifeWidget';
@@ -54,20 +53,6 @@ export function useDashboardData() {
   const { user, tasks, tasksReady, optimisticUpdateTask } = useCoreData();
   const { attendance, attendanceLogs, assignments, holidays, optimisticUpdateAssignment } = useAcademicData();
   const { customEvents } = usePlannerData();
-  const { storageNodes, ensureSubscribed: ensureCreativeSubscribed } = useCreativeData();
-
-  useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      ensureCreativeSubscribed?.();
-    });
-    return () => handle.cancel();
-  }, [ensureCreativeSubscribed]);
-
-  const recentDocument = useMemo(() => {
-    const docs = (storageNodes || []).filter(n => n.type !== 'folder');
-    if (docs.length === 0) return null;
-    return [...docs].sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0))[0];
-  }, [storageNodes]);
 
   // ── UI State (Seeded synchronously from L1 Cache for 0.00ms cold paint) ──────
   const initialManifest = getBootManifestSync();
@@ -359,7 +344,7 @@ export function useDashboardData() {
     attendance, attendanceLogs, assignments, holidays, customEvents,
     // Derived
     todayStr, timeGreeting, avatarLetter, hour,
-    nowDate, nextClass, appStreak, recentDocument,
+    nowDate, nextClass, appStreak,
     classesAttendedToday, classesTotalToday, overallAttendancePct,
     // State
     tasksReady, optimisticUpdateTask, optimisticUpdateAssignment,
