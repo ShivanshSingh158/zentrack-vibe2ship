@@ -46,13 +46,33 @@ export function isOnlineSync(): boolean {
 
 // Synchronous In-Memory Write-Ahead Log (WAL) to prevent snapshot rollback
 let _memoryQueue: OfflineQueueItem[] | null = null;
+const _collectionIndex = new Map<string, OfflineQueueItem[]>();
+
+function updateMemoryQueue(queue: OfflineQueueItem[]): void {
+  _memoryQueue = queue;
+  _collectionIndex.clear();
+  for (let i = 0; i < queue.length; i++) {
+    const item = queue[i];
+    let list = _collectionIndex.get(item.collection);
+    if (!list) {
+      list = [];
+      _collectionIndex.set(item.collection, list);
+    }
+    list.push(item);
+  }
+}
+
+export function setMemoryQueueSync(queue: OfflineQueueItem[]): void {
+  updateMemoryQueue(queue);
+}
 
 export async function initMemoryQueue(): Promise<OfflineQueueItem[]> {
   try {
     const raw = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
-    _memoryQueue = raw ? JSON.parse(raw) : [];
+    const queue = raw ? JSON.parse(raw) : [];
+    updateMemoryQueue(queue);
   } catch {
-    _memoryQueue = [];
+    updateMemoryQueue([]);
   }
   return _memoryQueue ?? [];
 }
@@ -70,25 +90,14 @@ export function getMemoryQueueSync(): OfflineQueueItem[] {
  * - 'set' / 'add': replaces or appends the item with local optimistic data
  * - 'update': merges local partial fields into the server doc
  * - 'delete': filters out the item so deleted docs never resurrect
+ * Uses secondary collection index for O(1) matching with zero full-queue scans.
  */
 export function applyPendingQueueOverlay<T extends { id?: string }>(
   collectionName: string,
   serverDocs: T[]
 ): T[] {
-  const queue = _memoryQueue;
-  if (!queue || queue.length === 0) return serverDocs;
-
-  let hasCollectionItems = false;
-  for (let i = 0; i < queue.length; i++) {
-    if (queue[i].collection === collectionName) {
-      hasCollectionItems = true;
-      break;
-    }
-  }
-  if (!hasCollectionItems) return serverDocs;
-
-  const pendingItems = queue.filter(q => q.collection === collectionName);
-  if (pendingItems.length === 0) return serverDocs;
+  const pendingItems = _collectionIndex.get(collectionName);
+  if (!pendingItems || pendingItems.length === 0) return serverDocs;
 
   const result = [...serverDocs];
 
@@ -196,7 +205,7 @@ export async function getQueueCount(): Promise<number> {
     const raw = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
     if (!raw) return 0;
     const queue: OfflineQueueItem[] = JSON.parse(raw);
-    _memoryQueue = queue;
+    updateMemoryQueue(queue);
     return queue.length;
   } catch {
     return 0;
@@ -253,7 +262,7 @@ export async function queueWrite(
         if (prev.operation === 'set' || prev.operation === 'add') {
           // Document was created offline and never synced; delete simply cancels it!
           queue.splice(existingIndex, 1);
-          _memoryQueue = queue;
+          updateMemoryQueue(queue);
           await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
           console.log(`[OfflineSync] Coalesced and cancelled offline creation for ${collectionName}/${docId}. Queue size: ${queue.length}`);
           await notifyQueueChange();
@@ -268,7 +277,7 @@ export async function queueWrite(
             clientUpdatedAt: now,
             retryCount: 0,
           };
-          _memoryQueue = queue;
+          updateMemoryQueue(queue);
           await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
           console.log(`[OfflineSync] Coalesced update -> delete for ${collectionName}/${docId}. Queue size: ${queue.length}`);
           await notifyQueueChange();
@@ -319,7 +328,7 @@ export async function queueWrite(
           retryCount: 0,
         };
 
-        _memoryQueue = queue;
+        updateMemoryQueue(queue);
         await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
         console.log(`[OfflineSync] Coalesced update for ${collectionName}/${docId}. Queue size: ${queue.length}`);
         await notifyQueueChange();
@@ -339,7 +348,7 @@ export async function queueWrite(
       retryCount: 0,
     });
 
-    _memoryQueue = queue;
+    updateMemoryQueue(queue);
     await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
     console.log(`[OfflineSync] Queued ${operation} in ${collectionName}. Queue size: ${queue.length}`);
 
@@ -373,7 +382,7 @@ export async function removeQueuedFallback(
 
   if (idx !== -1) {
     queue.splice(idx, 1);
-    _memoryQueue = queue;
+    updateMemoryQueue(queue);
     if (queue.length > 0) {
       await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
     } else {
@@ -507,7 +516,7 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
         const latestQueue: OfflineQueueItem[] = latestRaw ? JSON.parse(latestRaw) : [];
         const remaining = latestQueue.filter(q => !syncedItemSignatures.has(`${q.id}_${q.clientUpdatedAt}`));
 
-        _memoryQueue = remaining;
+        updateMemoryQueue(remaining);
         if (remaining.length > 0) {
           await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(remaining));
         } else {
@@ -594,7 +603,7 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
       ...latestQueue.filter(q => !seqSyncedSignatures.has(`${q.id}_${q.clientUpdatedAt}`) && !failedQueue.some(f => f.id === q.id))
     ];
 
-    _memoryQueue = remaining;
+    updateMemoryQueue(remaining);
     if (remaining.length > 0) {
       await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(remaining));
     } else {

@@ -20,7 +20,7 @@ import {
   HabitLog, Habit, Assignment, WaterLog, AttendanceLog, SleepLog,
 } from '../contexts/MobileDataContext';
 import { COLLECTION } from '../config/constants';
-import { formatLocalDateStr } from '../utils/dateUtils';
+import { formatLocalDateStr } from '../utils/dateFormatters';
 
 import { auth } from './firebase';
 import { calculateBunkMath } from '../utils/academicMath';

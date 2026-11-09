@@ -21,7 +21,7 @@ import { COLLECTION } from '../config/constants';
 import { doc, updateDoc, collection, addDoc, writeBatch, setDoc, increment } from 'firebase/firestore';
 import { getScheduledAttendanceLogDocId } from '../screens/attendance/attendanceConstants';
 import { readAcademicCache, writeAcademicCache, readWellnessCache, writeWellnessCache } from '../utils/domainCache';
-import { formatLocalDateStr } from '../utils/dateUtils';
+import { formatLocalDateStr } from '../utils/dateFormatters';
 import { readCoreCacheMulti, writeCoreCacheMulti } from '../utils/coreCache';
 import { updateL1Cache, getBootManifestSync } from '../utils/bootManifest';
 import { awardXP } from './xpSystem';
@@ -29,24 +29,30 @@ import { cancelClassNotificationsImmediately, clearScheduleCache } from './notif
 
 const WIDGET_STORAGE_KEY = '@zentrack_widget_agenda_data';
 
+const _timeMinsCache = new Map<string, number>();
 function parseTimeToMins(tStr?: string): number {
   if (!tStr) return 9999;
+  const cached = _timeMinsCache.get(tStr);
+  if (cached !== undefined) return cached;
+
   const startStr = tStr.split('-')[0].trim().toLowerCase();
   let h = 0;
   let m = 0;
   const isPM = startStr.includes('pm');
   const isAM = startStr.includes('am');
   const cleanStr = startStr.replace(/[a-z\s]/g, '');
-  const parts = cleanStr.split(':');
-  if (parts.length >= 2) {
-    h = parseInt(parts[0], 10) || 0;
-    m = parseInt(parts[1], 10) || 0;
+  const colonIdx = cleanStr.indexOf(':');
+  if (colonIdx !== -1) {
+    h = parseInt(cleanStr.slice(0, colonIdx), 10) || 0;
+    m = parseInt(cleanStr.slice(colonIdx + 1), 10) || 0;
   } else {
-    h = parseInt(parts[0], 10) || 0;
+    h = parseInt(cleanStr, 10) || 0;
   }
   if (isPM && h < 12) h += 12;
   if (isAM && h === 12) h = 0;
-  return h * 60 + m;
+  const mins = h * 60 + m;
+  _timeMinsCache.set(tStr, mins);
+  return mins;
 }
 
 /**
@@ -62,9 +68,14 @@ function parseTimeToMins(tStr?: string): number {
  *   "12:00"     → "12:00 PM"
  *   ""          → ""           (empty — pass through for "Today", "Overdue" labels)
  */
+const _formattedTimeCache = new Map<string, string>();
 function formatWidgetTime(raw?: string): string {
   if (!raw) return '';
+  const cached = _formattedTimeCache.get(raw);
+  if (cached !== undefined) return cached;
+
   const trimmed = raw.trim();
+  let result = '';
   const rangeMatch = trimmed.search(/[-–—•]| to /i);
   if (rangeMatch !== -1) {
     const rawParts = trimmed.split(/[-–—•]| to /i).map(s => s.trim()).filter(Boolean);
@@ -75,11 +86,14 @@ function formatWidgetTime(raw?: string): string {
         deduped.push(p);
       }
     }
-    if (deduped.length === 1) return deduped[0];
-    if (deduped.length > 2) return `${deduped[0]} - ${deduped[deduped.length - 1]}`;
-    return `${deduped[0]} - ${deduped[1]}`;
+    if (deduped.length === 1) result = deduped[0];
+    else if (deduped.length > 2) result = `${deduped[0]} - ${deduped[deduped.length - 1]}`;
+    else result = `${deduped[0]} - ${deduped[1]}`;
+  } else {
+    result = formatSingleWidgetTime(trimmed);
   }
-  return formatSingleWidgetTime(trimmed);
+  _formattedTimeCache.set(raw, result);
+  return result;
 }
 
 function formatSingleWidgetTime(trimmed: string): string {
@@ -441,7 +455,8 @@ export async function handleWidgetClickAction(
   payload: WidgetClickActionPayload,
   taskProps?: any
 ): Promise<void> {
-  const currentData = await getCachedWidgetData();
+  const rawData = await getCachedWidgetData();
+  const currentData: TodayAgendaWidgetData | null = rawData ? JSON.parse(JSON.stringify(rawData)) : null;
   const user = await resolveUser();
   const dateStr = (payload.dateStr && payload.dateStr.trim().length >= 10)
     ? payload.dateStr.trim().slice(0, 10)

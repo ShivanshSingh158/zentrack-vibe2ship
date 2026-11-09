@@ -12,7 +12,7 @@ import {
   buildTodayAgendaData,
   saveCachedWidgetData,
 } from '../services/widgetSyncService';
-import { formatLocalDateStr } from '../utils/dateUtils';
+import { formatLocalDateStr } from '../utils/dateFormatters';
 import { readCoreCacheMulti } from '../utils/coreCache';
 import { readAcademicCache } from '../utils/domainCache';
 
@@ -43,6 +43,24 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
             });
             await saveCachedWidgetData(data);
           } catch {}
+        }
+
+        // Graceful fallback view if cache and reconstruct both returned null
+        if (!data) {
+          data = {
+            dateStr: todayStr,
+            displayDate: 'Today',
+            tasks: [],
+            items: [],
+            totalTasks: 0,
+            doneTasks: 0,
+            classesToday: 0,
+            classesAttended: 0,
+            overallAttendancePct: 0,
+            zenScore: 85,
+            streak: 0,
+            placeholderNotice: 'Tap to open ZenTrack',
+          } as any;
         }
 
         props.renderWidget(

@@ -4,6 +4,7 @@ import { User } from 'firebase/auth';
 import type { Task, Habit, HabitLog } from '../contexts/MobileDataContext';
 import { LayoutItem } from '../components/Dashboard/DashboardLayoutSheet';
 import { seedAvatarMemoryCache } from '../services/userAvatarService';
+import { setMemoryQueueSync } from '../services/offlineSync';
 
 export const BOOT_KEYS = {
   NAV_ROUTE:          '@zentrack_last_route',
@@ -38,6 +39,7 @@ export const BOOT_KEYS = {
   CONTENT_LOGS:       '@zentrack_cache_content_logs',
   NOTIF_FINGERPRINT:  '@zentrack_notif_fingerprint',
   AVATAR_DISK_PATH:   '@zentrack_avatar_disk_path',
+  OFFLINE_QUEUE:      '@zentrack_offline_write_queue',
 } as const;
 
 // Tier-0 keys required for Frame-0 Auth, Theme, Navigation & Dashboard paint (<5ms)
@@ -62,6 +64,7 @@ const TIER_0_KEYS = [
   BOOT_KEYS.WATER_LOGS,
   BOOT_KEYS.NOTIF_FINGERPRINT,
   BOOT_KEYS.AVATAR_DISK_PATH,
+  BOOT_KEYS.OFFLINE_QUEUE,
 ] as const;
 
 // Tier-1 heavy secondary domain caches hydrated after Frame 0 settles
@@ -200,6 +203,16 @@ export async function loadBootManifest(): Promise<BootManifest> {
       const avatarDiskPath = map.get(BOOT_KEYS.AVATAR_DISK_PATH) || null;
       if (optimisticUser?.uid && avatarDiskPath) {
         seedAvatarMemoryCache(optimisticUser.uid, avatarDiskPath);
+      }
+
+      const offlineQueueRaw = map.get(BOOT_KEYS.OFFLINE_QUEUE);
+      if (offlineQueueRaw) {
+        try {
+          const q = JSON.parse(offlineQueueRaw);
+          if (Array.isArray(q)) {
+            setMemoryQueueSync(q);
+          }
+        } catch {}
       }
 
       const manifest: BootManifest = {

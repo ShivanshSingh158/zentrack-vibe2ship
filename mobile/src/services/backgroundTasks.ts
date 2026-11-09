@@ -1,9 +1,9 @@
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
-import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, setDoc, limit } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { COLLECTION } from '../config/constants';
-import { formatLocalDateStr } from '../utils/dateUtils';
+import { formatLocalDateStr } from '../utils/dateFormatters';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const WEEKLY_REVIEW_TASK = 'BACKGROUND_WEEKLY_REVIEW';
@@ -57,24 +57,32 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
       getDocs(query(
         collection(db, COLLECTION.TASKS),
         where('userId', '==', userId),
-        where('date', '>=', weekStartStr)
-      )).catch(() => getDocs(query(collection(db, COLLECTION.TASKS), where('userId', '==', userId)))),
+        where('date', '>=', weekStartStr),
+        where('date', '<=', weekEndStr)
+      )).catch(() => getDocs(query(collection(db, COLLECTION.TASKS), where('userId', '==', userId), limit(150)))),
       getDocs(query(
         collection(db, COLLECTION.HABIT_LOGS),
         where('userId', '==', userId),
-        where('date', '>=', weekStartStr)
-      )),
+        where('date', '>=', weekStartStr),
+        where('date', '<=', weekEndStr)
+      )).catch(() => getDocs(query(collection(db, COLLECTION.HABIT_LOGS), where('userId', '==', userId), limit(150)))),
       getDocs(query(
         collection(db, COLLECTION.ASSIGNMENTS),
         where('userId', '==', userId),
-        where('dueDate', '>=', weekStartStr)
-      )).catch(() => getDocs(query(collection(db, COLLECTION.ASSIGNMENTS), where('userId', '==', userId)))),
+        where('dueDate', '>=', weekStartStr),
+        where('dueDate', '<=', weekEndStr)
+      )).catch(() => getDocs(query(collection(db, COLLECTION.ASSIGNMENTS), where('userId', '==', userId), limit(50)))),
     ]);
 
     let completedTasks = 0;
     let totalTasks = tasksSnap.docs.length;
     tasksSnap.forEach(d => {
-      if (d.data().status === 'completed') completedTasks++;
+      const data = d.data();
+      const isCompleted = data.status === 'completed';
+      const completedAtStr = typeof data.completedAt === 'string' ? data.completedAt.slice(0, 10) : '';
+      if (isCompleted || (completedAtStr >= weekStartStr && completedAtStr <= weekEndStr)) {
+        completedTasks++;
+      }
     });
 
     const habitsLogged = habitsSnap.docs.length;

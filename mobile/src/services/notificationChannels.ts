@@ -27,6 +27,11 @@ Notifications.setNotificationHandler({
 // ── Permission setup ──────────────────────────────────────────────────────────
 
 let _channelsCreated = false;
+let _cachedSavedSound: string | null = null;
+
+export function setCachedNotificationSound(sound: string | null): void {
+  _cachedSavedSound = sound;
+}
 
 export async function ensureNotificationChannels(): Promise<void> {
   if (Platform.OS !== 'android' || _channelsCreated) return;
@@ -124,7 +129,11 @@ export async function ensureNotificationChannels(): Promise<void> {
       bypassDnd: true,
     });
 
-    const savedSound = await AsyncStorage.getItem('zentrack_notif_notifs_sound').catch(() => 'default');
+    let savedSound = _cachedSavedSound;
+    if (savedSound === null) {
+      savedSound = await AsyncStorage.getItem('zentrack_notif_notifs_sound').catch(() => 'default');
+      _cachedSavedSound = savedSound || 'default';
+    }
     if (savedSound && savedSound !== 'default') {
       const dynamicRemindersId = getSoundChannelId('reminders', savedSound);
       const dynamicTaskAlarmId = getSoundChannelId('task_alarm', savedSound);

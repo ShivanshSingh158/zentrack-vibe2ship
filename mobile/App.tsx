@@ -28,7 +28,6 @@ import { setupLifecycleHygiene } from './src/services/lifecycleHygiene';
 import { registerDeferredOtaSync } from './src/services/otaUpdateService';
 import { loadBootManifest, getBootManifestSync } from './src/utils/bootManifest';
 import { PortalProvider } from './src/contexts/PortalContext';
-import { unregisterBackgroundProactiveAgent } from './src/services/backgroundProactiveAgent';
 import { registerWeeklyReviewTask } from './src/services/backgroundTasks';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { MobileDataProvider } from './src/contexts/MobileDataContext';
@@ -140,7 +139,6 @@ export default function App() {
         // PERF FIX (1.1): Move notification permission & channel checks here so Frame 0 has 0 native bridge traffic
         requestNotificationPermissions().catch(console.warn);
         registerBackgroundNotificationFetch();
-        unregisterBackgroundProactiveAgent().catch(() => {});
         registerWeeklyReviewTask();
         // Run attendance duplicate-log repair once per install session.
         // Uses its own AsyncStorage flag — no-op if already done.
