@@ -113,6 +113,9 @@ export function AcademicProvider({
   const attendanceLogsIndexFailedRef = useRef(false);
 
   const scheduleListenerRestart = useCallback((context: string) => (err: Error) => {
+    if (context === 'attendance') {
+      setAttendanceSnapshotFired(true);
+    }
     const isBuilding = err.message.includes('currently building');
     const isIndexErr = err.message.includes('index') || err.message.includes('precondition');
     if (context === 'attendanceLogs' && isIndexErr) {
@@ -134,6 +137,14 @@ export function AcademicProvider({
     }, delay);
   }, []);
 
+  // Failsafe timer: after 1000ms, mark attendance ready so the UI is NEVER frozen on the skeleton loader
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setAttendanceSnapshotFired(true);
+    }, 1000);
+    return () => clearTimeout(t);
+  }, []);
+
 
   // ── Offline-first boot: seed ALL academic collections using functional updaters ──
   useEffect(() => {
@@ -145,6 +156,7 @@ export function AcademicProvider({
         if ((manifest.attendance?.length ?? 0) > 0) {
           setAttendance(prev => prev.length === 0 ? manifest.attendance : prev);
           hasCachedDataRef.current = true;
+          setAttendanceSnapshotFired(true);
         }
         if ((manifest.attendanceLogs?.length ?? 0) > 0) {
           setAttendanceLogs(prev => prev.length === 0 ? manifest.attendanceLogs : prev);
@@ -172,6 +184,11 @@ export function AcademicProvider({
       applyManifest(manifest);
     }).catch(() => {});
 
+    readAcademicCache().then(cached => {
+      if (isCancelled || !cached) return;
+      applyManifest(cached);
+    }).catch(() => {});
+
     const tier1Sub = DeviceEventEmitter.addListener('tier1_manifest_hydrated', (manifest) => {
       if (isCancelled) return;
       applyManifest(manifest);
@@ -190,8 +207,27 @@ export function AcademicProvider({
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.ATTENDANCE), where("userId", "==", uid)),
       snap => {
-        if (snap.docs.length === 0 && snap.metadata.fromCache && hasCachedDataRef.current) return;
-        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) return;
+        // ALWAYS mark attendance as ready as soon as the first query responds, even if user has 0 subjects!
+        if (snap.docs.length === 0) {
+          unstable_batchedUpdates(() => {
+            if (!snap.metadata.fromCache || !hasCachedDataRef.current) {
+              setAttendance([]);
+              updateL1Cache('attendance', []);
+            }
+            setAttendanceSnapshotFired(true);
+          });
+          return;
+        }
+
+        if (snap.metadata.fromCache && hasCachedDataRef.current && snap.docChanges().length === 0) {
+          setAttendanceSnapshotFired(true);
+          return;
+        }
+        if (snap.docChanges().length === 0 && !snap.metadata.hasPendingWrites) {
+          setAttendanceSnapshotFired(true);
+          return;
+        }
+
         unstable_batchedUpdates(() => {
           const fresh = applyPendingQueueOverlay(COLLECTION.ATTENDANCE, snap.docs.map(d => parseAttendanceSubject(d.data(), d.id)));
           updateL1Cache('attendance', fresh);
@@ -362,7 +398,7 @@ export function AcademicProvider({
             if (user && !subscribedRef.current) {
               openSubscriptions(user.uid);
             }
-          }, 4500);
+          }, 1000);
         });
         return () => {
           handle.cancel();

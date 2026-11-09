@@ -710,6 +710,18 @@ export default function AttendanceScreen() {
 
   const [contextMenuSubject, setContextMenuSubject] = useState<AttendanceSubject | null>(null);
 
+  // 1. Core Data & State Hook
+  const academic = useAcademicData();
+  const { attendanceReady, ensureSubscribed } = academic;
+  const [localReady, setLocalReady] = useState(false);
+
+  useEffect(() => {
+    ensureSubscribed?.();
+    const timer = setTimeout(() => setLocalReady(true), 1000);
+    return () => clearTimeout(timer);
+  }, [ensureSubscribed]);
+
+
   // Helper for theme-aware progress colors
   const getThemeProgressColor = (urgency: string) =>
     urgency === 'danger' ? colors.priorityHigh : urgency === 'warning' ? colors.priorityMed : colors.priorityLow;
@@ -727,13 +739,14 @@ export default function AttendanceScreen() {
       // visible jitter because the list is snapping while the screen is
       // still sliding in. At 50ms the transition is done but the eye hasn't
       // settled on content yet Ã¢â‚¬â€ the reset is invisible.
+      academic.ensureSubscribed?.();
       const t = setTimeout(() => {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
         isPillVisibleRef.current = false;
         pillAnim.setValue(0);
       }, 50);
       return () => clearTimeout(t);
-    }, [pillAnim])
+    }, [academic, pillAnim])
   );
 
   const updatePillVisibility = useCallback((offsetY: number) => {
@@ -772,9 +785,6 @@ export default function AttendanceScreen() {
     return () => handle.cancel();
   }, []);
 
-  // 1. Core Data & State Hook
-  const academic = useAcademicData();
-  const { attendanceReady } = academic;
   const data = useAttendanceData();
   const {
     user, subjects, logs, holidays, logsBySubjectId,
@@ -1096,7 +1106,7 @@ export default function AttendanceScreen() {
           />
         )}
 
-        {!attendanceReady && (!subjects || subjects.length === 0) ? (
+        {!attendanceReady && !localReady && (!subjects || subjects.length === 0) ? (
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 120, paddingTop: insets.top + 54 }}

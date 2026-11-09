@@ -37,11 +37,8 @@ export function useAttendanceData() {
   const { attendance: subjects, attendanceLogs: logs, holidays = [], ensureSubscribed } = academic;
 
   useEffect(() => {
-    // Defer Firestore subscription until after the tab-switch animation completes.
-    const handle = InteractionManager.runAfterInteractions(() => {
-      ensureSubscribed?.();
-    });
-    return () => handle.cancel();
+    // Open subscriptions immediately upon mounting Attendance
+    ensureSubscribed?.();
   }, [ensureSubscribed]);
 
   // ── UI state ───────────────────────────────────────────────────────────────
