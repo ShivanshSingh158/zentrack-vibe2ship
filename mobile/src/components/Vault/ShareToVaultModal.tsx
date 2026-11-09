@@ -44,7 +44,7 @@ import { feedback } from '../../utils/haptics';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import type { StorageNode } from '../../contexts/MobileDataContext';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental && !(global as any)?._IS_FABRIC) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 

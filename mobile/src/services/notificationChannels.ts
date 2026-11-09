@@ -16,7 +16,6 @@ export function getSoundChannelId(baseChannel: 'reminders' | 'task_alarm', sound
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
     shouldShowBanner: true,

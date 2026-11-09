@@ -405,8 +405,15 @@ export async function updateTodayAgendaWidget(data?: TodayAgendaWidgetData | nul
       widgetNotFound: () => {},
     });
   } catch (e: any) {
-    // Only log if not the expected unlinked warning in pre-rebuild dev environment
-    if (!e?.message?.includes('not seem to be linked')) {
+    const msg = String(e?.message || e || '');
+    // Silence expected native module linking warnings when running in Expo Go or unlinked dev builds
+    const isExpectedDevWarning =
+      msg.includes('seem to be linked') ||
+      msg.includes('Expo Go') ||
+      msg.includes('not linked') ||
+      msg.includes('NativeModule.requestWidgetUpdate');
+
+    if (!isExpectedDevWarning) {
       console.warn('[WidgetSync] Failed to update Android widget:', e);
     }
   }

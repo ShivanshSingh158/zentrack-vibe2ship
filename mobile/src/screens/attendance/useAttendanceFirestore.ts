@@ -26,16 +26,7 @@ import { formatLocalDateStr } from '../../utils/dateUtils';
 import { readCoreCacheMulti } from '../../utils/coreCache';
 import { cancelClassNotificationsImmediately, cancelAllClassNotificationsForDate, clearScheduleCache } from '../../services/notifications';
 
-// Set the notification handler once at module level (previously in AttendanceScreen top-level)
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+
 
 interface FirestoreActionsParams {
   user: any;

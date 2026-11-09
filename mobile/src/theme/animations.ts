@@ -91,7 +91,7 @@ import { LayoutAnimation, Platform, UIManager } from 'react-native';
 
 export const triggerLayoutAnimation = (type = 'easeInEaseOut') => {
   if (Platform.OS === 'android') {
-    if (UIManager.setLayoutAnimationEnabledExperimental) {
+    if (UIManager.setLayoutAnimationEnabledExperimental && !(global as any)?._IS_FABRIC) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
     }
   }

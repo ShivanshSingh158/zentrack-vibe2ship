@@ -127,7 +127,7 @@ const formatSeconds = (secs: number): string => {
   return `${m}:${String(s).padStart(2, '0')}`;
 };
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental && !(global as any)?._IS_FABRIC) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 

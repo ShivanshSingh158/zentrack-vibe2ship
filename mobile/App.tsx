@@ -68,7 +68,9 @@ if (__DEV__) {
   console.warn = (...args) => {
     if (typeof args[0] === 'string' && (
       args[0].includes('setLayoutAnimationEnabledExperimental') ||
-      args[0].includes('[Reanimated] Property "opacity"')
+      args[0].includes('[Reanimated] Property "opacity"') ||
+      args[0].includes('seem to be linked') ||
+      args[0].includes('shouldShowAlert')
     )) return;
     originalWarn(...args);
   };
