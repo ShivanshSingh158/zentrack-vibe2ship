@@ -156,14 +156,6 @@ export default function App() {
     };
   }, []);
 
-  // Ensure custom font is fully loaded before rendering tree to prevent layout jitter
-  if (!fontsLoaded && !fontError) {
-    return null;
-  }
-
-
-
-
   // Drain ALL queued offline writes & register deferred background OTA updates
   useEffect(() => {
     const unsubscribeNet = setupNetworkListener();
@@ -874,6 +866,11 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
+  // Ensure custom font is fully loaded before rendering tree to prevent layout jitter
+  // Placed strictly AFTER all React hooks to adhere to Rules of Hooks
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
 
   return (
     <ThemeProvider>
