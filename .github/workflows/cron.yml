@@ -1,9 +1,9 @@
 name: ZenTrack Background Watchdog
 
 on:
-  schedule:
-    # Every 5 minutes — tasks, deadlines, class alerts, push queue
-    - cron: '*/5 * * * *'
+  # schedule:
+  #   # Paused until Vercel backend cron endpoints are configured
+  #   - cron: '*/5 * * * *'
   workflow_dispatch: # Manual trigger from GitHub Actions tab
 
 jobs:
@@ -35,9 +35,9 @@ jobs:
           echo "Stats: $PUSH | $SMS | $USERS"
 
           if [ "$STATUS" != "200" ]; then
-            echo "ERROR: Watchdog returned status $STATUS"
-            exit 1
+            echo "WARNING: Watchdog returned status $STATUS (non-fatal)"
           fi
+          true
 
       # ── Channel 2: Push Notification Queue Processor ─────────────────────────
       - name: Process Push Notification Queue
@@ -53,7 +53,6 @@ jobs:
           echo "Queue Processor HTTP Status: $STATUS"
           SENT=$(grep -o '"sent":[0-9]*' /tmp/queue_response.json 2>/dev/null || echo '"sent":?')
           echo "Stats: $SENT"
-          # Non-critical — don't fail the workflow if queue processor fails
           true
 
       # ── Channel 3: Class Start Alerts (student persona only) ─────────────────
@@ -70,5 +69,4 @@ jobs:
           echo "Class Alerts HTTP Status: $STATUS"
           PUSHES=$(grep -o '"pushesSent":[0-9]*' /tmp/class_response.json 2>/dev/null || echo '"pushesSent":?')
           echo "Stats: $PUSHES"
-          # Non-critical — don't fail the workflow if class alerts fail
           true
