@@ -59,6 +59,30 @@ Most productivity systems are **passive grave-yards for good intentions**: you t
 
 ---
 
+### 🥊 Problem vs. Solution: The 3-Card Reality
+
+| Dimension / Challenge | Traditional Productivity Apps | ZenTrack Autonomous Life OS |
+| :--- | :--- | :--- |
+| **1. The Passive Guilt Trap** | Apps record when you fail. They display overdue red badges and create psychological avoidance loops. | **Active Multi-Agent Interception**: The 16-agent Olympus DAG automatically reschedules slipped tasks, shifts calendar conflicts, and drafts catch-up timelines before failure occurs. |
+| **2. The Latency & Typing Trap** | Logging a 3-step action requires opening 3 tabs, typing forms, and waiting 3 seconds for cloud LLM roundtrips. | **0ms FastRouter & Sarvam Voice**: Regex fast-path matches 60% of daily intents in **0 milliseconds** locally; S.A.R.A provides conversational natural speech in <500ms. |
+| **3. The Tool Fragmentation Trap** | You need Notion for notes, Hevy for gym, Todoist for tasks, and Excel for college attendance margins. | **Single Unified Intelligence Kernel**: One typed schema unifying Google Workspace, college bunk margins, progressive overload gym splits, and KaTeX lecture theaters. |
+
+---
+
+### 🛡️ Core Architectural Invariants
+
+ZenTrack enforces strict operational and state-management invariants:
+
+| Invariant Domain | Invariant Rule | Architectural Enforcement |
+| :--- | :--- | :--- |
+| **Offline Mutations** | Mutations commit in <1ms without internet and never lose local user intent. | `@zentrack_offline_write_queue` with Last-Write-Wins (LWW) conflict resolution in `safeWrite()`. |
+| **Zero Frame Delay** | Mobile app must render interactive domain chrome on Frame 0. | `bootManifest.ts` batch loads cached state in a single native C++ `AsyncStorage.multiGet` call. |
+| **Audio Privacy Guard** | Microphones must never record ambient room chatter or leak battery. | Hard 30-second inactivity watchdog tears down audio streams and releases hardware audio handles. |
+| **DAG Hallucination Barrier** | No agent payload can execute arbitrary destructive database mutations. | The `QA` agent and typed schema validators sanitize JSON outputs before passing to `toolExecutor.ts`. |
+| **Academic Safety Margin** | Attendance bunk margin calculations cannot drop below user threshold (e.g. 75%). | Pure deterministic integer division math in `attendanceMath.ts` prevents rounding hazard bunks. |
+
+---
+
 ## 🤖 The Olympus 16-Agent Fleet
 
 At the heart of ZenTrack is the **Olympus Protocol** — 16 purpose-built, prompt-isolated agents executing in parallel through a unified Directed Acyclic Graph (DAG) engine.
